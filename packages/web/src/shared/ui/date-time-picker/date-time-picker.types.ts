@@ -12,12 +12,14 @@ export interface DateTimePickerProps extends AriaAttributes {
   min?: Date;
   max?: Date;
   disabled?: boolean;
+  /** Shows the stored value as static date and time without controls or focus targets. */
+  readOnly?: boolean;
   showSeconds?: boolean;
   /** Shows the TimePicker step buttons; wheel and keyboard controls stay available. */
   showArrows?: boolean;
   datePickerProps?: Omit<
     DatePickerProps,
-    "value" | "onValueChange" | "min" | "max" | "disabled" | "defaultMonth"
+    "value" | "onValueChange" | "min" | "max" | "disabled" | "defaultMonth" | "readOnly"
   >;
   timePickerProps?: Omit<
     TimePickerProps,
@@ -29,6 +31,7 @@ export interface DateTimePickerProps extends AriaAttributes {
     | "isTimeDisabled"
     | "showSeconds"
     | "showArrows"
+    | "readOnly"
   >;
   className?: string;
 }

@@ -57,6 +57,7 @@ export const CurrentDay: Story = { args: { value: null, defaultMonth: new Date()
 export const TodaySelected: Story = { args: { value: new Date() } };
 export const Empty: Story = { args: { value: null } };
 export const Disabled: Story = { args: { disabled: true } };
+export const ReadOnly: Story = { args: { readOnly: true } };
 export const Bounded: Story = {
   args: { min: new Date(2025, 10, 10), max: new Date(2025, 10, 15) },
 };

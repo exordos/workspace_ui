@@ -1195,8 +1195,18 @@ select {
   background: var(--color-bg-elevated);
   color: var(--color-text-primary);
   font: inherit;
+  cursor: pointer;
   vertical-align: baseline;
   white-space: normal;
+}
+
+.message-body .workspace-message-time:hover {
+  background: var(--color-card-bg-active);
+}
+
+.message-body .workspace-message-time:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
 }
 
 .message-body .workspace-message-time__icon {

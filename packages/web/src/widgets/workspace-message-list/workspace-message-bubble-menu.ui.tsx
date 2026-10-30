@@ -3,6 +3,7 @@ import React, { useCallback, useLayoutEffect, useMemo, useRef, useState } from "
 import { createPortal } from "react-dom";
 import { t } from "~/i18n/i18n";
 import { writeImage, writeText } from "~/shared/lib/clipboard";
+import { formatWorkspaceMessageTimesForCopy } from "~/shared/lib/workspace-message-render/workspace-message-marked.lib";
 import { DropdownMenu, type DropdownMenuItem } from "~/shared/ui/dropdown-menu";
 import { Icon } from "~/shared/ui/icon";
 import { subscribeWorkspaceMessageQuickReactionUsage } from "./workspace-message-quick-reaction-history.lib";
@@ -352,7 +353,7 @@ export const WorkspaceMessageBubbleMenu = React.memo(function WorkspaceMessageBu
           } else if (selectedText != null) {
             void writeText(selectedText);
           } else if (markdown != null) {
-            void writeText(markdown);
+            void writeText(formatWorkspaceMessageTimesForCopy(markdown));
           }
           closeMenu();
         },

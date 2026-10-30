@@ -114,4 +114,12 @@ describe("DatePicker", () => {
     fireEvent.click(day);
     expect(onValueChange).not.toHaveBeenCalled();
   });
+  it("renders the stored date without navigation, selection or focus targets", () => {
+    render(<DatePicker readOnly value={new Date(2025, 10, 10)} onValueChange={vi.fn()} />);
+    expect(screen.getByRole("grid")).toHaveAttribute("aria-readonly", "true");
+    expect(screen.queryAllByRole("button")).toHaveLength(0);
+    expect(screen.getByRole("gridcell", { selected: true })).toHaveTextContent("10");
+    expect(screen.getByRole("grid")).toHaveAccessibleName("November 2025");
+    expect(document.querySelectorAll("[tabindex]")).toHaveLength(0);
+  });
 });

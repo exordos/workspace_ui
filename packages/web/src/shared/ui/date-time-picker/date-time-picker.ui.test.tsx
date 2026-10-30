@@ -118,4 +118,15 @@ describe("DateTimePicker composition", () => {
     });
     expect(onValueChange).toHaveBeenLastCalledWith(new Date(2025, 10, 10, 10, 58, 33));
   });
+  it("renders the stored value as static date and time without interactive targets", () => {
+    render(
+      <DateTimePicker readOnly value={new Date(2025, 10, 10, 10, 58)} onValueChange={vi.fn()} />,
+    );
+    expect(screen.getByRole("grid")).toHaveAttribute("aria-readonly", "true");
+    expect(screen.getByRole("group", { name: "Time" })).toBeInTheDocument();
+    expect(screen.queryAllByRole("button")).toHaveLength(0);
+    expect(screen.queryAllByRole("spinbutton")).toHaveLength(0);
+    expect(screen.getByText("10:58")).toBeInTheDocument();
+    expect(document.querySelectorAll("[tabindex]")).toHaveLength(0);
+  });
 });

@@ -452,7 +452,7 @@ function createWorkspaceRendererExtensions(
         const label = formatLocalMessageTime(utc);
         const hint = t("message.globalTimeHint", { zone: formatMessageTimeZone(new Date(utc)) });
         const accessibleLabel = escapeHtmlText(label + ". " + hint);
-        return `<time class="workspace-message-time" datetime="${escapeHtmlText(utc)}" tabindex="0" title="${escapeHtmlText(hint)}" aria-label="${accessibleLabel}"><span class="workspace-message-time__icon" aria-hidden="true"></span>${escapeHtmlText(label)}</time>`;
+        return `<time class="workspace-message-time" datetime="${escapeHtmlText(utc)}" role="button" tabindex="0" aria-haspopup="dialog" title="${escapeHtmlText(hint)}" aria-label="${accessibleLabel}"><span class="workspace-message-time__icon" aria-hidden="true"></span>${escapeHtmlText(label)}</time>`;
       },
     },
     {

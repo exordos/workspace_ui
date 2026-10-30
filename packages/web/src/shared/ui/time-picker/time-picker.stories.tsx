@@ -47,6 +47,7 @@ export const WithSeconds: Story = {
 };
 export const Empty: Story = { args: { value: null } };
 export const Disabled: Story = { args: { disabled: true } };
+export const ReadOnly: Story = { args: { readOnly: true } };
 export const Bounded: Story = { args: { value: "09:30", min: "09:30", max: "18:15" } };
 export const ExcludedTimes: Story = {
   args: { value: "11:45", isTimeDisabled: (value) => value >= "12:00" && value < "14:00" },

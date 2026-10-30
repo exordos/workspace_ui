@@ -8,7 +8,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 
 function TimeInsertionExample({ disabled = false }: Readonly<{ disabled?: boolean }>) {
   const { t } = useTranslation();
-  const [markdown, setMarkdown] = useState("<urn:time:2026-10-13T10:02:00Z>");
+  const [markdown, setMarkdown] = useState("urn:time:2026-10-13T10:02:00Z");
   const rendered = renderWorkspaceMessageBody(parseWorkspaceMessageBody(markdown));
   return (
     <div className="mx-auto flex min-h-[620px] max-w-3xl flex-col gap-4 bg-bg p-4 text-text-primary">

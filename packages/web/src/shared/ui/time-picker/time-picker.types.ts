@@ -13,5 +13,7 @@ export interface TimePickerProps extends AriaAttributes {
   /** Optional caller-owned exclusions, for example nonexistent local times on a date. */
   isTimeDisabled?: (value: string) => boolean;
   disabled?: boolean;
+  /** Shows the stored time as static text without segments, arrows or focus targets. */
+  readOnly?: boolean;
   className?: string;
 }

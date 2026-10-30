@@ -163,6 +163,7 @@ import type {
   WorkspaceMessageFileReference,
   WorkspaceMessageMentionResolution,
 } from "~/shared/lib/workspace-message-render/workspace-message-document.types";
+import { formatWorkspaceMessageTimesForCopy } from "~/shared/lib/workspace-message-render/workspace-message-marked.lib";
 import {
   hasWorkspaceForwardSnapshot,
   parseWorkspaceMessageBody,
@@ -3049,7 +3050,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
           ? undefined
           : selectedText;
       if (text == null && message.payload.kind === "markdown") {
-        text = message.payload.content;
+        text = formatWorkspaceMessageTimesForCopy(message.payload.content);
       } else if (text == null && message.payload.kind === "e2ee") {
         if (runtimeContext == null || ownerKey == null) {
           setActionError(t("message.copyFailed"));
@@ -3086,7 +3087,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
 
         text = decryptRealChatMessage(runtimeContext, message, isCurrent).then((plaintext) => {
           if (plaintext == null || !isCurrent()) throw new Error("Message is no longer available");
-          return plaintext;
+          return formatWorkspaceMessageTimesForCopy(plaintext);
         });
       }
 

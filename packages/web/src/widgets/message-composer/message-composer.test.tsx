@@ -12,8 +12,8 @@ import { useUsersStore } from "~/entities/user/user.model";
 import type { User } from "~/entities/user/user.types";
 import { useMentionSuggestStore } from "~/features/mention-suggest/mention-suggest.model";
 import { useSettingsStore } from "~/features/settings/settings.model";
+import { computeFloatingPickerPosition } from "~/shared/lib/floating-panel-position.lib";
 import { renderWithProviders } from "~/test/render";
-import { computeFloatingPickerPosition } from "./message-composer-picker-position.lib";
 import { resetComposerSavedSnippetsModelForTests } from "./message-composer-saved-snippets.model";
 import { MessageComposer } from "./message-composer.ui";
 
@@ -1891,7 +1891,7 @@ describe("MessageComposer formatting shortcuts", () => {
       fireEvent.change(minutes, { target: { value: "15" } });
       fireEvent.keyDown(minutes, { key: "Enter" });
       fireEvent.click(within(dialog).getByRole("button", { name: "Insert" }));
-      const expected = "Meet <urn:time:2026-10-13T10:15:00Z> here";
+      const expected = "Meet urn:time:2026-10-13T10:15:00Z here";
       await waitFor(() => expect(textbox).toHaveValue(expected));
       await waitFor(() => expect(textbox).toHaveFocus());
       expect(textbox.selectionStart).toBe(expected.indexOf(" here"));

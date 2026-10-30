@@ -29,7 +29,7 @@ export function parseWorkspaceMessageTime(value: string): string | null {
 }
 
 export function formatWorkspaceMessageTime(date: Date): string {
-  return `<urn:time:${date.toISOString().replace(/\.000Z$/, "Z")}>`;
+  return `urn:time:${date.toISOString().replace(/\.000Z$/, "Z")}`;
 }
 
 export function formatLocalMessageTime(utc: string): string {

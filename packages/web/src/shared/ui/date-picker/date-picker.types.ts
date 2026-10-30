@@ -11,5 +11,7 @@ export interface DatePickerProps extends AriaAttributes {
   min?: Date;
   max?: Date;
   disabled?: boolean;
+  /** Shows the stored date without navigation, selection or focusable days. */
+  readOnly?: boolean;
   className?: string;
 }

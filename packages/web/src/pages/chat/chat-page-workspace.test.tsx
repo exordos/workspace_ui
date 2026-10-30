@@ -43,6 +43,7 @@ import { t } from "~/i18n/i18n";
 import { OpenSearchContext } from "~/shared/contexts/open-search";
 import { RightDrawerContext } from "~/shared/contexts/right-drawer";
 import type { RightDrawerContextValue } from "~/shared/contexts/right-drawer.types";
+import { formatLocalMessageTime } from "~/shared/lib/workspace-message-time.lib";
 import {
   deleteWorkspaceMessengerCacheDatabase,
   openWorkspaceMessengerCacheDb,
@@ -2383,9 +2384,11 @@ describe("ChatPage Workspace route", () => {
         }),
         expect.any(Function),
       );
-      deferredDecryption.resolve("decrypted message");
+      deferredDecryption.resolve("decrypted urn:time:2026-10-13T10:02:00Z");
       await act(async () => fullCopy);
-      expect(clipboardWrites).toEqual(["decrypted message"]);
+      expect(clipboardWrites).toEqual([
+        `decrypted ${formatLocalMessageTime("2026-10-13T10:02:00Z")}`,
+      ]);
     } finally {
       if (clipboardDescriptor == null) {
         Reflect.deleteProperty(navigator, "clipboard");

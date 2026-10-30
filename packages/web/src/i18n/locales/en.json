@@ -1417,7 +1417,6 @@
   "composer": {
     "insertTime": "Insert date and time",
     "insertTimeConfirm": "Insert",
-    "insertTimeHint": "Choose a time in your time zone: {{zone}}. Everyone will see it in their own time zone.",
     "bold": "Bold",
     "italic": "Italic",
     "strikethrough": "Strikethrough",

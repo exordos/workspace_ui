@@ -14,6 +14,7 @@ function TimeSegment({
   previous,
   next,
   disabled,
+  readOnly,
   onSelect,
   onCommit,
 }: Readonly<{
@@ -25,6 +26,7 @@ function TimeSegment({
   previous: number | null;
   next: number | null;
   disabled: boolean;
+  readOnly: boolean;
   onSelect: (seconds: number) => void;
   onCommit: (part: number) => void;
 }>) {
@@ -77,6 +79,7 @@ function TimeSegment({
     }
   });
   useEffect(() => {
+    if (readOnly) return;
     const segment = segmentRef.current;
     if (segment == null) return;
     const resetWheel = () => {
@@ -89,7 +92,7 @@ function TimeSegment({
       segment.removeEventListener("wheel", handleWheel);
       segment.removeEventListener("mouseleave", resetWheel);
     };
-  }, []);
+  }, [readOnly]);
   const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.nativeEvent.isComposing || event.altKey || event.ctrlKey || event.metaKey) return;
     if (event.key === "ArrowUp" || event.key === "ArrowDown") {
@@ -105,6 +108,24 @@ function TimeSegment({
       setDraft(null);
     }
   };
+  if (readOnly) {
+    return (
+      <div
+        role="group"
+        aria-label={label}
+        className="min-w-0 rounded-md border-l border-border-subtle pl-1"
+      >
+        <div className="flex items-baseline justify-center gap-0.5">
+          <span className="flex h-8 items-center text-base font-medium tabular-nums">
+            {display || "—"}
+          </span>
+          <span aria-hidden className="text-[10px] leading-none text-text-secondary">
+            {shortLabel}
+          </span>
+        </div>
+      </div>
+    );
+  }
   return (
     <div
       ref={segmentRef}
@@ -190,6 +211,7 @@ export function TimePicker({
   showArrows = true,
   isTimeDisabled,
   disabled = false,
+  readOnly = false,
   className = "",
   ...ariaProps
 }: Readonly<TimePickerProps>) {
@@ -235,7 +257,7 @@ export function TimePicker({
         ariaProps["aria-label"] ??
         (ariaProps["aria-labelledby"] == null ? t("timePicker.label") : undefined)
       }
-      aria-disabled={unavailable || undefined}
+      aria-disabled={readOnly ? undefined : unavailable || undefined}
       className={`w-[371px] max-w-full rounded-xl border border-border-subtle bg-bg-elevated p-5 text-text-primary ${className}`.trim()}
     >
       <div
@@ -244,7 +266,7 @@ export function TimePicker({
         <div className="min-w-0">
           <output
             className="flex h-8 items-center whitespace-nowrap text-base font-medium tabular-nums"
-            aria-live="polite"
+            aria-live={readOnly ? undefined : "polite"}
           >
             {selected == null ? emptyTime : formatTime(selected, showSeconds)}
           </output>
@@ -260,6 +282,7 @@ export function TimePicker({
             previous={step(index, -1, index === 0 ? 23 : 59)}
             next={step(index, 1, index === 0 ? 23 : 59)}
             disabled={unavailable}
+            readOnly={readOnly}
             onSelect={(time) => onValueChange(formatTime(time, showSeconds))}
             onCommit={(part) => {
               const next = resolvePart(part, index);

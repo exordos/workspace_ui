@@ -17,6 +17,7 @@ export function DateTimePicker({
   min,
   max,
   disabled = false,
+  readOnly = false,
   showSeconds = false,
   showArrows = true,
   datePickerProps,
@@ -41,7 +42,7 @@ export function DateTimePicker({
         ariaProps["aria-label"] ??
         (ariaProps["aria-labelledby"] == null ? t("dateTimePicker.label") : undefined)
       }
-      aria-disabled={unavailable || undefined}
+      aria-disabled={readOnly ? undefined : unavailable || undefined}
       className={`flex w-[371px] max-w-full flex-col ${className}`.trim()}
     >
       <DatePicker
@@ -52,6 +53,7 @@ export function DateTimePicker({
         min={lower ?? undefined}
         max={upper ?? undefined}
         disabled={unavailable}
+        readOnly={readOnly}
         onValueChange={(day) => {
           const next = dayValue(day, selected, lower, upper, showSeconds);
           if (next != null) onValueChange(next);
@@ -74,6 +76,7 @@ export function DateTimePicker({
             : undefined
         }
         disabled={unavailable || selected == null}
+        readOnly={readOnly}
         isTimeDisabled={(time) => selected == null || mergeDateAndTime(selected, time) == null}
         onValueChange={(time) => {
           if (selected == null) return;

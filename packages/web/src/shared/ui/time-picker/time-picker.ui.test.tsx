@@ -168,4 +168,14 @@ describe("TimePicker", () => {
     await user.click(screen.getByRole("button", { name: "Increase Seconds" }));
     expect(onValueChange).toHaveBeenCalledWith("10:58:33");
   });
+  it("renders the stored time without segments, arrows or focus targets", () => {
+    render(<TimePicker readOnly value="10:58:32" showSeconds onValueChange={vi.fn()} />);
+    expect(screen.getByRole("group", { name: "Time" })).toBeInTheDocument();
+    expect(screen.queryAllByRole("spinbutton")).toHaveLength(0);
+    expect(screen.queryAllByRole("button")).toHaveLength(0);
+    expect(screen.getByRole("status")).toHaveTextContent(/^10:58:32$/);
+    expect(screen.getByRole("group", { name: "Hours" })).toHaveTextContent("10");
+    expect(screen.getByRole("group", { name: "Seconds" })).toHaveTextContent("32");
+    expect(document.querySelectorAll("[tabindex]")).toHaveLength(0);
+  });
 });

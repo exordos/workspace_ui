@@ -22,6 +22,7 @@ export function DatePicker({
   min,
   max,
   disabled = false,
+  readOnly = false,
   className = "",
   ...ariaProps
 }: Readonly<DatePickerProps>) {
@@ -112,9 +113,10 @@ export function DatePicker({
     if (firstAvailable != null) navigate(available(next) == null ? firstAvailable : next, false);
   };
 
-  const renderMonthButton = (direction: 1 | -1) => (
+  const renderMonthButton = (direction: 1 | -1, enabled: boolean) => (
     <button
       type="button"
+      hidden={!enabled}
       disabled={disabled || !canVisit(moveMonth(cursor, direction))}
       aria-label={t(direction === -1 ? "datePicker.previousMonth" : "datePicker.nextMonth")}
       data-icon-hover="custom"
@@ -134,39 +136,42 @@ export function DatePicker({
         ariaProps["aria-label"] ??
         (ariaProps["aria-labelledby"] == null ? t("datePicker.label") : undefined)
       }
-      aria-disabled={disabled || undefined}
+      aria-disabled={readOnly ? undefined : disabled || undefined}
       className={`@container w-[371px] max-w-full rounded-xl border border-border-subtle bg-bg-elevated p-5 text-text-primary ${className}`.trim()}
     >
       <div className="mb-3 grid grid-cols-[minmax(28px,1fr)_auto_minmax(28px,1fr)] items-center gap-x-1 gap-y-1">
-        {renderMonthButton(-1)}
+        {renderMonthButton(-1, !readOnly)}
         <div
           id={headingId}
-          aria-live="polite"
+          aria-live={readOnly ? undefined : "polite"}
           className="col-start-2 row-start-1 min-w-0 truncate text-center text-base font-medium leading-9 first-letter:uppercase"
         >
           {monthTitle}
         </div>
-        <Button
-          type="button"
-          size="sm"
-          appearance="ghost"
-          className="@[320px]:col-span-1 @[320px]:col-start-3 @[320px]:row-start-1 @[320px]:mr-8 col-span-3 row-start-2 !h-6 justify-self-end !px-1 !text-[10px]"
-          disabled={disabled || !todayAvailable}
-          onClick={() => {
-            const next = available(new Date());
-            if (next != null) {
-              setCursor(next);
-              onValueChange(next);
-            }
-          }}
-        >
-          {t("datePicker.today")}
-        </Button>
-        {renderMonthButton(1)}
+        {readOnly ? null : (
+          <Button
+            type="button"
+            size="sm"
+            appearance="ghost"
+            className="@[320px]:col-span-1 @[320px]:col-start-3 @[320px]:row-start-1 @[320px]:mr-8 col-span-3 row-start-2 !h-6 justify-self-end !px-1 !text-[10px]"
+            disabled={disabled || !todayAvailable}
+            onClick={() => {
+              const next = available(new Date());
+              if (next != null) {
+                setCursor(next);
+                onValueChange(next);
+              }
+            }}
+          >
+            {t("datePicker.today")}
+          </Button>
+        )}
+        {renderMonthButton(1, !readOnly)}
       </div>
       <table
         role="grid"
         aria-labelledby={headingId}
+        aria-readonly={readOnly || undefined}
         className="w-full table-fixed border-collapse text-center text-sm"
       >
         <thead>
@@ -197,6 +202,12 @@ export function DatePicker({
                 const today = dayKey(day) === todayKey;
                 const outsideMonth = monthKey(day) !== monthKey(cursor);
                 const unavailable = disabled || available(day) == null;
+                const weekend = day.getDay() === 0 || day.getDay() === 6;
+                const muted = !selected && !today && (outsideMonth || weekend || unavailable);
+                let fillClassName = "";
+                if (selected) fillClassName = "bg-accent text-on-accent";
+                else if (!readOnly) fillClassName = "hover:bg-card-bg-active";
+                const dayClassName = `inline-flex size-[25px] items-center justify-center rounded-full text-sm tabular-nums ${fillClassName} ${today ? "ring-1 ring-inset ring-accent" : ""} ${today && !selected ? "font-semibold text-accent" : ""} ${muted ? "text-text-muted" : ""}`;
                 return (
                   <td
                     key={dayKey(day)}
@@ -204,25 +215,35 @@ export function DatePicker({
                     aria-selected={selected}
                     className="h-[26px] p-0"
                   >
-                    <button
-                      type="button"
-                      data-day={dayKey(day)}
-                      aria-label={dateFormatter.format(day)}
-                      aria-current={today ? "date" : undefined}
-                      disabled={unavailable}
-                      tabIndex={focusDay != null && dayKey(day) === dayKey(focusDay) ? 0 : -1}
-                      className={`inline-flex size-[25px] items-center justify-center rounded-full text-sm tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1 focus-visible:ring-offset-bg-elevated disabled:cursor-not-allowed ${selected ? "bg-accent text-on-accent" : "hover:bg-card-bg-active"} ${today ? "ring-1 ring-inset ring-accent" : ""} ${today && !selected ? "font-semibold text-accent" : ""} ${!selected && !today && (outsideMonth || day.getDay() === 0 || day.getDay() === 6 || unavailable) ? "text-text-muted" : ""} ${unavailable ? "opacity-40" : ""}`}
-                      onKeyDown={(event) => handleKeyDown(event, day)}
-                      onClick={() => {
-                        const next = available(day);
-                        if (next != null) {
-                          setCursor(startOfDay(next));
-                          onValueChange(next);
-                        }
-                      }}
-                    >
-                      {day.getDate()}
-                    </button>
+                    {readOnly ? (
+                      <span
+                        aria-label={dateFormatter.format(day)}
+                        aria-current={today ? "date" : undefined}
+                        className={dayClassName}
+                      >
+                        {day.getDate()}
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        data-day={dayKey(day)}
+                        aria-label={dateFormatter.format(day)}
+                        aria-current={today ? "date" : undefined}
+                        disabled={unavailable}
+                        tabIndex={focusDay != null && dayKey(day) === dayKey(focusDay) ? 0 : -1}
+                        className={`${dayClassName} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1 focus-visible:ring-offset-bg-elevated disabled:cursor-not-allowed ${unavailable ? "opacity-40" : ""}`}
+                        onKeyDown={(event) => handleKeyDown(event, day)}
+                        onClick={() => {
+                          const next = available(day);
+                          if (next != null) {
+                            setCursor(startOfDay(next));
+                            onValueChange(next);
+                          }
+                        }}
+                      >
+                        {day.getDate()}
+                      </button>
+                    )}
                   </td>
                 );
               })}

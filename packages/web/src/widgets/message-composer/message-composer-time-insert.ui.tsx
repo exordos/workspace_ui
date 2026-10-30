@@ -2,10 +2,7 @@ import { useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "~/i18n/i18n";
 import ClockSvg from "~/shared/assets/icons/composer-schedule.svg?react";
-import {
-  formatMessageTimeZone,
-  formatWorkspaceMessageTime,
-} from "~/shared/lib/workspace-message-time.lib";
+import { formatWorkspaceMessageTime } from "~/shared/lib/workspace-message-time.lib";
 import { AnchoredPopover } from "~/shared/ui/anchored-popover";
 import { Button } from "~/shared/ui/button";
 import { DateTimePicker } from "~/shared/ui/date-time-picker";
@@ -94,16 +91,10 @@ function TimeInsertPopover({
           disabled={disabled}
           className="!w-full"
           datePickerProps={{ className: "!rounded-none !border-0" }}
-          timePickerProps={{ className: "!rounded-none !border-x-0 !border-b-0" }}
+          timePickerProps={{ className: "!rounded-none !border-x-0 !border-b-0 !pb-2" }}
         />
-        <p className="px-5 pt-3 text-xs text-text-muted">
-          {t("composer.insertTimeHint", { zone: formatMessageTimeZone(value) })}
-        </p>
-        <div className="flex justify-end gap-2 p-4">
-          <Button variant="neutral" appearance="ghost" size="sm" onClick={onClose}>
-            {t("common.cancel")}
-          </Button>
-          <Button size="sm" disabled={disabled} onClick={() => onInsert(value)}>
+        <div className="px-4 pb-4 pt-2">
+          <Button size="lg" fullWidth disabled={disabled} onClick={() => onInsert(value)}>
             {t("composer.insertTimeConfirm")}
           </Button>
         </div>
