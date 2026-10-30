@@ -12,8 +12,8 @@ import { useUsersStore } from "~/entities/user/user.model";
 import type { User } from "~/entities/user/user.types";
 import { useMentionSuggestStore } from "~/features/mention-suggest/mention-suggest.model";
 import { useSettingsStore } from "~/features/settings/settings.model";
+import { computeFloatingPickerPosition } from "~/shared/lib/floating-panel-position.lib";
 import { renderWithProviders } from "~/test/render";
-import { computeFloatingPickerPosition } from "./message-composer-picker-position.lib";
 import { resetComposerSavedSnippetsModelForTests } from "./message-composer-saved-snippets.model";
 import { MessageComposer } from "./message-composer.ui";
 
@@ -1874,6 +1874,48 @@ describe("MessageComposer formatting shortcuts", () => {
     await waitFor(() => {
       expect(textbox).toHaveValue("> line one\n> line two");
     });
+  });
+
+  it("inserts a UTC time at the selection, previews locally and sends the same Markdown", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-13T13:02:00+03:00"));
+    try {
+      const onSend = vi.fn();
+      renderWithProviders(<MessageComposer initialValue="Meet old date here" onSend={onSend} />);
+      const textbox = screen.getByRole<HTMLTextAreaElement>("textbox");
+      textbox.setSelectionRange(5, 13);
+      expandComposerToolbar();
+      fireEvent.click(screen.getByRole("button", { name: "Insert date and time" }));
+      const dialog = screen.getByRole("dialog", { name: "Insert date and time" });
+      const minutes = within(dialog).getByRole("spinbutton", { name: "Minutes" });
+      fireEvent.change(minutes, { target: { value: "15" } });
+      fireEvent.keyDown(minutes, { key: "Enter" });
+      fireEvent.click(within(dialog).getByRole("button", { name: "Insert" }));
+      const expected = "Meet urn:time:2026-10-13T10:15:00Z here";
+      await waitFor(() => expect(textbox).toHaveValue(expected));
+      await waitFor(() => expect(textbox).toHaveFocus());
+      expect(textbox.selectionStart).toBe(expected.indexOf(" here"));
+      fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+      const preview = screen.getByRole("region", { name: "Preview" });
+      expect(preview.querySelector("time")).toHaveAttribute("datetime", "2026-10-13T10:15:00Z");
+      fireEvent.click(screen.getByRole("button", { name: "Write a message..." }));
+      await waitFor(() => expect(onSend).toHaveBeenCalled());
+      expect(onSend.mock.calls[0]?.[0]).toBe(expected);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("cancels time insertion on Escape and returns focus without changing the draft", () => {
+    renderWithProviders(<MessageComposer initialValue="Keep this draft" onSend={vi.fn()} />);
+    expandComposerToolbar();
+    const trigger = screen.getByRole("button", { name: "Insert date and time" });
+    fireEvent.click(trigger);
+    expect(screen.getByRole("dialog", { name: "Insert date and time" })).toBeInTheDocument();
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+    expect(screen.getByRole("textbox")).toHaveValue("Keep this draft");
   });
 
   it("inserts markdown link template from toolbar", async () => {
@@ -4099,6 +4141,7 @@ describe("MessageComposer AI context wiring", () => {
     expect(labels).toEqual([
       "Attach file",
       "Emoji",
+      "Insert date and time",
       "Saved snippets",
       "AI",
       "Link",

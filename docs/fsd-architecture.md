@@ -59,7 +59,8 @@ Do not infer a performance defect from an index alone. Development loading and p
 2. Shell hooks compose catalog/message hydration and realtime lifecycle.
 3. Workspace clients decode API DTOs; entity adapters convert them to domain values.
 4. `entities/messenger` owns catalogs and actions; `entities/message` owns message state.
-5. UI reads narrow selectors and sends intent through features or entity actions.
+5. `entities/messenger/messenger-message-content.lib.ts` resolves message content by payload kind, preserving canonical ciphertext. `features/message-presentation` owns temporary preparation results and their runtime/key invalidation for lists, quotes, and previews. The message-list widget owns window readiness and scrolling; body rendering stays in the existing shared sanitize/render path.
+6. UI reads narrow selectors and sends intent through features or entity actions.
 
 Use UUID-native identifiers and the [runtime ownership rules](ORG_SCOPED_ASYNC_SAFETY.md). Restore owned cached data before server refresh where appropriate. Preserve ordering, pagination markers, read boundaries and realtime cursor semantics.
 

@@ -3,6 +3,7 @@ import { webcrypto } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createStore } from "zustand/vanilla";
 import { useWorkspaceMessageStore } from "~/entities/message/message.model";
+import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import { createMessage, editMessage, getMessagesPage } from "~/shared/api/messenger-messages.api";
@@ -24,6 +25,8 @@ import {
   decryptRealChatMessage,
   decryptRealChatMessageResult,
   decryptRealChatEnvelopeResult,
+  commitPreparedPlaintextWindow,
+  type PreparedPlaintextRecord,
 } from "./chat-crypto-runtime.lib";
 import { encodeChatE2eePayload } from "./chat-e2ee-payload-adapters.lib";
 import { realChatInitialKeyBootstrap } from "./chat-real-key-bootstrap.lib";
@@ -702,6 +705,324 @@ describe("real ordinary chat orchestration", () => {
     expect(member.getState()).toMatchObject({ access: "missing", sendKeyUuid: null });
     await member.requestKey(f.metadata.keyUuid);
     expect(f.wire.at(-1)?.uuid).not.toBe(request.uuid);
+  });
+
+  it("batches a window and validates cached plaintext against durable key changes", async () => {
+    const f = await setup();
+    const session = await openSessionFor(f.admin);
+    await session.load();
+    await session.send({ text: "window text", topicUuid: TOPIC });
+    const message = adaptMessengerMessage(f.wire.at(-1)!);
+    const originalRuntime = useWorkspaceAuthStore.getState().getCurrentRuntimeContext;
+    useWorkspaceAuthStore.setState({ getCurrentRuntimeContext: () => f.admin });
+    try {
+      const messages = Array.from({ length: 50 }, (_, index) => ({
+        ...message,
+        uuid: `window-${index}`,
+      }));
+      const readDevice = vi.spyOn(realChatKeyStorage, "readDeviceIdentity");
+      const readKeys = vi.spyOn(realChatKeyStorage, "readChatKeySnapshots");
+      const decrypt = vi.spyOn(realChatCryptoProvider, "decryptMessage");
+      const prepare = async () => {
+        const records: PreparedPlaintextRecord[] = [];
+        const results = await Promise.all(
+          messages.map((item) =>
+            decryptRealChatMessageResult(f.admin, item, () => true, undefined, {
+              id: "window",
+              onPrepared: (record) => records.push(record),
+            }),
+          ),
+        );
+        commitPreparedPlaintextWindow(f.admin, "window", records);
+        return results;
+      };
+      expect((await prepare()).every((result) => result.status === "ready")).toBe(true);
+      expect(readDevice).toHaveBeenCalledTimes(1);
+      expect(readKeys).toHaveBeenCalledTimes(2);
+      expect(readKeys.mock.calls[0]?.[0]).toHaveLength(1);
+      expect(decrypt).toHaveBeenCalledTimes(50);
+      expect((await prepare()).every((result) => result.status === "ready")).toBe(true);
+      expect(decrypt).toHaveBeenCalledTimes(50);
+      useWorkspaceAuthStore.setState({ getCurrentRuntimeContext: () => null });
+      useWorkspaceAuthStore.setState({ getCurrentRuntimeContext: () => f.admin });
+      expect((await prepare()).every((result) => result.status === "ready")).toBe(true);
+      expect(decrypt).toHaveBeenCalledTimes(100);
+      await realChatKeyStorage.removeChatKey(session.scope);
+      expect((await prepare()).every((result) => result.status === "missing-key")).toBe(true);
+      expect(decrypt).toHaveBeenCalledTimes(100);
+    } finally {
+      useWorkspaceAuthStore.setState({ getCurrentRuntimeContext: originalRuntime });
+    }
+  });
+
+  it("retains and evicts entire recent windows without letting previews affect recency", async () => {
+    const f = await setup();
+    const session = await openSessionFor(f.admin);
+    await session.load();
+    await session.send({ text: "window text", topicUuid: TOPIC });
+    const message = adaptMessengerMessage(f.wire.at(-1)!);
+    const originalRuntime = useWorkspaceAuthStore.getState().getCurrentRuntimeContext;
+    useWorkspaceAuthStore.setState({ getCurrentRuntimeContext: () => f.admin });
+    try {
+      const decrypt = vi.spyOn(realChatCryptoProvider, "decryptMessage").mockImplementation(() =>
+        Promise.resolve({
+          ok: true,
+          value: new TextEncoder().encode("readable"),
+        }),
+      );
+      const windowMessages = (id: string, count: number) =>
+        Array.from({ length: count }, (_, index) => ({
+          ...message,
+          uuid: `${id}-${index}`,
+        }));
+      const prepare = async (id: string, items: (typeof message)[]) => {
+        const records: PreparedPlaintextRecord[] = [];
+        const results = await Promise.all(
+          items.map((item) =>
+            decryptRealChatMessageResult(f.admin, item, () => true, undefined, {
+              id,
+              onPrepared: (record) => records.push(record),
+            }),
+          ),
+        );
+        expect(results[0]).toEqual({ status: "ready", plaintext: "readable" });
+        commitPreparedPlaintextWindow(f.admin, id, records);
+      };
+      const a = windowMessages("a", 200);
+      const b = windowMessages("b", 200);
+      const c = windowMessages("c", 200);
+      await prepare("a", a);
+      await prepare("b", b);
+      await prepare("a", a);
+      expect(decrypt).toHaveBeenCalledTimes(400);
+      await decryptRealChatMessageResult(f.admin, b[0]!, () => true);
+      await prepare("c", c);
+      expect(decrypt).toHaveBeenCalledTimes(601);
+      await prepare("a", a);
+      expect(decrypt).toHaveBeenCalledTimes(601);
+      await prepare("b", b);
+      expect(decrypt).toHaveBeenCalledTimes(801);
+      const oversized = windowMessages("oversized", 501);
+      await prepare("oversized", oversized);
+      const afterOversized = decrypt.mock.calls.length;
+      await prepare("a", a);
+      expect(decrypt).toHaveBeenCalledTimes(afterOversized);
+      await prepare("oversized", oversized);
+      expect(decrypt).toHaveBeenCalledTimes(afterOversized + 501);
+      await prepare("a", a.slice(0, 1));
+      await prepare("a", a.slice(0, 2));
+      expect(decrypt).toHaveBeenCalledTimes(afterOversized + 502);
+      // The same message in a different list belongs to a different window.
+      await prepare("topic", a.slice(0, 2));
+      expect(decrypt).toHaveBeenCalledTimes(afterOversized + 504);
+      await prepare("a", a.slice(0, 2));
+      expect(decrypt).toHaveBeenCalledTimes(afterOversized + 504);
+      if (a[0]!.payload.kind !== "e2ee") throw new Error("Expected encrypted message");
+      const bytes = Buffer.from(a[0]!.payload.content, "base64");
+      bytes[bytes.length - 1] = bytes[bytes.length - 1]! ^ 1;
+      const changed = {
+        ...a[0]!,
+        payload: { ...a[0]!.payload, content: bytes.toString("base64") },
+      };
+      await prepare("a", [changed]);
+      expect(decrypt).toHaveBeenCalledTimes(afterOversized + 505);
+      await prepare("topic", a.slice(0, 2));
+      expect(decrypt).toHaveBeenCalledTimes(afterOversized + 505);
+    } finally {
+      useWorkspaceAuthStore.setState({ getCurrentRuntimeContext: originalRuntime });
+    }
+  });
+
+  it("enforces the character limit by whole window and skips oversized windows", async () => {
+    const f = await setup();
+    const session = await openSessionFor(f.admin);
+    await session.load();
+    await session.send({ text: "text", topicUuid: TOPIC });
+    const message = adaptMessengerMessage(f.wire.at(-1)!);
+    const originalRuntime = useWorkspaceAuthStore.getState().getCurrentRuntimeContext;
+    useWorkspaceAuthStore.setState({ getCurrentRuntimeContext: () => f.admin });
+    try {
+      let textSize = 600_000;
+      const decrypt = vi.spyOn(realChatCryptoProvider, "decryptMessage").mockImplementation(() =>
+        Promise.resolve({
+          ok: true,
+          value: new TextEncoder().encode("x".repeat(textSize)),
+        }),
+      );
+      const prepare = async (id: string, count = 1) => {
+        const records: PreparedPlaintextRecord[] = [];
+        const results = await Promise.all(
+          Array.from({ length: count }, (_, index) =>
+            decryptRealChatMessageResult(
+              f.admin,
+              { ...message, uuid: `${id}-${index}` },
+              () => true,
+              undefined,
+              {
+                id,
+                onPrepared: (record) => records.push(record),
+              },
+            ),
+          ),
+        );
+        expect(results.every((result) => result.status === "ready")).toBe(true);
+        commitPreparedPlaintextWindow(f.admin, id, records);
+      };
+      await prepare("chars-a");
+      await prepare("chars-b");
+      await prepare("chars-c");
+      await prepare("chars-a");
+      expect(decrypt).toHaveBeenCalledTimes(3);
+      await prepare("chars-d");
+      expect(decrypt).toHaveBeenCalledTimes(4);
+      await prepare("chars-b");
+      expect(decrypt).toHaveBeenCalledTimes(5);
+      textSize = 2_000_001;
+      await prepare("oversized-single");
+      textSize = 1_000_000;
+      await prepare("oversized-multi", 2);
+      const afterOversized = decrypt.mock.calls.length;
+      await prepare("chars-b");
+      expect(decrypt).toHaveBeenCalledTimes(afterOversized);
+      await prepare("oversized-multi", 2);
+      expect(decrypt).toHaveBeenCalledTimes(afterOversized + 2);
+      textSize = 2_000_001;
+      await prepare("oversized-single");
+      expect(decrypt).toHaveBeenCalledTimes(afterOversized + 3);
+    } finally {
+      useWorkspaceAuthStore.setState({ getCurrentRuntimeContext: originalRuntime });
+    }
+  });
+
+  it("checks every group after the slowest decrypt and detects replacement without a notification", async () => {
+    const f = await setup();
+    const session = await openSessionFor(f.admin);
+    await session.load();
+    await session.send({ text: "window text", topicUuid: TOPIC });
+    const message = adaptMessengerMessage(f.wire.at(-1)!);
+    if (message.payload.kind !== "e2ee") throw new Error("Expected encrypted message");
+    const second = {
+      ...message,
+      uuid: crypto.randomUUID(),
+      payload: { ...message.payload, keyUuid: crypto.randomUUID() },
+    };
+    const originalRuntime = useWorkspaceAuthStore.getState().getCurrentRuntimeContext;
+    useWorkspaceAuthStore.setState({ getCurrentRuntimeContext: () => f.admin });
+    let firstKey = new Uint8Array(32).fill(1);
+    const secondKey = new Uint8Array(32).fill(2);
+    const started = deferred<void>();
+    const gate = deferred<void>();
+    try {
+      vi.spyOn(realChatKeyStorage, "readChatKeySnapshots").mockImplementation((addresses) =>
+        Promise.resolve(
+          addresses.map((address) => ({
+            key: {
+              groupKey: {
+                bytes: new Uint8Array(
+                  address.keyUuid === second.payload.keyUuid ? secondKey : firstKey,
+                ),
+              },
+            },
+            deletionRevision: 0,
+          })),
+        ),
+      );
+      let delay = true;
+      const decrypt = vi
+        .spyOn(realChatCryptoProvider, "decryptMessage")
+        .mockImplementation(async ({ context }) => {
+          if (context.keyUuid === second.payload.keyUuid && delay) {
+            started.resolve();
+            await gate.promise;
+          }
+          return { ok: true, value: new TextEncoder().encode("readable") };
+        });
+      const prepare = async () => {
+        const records: PreparedPlaintextRecord[] = [];
+        const results = await Promise.all(
+          [message, second].map((item) =>
+            decryptRealChatMessageResult(f.admin, item, () => true, undefined, {
+              id: "groups",
+              onPrepared: (record) => records.push(record),
+            }),
+          ),
+        );
+        commitPreparedPlaintextWindow(f.admin, "groups", records);
+        return results;
+      };
+      const pending = prepare();
+      await started.promise;
+      firstKey = new Uint8Array(32).fill(3);
+      gate.resolve();
+      expect(await pending).toEqual([
+        { status: "missing-key" },
+        { status: "ready", plaintext: "readable" },
+      ]);
+      delay = false;
+      expect(await prepare()).toEqual([
+        { status: "ready", plaintext: "readable" },
+        { status: "ready", plaintext: "readable" },
+      ]);
+      expect(decrypt).toHaveBeenCalledTimes(3);
+      firstKey = new Uint8Array(32).fill(4);
+      expect(await prepare()).toEqual([
+        { status: "ready", plaintext: "readable" },
+        { status: "ready", plaintext: "readable" },
+      ]);
+      expect(decrypt).toHaveBeenCalledTimes(4);
+    } finally {
+      useWorkspaceAuthStore.setState({ getCurrentRuntimeContext: originalRuntime });
+    }
+  });
+
+  it("revalidates earlier keys when a message joins a running window", async () => {
+    const f = await setup();
+    const session = await openSessionFor(f.admin);
+    await session.load();
+    await session.send({ text: "window text", topicUuid: TOPIC });
+    const first = adaptMessengerMessage(f.wire.at(-1)!);
+    if (first.payload.kind !== "e2ee") throw new Error("Expected encrypted message");
+    const firstKeyUuid = first.payload.keyUuid;
+    const second = {
+      ...first,
+      uuid: crypto.randomUUID(),
+      payload: { ...first.payload, keyUuid: crypto.randomUUID() },
+    };
+    let firstPresent = true;
+    vi.spyOn(realChatKeyStorage, "readChatKeySnapshots").mockImplementation((addresses) =>
+      Promise.resolve(
+        addresses.map((address) => ({
+          key:
+            address.keyUuid === firstKeyUuid && !firstPresent
+              ? null
+              : { groupKey: { bytes: new Uint8Array(32).fill(1) } },
+          deletionRevision: address.keyUuid === firstKeyUuid && !firstPresent ? 1 : 0,
+        })),
+      ),
+    );
+    const startedFirst = deferred<void>();
+    const finishFirst = deferred<void>();
+    const startedSecond = deferred<void>();
+    const finishSecond = deferred<void>();
+    vi.spyOn(realChatCryptoProvider, "decryptMessage").mockImplementation(async ({ context }) => {
+      if (context.keyUuid === second.payload.keyUuid) {
+        startedSecond.resolve();
+        await finishSecond.promise;
+      } else {
+        startedFirst.resolve();
+        await finishFirst.promise;
+      }
+      return { ok: true, value: new TextEncoder().encode("text") };
+    });
+    const pendingFirst = decryptRealChatMessageResult(f.admin, first, () => true, "window");
+    await startedFirst.promise;
+    const pendingSecond = decryptRealChatMessageResult(f.admin, second, () => true, "window");
+    finishFirst.resolve();
+    await startedSecond.promise;
+    firstPresent = false;
+    finishSecond.resolve();
+    expect(await pendingFirst).toEqual({ status: "missing-key" });
+    expect(await pendingSecond).toEqual({ status: "ready", plaintext: "text" });
   });
 
   it.each(["key-removed", "disposed", "runtime-replaced"] as const)(

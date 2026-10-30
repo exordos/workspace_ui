@@ -433,6 +433,7 @@ const MessageComposerToolbarRow = React.memo<MessageComposerToolbarRowProps>(
 
           {mode === "write" && (
             <FormattingToolbar
+              disabled={disabled}
               secretFragmentsEnabled={secretFragmentsEnabled}
               textareaRef={textareaRef}
               onValueChange={onValueChange}

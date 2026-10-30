@@ -17,6 +17,10 @@ import {
 } from "~/entities/user/user-selectors.lib";
 import { useUsersStore } from "~/entities/user/user.model";
 import type { UsersById } from "~/entities/user/user.types";
+import {
+  MessagePresentationContext,
+  useMessagePresentations,
+} from "~/features/message-presentation/message-presentation.hook";
 import { WorkspaceAvatar } from "~/features/workspace-avatar/workspace-avatar.ui";
 import { t, useTranslation } from "~/i18n/i18n";
 import type { WorkspaceMessageFileReference } from "~/shared/lib/workspace-message-render/workspace-message-document.types";
@@ -678,17 +682,18 @@ const WorkspaceMessageAuthorGroupView = React.memo(function WorkspaceMessageAuth
       data-message-owner={groupOwner}
     >
       {groupOwner === "peer" && !serviceGroup ? (
+        // The rail must span the group so bottom-sticky can follow the viewport within it.
         <div
           className={
             selectionMode
-              ? "pointer-events-none absolute bottom-0 left-0 z-[1] flex w-12 flex-col justify-end pb-2"
+              ? "pointer-events-none absolute inset-y-0 left-0 z-[1] flex w-12 flex-col justify-end pb-2"
               : "flex w-12 flex-shrink-0 flex-col justify-end pb-2"
           }
         >
           <button
             type="button"
             onClick={handleAuthorClick}
-            className={`${selectionMode ? "pointer-events-auto" : ""} group relative z-[1] rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft`}
+            className={`${selectionMode ? "pointer-events-auto" : ""} group/avatar sticky bottom-2 z-[1] rounded-full focus-visible:outline-none`}
             aria-label={t("a11y.openUserProfile", { name: displayName })}
             data-workspace-peer-avatar="true"
           >
@@ -726,7 +731,70 @@ const WorkspaceMessageAuthorGroupView = React.memo(function WorkspaceMessageAuth
   );
 });
 
-export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
+export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = (props) => {
+  const prepared = useMessagePresentations(props.messages, props.conversationId, true);
+  const pendingUuids = prepared.pendingMessageUuids;
+  const preparing = pendingUuids.size > 0;
+  const messages = useMemo(
+    () =>
+      preparing ? props.messages.filter(({ uuid }) => !pendingUuids.has(uuid)) : props.messages,
+    [props.messages, pendingUuids, preparing],
+  );
+  const incomingOutgoing = props.outgoingMessages ?? EMPTY_OUTGOING_MESSAGES;
+  const [outgoingView, setOutgoingView] = useState({
+    scope: prepared.scope,
+    messages: incomingOutgoing,
+  });
+  const retainedOutgoing =
+    outgoingView.scope === prepared.scope
+      ? outgoingView.messages.filter(
+          (message) =>
+            pendingUuids.has(message.placementUuid) &&
+            !incomingOutgoing.some((current) => current.placementUuid === message.placementUuid),
+        )
+      : [];
+  const outgoingMessages =
+    retainedOutgoing.length === 0 ? incomingOutgoing : [...incomingOutgoing, ...retainedOutgoing];
+  if (
+    outgoingView.scope !== prepared.scope ||
+    outgoingView.messages.length !== outgoingMessages.length ||
+    outgoingView.messages.some((message, index) => message !== outgoingMessages[index])
+  ) {
+    // Keep a confirmed optimistic row until its ciphertext is ready to replace it.
+    setOutgoingView({ scope: prepared.scope, messages: outgoingMessages });
+  }
+  const [windowView, setWindowView] = useState({ scope: prepared.scope, opened: false });
+  const opened = windowView.scope === prepared.scope && windowView.opened;
+  const showWindow = !preparing || opened || outgoingMessages.length > 0;
+  const hasShownRows = showWindow && (messages.length > 0 || outgoingMessages.length > 0);
+  if (windowView.scope !== prepared.scope || (!opened && hasShownRows)) {
+    setWindowView({ scope: prepared.scope, opened: hasShownRows });
+  }
+  if (!showWindow) {
+    return (
+      <div className="min-h-0 flex-1" aria-busy="true" data-workspace-message-preparation="true" />
+    );
+  }
+  return (
+    <MessagePresentationContext.Provider value={prepared.presentations}>
+      <WorkspaceMessageListContent
+        {...props}
+        messages={messages}
+        outgoingMessages={outgoingMessages}
+        focusedMessagePending={
+          props.focusedMessageTarget != null &&
+          pendingUuids.has(props.focusedMessageTarget.messageUuid)
+        }
+        isLoadingOlder={preparing ? true : props.isLoadingOlder}
+        isLoadingNewer={preparing ? true : props.isLoadingNewer}
+      />
+    </MessagePresentationContext.Provider>
+  );
+};
+
+const WorkspaceMessageListContent: React.FC<
+  WorkspaceMessageListProps & { focusedMessagePending: boolean }
+> = ({
   messages,
   outgoingMessages = EMPTY_OUTGOING_MESSAGES,
   currentUserUuid,
@@ -739,6 +807,7 @@ export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
   firstUnreadUuid,
   unreadCount = 0,
   focusedMessageTarget = null,
+  focusedMessagePending,
   anchorHandoffPending = false,
   anchorNavigationActive = false,
   onFocusedMessageApplied,
@@ -1054,6 +1123,7 @@ export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
     firstUnreadKey: resolveVisibleMessageKey(firstUnreadUuid),
     unreadCount,
     focusedMessageTarget,
+    focusedMessagePending,
     anchorHandoffPending,
     anchorNavigationActive,
     onFocusedMessageApplied,

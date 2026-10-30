@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { forgetMessengerConversationPositions } from "~/entities/messenger/messenger-conversation-position.lib";
@@ -31,6 +31,11 @@ function Harness({
   hasNewerMessages = false,
   isLoadingNewer = false,
   tailOutsideWindow = false,
+  anchorHandoffPending = false,
+  anchorNavigationActive = false,
+  hasOlderMessages = false,
+  isLoadingOlder = false,
+  onLoadOlder,
   onUnreadMessagesVisible,
   onUnreadMessagesAtBottom,
 }: {
@@ -40,6 +45,11 @@ function Harness({
   readonly hasNewerMessages?: boolean;
   readonly isLoadingNewer?: boolean;
   readonly tailOutsideWindow?: boolean;
+  readonly anchorHandoffPending?: boolean;
+  readonly anchorNavigationActive?: boolean;
+  readonly hasOlderMessages?: boolean;
+  readonly isLoadingOlder?: boolean;
+  readonly onLoadOlder?: () => void;
   readonly onUnreadMessagesVisible?: (messageKeys: string[]) => void;
   readonly onUnreadMessagesAtBottom?: (messageKeys: string[]) => void;
 }) {
@@ -70,6 +80,11 @@ function Harness({
     hasNewerMessages,
     isLoadingNewer,
     tailOutsideWindow,
+    anchorHandoffPending,
+    anchorNavigationActive,
+    hasOlderMessages,
+    isLoadingOlder,
+    onLoadOlder,
     onUnreadMessagesVisible,
     onUnreadMessagesAtBottom,
   });
@@ -240,6 +255,203 @@ it("preserves the visible message offset when completed history shrinks above th
   fireEvent.click(screen.getByRole("button", { name: "Collapse history" }));
   expect(root.scrollTop).toBe(25);
   expect(anchor.getBoundingClientRect().top).toBe(before);
+});
+
+describe("asynchronous message layout", () => {
+  function observeMessageLayout() {
+    const observers: TestResizeObserver[] = [];
+    class TestResizeObserver implements ResizeObserver {
+      readonly observed = new Set<Element>();
+      constructor(private readonly callback: ResizeObserverCallback) {
+        observers.push(this);
+      }
+      observe(target: Element) {
+        this.observed.add(target);
+      }
+      unobserve(target: Element) {
+        this.observed.delete(target);
+      }
+      disconnect() {
+        this.observed.clear();
+      }
+      emit(target: Element) {
+        this.callback(
+          [
+            {
+              target,
+              contentRect: target.getBoundingClientRect(),
+              borderBoxSize: [],
+              contentBoxSize: [],
+              devicePixelContentBoxSize: [],
+            },
+          ],
+          this,
+        );
+      }
+    }
+    vi.stubGlobal("ResizeObserver", TestResizeObserver);
+    let growth = 0;
+    vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockImplementation(() => 1000 + growth);
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (
+      this: HTMLElement,
+    ) {
+      const isRoot = this.dataset.testid === "viewport";
+      const index = Number(this.dataset.index);
+      const contentShift = index > 0 ? growth : 0;
+      const messageHeight = 100 + (index === 0 ? growth : 0);
+      const top = isRoot ? 0 : index * 100 + contentShift - (this.parentElement?.scrollTop ?? 0);
+      const height = isRoot ? 200 : messageHeight;
+      return {
+        x: 0,
+        y: top,
+        width: 100,
+        height,
+        top,
+        bottom: top + height,
+        left: 0,
+        right: 100,
+        toJSON: () => ({}),
+      };
+    });
+    return {
+      observers,
+      resize(root: HTMLElement, delta: number, beforeNotify?: () => void) {
+        const first = root.querySelector<HTMLElement>("[data-message-render-key]");
+        const observer = observers.findLast((candidate) => candidate.observed.has(root));
+        if (first == null || observer == null) throw new Error("Expected observed message");
+        expect(observer.observed.has(first)).toBe(true);
+        growth = delta;
+        beforeNotify?.();
+        act(() => observer.emit(first));
+      },
+    };
+  }
+
+  it.each([120, -120])(
+    "preserves the visible message offset when a child changes height by %s",
+    (delta) => {
+      const layout = observeMessageLayout();
+      render(<Harness conversationId={conversationA} />);
+      const root = saveScroll(325);
+      const anchor = root.querySelector<HTMLElement>("[data-message-render-key='message-3']");
+      if (anchor == null) throw new Error("Expected visible anchor");
+      const before = anchor.getBoundingClientRect().top;
+      layout.resize(root, delta);
+      expect(root.scrollTop).toBe(325 + delta);
+      expect(anchor.getBoundingClientRect().top).toBe(before);
+    },
+  );
+
+  it("preserves the pre-change offset when React commits before the resize notification", () => {
+    const layout = observeMessageLayout();
+    const view = render(<Harness conversationId={conversationA} />);
+    const root = saveScroll(325);
+    const anchor = root.querySelector<HTMLElement>("[data-message-render-key='message-3']");
+    if (anchor == null) throw new Error("Expected visible anchor");
+    const before = anchor.getBoundingClientRect().top;
+
+    // A key grant changes prepared content without changing the message identities.
+    layout.resize(root, 120, () => view.rerender(<Harness conversationId={conversationA} />));
+
+    expect(root.scrollTop).toBe(445);
+    expect(anchor.getBoundingClientRect().top).toBe(before);
+  });
+
+  it("follows the tail when a child expands without a viewport resize", () => {
+    const layout = observeMessageLayout();
+    render(
+      <Harness
+        conversationId={conversationA}
+        items={messages.map((message) => ({ ...message, read: true }))}
+      />,
+    );
+    const root = saveScroll(800);
+    layout.resize(root, 120);
+    expect(root.scrollTop).toBe(1120);
+  });
+
+  it.each(["wheel", "touch"] as const)(
+    "keeps %s intent when a child expands before the browser scroll event",
+    (input) => {
+      const layout = observeMessageLayout();
+      render(
+        <Harness
+          conversationId={conversationA}
+          items={messages.map((message) => ({ ...message, read: true }))}
+        />,
+      );
+      const root = saveScroll(800);
+      if (input === "wheel") fireEvent.wheel(root, { deltaY: -1 });
+      else fireEvent.touchMove(root);
+      layout.resize(root, 120);
+      expect(root.scrollTop).toBe(920);
+    },
+  );
+
+  it("does not apply a queued tail pin after an upward wheel gesture", () => {
+    const frames: FrameRequestCallback[] = [];
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) =>
+      frames.push(callback),
+    );
+    render(
+      <Harness
+        conversationId={conversationA}
+        items={messages.map((message) => ({ ...message, read: true }))}
+      />,
+    );
+    const root = saveScroll(800);
+    fireEvent.wheel(root, { deltaY: -1 });
+    root.scrollTop = 790;
+    act(() => {
+      const pending = frames.splice(0);
+      for (const callback of pending) callback(0);
+    });
+    expect(root.scrollTop).toBe(790);
+  });
+
+  it("leaves compensation to an active prepend snapshot", () => {
+    const layout = observeMessageLayout();
+    const frames: FrameRequestCallback[] = [];
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) =>
+      frames.push(callback),
+    );
+    const loadOlder = vi.fn();
+    render(<Harness conversationId={conversationA} hasOlderMessages onLoadOlder={loadOlder} />);
+    act(() => {
+      while (frames.length > 0) {
+        const pending = frames.splice(0);
+        for (const callback of pending) callback(0);
+      }
+    });
+    const root = saveScroll(75);
+    fireEvent.wheel(root, { deltaY: -1 });
+    fireEvent.scroll(root);
+    expect(loadOlder).toHaveBeenCalledOnce();
+    layout.resize(root, 120);
+    expect(root.scrollTop).toBe(75);
+  });
+
+  it("ignores a disconnected observer during an anchor handoff", () => {
+    const layout = observeMessageLayout();
+    const view = render(<Harness conversationId={conversationA} />);
+    const root = saveScroll(325);
+    const observer = layout.observers.at(-1);
+    if (observer == null) throw new Error("Expected layout observer");
+    view.rerender(<Harness conversationId={conversationA} anchorHandoffPending />);
+    root.scrollTop = 400;
+    act(() => observer.emit(root));
+    expect(root.scrollTop).toBe(400);
+    expect(observer.observed.size).toBe(0);
+  });
+
+  it("does not compensate while navigation is still resolving its focus target", () => {
+    const layout = observeMessageLayout();
+    const view = render(<Harness conversationId={conversationA} />);
+    const root = saveScroll(325);
+    view.rerender(<Harness conversationId={conversationA} anchorNavigationActive />);
+    layout.resize(root, 120);
+    expect(root.scrollTop).toBe(325);
+  });
 });
 
 describe("read receipts after focus", () => {

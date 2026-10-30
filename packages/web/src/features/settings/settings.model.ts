@@ -23,6 +23,7 @@ import type {
   AppLanguage,
   AppSettings,
   AuthIdleTimeout,
+  ChatClickAction,
   ChatListDensity,
   FolderRailLayout,
   NotificationSound,
@@ -68,6 +69,7 @@ function createDefaultSettings(): AppSettings {
     folderRailLayout: "vertical",
     showSystemFolders: true,
     chatListDensity: "standard",
+    chatClickAction: "general",
     composerToolbarExpanded: false,
     authIdleTimeout: "3d",
   };
@@ -84,6 +86,7 @@ const FALLBACK_SETTINGS: Omit<AppSettings, "language"> = {
   folderRailLayout: "horizontal",
   showSystemFolders: true,
   chatListDensity: "standard",
+  chatClickAction: "general",
   composerToolbarExpanded: false,
   authIdleTimeout: "3d",
 };
@@ -160,6 +163,7 @@ function loadSettings(
       folderRailLayout: resolveFolderRailLayout(parsed.folderRailLayout),
       showSystemFolders: resolveShowSystemFolders(parsed.showSystemFolders),
       chatListDensity: resolveChatListDensity(parsed.chatListDensity),
+      chatClickAction: parsed.chatClickAction === "latestTopic" ? "latestTopic" : "general",
       composerToolbarExpanded: parsed.composerToolbarExpanded === true,
       authIdleTimeout: resolveAuthIdleTimeout(
         parsed.authIdleTimeout,
@@ -194,6 +198,7 @@ interface SettingsState extends AppSettings {
   setFolderRailLayout: (layout: FolderRailLayout) => void;
   setShowSystemFolders: (enabled: boolean) => void;
   setChatListDensity: (density: ChatListDensity) => void;
+  setChatClickAction: (action: ChatClickAction) => void;
   setComposerToolbarExpanded: (expanded: boolean) => void;
   setAuthIdleTimeout: (timeout: AuthIdleTimeout) => void;
   resetToDefaults: () => void;
@@ -263,6 +268,12 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     logStoreAction("settings", "setComposerToolbarExpanded", { composerToolbarExpanded });
     set({ composerToolbarExpanded });
     persistSettings({ ...get(), composerToolbarExpanded });
+  },
+
+  setChatClickAction(chatClickAction) {
+    logStoreAction("settings", "setChatClickAction", { chatClickAction });
+    set({ chatClickAction });
+    persistSettings({ ...get(), chatClickAction });
   },
 
   setAuthIdleTimeout(authIdleTimeout) {

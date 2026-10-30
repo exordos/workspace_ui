@@ -44,6 +44,7 @@ import {
   type WorkspaceMessageQuickReaction,
 } from "./workspace-message-quick-reactions.lib";
 import { WorkspaceMessageQuote } from "./workspace-message-quote.ui";
+import { WorkspaceMessageTimeView } from "./workspace-message-time-view.ui";
 import { WorkspaceMessageTopicLink } from "./workspace-message-topic-link.ui";
 import type { WorkspaceMessageBubbleProps } from "./workspace-message-bubble.types";
 import type { WorkspaceMessageListItem } from "./workspace-message-list.types";
@@ -597,6 +598,8 @@ export const WorkspaceMessageBubblePresentation: React.FC<WorkspaceMessageBubble
       handleContextMenu,
       handleKeyDown,
       handleMenuOpenChange,
+      timeView,
+      closeTimeView,
     } = useWorkspaceMessageBodyInteractions({
       bodyRef,
       renderedHtml: renderedBody.html,
@@ -903,6 +906,13 @@ export const WorkspaceMessageBubblePresentation: React.FC<WorkspaceMessageBubble
           passiveLoadersEnabled={passiveContentEnabled}
           onToggleMessageReaction={interactiveActions?.onToggleMessageReaction}
         />
+        {timeView != null ? (
+          <WorkspaceMessageTimeView
+            anchor={timeView.anchor}
+            utc={timeView.utc}
+            onClose={closeTimeView}
+          />
+        ) : null}
       </div>
     );
     return authorOutside ? (

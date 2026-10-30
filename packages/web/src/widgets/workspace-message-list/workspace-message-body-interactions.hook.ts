@@ -53,6 +53,25 @@ export interface UseWorkspaceMessageBodyInteractionsResult {
   handleContextMenu: (event: ReactMouseEvent<HTMLDivElement>) => void;
   handleKeyDown: (event: ReactKeyboardEvent<HTMLDivElement>) => void;
   handleMenuOpenChange: (nextOpen: boolean) => void;
+  /** Time chip whose stored instant is being inspected, or null when closed. */
+  timeView: WorkspaceMessageTimeViewTarget | null;
+  closeTimeView: () => void;
+}
+
+export interface WorkspaceMessageTimeViewTarget {
+  utc: string;
+  anchor: HTMLElement;
+}
+
+function resolveWorkspaceTimeTarget(
+  target: EventTarget,
+  container: HTMLElement,
+): WorkspaceMessageTimeViewTarget | null {
+  if (!(target instanceof HTMLElement)) return null;
+  const chip = target.closest<HTMLElement>("time.workspace-message-time[datetime]");
+  if (chip == null || !container.contains(chip)) return null;
+  const utc = chip.getAttribute("datetime")?.trim();
+  return utc != null && utc.length > 0 ? { utc, anchor: chip } : null;
 }
 
 function resolveKeyboardContextMenuAnchor(
@@ -333,6 +352,7 @@ export function useWorkspaceMessageBodyInteractions({
   const [contextImageFile, setContextImageFile] = useState<WorkspaceMessageFileReference | null>(
     null,
   );
+  const [timeView, setTimeView] = useState<WorkspaceMessageTimeViewTarget | null>(null);
   const capturedSelectionRef = useRef<string | undefined>(undefined);
   const pendingDownloadFileUuidsRef = useRef<Set<string>>(new Set());
   const latestFileReferencesRef = useRef(fileReferences);
@@ -459,6 +479,13 @@ export function useWorkspaceMessageBodyInteractions({
         if (event.target.closest("button") != null) {
           return;
         }
+        const keyboardTimeTarget = resolveWorkspaceTimeTarget(event.target, event.currentTarget);
+        if (keyboardTimeTarget != null) {
+          event.preventDefault();
+          event.stopPropagation();
+          setTimeView(keyboardTimeTarget);
+          return;
+        }
         if (toggleWorkspaceSpoiler(event.target, event.currentTarget)) {
           event.preventDefault();
           event.stopPropagation();
@@ -513,6 +540,8 @@ export function useWorkspaceMessageBodyInteractions({
     }
   }, []);
 
+  const closeTimeView = useCallback(() => setTimeView(null), []);
+
   const handleBodyClick = useCallback(
     (event: ReactMouseEvent<HTMLDivElement>) => {
       const target = event.target;
@@ -523,6 +552,14 @@ export function useWorkspaceMessageBodyInteractions({
         return;
       }
       if (target.closest("video[data-workspace-file-preview='true']") != null) {
+        return;
+      }
+
+      const timeTarget = resolveWorkspaceTimeTarget(target, event.currentTarget);
+      if (timeTarget != null) {
+        event.preventDefault();
+        event.stopPropagation();
+        setTimeView(timeTarget);
         return;
       }
 
@@ -674,5 +711,7 @@ export function useWorkspaceMessageBodyInteractions({
     handleContextMenu,
     handleKeyDown,
     handleMenuOpenChange,
+    timeView,
+    closeTimeView,
   };
 }

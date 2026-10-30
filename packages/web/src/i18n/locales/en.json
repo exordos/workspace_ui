@@ -1,4 +1,28 @@
 {
+  "datePicker": {
+    "label": "Date",
+    "today": "Today",
+    "previousMonth": "Previous month",
+    "nextMonth": "Next month"
+  },
+  "timePicker": {
+    "label": "Time",
+    "hours": "Hours",
+    "minutes": "Minutes",
+    "seconds": "Seconds",
+    "hoursShort": "h.",
+    "minutesShort": "m.",
+    "secondsShort": "s.",
+    "increase": "Increase {{unit}}",
+    "decrease": "Decrease {{unit}}"
+  },
+  "dateTimePicker": {
+    "label": "Date and time"
+  },
+  "pickerExamples": {
+    "empty": "No value selected",
+    "selected": "Selected: {{value}}"
+  },
   "app": {
     "name": "Exordos Workspace",
     "loading": "Loading…",
@@ -631,6 +655,7 @@
     "loadError": "Could not refresh drafts"
   },
   "message": {
+    "globalTimeHint": "Everyone sees this in their own time zone. Your time zone for this date: {{zone}}.",
     "sendRequiresStreamOrTo": "Stream or recipients (to) required for sending",
     "fileUploadUnsupported": "File uploads are no longer available in this legacy chat path.",
     "views": "Views",
@@ -964,6 +989,11 @@
     "personalInfo": "Personal info",
     "appVersion": "App version",
     "notificationSound": "Notification sound",
+    "chatClickAction": "Chat click",
+    "chatClickActionGeneral": "General chat and topics",
+    "chatClickActionLatestTopic": "Latest topic",
+    "chatClickActionHint": "What to open when clicking a chat",
+    "chatClickActionAvatarHint": "Click the avatar to open the general chat",
     "dockBounce": "Bounce Dock icon",
     "language": "Language",
     "authIdleTimeout": "Auto sign-out",
@@ -1386,6 +1416,8 @@
     "retryLoad": "Try again"
   },
   "composer": {
+    "insertTime": "Insert date and time",
+    "insertTimeConfirm": "Insert",
     "bold": "Bold",
     "italic": "Italic",
     "strikethrough": "Strikethrough",

@@ -41,6 +41,7 @@ import {
   editMessengerMessage,
   sendMessengerMessage,
 } from "~/entities/messenger/messenger-message-actions.lib";
+import { canPrepareMessengerEncryptedMessage } from "~/entities/messenger/messenger-message-content.lib";
 import { toggleMessengerMessageReaction } from "~/entities/messenger/messenger-message-reactions-actions.lib";
 import {
   applyMessengerMessageWindow,
@@ -162,6 +163,7 @@ import type {
   WorkspaceMessageFileReference,
   WorkspaceMessageMentionResolution,
 } from "~/shared/lib/workspace-message-render/workspace-message-document.types";
+import { formatWorkspaceMessageTimesForCopy } from "~/shared/lib/workspace-message-render/workspace-message-marked.lib";
 import {
   hasWorkspaceForwardSnapshot,
   parseWorkspaceMessageBody,
@@ -2397,7 +2399,9 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
         (selection.status === "conversation" &&
           selection.kind === "topic" &&
           message.topicUuid !== selection.topicUuid) ||
-        (message.payload.kind !== "markdown" && message.payload.kind !== "e2ee")
+        (message.payload.kind !== "markdown" && message.payload.kind !== "e2ee") ||
+        (message.payload.kind === "e2ee" &&
+          useMessengerStore.getState().streamsById[message.streamUuid]?.encryption !== true)
       ) {
         setActionError(t("message.editUnavailable"));
         return;
@@ -3046,7 +3050,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
           ? undefined
           : selectedText;
       if (text == null && message.payload.kind === "markdown") {
-        text = message.payload.content;
+        text = formatWorkspaceMessageTimesForCopy(message.payload.content);
       } else if (text == null && message.payload.kind === "e2ee") {
         if (runtimeContext == null || ownerKey == null) {
           setActionError(t("message.copyFailed"));
@@ -3067,7 +3071,13 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
             currentRuntime.runtimeGeneration === runtimeContext.runtimeGeneration &&
             messages.ownerKey === ownerKey &&
             messenger.ownerKey === ownerKey &&
-            messenger.streamsById[message.streamUuid]?.encryption === true &&
+            canPrepareMessengerEncryptedMessage({
+              runtime: currentRuntime,
+              message: currentMessage,
+              catalogOwner: messenger.ownerKey,
+              messageOwner: messages.ownerKey,
+              stream: messenger.streamsById[message.streamUuid],
+            }) &&
             currentMessage.projectId === message.projectId &&
             currentMessage.streamUuid === message.streamUuid &&
             currentMessage.payload.keyUuid === encryptedPayload.keyUuid &&
@@ -3077,7 +3087,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
 
         text = decryptRealChatMessage(runtimeContext, message, isCurrent).then((plaintext) => {
           if (plaintext == null || !isCurrent()) throw new Error("Message is no longer available");
-          return plaintext;
+          return formatWorkspaceMessageTimesForCopy(plaintext);
         });
       }
 
@@ -3453,7 +3463,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
       const message = routeMessages[index];
       if (
         message?.isOwn === true &&
-        (message.payload.kind === "e2ee" ||
+        ((message.payload.kind === "e2ee" && stream?.encryption === true) ||
           (message.payload.kind === "markdown" &&
             !hasWorkspaceForwardSnapshot(parseWorkspaceMessageBody(message.payload.content))))
       ) {
@@ -3462,7 +3472,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
       }
     }
     setActionError(t("message.editUnavailable"));
-  }, [handleEditMessage, routeMessages]);
+  }, [handleEditMessage, routeMessages, stream?.encryption]);
 
   const handleCancelEdit = useCallback(() => {
     composerEditAttemptRef.current += 1;
@@ -4329,7 +4339,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
         onSubmitEdit={controlledProps?.onSubmitEdit ?? handleSubmitEdit}
         onCancelEdit={handleCancelEdit}
         capabilities={encryptedComposerCapabilities}
-        disabled={isTopicClosed}
+        disabled={isTopicClosed || !encryptedChatAvailable}
         initialValue={currentEncryptedComposer?.text ?? ""}
         draftSessionKey={`${encryptedComposerScopeKey}:${conversationId}`}
         onValueChange={handleEncryptedComposerValueChange}
@@ -4353,6 +4363,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
       handleClearEncryptedReply,
       handleSend,
       encryptedComposerCapabilities,
+      encryptedChatAvailable,
       isTopicClosed,
       composerJoinedTop,
       restoredAttachments,
@@ -4556,26 +4567,33 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
             </div>
           </div>
         ) : null}
-        {stream?.encryption === true && encryptedChatAvailable ? (
-          workspaceAttachmentTarget != null && runtimeContext != null && ownerKey != null ? (
-            <WorkspaceComposerAttachments
-              key={`${ownerKey}:${runtimeContext.runtimeGeneration}:${conversationId}`}
-              runtimeContext={runtimeContext}
-              ownerKey={ownerKey}
-              target={workspaceAttachmentTarget}
-              sessionKey={
-                composerEditMessageUuid == null ? "compose" : `edit:${composerEditMessageUuid}`
-              }
-              editAttachmentMarkdown={composerEditAttachments.map(
-                (attachment) => attachment.markdown,
-              )}
-              onSubmitEditFinalMarkdown={handleSubmitEditFinalMarkdown}
-              onSendFinalMarkdown={handleSend}
-              renderComposer={renderEncryptedComposer}
-            />
-          ) : (
-            renderEncryptedComposer()
-          )
+        {stream?.encryption === true && (encryptedChatAvailable || encryptedChat.loading) ? (
+          <>
+            {encryptedChat.loading && !encryptedChatAvailable ? (
+              <span className="sr-only" role="status">
+                {t("e2ee.loading")}
+              </span>
+            ) : null}
+            {workspaceAttachmentTarget != null && runtimeContext != null && ownerKey != null ? (
+              <WorkspaceComposerAttachments
+                key={`${ownerKey}:${runtimeContext.runtimeGeneration}:${conversationId}`}
+                runtimeContext={runtimeContext}
+                ownerKey={ownerKey}
+                target={workspaceAttachmentTarget}
+                sessionKey={
+                  composerEditMessageUuid == null ? "compose" : `edit:${composerEditMessageUuid}`
+                }
+                editAttachmentMarkdown={composerEditAttachments.map(
+                  (attachment) => attachment.markdown,
+                )}
+                onSubmitEditFinalMarkdown={handleSubmitEditFinalMarkdown}
+                onSendFinalMarkdown={handleSend}
+                renderComposer={renderEncryptedComposer}
+              />
+            ) : (
+              renderEncryptedComposer()
+            )}
+          </>
         ) : stream?.encryption === true ? (
           <div className="border-t border-border-subtle px-4 py-5 text-sm text-text-muted">
             <p role="status">

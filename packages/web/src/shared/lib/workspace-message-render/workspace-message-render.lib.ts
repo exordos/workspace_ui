@@ -2,6 +2,7 @@ import { Marked, type RendererExtension, type RendererThis, type Token, type Tok
 import { t } from "~/i18n/i18n";
 import { createLogger } from "~/shared/lib/logger";
 import { AUTH_IMAGE_PLACEHOLDER_SRC } from "~/shared/lib/media-display-url.lib";
+import { formatLocalMessageTime, formatMessageTimeZone } from "../workspace-message-time.lib";
 import {
   buildWorkspaceSecretUrn,
   isWorkspaceSecretUrn,
@@ -14,6 +15,8 @@ import {
   deriveWorkspaceMediaPlaceholderLayout,
 } from "./workspace-media-placeholder-layout.lib";
 import {
+  WORKSPACE_TIME_TOKEN_TYPE,
+  type WorkspaceTimeMarkedToken,
   WORKSPACE_BLOCK_SPOILER_TOKEN_TYPE,
   WORKSPACE_EMOJI_TOKEN_TYPE,
   WORKSPACE_FILE_TOKEN_TYPE,
@@ -441,6 +444,17 @@ function createWorkspaceRendererExtensions(
   options: WorkspaceMessageRenderOptions,
 ): RendererExtension[] {
   return [
+    {
+      name: WORKSPACE_TIME_TOKEN_TYPE,
+      renderer(token) {
+        const { utc } = token as WorkspaceTimeMarkedToken;
+        if (utc == null) return escapeHtmlText((token as WorkspaceTimeMarkedToken).text);
+        const label = formatLocalMessageTime(utc);
+        const hint = t("message.globalTimeHint", { zone: formatMessageTimeZone(new Date(utc)) });
+        const accessibleLabel = escapeHtmlText(label + ". " + hint);
+        return `<time class="workspace-message-time" datetime="${escapeHtmlText(utc)}" role="button" tabindex="0" aria-haspopup="dialog" title="${escapeHtmlText(hint)}" aria-label="${accessibleLabel}"><span class="workspace-message-time__icon" aria-hidden="true"></span>${escapeHtmlText(label)}</time>`;
+      },
+    },
     {
       name: WORKSPACE_MENTION_TOKEN_TYPE,
       renderer(token) {

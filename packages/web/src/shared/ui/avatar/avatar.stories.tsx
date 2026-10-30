@@ -44,9 +44,19 @@ export const ImageFallback: Story = {
   args: { src: "data:image/png;base64,broken-image", children: "AL" },
 };
 export const Interactive: Story = {
+  args: { interactive: true },
   render: (args) => (
-    <button type="button" className="group rounded-full" aria-label={t("settings.editProfile")}>
-      <Avatar {...args} interactive />
+    <button
+      type="button"
+      className="group/avatar rounded-full focus-visible:outline-none"
+      aria-label={t("settings.editProfile")}
+    >
+      <Avatar {...args} />
     </button>
   ),
+};
+
+export const InteractiveWithoutPresence: Story = {
+  ...Interactive,
+  args: { interactive: true, presence: null },
 };

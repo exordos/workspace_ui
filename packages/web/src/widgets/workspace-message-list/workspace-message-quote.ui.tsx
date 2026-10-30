@@ -12,13 +12,18 @@ import {
   selectWorkspaceMessageMediaPreviewReference,
 } from "~/entities/messenger/messenger-workspace-message-body-files.lib";
 import { WorkspaceMessageBody } from "~/entities/messenger/messenger-workspace-message-body.ui";
+import type { MessengerMessage } from "~/entities/messenger/messenger.types";
 import { selectUserDisplayName } from "~/entities/user/user-selectors.lib";
 import { useUsersStore } from "~/entities/user/user.model";
 import type { User } from "~/entities/user/user.types";
 import { encryptedMessageLabel } from "~/features/encrypted-chat-message/encrypted-message-label.lib";
 import { EncryptedMessagePlaceholder } from "~/features/encrypted-chat-message/encrypted-message-placeholder.ui";
 import { EncryptedSecretFragment } from "~/features/encrypted-chat-message/encrypted-secret-fragment.ui";
-import { useRealMessagePresentation } from "~/features/encrypted-chat-message/real-message-presentation.hook";
+import {
+  useMessagePresentation,
+  usePreparedMessagePresentation,
+  type MessagePresentation,
+} from "~/features/message-presentation/message-presentation.hook";
 import { t } from "~/i18n/i18n";
 import { formatMessageTimeWithDate } from "~/shared/lib/datetime.lib";
 import type { WorkspaceMessageBodyQuoteSegment } from "~/shared/lib/workspace-message-render/workspace-message-document.types";
@@ -41,7 +46,6 @@ const QUOTE_RENDER_OPTIONS = {
   enableGallery: false,
 } as const;
 const DECRYPTION_TITLES = {
-  loading: "e2ee.messageDecrypting",
   error: "e2ee.messageDecryptError",
   "missing-key": "e2ee.lockedTitle",
 } as const;
@@ -104,7 +108,7 @@ function resolveQuotePresentation(options: {
   visibleSegments: ReturnType<typeof renderWorkspaceMessageBodySegments>["segments"];
   renderNestedQuote: (segment: WorkspaceMessageBodyQuoteSegment) => React.ReactNode;
   renderSecret?: (reference: WorkspaceSecretUrnReference) => React.ReactNode;
-  decryption: ReturnType<typeof useRealMessagePresentation> | null;
+  decryption: MessagePresentation | null;
 }): { headerLabel: string; messageContent: React.ReactNode } {
   if (!options.isForwardSnapshot && options.resolvedStatus === "unavailable") {
     return { headerLabel: t("message.quoteUnavailable"), messageContent: null };
@@ -117,6 +121,7 @@ function resolveQuotePresentation(options: {
   }
   if (options.decryption != null && options.decryption.status !== "ready") {
     const { status, retry } = options.decryption;
+    if (status === "preparing") return { headerLabel: options.authorLabel, messageContent: null };
     return {
       headerLabel: options.authorLabel,
       messageContent: (
@@ -125,7 +130,11 @@ function resolveQuotePresentation(options: {
           title={t(DECRYPTION_TITLES[status])}
           action={
             status === "error"
-              ? { label: t("e2ee.messageDecryptRetry"), onClick: retry }
+              ? {
+                  label: t("e2ee.messageDecryptRetry"),
+                  onClick: retry,
+                  disabled: options.decryption.retryPending,
+                }
               : undefined
           }
         />
@@ -158,7 +167,41 @@ function resolveQuotePresentation(options: {
   return { headerLabel: options.authorLabel, messageContent: null };
 }
 
-export const WorkspaceMessageQuote = React.memo(function WorkspaceMessageQuote({
+export const WorkspaceMessageQuote = React.memo(function WorkspaceMessageQuote(
+  props: WorkspaceMessageQuoteProps,
+): React.ReactElement {
+  const isForwardSnapshot = props.reference.snapshotMarkdown != null;
+  const resolved = useResolvedMessengerQuoteMessage(
+    props.reference.messageUuid,
+    (props.loadEnabled ?? true) && !isForwardSnapshot,
+  );
+  const source = isForwardSnapshot ? null : resolved.message;
+  const content = usePreparedMessagePresentation(source);
+  if (source?.payload.kind === "e2ee" && content == null)
+    return <LocalWorkspaceMessageQuote {...props} resolved={resolved} source={source} />;
+  return (
+    <WorkspaceMessageQuotePresentation
+      {...props}
+      resolved={resolved}
+      decryption={source?.payload.kind === "e2ee" ? (content ?? null) : null}
+    />
+  );
+});
+
+function LocalWorkspaceMessageQuote({
+  source,
+  ...props
+}: WorkspaceMessageQuoteProps & {
+  readonly source: MessengerMessage;
+  readonly resolved: ResolvedMessengerQuoteMessage;
+}) {
+  const decryption = useMessagePresentation(source);
+  return <WorkspaceMessageQuotePresentation {...props} decryption={decryption} />;
+}
+
+function WorkspaceMessageQuotePresentation({
+  resolved,
+  decryption,
   reference,
   mode = DEFAULT_WORKSPACE_QUOTE_RENDER_MODE,
   depth = 0,
@@ -172,16 +215,14 @@ export const WorkspaceMessageQuote = React.memo(function WorkspaceMessageQuote({
   secretMessageUuid,
   onRequestSecretKey,
   requestSecretKeyPending,
-}: WorkspaceMessageQuoteProps): React.ReactElement {
+}: WorkspaceMessageQuoteProps & {
+  readonly resolved: ResolvedMessengerQuoteMessage;
+  readonly decryption: MessagePresentation | null;
+}): React.ReactElement {
   const isForwardSnapshot = reference.snapshotMarkdown != null;
-  const resolved = useResolvedMessengerQuoteMessage(
-    reference.messageUuid,
-    loadEnabled && !isForwardSnapshot,
-  );
   const sourceMessage = isForwardSnapshot ? null : resolved.message;
   const encryptedSource = sourceMessage?.payload.kind === "e2ee" ? sourceMessage : null;
-  const decryption = useRealMessagePresentation(encryptedSource);
-  const sourceLocked = encryptedSource != null && decryption.status !== "ready";
+  const sourceLocked = encryptedSource != null && decryption?.status !== "ready";
   const [readyMediaFileUuid, setReadyMediaFileUuid] = useState<string | null>(null);
   const handleMediaThumbnailStatusChange = useCallback(
     (fileUuid: string, status: WorkspaceMessageMediaThumbnailStatus) => {
@@ -210,7 +251,8 @@ export const WorkspaceMessageQuote = React.memo(function WorkspaceMessageQuote({
   let sourceMarkdown =
     reference.snapshotMarkdown ??
     (sourceMessage?.payload.kind === "markdown" ? sourceMessage.payload.content : "");
-  if (decryption.status === "ready") sourceMarkdown = decryption.plaintext;
+  if (decryption?.status === "ready" && decryption.kind === "markdown")
+    sourceMarkdown = decryption.markdown;
   const sourceDocument = useMemo(() => {
     if (
       sourceLocked ||
@@ -426,4 +468,4 @@ export const WorkspaceMessageQuote = React.memo(function WorkspaceMessageQuote({
         : messageContent}
     </WorkspaceMessageQuoteFrame>
   );
-});
+}

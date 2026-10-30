@@ -190,6 +190,7 @@ export interface SelectionMutation {
 }
 
 export interface FormattingToolbarProps {
+  disabled?: boolean;
   textareaRef: RefObject<HTMLTextAreaElement | null>;
   onValueChange: (value: string) => void;
   fileTrigger?: ReactNode;

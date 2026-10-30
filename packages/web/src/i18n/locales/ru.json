@@ -1,4 +1,28 @@
 {
+  "datePicker": {
+    "label": "Дата",
+    "today": "Сегодня",
+    "previousMonth": "Предыдущий месяц",
+    "nextMonth": "Следующий месяц"
+  },
+  "timePicker": {
+    "label": "Время",
+    "hours": "Часы",
+    "minutes": "Минуты",
+    "seconds": "Секунды",
+    "hoursShort": "ч.",
+    "minutesShort": "м.",
+    "secondsShort": "с.",
+    "increase": "Увеличить: {{unit}}",
+    "decrease": "Уменьшить: {{unit}}"
+  },
+  "dateTimePicker": {
+    "label": "Дата и время"
+  },
+  "pickerExamples": {
+    "empty": "Значение не выбрано",
+    "selected": "Выбрано: {{value}}"
+  },
   "app": {
     "noInstance": "Нет выбранного инстанса Workspace",
     "networkError": "Сетевая ошибка",
@@ -633,6 +657,7 @@
     "loadError": "Не удалось обновить черновики"
   },
   "message": {
+    "globalTimeHint": "Каждый видит это в своём часовом поясе. Ваш часовой пояс для этой даты: {{zone}}.",
     "sendRequiresStreamOrTo": "Нужен канал (stream) или получатели (to) для отправки",
     "fileUploadUnsupported": "Загрузка файлов в старом пути чата больше недоступна.",
     "views": "Просмотры",
@@ -976,6 +1001,11 @@
     "personalInfo": "Личная информация",
     "appVersion": "Версия приложения",
     "notificationSound": "Звуки уведомлений",
+    "chatClickAction": "Клик по чату",
+    "chatClickActionGeneral": "Общий чат и топики",
+    "chatClickActionLatestTopic": "Последний топик",
+    "chatClickActionHint": "Что открывать при клике на чат",
+    "chatClickActionAvatarHint": "Клик по аватару откроет общий чат",
     "dockBounce": "Прыжок значка в Dock",
     "language": "Язык",
     "authIdleTimeout": "Автовыход",
@@ -1397,6 +1427,8 @@
     "retryLoad": "Повторить"
   },
   "composer": {
+    "insertTime": "Вставить дату и время",
+    "insertTimeConfirm": "Вставить",
     "bold": "Жирный",
     "italic": "Курсив",
     "strikethrough": "Зачёркнутый",

@@ -3,6 +3,7 @@ import {
   normalizeEmojiShortcodeName,
   resolveShortcodeToUnicode,
 } from "~/shared/lib/emoji-shortcodes.lib";
+import { formatLocalMessageTime, parseWorkspaceMessageTime } from "../workspace-message-time.lib";
 import { parseWorkspaceReferenceUrn } from "../workspace-reference-urn.lib";
 import { parseWorkspaceMessageFileHref } from "./workspace-message-file-reference.lib";
 import type {
@@ -12,6 +13,13 @@ import type {
   WorkspaceMessageParseOptions,
   WorkspaceMessageQuoteReference,
 } from "./workspace-message-document.types";
+
+export const WORKSPACE_TIME_TOKEN_TYPE = "workspace_time";
+export interface WorkspaceTimeMarkedToken extends Tokens.Generic {
+  type: typeof WORKSPACE_TIME_TOKEN_TYPE;
+  utc: string | null;
+  text: string;
+}
 
 export const WORKSPACE_MENTION_TOKEN_TYPE = "workspace_mention";
 export const WORKSPACE_EMOJI_TOKEN_TYPE = "workspace_emoji";
@@ -428,8 +436,92 @@ function prepareCodeBlockToken(
   } satisfies WorkspaceHistoricalQuoteMarkedToken;
 }
 
+const WORKSPACE_TIME_URN_PREFIX = /^(\\)?urn:time:/i;
+const WORKSPACE_TIME_DATE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/;
+const WORKSPACE_TIME_ZONE = /^(?::\d{2}(?:\.\d{1,3})?)?(?:Z|[+-]\d{2}:\d{2})/i;
+const WORKSPACE_TIME_OPAQUE_VALUE = /^[0-9A-Za-z:+\-.]*/;
+const WORKSPACE_TIME_VALUE_CONTINUATION = /\w/;
+
+// The owning URN is a plain URI, so a time value ends at a word boundary.
+function readWorkspaceTimeValue(source: string): { hasZone: boolean; value: string } {
+  const date = WORKSPACE_TIME_DATE.exec(source);
+  const zone = date == null ? null : WORKSPACE_TIME_ZONE.exec(source.slice(date[0].length));
+  if (date != null && zone != null) {
+    const value = source.slice(0, date[0].length + zone[0].length);
+    if (!WORKSPACE_TIME_VALUE_CONTINUATION.test(source.slice(value.length, value.length + 1))) {
+      return { hasZone: true, value };
+    }
+  }
+  return { hasZone: false, value: WORKSPACE_TIME_OPAQUE_VALUE.exec(source)?.[0] ?? "" };
+}
+
 export function createWorkspaceMarkdownLexer(): Marked {
-  return new Marked({ gfm: true, breaks: true });
+  return new Marked({
+    gfm: true,
+    breaks: true,
+    extensions: [
+      {
+        name: WORKSPACE_TIME_TOKEN_TYPE,
+        level: "inline",
+        start(source) {
+          return source.search(/\\?urn:time:/i);
+        },
+        tokenizer(source) {
+          const prefix = WORKSPACE_TIME_URN_PREFIX.exec(source);
+          if (prefix == null) return;
+          const escaped = prefix[1] != null;
+          const { hasZone, value } = readWorkspaceTimeValue(source.slice(prefix[0].length));
+          const raw = prefix[0] + value;
+          // Keep invalid and escaped URNs opaque so :time: cannot turn into an emoji.
+          const utc = escaped || !hasZone ? null : parseWorkspaceMessageTime(value);
+          return {
+            type: WORKSPACE_TIME_TOKEN_TYPE,
+            raw,
+            utc,
+            text: escaped ? raw.slice(1) : raw,
+          } satisfies WorkspaceTimeMarkedToken;
+        },
+      },
+    ],
+  });
+}
+
+/** Replace only times recognized by the Markdown lexer, preserving the original source otherwise. */
+export function formatWorkspaceMessageTimesForCopy(markdown: string): string {
+  const candidates: { start: number; end: number; utc: string; marker: string }[] = [];
+  const prefix = /urn:time:/gi;
+  for (const match of markdown.matchAll(prefix)) {
+    const start = match.index;
+    const valueStart = start + match[0].length;
+    const { hasZone, value } = readWorkspaceTimeValue(markdown.slice(valueStart));
+    const utc = hasZone ? parseWorkspaceMessageTime(value) : null;
+    if (utc == null) continue;
+    const marker = new Date(Date.UTC(2000, 0, 1) + candidates.length).toISOString();
+    candidates.push({ start, end: valueStart + value.length, utc, marker });
+  }
+  if (candidates.length === 0) return markdown;
+
+  // Unique valid instants let the lexer distinguish identical URNs in code and prose.
+  let markedSource = markdown;
+  for (const candidate of [...candidates].reverse()) {
+    markedSource = `${markedSource.slice(0, candidate.start)}urn:time:${candidate.marker}${markedSource.slice(candidate.end)}`;
+  }
+  const lexer = createWorkspaceMarkdownLexer();
+  const recognized = new Set<string>();
+  void lexer.walkTokens(lexer.lexer(markedSource), (token) => {
+    if (token.type === WORKSPACE_TIME_TOKEN_TYPE) {
+      const utc = (token as WorkspaceTimeMarkedToken).utc;
+      if (utc != null) recognized.add(utc);
+    }
+  });
+  let result = markdown;
+  for (const candidate of candidates.reverse()) {
+    const normalizedMarker = parseWorkspaceMessageTime(candidate.marker);
+    if (normalizedMarker != null && recognized.has(normalizedMarker)) {
+      result = `${result.slice(0, candidate.start)}${formatLocalMessageTime(candidate.utc)}${result.slice(candidate.end)}`;
+    }
+  }
+  return result;
 }
 
 export function prepareWorkspaceMarkdownTokens(
@@ -571,6 +663,9 @@ function inspectTokens(tokens: readonly Token[], facts: WorkspaceMarkdownFacts):
       case WORKSPACE_MENTION_TOKEN_TYPE:
         facts.hasInlineRich = true;
         facts.hasMentions = true;
+        break;
+      case WORKSPACE_TIME_TOKEN_TYPE:
+        facts.hasInlineRich ||= (token as WorkspaceTimeMarkedToken).utc != null;
         break;
       case WORKSPACE_EMOJI_TOKEN_TYPE:
       case WORKSPACE_INLINE_SPOILER_TOKEN_TYPE:

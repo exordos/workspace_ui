@@ -212,8 +212,8 @@ export const docsContent: Readonly<Record<string, ComponentDocsContent>> = {
         "Нативная подсказка загрузки изображения: lazy или eager.",
       ),
       interactive: text(
-        "Adds a pointer cursor and a hover ring through a parent group; it does not create a click handler.",
-        "Добавляет курсор pointer и кольцо при наведении на родительскую group; обработчик нажатия не создаёт.",
+        "Adds a pointer cursor and an outline on hover or keyboard focus of a group/avatar parent. Defaults to false; the parent owns click and keyboard behavior.",
+        "Добавляет курсор pointer и обводку при наведении или фокусе с клавиатуры на родителе group/avatar. По умолчанию false; родитель управляет нажатием и клавиатурой.",
       ),
       presence: text(
         "Presence badge; omit or pass null to hide it. Offline still displays a badge.",
@@ -417,6 +417,166 @@ export const docsContent: Readonly<Record<string, ComponentDocsContent>> = {
       onKeyDown: text(
         "Keyboard handler forwarded to the input.",
         "Обработчик клавиатуры, передаваемый текстовому полю.",
+      ),
+    },
+  },
+  "Shared/Forms/DatePicker": {
+    description: text(
+      "Controlled inline calendar based on Figma. Monday-first weeks, selectable weekends and keyboard navigation. Today has an accent outline; selection uses a filled circle. The Today button selects the current local date and opens its month, respecting date bounds. Emits local Dates at midnight; no time picker, overlay or actions are included.",
+      "Управляемый календарь по Figma. Неделя с понедельника, выходные доступны, есть управление с клавиатуры. Сегодняшняя дата отмечена акцентным контуром, выбранная — заливкой. Кнопка «Сегодня» выбирает текущую локальную дату и открывает её месяц с учётом границ. Возвращает локальный Date с временем 00:00; выбор времени, всплывающее окно и действия собираются отдельно.",
+    ),
+    props: {
+      value: text(
+        "Local Date, or null. Supplied Dates are never mutated.",
+        "Локальный Date или null. Переданные Date не изменяются.",
+      ),
+      onValueChange: text(
+        "Emits a new Date at local midnight when a day is selected.",
+        "Возвращает новый Date с локальным временем 00:00 при выборе дня.",
+      ),
+      defaultMonth: text(
+        "Initial month for an empty selection; today by default.",
+        "Начальный месяц при пустом значении; по умолчанию текущий.",
+      ),
+      min: text(
+        "Inclusive first selectable local date; time is ignored.",
+        "Первая доступная локальная дата включительно; время не учитывается.",
+      ),
+      max: text(
+        "Inclusive last selectable local date; time is ignored.",
+        "Последняя доступная локальная дата включительно; время не учитывается.",
+      ),
+      disabled: common.disabled,
+      className: common.className,
+      "aria-label": common["aria-label"],
+    },
+    stories: {
+      NarrowWidth: text(
+        "On narrow calendars, Today stays in the header on a second row so the month and arrows fit.",
+        "В узком календаре «Сегодня» остаётся в шапке на второй строке, чтобы название месяца и стрелки помещались.",
+      ),
+      Default: text(
+        "The Today button returns from the example month to the current local date.",
+        "Кнопка «Сегодня» возвращает из месяца примера к текущей локальной дате.",
+      ),
+      CurrentDay: text(
+        "Today's local date has an accent outline even without a selection.",
+        "Сегодняшняя локальная дата отмечена акцентным контуром даже без выбранной даты.",
+      ),
+      TodaySelected: text(
+        "Today is selected: the selected fill and current-date semantics are both preserved.",
+        "Сегодняшняя дата выбрана: сохраняются заливка выбора и отметка текущей даты.",
+      ),
+      SixWeekMonth: text(
+        "A month requiring six calendar rows.",
+        "Месяц, для которого нужны шесть строк календаря.",
+      ),
+    },
+  },
+  "Shared/Forms/TimePicker": {
+    description: text(
+      "Horizontal time picker: final time followed by hour/minute segments and optional seconds, each with a small localized inline abbreviation. There are no captions above the controls or final time. Uses HH:mm or HH:mm:ss strings without a date or time zone. Type a segment and commit with Enter or blur; arrow keys and step buttons adjust it. Hover a segment and scroll up/down to increase/decrease it without clicking or moving focus; fine trackpad motion accumulates. Bounds and caller exclusions constrain the result.",
+      "Горизонтальный выбор времени: итоговое время, часы, минуты и необязательные секунды с маленькими сокращениями ч./м./с. рядом с числами. Подписей сверху и возле итогового времени нет. Значение — HH:mm или HH:mm:ss без даты и часового пояса. Ввод подтверждается Enter или уходом из поля; стрелки и кнопки меняют сегмент. При наведении скролл вверх/вниз увеличивает/уменьшает значение без клика и переноса фокуса; мелкие движения тачпада накапливаются. Границы и исключения ограничивают результат.",
+    ),
+    props: {
+      showArrows: text(
+        "Shows step buttons by default. Set false to hide them; hover scrolling and keyboard input remain available.",
+        "По умолчанию показывает стрелки. false скрывает их; скролл при наведении и ввод с клавиатуры продолжают работать.",
+      ),
+      showSeconds: text(
+        "Adds a seconds segment and second precision.",
+        "Добавляет сегмент секунд и точность до секунды.",
+      ),
+      value: text(
+        "24-hour HH:mm or HH:mm:ss string, or null for no selection.",
+        "Время в 24-часовом формате HH:mm или HH:mm:ss, либо null.",
+      ),
+      onValueChange: text(
+        "Emits an allowed time string when a segment is committed or stepped.",
+        "Возвращает допустимую строку времени при подтверждении или пошаговом изменении сегмента.",
+      ),
+      min: text(
+        "Inclusive time lower bound within the same day.",
+        "Нижняя граница времени включительно в пределах суток.",
+      ),
+      max: text(
+        "Inclusive time upper bound within the same day.",
+        "Верхняя граница времени включительно в пределах суток.",
+      ),
+      isTimeDisabled: text(
+        "Optional predicate excluding individual time values.",
+        "Необязательная функция для исключения отдельных значений времени.",
+      ),
+      disabled: common.disabled,
+      className: common.className,
+      "aria-label": common["aria-label"],
+    },
+    stories: {
+      NumbersOnly: text(
+        "Compact numbers with small inline units and no arrows. Hover a segment and scroll, or type a value.",
+        "Числа с маленькими обозначениями единиц без стрелок. Наведите на сегмент и прокрутите либо введите значение.",
+      ),
+      WithSeconds: text(
+        "Hover a segment and scroll to adjust hours, minutes or seconds without clicking.",
+        "Наведите на сегмент и прокрутите, чтобы менять часы, минуты или секунды без клика.",
+      ),
+      ExcludedTimes: text("12:00–13:59 is unavailable.", "Время 12:00–13:59 недоступно."),
+    },
+  },
+  "Shared/Forms/DateTimePicker": {
+    description: text(
+      "Composes the same public DatePicker and horizontal TimePicker into one card, with time below the calendar and no duplicated UI. Uses local Dates at minute or optional second precision. Selecting a day preserves time and clamps it to inclusive bounds; time is disabled until a date is chosen. No scheduler, message insertion or submission behavior.",
+      "Объединяет те же DatePicker и горизонтальный TimePicker в одну карточку: время под календарём, UI не дублируется. Значение — локальный Date с точностью до минуты или секунды. При выборе дня время сохраняется и ограничивается границами; до выбора даты время отключено. Без планировщика, вставки в сообщения и отправки формы.",
+    ),
+    props: {
+      showArrows: text(
+        "Shows step buttons by default. Set false to hide them; hover scrolling and keyboard input remain available.",
+        "По умолчанию показывает стрелки. false скрывает их; скролл при наведении и ввод с клавиатуры продолжают работать.",
+      ),
+      showSeconds: text(
+        "Adds a seconds segment and second precision.",
+        "Добавляет сегмент секунд и точность до секунды.",
+      ),
+      value: text(
+        "Local Date, or null. Supplied Dates are never mutated.",
+        "Локальный Date или null. Переданные Date не изменяются.",
+      ),
+      onValueChange: text(
+        "Emits a new Date combining the selected day and time.",
+        "Возвращает новый Date, объединяющий выбранные дату и время.",
+      ),
+      defaultMonth: text(
+        "Initial month passed to DatePicker when selection is empty.",
+        "Начальный месяц DatePicker при пустом значении.",
+      ),
+      min: text(
+        "Inclusive lower date/time bound, rounded up to the active precision.",
+        "Нижняя граница даты и времени включительно, округляется вверх до выбранной точности.",
+      ),
+      max: text(
+        "Inclusive upper date/time bound, rounded down to the active precision.",
+        "Верхняя граница даты и времени включительно, округляется вниз до выбранной точности.",
+      ),
+      datePickerProps: text(
+        "Presentation and accessibility props passed to the real DatePicker.",
+        "Настройки внешнего вида и доступности для настоящего DatePicker.",
+      ),
+      timePickerProps: text(
+        "Presentation and accessibility props passed to the real TimePicker.",
+        "Настройки внешнего вида и доступности для настоящего TimePicker.",
+      ),
+      disabled: common.disabled,
+      className: common.className,
+      "aria-label": common["aria-label"],
+    },
+    stories: {
+      NumbersOnly: text(
+        "Compact numbers with small inline units and no arrows. Hover a segment and scroll, or type a value.",
+        "Числа с маленькими обозначениями единиц без стрелок. Наведите на сегмент и прокрутите либо введите значение.",
+      ),
+      Overview: text(
+        "All three interactive components side by side. Each owns a separate example value.",
+        "Все три интерактивных компонента. У каждого отдельное значение примера.",
       ),
     },
   },

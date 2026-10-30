@@ -16,6 +16,13 @@ import {
 import { ChatE2eeController } from "./chat-e2ee-controller.lib";
 import { decodeMessengerE2eePayload } from "./chat-e2ee-payload-adapters.lib";
 import { correlateChatKeyResponse } from "./chat-e2ee.lib";
+import {
+  clearPreparedPlaintextWindows,
+  invalidatePreparedPlaintextWindows,
+  readPreparedPlaintext,
+  removePreparedPlaintextWindow,
+  replacePreparedPlaintextWindow,
+} from "./chat-plaintext-window-cache.lib";
 import { editMessengerMessage, sendMessengerE2eePayload } from "./messenger-message-actions.lib";
 import { useMessengerStore } from "./messenger.model";
 import type { ChatCryptoEnvelope } from "./chat-crypto-provider.types";
@@ -31,7 +38,8 @@ import type {
   ChatKeyRequestPayload,
   ChatKeyResponsePayload,
 } from "./chat-e2ee.types";
-import type { StoredChatKey } from "./chat-key-storage.types";
+import type { ChatKeyStorageAddress, StoredChatKey } from "./chat-key-storage.types";
+import type { PreparedPlaintextRecord } from "./chat-plaintext-window-cache.lib";
 import type { MessengerStoreState } from "./messenger.model";
 import type { MessengerMessage } from "./messenger.types";
 
@@ -1126,21 +1134,293 @@ export async function decryptRealChatMessageResult(
   runtime: WorkspaceRuntimeContext,
   message: MessengerMessage,
   isCurrent: () => boolean,
+  batchId?: string,
+  window?: PlaintextWindowRequest,
 ): Promise<RealChatMessageDecryption> {
   if (!isCurrent() || message.projectId !== runtime.projectId || message.payload.kind !== "e2ee")
     return { status: "missing-key" };
   const mapped = domainMessage(message);
   if (mapped?.payload.kind !== "e2ee") return { status: "error" };
-  return decryptRealChatEnvelopeResult(
+  return queueMessageDecryption(
     runtime,
-    {
-      projectId: message.projectId,
-      streamUuid: message.streamUuid,
-      keyUuid: mapped.payload.keyUuid,
-      envelope: mapped.payload.content,
-    },
+    message,
+    mapped.payload.content,
     isCurrent,
+    batchId,
+    window,
   );
+}
+
+interface MessageDecryptionRequest {
+  readonly message: MessengerMessage;
+  readonly envelope: ChatCryptoEnvelope;
+  readonly isCurrent: () => boolean;
+  readonly resolve: (result: RealChatMessageDecryption) => void;
+  readonly window?: PlaintextWindowRequest;
+}
+
+interface KeySnapshot {
+  readonly key: StoredChatKey | null;
+  readonly deletionRevision: number;
+}
+export type { PreparedPlaintextRecord } from "./chat-plaintext-window-cache.lib";
+
+export interface PlaintextWindowRequest {
+  readonly id: string;
+  readonly onPrepared: (record: PreparedPlaintextRecord) => void;
+}
+
+/** Replace only a complete current window for the active runtime. */
+export function commitPreparedPlaintextWindow(
+  runtime: WorkspaceRuntimeContext,
+  id: string,
+  records: readonly PreparedPlaintextRecord[],
+) {
+  startPlaintextCacheListeners();
+  const scope = runtimeScope(runtime);
+  if (scope !== cacheScope || scope == null) return;
+  replacePreparedPlaintextWindow(scope, id, records);
+}
+const pendingDecryption = new Map<string, MessageDecryptionRequest[]>();
+let cacheScope: string | null = null;
+let cacheEpoch = 0;
+let cacheListenersStarted = false;
+
+function runtimeScope(runtime: WorkspaceRuntimeContext | null): string | null {
+  return runtime == null
+    ? null
+    : JSON.stringify([workspaceRuntimeOwnerKey(runtime), runtime.runtimeGeneration]);
+}
+
+function startPlaintextCacheListeners() {
+  if (cacheListenersStarted) return;
+  cacheListenersStarted = true;
+  cacheScope = runtimeScope(useWorkspaceAuthStore.getState().getCurrentRuntimeContext());
+  useWorkspaceAuthStore.subscribe((state) => {
+    const next = runtimeScope(state.getCurrentRuntimeContext());
+    if (cacheScope !== next) {
+      clearPreparedPlaintextWindows();
+      cacheEpoch++;
+      pendingDecryption.clear();
+      cacheScope = next;
+    }
+  });
+  subscribeRealChatKeyChanges((change) => {
+    if (!change) {
+      clearPreparedPlaintextWindows();
+      return;
+    }
+    invalidatePreparedPlaintextWindows(change);
+  });
+}
+
+function sameSnapshot(before: KeySnapshot | undefined, after: KeySnapshot | undefined): boolean {
+  const left = before?.key?.groupKey?.bytes;
+  const right = after?.key?.groupKey?.bytes;
+  return (
+    left != null &&
+    right != null &&
+    before?.deletionRevision === after?.deletionRevision &&
+    left.length === right.length &&
+    left.every((byte, index) => byte === right[index])
+  );
+}
+
+async function fingerprint(snapshot: KeySnapshot): Promise<string> {
+  const bytes = snapshot.key?.groupKey?.bytes;
+  if (!bytes) return "";
+  const copy = new Uint8Array(bytes);
+  try {
+    const digest = await crypto.subtle.digest("SHA-256", copy);
+    return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join(
+      "",
+    );
+  } finally {
+    copy.fill(0);
+  }
+}
+
+function queueMessageDecryption(
+  runtime: WorkspaceRuntimeContext,
+  message: MessengerMessage,
+  envelope: ChatCryptoEnvelope,
+  isCurrent: () => boolean,
+  batchId?: string,
+  window?: PlaintextWindowRequest,
+): Promise<RealChatMessageDecryption> {
+  startPlaintextCacheListeners();
+  const scope = runtimeScope(runtime)!;
+  const queueKey = JSON.stringify([scope, batchId ?? null]);
+  return new Promise((resolve) => {
+    const request = { message, envelope, isCurrent, resolve, window };
+    const pending = pendingDecryption.get(queueKey);
+    if (pending) {
+      pending.push(request);
+    } else {
+      const batch = [request];
+      const epoch = cacheEpoch;
+      pendingDecryption.set(queueKey, batch);
+      queueMicrotask(() => {
+        if (batchId === undefined && pendingDecryption.get(queueKey) === batch)
+          pendingDecryption.delete(queueKey);
+        void prepareDecryptionBatch(runtime, scope, queueKey, epoch, batch);
+      });
+    }
+  });
+}
+
+interface PreparedBatchResult {
+  readonly result: RealChatMessageDecryption;
+  readonly addressId?: string;
+  readonly snapshot?: KeySnapshot;
+  readonly fingerprint?: string;
+  readonly cacheKey?: string;
+}
+
+async function prepareDecryptionBatch(
+  runtime: WorkspaceRuntimeContext,
+  scope: string,
+  queueKey: string,
+  epoch: number,
+  batch: MessageDecryptionRequest[],
+): Promise<void> {
+  const snapshotsToClear: KeySnapshot[] = [];
+  try {
+    const device = await realChatKeyStorage.readDeviceIdentity(runtime);
+    if (!device) {
+      for (const request of batch) request.resolve({ status: "missing-key" });
+      return;
+    }
+    const groups = new Map<string, ChatKeyStorageAddress>();
+    const results: PreparedBatchResult[] = [];
+    let processed = 0;
+    while (true) {
+      const next = batch.slice(processed);
+      if (next.length) {
+        const waveGroups = new Map<string, ChatKeyStorageAddress>();
+        for (const { message } of next) {
+          if (message.payload.kind !== "e2ee") continue;
+          const id = JSON.stringify([message.streamUuid, message.payload.keyUuid]);
+          const address = {
+            owner: runtime,
+            deviceId: device.deviceId,
+            streamUuid: message.streamUuid,
+            keyUuid: message.payload.keyUuid,
+          };
+          groups.set(id, address);
+          waveGroups.set(id, address);
+        }
+        const ids = [...waveGroups.keys()];
+        const snapshots = await realChatKeyStorage.readChatKeySnapshots([...waveGroups.values()]);
+        snapshotsToClear.push(...snapshots);
+        const fingerprints = await Promise.all(snapshots.map(fingerprint));
+        const waveResults = await Promise.all(
+          next.map(async (request): Promise<PreparedBatchResult> => {
+            const { message, envelope, isCurrent } = request;
+            if (!isCurrent() || message.payload.kind !== "e2ee")
+              return { result: { status: "missing-key" } };
+            const addressId = JSON.stringify([message.streamUuid, message.payload.keyUuid]);
+            const index = ids.indexOf(addressId);
+            const snapshot = snapshots[index];
+            const groupKey = snapshot?.key?.groupKey;
+            if (!groupKey || !snapshot) return { result: { status: "missing-key" } };
+            const keyFingerprint = fingerprints[index];
+            const cacheKey = JSON.stringify([
+              scope,
+              device.deviceId,
+              message.projectId,
+              message.streamUuid,
+              message.uuid,
+              message.payload,
+            ]);
+            const cached = request.window
+              ? readPreparedPlaintext(scope, request.window.id, cacheKey)
+              : undefined;
+            const metadata = { addressId, snapshot, fingerprint: keyFingerprint, cacheKey };
+            if (cached && cached.fingerprint === keyFingerprint)
+              return { ...metadata, result: { status: "ready", plaintext: cached.plaintext } };
+            try {
+              const decrypted = await realChatCryptoProvider.decryptMessage({
+                groupKey,
+                envelope,
+                context: { streamUuid: message.streamUuid, keyUuid: message.payload.keyUuid },
+              });
+              if (!decrypted.ok)
+                return {
+                  ...metadata,
+                  result: {
+                    status: "error",
+                    canRequestKey: decrypted.reason === "invalid-ciphertext",
+                  },
+                };
+              try {
+                return {
+                  ...metadata,
+                  result: {
+                    status: "ready",
+                    plaintext: new TextDecoder("utf-8", { fatal: true }).decode(decrypted.value),
+                  },
+                };
+              } finally {
+                decrypted.value.fill(0);
+              }
+            } catch {
+              return { ...metadata, result: { status: "error" } };
+            }
+          }),
+        );
+        results.push(...waveResults);
+        processed += next.length;
+        continue;
+      }
+      const ids = [...groups.keys()];
+      const latest = await realChatKeyStorage.readChatKeySnapshots([...groups.values()]);
+      snapshotsToClear.push(...latest);
+      // Arrivals during validation belong to this same initial window.
+      if (processed !== batch.length) continue;
+      if (pendingDecryption.get(queueKey) === batch) pendingDecryption.delete(queueKey);
+      for (const [index, request] of batch.entries()) {
+        const prepared = results[index];
+        if (!request.isCurrent() || cacheEpoch !== epoch || !prepared) {
+          request.resolve({ status: "missing-key" });
+          continue;
+        }
+        const { result, snapshot, addressId, cacheKey, fingerprint: keyFingerprint } = prepared;
+        if (snapshot && addressId && !sameSnapshot(snapshot, latest[ids.indexOf(addressId)])) {
+          if (request.window) removePreparedPlaintextWindow(scope, request.window.id);
+          request.resolve({ status: "missing-key" });
+          continue;
+        }
+        if (
+          result.status === "ready" &&
+          cacheKey &&
+          keyFingerprint &&
+          addressId &&
+          scope === cacheScope
+        ) {
+          request.window?.onPrepared({
+            cacheKey,
+            fingerprint: keyFingerprint,
+            plaintext: result.plaintext,
+            ownerKey: workspaceRuntimeOwnerKey(runtime),
+            deviceId: device.deviceId,
+            streamUuid: request.message.streamUuid,
+            keyUuid: groups.get(addressId)!.keyUuid,
+          });
+        }
+        request.resolve(result);
+      }
+      return;
+    }
+  } catch {
+    for (const request of batch)
+      request.resolve({
+        status: request.isCurrent() && cacheEpoch === epoch ? "error" : "missing-key",
+      });
+  } finally {
+    if (pendingDecryption.get(queueKey) === batch) pendingDecryption.delete(queueKey);
+    for (const snapshot of snapshotsToClear) snapshot.key?.groupKey?.bytes.fill(0);
+  }
 }
 
 export async function decryptRealChatEnvelopeResult(

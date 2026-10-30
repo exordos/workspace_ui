@@ -404,6 +404,8 @@ const WorkspaceSidebarStreamRow = React.memo(function WorkspaceSidebarStreamRow(
 }>): React.ReactElement {
   useTranslation();
   React.useContext(SidebarCalendarContext);
+  const chatClickAction = useSettingsStore((s) => s.chatClickAction);
+  const opensLatestTopic = chatClickAction === "latestTopic";
   // Highlight follows the visible active location (collapsed topic → stream card).
   const isActive = isWorkspaceSidebarStreamHighlighted({
     streamUuid: stream.streamUuid,
@@ -412,6 +414,7 @@ const WorkspaceSidebarStreamRow = React.memo(function WorkspaceSidebarStreamRow(
     activeTopicUuid,
   });
   const rowClass = sidebarChatRowLinkClass(compact, "stream");
+  const avatarSize = compact ? "sm" : "md";
   // Highlight only the active route — never “expanded”.
   const rowSurfaceClass = sidebarRowClass(isActive);
   const isDirectPrivate = stream.uiKind === "directPrivate";
@@ -441,6 +444,22 @@ const WorkspaceSidebarStreamRow = React.memo(function WorkspaceSidebarStreamRow(
       streamUuid: stream.streamUuid,
       onToggleStream,
     });
+  const config = {
+    general: {
+      to: stream.route,
+      onClick: handleStreamLinkClick,
+      avatarAriaLabel: undefined,
+      showAvatar: !compact,
+      linkClass: "",
+    },
+    latestTopic: {
+      to: stream.preview?.route ?? stream.route,
+      onClick: undefined,
+      avatarAriaLabel: `${t("chat.generalChat")}: ${title}`,
+      showAvatar: true,
+      linkClass: "after:absolute after:inset-0 after:rounded-[inherit]",
+    },
+  }[chatClickAction];
   const expandChevron = resolveWorkspaceStreamExpandChevron({
     searchMode,
     hasTopics: stream.topics.length > 0,
@@ -470,16 +489,21 @@ const WorkspaceSidebarStreamRow = React.memo(function WorkspaceSidebarStreamRow(
             : undefined
         }
       >
-        <div className={`${rowClass} w-full ${rowSurfaceClass} ${isMuted ? "opacity-70" : ""}`}>
-          {!compact && (
+        <div
+          className={`relative isolate ${rowClass} w-full ${rowSurfaceClass} ${isMuted ? "opacity-70" : ""}`}
+        >
+          {config.showAvatar && (
             <Link
               to={stream.route}
-              className="focus-visible:ring-border-strong relative shrink-0 focus-visible:outline-none focus-visible:ring-1"
+              aria-label={config.avatarAriaLabel}
+              title={`${t("chat.generalChat")}: ${title}`}
+              className="group/avatar relative z-10 shrink-0 self-start rounded-full focus-visible:outline-none"
               onClick={handleStreamLinkClick}
             >
               {isDirectPrivate ? (
                 <WorkspaceAvatar
-                  size="md"
+                  size={avatarSize}
+                  interactive
                   avatarUrn={stream.avatarUrl}
                   presence={stream.presence ?? null}
                 >
@@ -487,7 +511,8 @@ const WorkspaceSidebarStreamRow = React.memo(function WorkspaceSidebarStreamRow(
                 </WorkspaceAvatar>
               ) : (
                 <Avatar
-                  size="md"
+                  size={avatarSize}
+                  interactive
                   style={{ backgroundColor: resolveAvatarBackgroundColor(stream.color) }}
                 >
                   {avatarContent}
@@ -496,10 +521,11 @@ const WorkspaceSidebarStreamRow = React.memo(function WorkspaceSidebarStreamRow(
             </Link>
           )}
           <div className={sidebarChatRowBodyClass(compact)}>
+            {/* Stretch the topic link across the card; avatar and chevron stay above it. */}
             <Link
-              to={stream.route}
-              className="focus-visible:ring-border-strong block min-w-0 rounded-md focus-visible:outline-none focus-visible:ring-1"
-              onClick={handleStreamLinkClick}
+              to={config.to}
+              onClick={config.onClick}
+              className={`focus-visible:ring-border-strong block min-w-0 rounded-md focus-visible:outline-none focus-visible:ring-1 ${config.linkClass}`}
             >
               <SidebarChatTitleWithStatus
                 title={title}
@@ -507,11 +533,17 @@ const WorkspaceSidebarStreamRow = React.memo(function WorkspaceSidebarStreamRow(
                 statusText={statusText}
               />
             </Link>
-            {!compact && stream.preview?.route != null && (
-              <Link to={stream.preview.route} className={SIDEBAR_STREAM_PREVIEW_LINK_CLASS}>
-                <WorkspaceSidebarMessagePreview preview={stream.preview} />
-              </Link>
-            )}
+            {!compact &&
+              stream.preview?.route != null &&
+              (opensLatestTopic ? (
+                <div className={SIDEBAR_STREAM_PREVIEW_LINK_CLASS}>
+                  <WorkspaceSidebarMessagePreview preview={stream.preview} />
+                </div>
+              ) : (
+                <Link to={stream.preview.route} className={SIDEBAR_STREAM_PREVIEW_LINK_CLASS}>
+                  <WorkspaceSidebarMessagePreview preview={stream.preview} />
+                </Link>
+              ))}
           </div>
           <SidebarChatRowMeta
             compact={compact}

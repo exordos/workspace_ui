@@ -11,8 +11,8 @@ export interface AvatarProps {
   /** Native image loading hint. Defaults to `lazy` for list performance; use `eager` for above-the-fold LCP. */
   imageLoading?: "eager" | "lazy";
   /**
-   * Кликабельный аватар (профиль и т.п.): hover-кольцо через родителя `group`
-   * и курсор pointer. Выкл. по умолчанию — декоративные аватары без клика.
+   * Adds hover/focus styling through a focusable `group/avatar` parent.
+   * Defaults to false. The parent owns click and keyboard behavior.
    */
   interactive?: boolean;
   /** Omit or pass null to hide the badge; offline renders a gray badge. */

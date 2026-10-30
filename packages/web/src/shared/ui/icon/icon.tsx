@@ -11,6 +11,7 @@ import BlockIcon from "~/shared/assets/icons/block.svg?react";
 import BorderColorIcon from "~/shared/assets/icons/border_color.svg?react";
 import BuildIcon from "~/shared/assets/icons/build.svg?react";
 import BusinessCenterIcon from "~/shared/assets/icons/business_center.svg?react";
+import CalendarNextIcon from "~/shared/assets/icons/calendar-next.svg?react";
 import CalendarIcon from "~/shared/assets/icons/calendar.svg?react";
 import CalendarMonthIcon from "~/shared/assets/icons/calendar_month.svg?react";
 import CelebrationIcon from "~/shared/assets/icons/celebration.svg?react";
@@ -165,6 +166,7 @@ const ICONS: Record<string, IconSvgComponent> = {
   heart: HeartIcon,
   star_outline: StarOutlineIcon,
   "thumbs-up": ThumbsUpIcon,
+  "calendar-next": CalendarNextIcon,
   "chevron-down": ChevronDownIcon,
   "chevron-up": ChevronUpIcon,
   "chevron-right": ChevronRightIcon,
@@ -243,6 +245,11 @@ export const Icon = React.memo<IconComponentProps>(({ name, size = 20, className
   const SvgIcon = ICONS[name];
   if (!SvgIcon) return null;
   return (
-    <SvgIcon width={size} height={size} className={`shrink-0 ${className}`.trim()} aria-hidden />
+    <SvgIcon
+      width={size}
+      height={size}
+      className={`shrink-0 ${name === "calendar-next" ? "[&_path]:fill-current" : ""} ${className}`.trim()}
+      aria-hidden
+    />
   );
 });

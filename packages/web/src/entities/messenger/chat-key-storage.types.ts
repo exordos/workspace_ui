@@ -90,6 +90,12 @@ export interface ChatKeyStorage {
     options?: ChatKeyStorageWriteOptions,
   ): Promise<boolean>;
   readChatKey(address: ChatKeyStorageAddress): Promise<StoredChatKey | null>;
+  readChatKeySnapshots(addresses: readonly ChatKeyStorageAddress[]): Promise<
+    readonly {
+      readonly key: StoredChatKey | null;
+      readonly deletionRevision: number;
+    }[]
+  >;
   readChatKeyDeletionRevision(address: ChatKeyStorageAddress): Promise<number>;
   listChatKeys(
     address: Omit<ChatKeyStorageAddress, "keyUuid">,

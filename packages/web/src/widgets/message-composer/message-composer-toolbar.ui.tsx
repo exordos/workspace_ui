@@ -18,6 +18,7 @@ import { AppTooltip } from "~/shared/ui/app-tooltip";
 import { Icon } from "~/shared/ui/icon";
 import { mutateSelection, wrapSelection } from "./message-composer-selection.lib";
 import { TOOLBAR_BTN, TOOLBAR_TEXT_STYLE_GROUP } from "./message-composer-styles.lib";
+import { MessageComposerTimeInsert } from "./message-composer-time-insert.ui";
 import type { FormattingToolbarProps } from "./message-composer.types";
 
 export const FormattingToolbar = React.memo<FormattingToolbarProps>(function FormattingToolbar({
@@ -30,6 +31,7 @@ export const FormattingToolbar = React.memo<FormattingToolbarProps>(function For
   snippetsTrigger,
   aiTrigger,
   secretFragmentsEnabled = false,
+  disabled = false,
 }) {
   const wrap = useCallback(
     (marker: string) => wrapSelection(textareaRef, marker, onValueChange),
@@ -132,8 +134,6 @@ export const FormattingToolbar = React.memo<FormattingToolbarProps>(function For
       };
     });
   }, [onValueChange, textareaRef]);
-  const hasMediaActions = fileTrigger != null || callLinkTrigger != null || emojiTrigger != null;
-  const hasAssistActions = scheduleTrigger != null || snippetsTrigger != null || aiTrigger != null;
 
   return (
     <div
@@ -143,17 +143,19 @@ export const FormattingToolbar = React.memo<FormattingToolbarProps>(function For
     >
       {fileTrigger}
       {callLinkTrigger}
-      {(fileTrigger != null || callLinkTrigger != null) &&
-        (emojiTrigger != null || hasAssistActions) && (
-          <span className="h-7 w-px flex-shrink-0 bg-border-subtle" aria-hidden />
-        )}
+      {(fileTrigger != null || callLinkTrigger != null) && (
+        <span className="h-7 w-px flex-shrink-0 bg-border-subtle" aria-hidden />
+      )}
       {emojiTrigger}
+      <MessageComposerTimeInsert
+        textareaRef={textareaRef}
+        onValueChange={onValueChange}
+        disabled={disabled}
+      />
       {scheduleTrigger}
       {snippetsTrigger}
       {aiTrigger}
-      {(hasMediaActions || hasAssistActions) && (
-        <span className="h-7 w-px flex-shrink-0 bg-border-subtle" aria-hidden />
-      )}
+      <span className="h-7 w-px flex-shrink-0 bg-border-subtle" aria-hidden />
       <div className={TOOLBAR_TEXT_STYLE_GROUP} data-testid="composer-text-style-group">
         <button
           type="button"
