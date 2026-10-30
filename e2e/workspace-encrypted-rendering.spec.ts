@@ -324,6 +324,7 @@ for (const encryptedChat of [true, false]) {
         uuid: `66666666-6666-4666-8666-${String(index + 1).padStart(12, "0")}`,
         created_at: new Date(Date.parse("2026-10-01T09:00:00Z") + index * 60_000).toISOString(),
       }));
+    const completedBeforePage = await page.evaluate(() => window.encryptedRenderingProbe.completed);
     await stageMessages(page, older, "before");
     const expectReadingOffset = async () => {
       await expect
@@ -339,7 +340,11 @@ for (const encryptedChat of [true, false]) {
     await expect
       .poll(() => page.evaluate(() => window.encryptedRenderingProbe.pending.length))
       .toBeGreaterThan(0);
-    await expect(rows).toHaveCount(MESSAGE_COUNT + 2);
+    await expect
+      .poll(() => page.evaluate(() => window.encryptedRenderingProbe.completed))
+      .toBeGreaterThan(completedBeforePage);
+    // The page is published as a batch, even when one decryption finishes early.
+    await expect(rows).toHaveCount(MESSAGE_COUNT + 1);
     await expectReadingOffset();
     await releaseDecryption(page);
     await expect(rows).toHaveCount(MESSAGE_COUNT + 3);
