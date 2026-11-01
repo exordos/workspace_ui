@@ -21,8 +21,13 @@ import {
   readMessengerCatalogCache,
   resetWorkspaceMessengerCacheDbSingletonForTests,
 } from "~/shared/lib/workspace-messenger-cache-db";
-import { adaptMessengerFolder, adaptMessengerStream } from "./messenger-adapters.lib";
+import {
+  adaptMessengerFolder,
+  adaptMessengerStream,
+  adaptMessengerTopic,
+} from "./messenger-adapters.lib";
 import { upsertMessengerStreamCache } from "./messenger-cache.lib";
+import * as createChats from "./messenger-create-chat-actions.lib";
 import {
   archiveMessengerStream,
   createMessengerFolderItem,
@@ -208,6 +213,41 @@ describe("messenger sidebar actions", () => {
     useWorkspaceAuthStore.setState({ sessions: [], currentAccountId: null });
   });
 
+  it("creates additional topics in the canonical native direct stream instead of sending them to Telegram", async () => {
+    const runtimeContext = createRuntimeContext();
+    const ownerKey = prepareStoreOwner(runtimeContext);
+    seedStream(
+      ownerKey,
+      createStreamDto({ source_name: "telegram", private: true, direct_user_uuid: USER_B }),
+    );
+    const nativeUuid = "99999999-9999-4999-8999-999999999999";
+    const native = adaptMessengerStream(
+      createStreamDto({ uuid: nativeUuid, private: true, direct_user_uuid: USER_B }),
+    );
+    const create = vi.spyOn(createChats, "createWorkspaceDirectStream").mockResolvedValue({
+      status: "applied",
+      ownerKey,
+      stream: native,
+      defaultTopic: adaptMessengerTopic(createTopicDto({ stream_uuid: nativeUuid })),
+      streamBindings: [],
+    });
+    const send = vi.fn().mockResolvedValue(createTopicDto({ stream_uuid: nativeUuid }));
+    const result = await createMessengerTopic({
+      runtimeContext,
+      streamUuid: STREAM_A,
+      name: "Native",
+      client: { createStreamTopic: send },
+    });
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({ directUserUuid: USER_B, runtimeContext }),
+    );
+    expect(send).toHaveBeenCalledWith(expect.anything(), {
+      stream_uuid: nativeUuid,
+      name: "Native",
+    });
+    expect(result.status).toBe("applied");
+  });
+
   describe.each([true, false])("archive state %s", (isArchived) => {
     const changeArchiveState = isArchived ? archiveMessengerStream : unarchiveMessengerStream;
 
@@ -325,10 +365,10 @@ describe("messenger sidebar actions", () => {
         });
         const cacheReadStarted = createDeferred<void>();
         const releaseCacheRead = createDeferred<void>();
-        const originalReadCatalog = messengerCacheDb.readMessengerCatalogCache;
-        vi.spyOn(messengerCacheDb, "readMessengerCatalogCache").mockImplementationOnce(
-          async (key) => {
-            const snapshot = await originalReadCatalog(key);
+        const originalReadCatalog = messengerCacheDb.readMessengerStreamCatalogCache;
+        vi.spyOn(messengerCacheDb, "readMessengerStreamCatalogCache").mockImplementationOnce(
+          async (key, streamUuid) => {
+            const snapshot = await originalReadCatalog(key, streamUuid);
             cacheReadStarted.resolve();
             await releaseCacheRead.promise;
             return snapshot;

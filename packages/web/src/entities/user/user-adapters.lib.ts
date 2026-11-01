@@ -18,6 +18,7 @@ export function buildUserDisplayName(dto: WorkspaceMessengerUserDto): string {
 export function adaptWorkspaceMessengerUserDto(dto: WorkspaceMessengerUserDto): User {
   return {
     uuid: dto.uuid,
+    source: dto.source,
     username: dto.username,
     firstName: normalizeNamePart(dto.first_name),
     lastName: normalizeNamePart(dto.last_name),

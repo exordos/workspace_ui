@@ -263,9 +263,7 @@ describe("RightPanelShell", () => {
     expect(screen.getByTestId("connected-external-accounts-list")).toHaveTextContent(
       "Zulip · connected",
     );
-    expect(screen.getByTestId("manage-external-provider-entry")).toHaveTextContent(
-      "workspace.example.com",
-    );
+    expect(screen.queryByTestId("manage-external-provider-entry")).not.toBeInTheDocument();
     const connectTrigger = screen.getByTestId("connect-external-account-trigger");
     fireEvent.click(connectTrigger);
     expect(screen.getByRole("dialog", { name: "" })).toHaveTextContent("Connect external account");

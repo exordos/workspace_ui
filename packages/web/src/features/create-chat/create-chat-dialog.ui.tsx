@@ -239,7 +239,6 @@ export const CreateChatDialog: React.FC<CreateChatDialogProps> = ({
     onNavigateWorkspaceTopic,
     onChannelCreated,
   });
-  // The announcement-only checkbox is preserved as UI shell until Workspace policy support exists.
 
   const contentClassName = `${APP_DIALOG_CONTENT_BASE_CLASS} top-1/2 flex min-h-[32rem] max-h-[85vh] max-w-4xl -translate-y-1/2 flex-col overflow-hidden p-0`;
 

@@ -183,10 +183,11 @@
     "reconnectTitle": "Переподключить внешний аккаунт",
     "description": "Подключите внешний аккаунт к этому профилю Workspace.",
     "servicesTitle": "Внешние интеграции",
-    "servicesHint": "Подключите Zulip для синхронизации всех чатов и всей их истории с Workspace.",
+    "servicesHint": "Подключите Zulip или Telegram для синхронизации чатов и истории с Workspace.",
     "provider": "Провайдер",
     "providers": {
-      "zulip": "Zulip"
+      "zulip": "Zulip",
+      "telegram": "Telegram"
     },
     "serverUrl": "URL сервера",
     "serverUrlHint": "https://chat.example.com",
@@ -259,7 +260,8 @@
       "connectedShort": "Подключён",
       "checking": "Проверяем…",
       "checkingShort": "Проверка",
-      "unsupportedProvider": "Этот провайдер пока не поддерживается"
+      "unsupportedProvider": "Этот провайдер пока не поддерживается",
+      "syncing": "Импорт истории"
     },
     "edit": {
       "action": "Редактировать",
@@ -267,6 +269,18 @@
       "description": "Измени URL сервера, email или API key этого внешнего аккаунта.",
       "save": "Сохранить изменения",
       "apiKeyHint": "Оставь пустым, чтобы сохранить текущий ключ"
+    },
+    "telegram": {
+      "description": "Отсканируйте QR-код в Telegram для подключения аккаунта. Все доступные чаты и вся их история будут импортированы автоматически.",
+      "connect": "Подключить Telegram",
+      "starting": "Подготовка защищённого подключения…",
+      "scan": "В Telegram откройте Настройки → Устройства → Подключить устройство и отсканируйте QR-код.",
+      "password": "Пароль двухэтапной проверки Telegram",
+      "continue": "Продолжить",
+      "failed": "Не удалось подключиться. Проверьте соединение или повторите попытку.",
+      "progress": "Импорт истории: {{count}} сообщений",
+      "automaticImport": "Все доступные чаты и вся их история импортируются автоматически. Новые сообщения поступают во время импорта.",
+      "finished": "История импортирована: {{count}} сообщений"
     }
   },
   "externalAccounts": {
@@ -503,6 +517,7 @@
     "topicReopenFailed": "Не удалось снять отметку с темы.",
     "rightPanelUnsupported": "Информация Workspace для этого чата пока не подключена.",
     "routeUnsupportedForSend": "Из этой ссылки на чат отправка пока недоступна.",
+    "streamReadOnly": "В этом канале можно только читать сообщения.",
     "messageActionTargetMissing": "Сообщение уже не загружено.",
     "uploadsUnsupported": "Загрузка файлов пока не подключена к Workspace-мессенджеру.",
     "fileDownloadFailed": "Не удалось скачать файл. Попробуйте позже.",
@@ -762,7 +777,7 @@
     "announceChannel": "Анонсировать создание канала",
     "announcementOnly": "Канал объявлений",
     "announcementOnlyUnsupported": "Недоступно: не найдены системные группы модераторов/администраторов",
-    "workspaceAnnouncementOnlyUnsupported": "Политика канала объявлений пока не подключена к Workspace.",
+    "workspaceAnnouncementOnlyUnsupported": "Режим канала объявлений недоступен для зашифрованных чатов.",
     "members": "Участники",
     "memberBadgeCreator": "Владелец",
     "memberBadgeChannelAdmin": "Админ канала",

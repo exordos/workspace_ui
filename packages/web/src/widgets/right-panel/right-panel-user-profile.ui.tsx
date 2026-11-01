@@ -5,6 +5,7 @@ import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import {
   resolveUserPresenceVisual,
   selectUserStatusLabel,
+  selectUserSourceLabel,
 } from "~/entities/user/user-selectors.lib";
 import { useUsersStore } from "~/entities/user/user.model";
 import {
@@ -624,6 +625,14 @@ export const RightPanelUserProfile: React.FC<RightPanelUserProfileProps> = ({
               <div className="flex h-16 min-w-0 flex-1 flex-col justify-between">
                 <p className="truncate text-xl font-medium leading-6 text-text-primary">
                   {profile.title}
+                  {selectUserSourceLabel(profileUser) != null && (
+                    <span
+                      className="ml-2 rounded bg-bg px-1.5 py-0.5 text-[10px] text-text-muted"
+                      data-testid="right-panel-profile-source"
+                    >
+                      {selectUserSourceLabel(profileUser)}
+                    </span>
+                  )}
                 </p>
                 {customStatusLabel != null && (
                   <p

@@ -7,6 +7,7 @@ import { getLocale, type Locale } from "~/i18n/i18n";
 import { workspaceMessengerStreamRoute } from "~/shared/lib/workspace-messenger-route.lib";
 import {
   selectWorkspaceConversationUiKind,
+  selectWorkspaceDirectStreamUuids,
   selectWorkspaceStreamConversationUiKind,
 } from "./messenger-conversation-ui-kind.lib";
 import { MESSENGER_ALL_CHATS_FOLDER_UUID } from "./messenger-folder-system-type.lib";
@@ -493,7 +494,8 @@ function streamItemFromConversation(input: {
 export function selectMessengerSidebarTopicsForStream(input: {
   organizationId: string;
   projectId: string;
-  state: Pick<MessengerSidebarStreamsState, "topicIds" | "topicsById">;
+  state: Pick<MessengerSidebarStreamsState, "topicIds" | "topicsById"> &
+    Partial<Pick<MessengerSidebarStreamsState, "streamsById">>;
   streamUuid: MessengerUuid;
   streamNotificationMode: MessengerSidebarStreamItem["notificationMode"];
   messagesById: Record<MessengerUuid, MessengerMessage>;
@@ -503,6 +505,55 @@ export function selectMessengerSidebarTopicsForStream(input: {
   unreadMentionIndex?: MessengerSidebarUnreadMentionIndex;
 }): MessengerSidebarTopicItem[] {
   return selectMessengerTopicsForStream(input);
+}
+
+function groupDirectStreams(
+  rows: MessengerSidebarStreamItem[],
+  state: MessengerSidebarStreamsState,
+  currentUserUuid: string | null,
+): MessengerSidebarStreamItem[] {
+  const remaining = new Map(rows.map((row) => [row.streamUuid, row]));
+  const result: MessengerSidebarStreamItem[] = [];
+  for (const row of rows) {
+    if (!remaining.has(row.streamUuid)) continue;
+    const ids = selectWorkspaceDirectStreamUuids(
+      state.streamsById,
+      row.streamUuid,
+      currentUserUuid,
+    );
+    const group = ids
+      .map((id) => remaining.get(id))
+      .filter((item): item is MessengerSidebarStreamItem => item != null);
+    if (group.length < 2) {
+      result.push(row);
+      remaining.delete(row.streamUuid);
+      continue;
+    }
+    const primary =
+      group.find((item) => state.streamsById[item.streamUuid]?.sourceName === "native") ??
+      group[0]!;
+    const latest = group.reduce(
+      (a, b) => ((a.lastMessageCreatedAt ?? "") >= (b.lastMessageCreatedAt ?? "") ? a : b),
+      group[0]!,
+    );
+    result.push({
+      ...primary,
+      streamUuids: group.map((item) => item.streamUuid),
+      topics: row.topics,
+      unreadCount: group.reduce((n, item) => n + item.unreadCount, 0),
+      activeUnreadCount: group.reduce((n, item) => n + resolveWorkspaceActiveUnreadCount(item), 0),
+      passiveUnreadCount: group.reduce(
+        (n, item) => n + resolveWorkspacePassiveUnreadCount(item),
+        0,
+      ),
+      hasUnreadPersonalMention: group.some((item) => item.hasUnreadPersonalMention),
+      preview: latest.preview,
+      lastMessageCreatedAt: latest.lastMessageCreatedAt,
+      updatedAt: group.reduce((date, item) => (date > item.updatedAt ? date : item.updatedAt), ""),
+    });
+    for (const item of group) remaining.delete(item.streamUuid);
+  }
+  return result;
 }
 
 export function selectMessengerSidebarStreams(
@@ -678,6 +729,7 @@ export function selectMessengerSidebarStreams(
     streams.sort((a, b) => compareSidebarStreams(a, b, sortMode, state.streamsById));
   }
 
+  const groupedStreams = groupDirectStreams(streams, state, currentUserUuid);
   const sameScope =
     cachedEntry?.ownerKey === ownerKey &&
     cachedEntry.locale === locale &&
@@ -685,11 +737,11 @@ export function selectMessengerSidebarStreams(
     cachedEntry.projectId === options.projectId &&
     cachedEntry.currentUserUuid === currentUserUuid;
   const result =
-    streams.length === 0
+    groupedStreams.length === 0
       ? EMPTY_SIDEBAR_STREAMS
       : sameScope
-        ? reuseStreamRows(cachedEntry.result, streams)
-        : streams;
+        ? reuseStreamRows(cachedEntry.result, groupedStreams)
+        : groupedStreams;
   sidebarStreamsCache.set(selectedFolderUuid, {
     ownerKey,
     locale,

@@ -14,6 +14,7 @@ import type { MessengerStream } from "~/entities/messenger/messenger.types";
 import {
   selectSelectableWorkspaceUsers,
   selectUserDisplayName,
+  selectUserSourceLabel,
 } from "~/entities/user/user-selectors.lib";
 import { useUsersStore } from "~/entities/user/user.model";
 import type { User } from "~/entities/user/user.types";
@@ -290,24 +291,32 @@ export function useCreateChatDialog(options: {
   const channelCreateBlockedReasonKey = channelCreateBlocked
     ? "channel.creatorProfileLoading"
     : null;
-  const channelAnnouncementOnlyBlocked = true;
-  const channelAnnouncementOnlyBlockedReasonKey = "channel.workspaceAnnouncementOnlyUnsupported";
+  const channelAnnouncementOnlyBlocked = channelEncryption;
+  const channelAnnouncementOnlyBlockedReasonKey = channelEncryption
+    ? "channel.workspaceAnnouncementOnlyUnsupported"
+    : null;
 
   const workspaceUserOptions = useMemo<CreateChatUserOption[]>(() => {
     const currentUserUuid = workspaceRuntimeContext?.userUuid ?? null;
     return selectSelectableWorkspaceUsers(usersById, userIds)
       .filter((user) => user.uuid !== currentUserUuid)
-      .map((user) => ({
-        userId: user.uuid,
-        userKey: user.uuid,
-        username: user.username,
-        isDisabled: false,
-        workspaceUserUuid: user.uuid,
-        fullName: selectUserDisplayName(user, user.uuid),
-        email: user.email ?? "",
-        presence: resolveWorkspacePickerPresence(user.status),
-        statusLabel: user.statusText,
-      }))
+      .map((user) => {
+        const source = selectUserSourceLabel(user);
+        return {
+          userId: user.uuid,
+          userKey: user.uuid,
+          username: user.username,
+          isDisabled: false,
+          workspaceUserUuid: user.uuid,
+          fullName: selectUserDisplayName(user, user.uuid),
+          email: user.email ?? "",
+          presence: resolveWorkspacePickerPresence(user.status),
+          statusLabel:
+            source == null
+              ? user.statusText
+              : [source, user.statusText ?? user.email].filter(Boolean).join(" · "),
+        };
+      })
       .sort((left, right) => left.fullName.localeCompare(right.fullName));
   }, [userIds, usersById, workspaceRuntimeContext?.userUuid]);
 
@@ -611,6 +620,7 @@ export function useCreateChatDialog(options: {
       memberUserUuids,
       inviteOnly: channelEncryption ? false : channelInviteOnly,
       announce: channelEncryption ? false : channelAnnounce,
+      announcementOnly: channelEncryption ? false : channelAnnouncementOnly,
       ...(channelEncryption ? { encryption: true, creationAttempt: encryptedIntent?.attempt } : {}),
     })
       .then((result) => {
@@ -663,6 +673,7 @@ export function useCreateChatDialog(options: {
   }, [
     channelEncryption,
     channelAnnounce,
+    channelAnnouncementOnly,
     channelDesc,
     channelInviteOnly,
     channelName,

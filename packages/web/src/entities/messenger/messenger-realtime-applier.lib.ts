@@ -110,7 +110,11 @@ export interface MessengerRealtimeActiveCacheWriter {
     topicUuid: MessengerUuid,
     streamUuid: MessengerUuid,
   ) => Promise<void> | void;
-  upsertCachedFolder?: (ownerKey: string, folder: MessengerFolder) => Promise<void> | void;
+  upsertCachedFolder?: (
+    ownerKey: string,
+    folder: MessengerFolder,
+    changedStreamUuids?: readonly MessengerUuid[],
+  ) => Promise<void> | void;
   deleteCachedFolder?: (ownerKey: string, folderUuid: MessengerUuid) => Promise<void> | void;
   deleteCachedFolderItem?: (
     ownerKey: string,
@@ -469,7 +473,9 @@ function applyStreamRealtimeEvent(
       const folder = nextStore.foldersById[folderUuid];
       if (folder == null || folder === previousFoldersById[folderUuid]) continue;
       writes.push(
-        writeRealtimeCacheBestEffort(() => activeCache.upsertCachedFolder?.(ownerKey, folder)),
+        writeRealtimeCacheBestEffort(() =>
+          activeCache.upsertCachedFolder?.(ownerKey, folder, [stream.uuid]),
+        ),
       );
     }
   }
@@ -573,9 +579,19 @@ function applyFolderRealtimeEvent(
   }
 
   const folder = adaptMessengerFolder(event.folder);
+  const previous = store.foldersById[folder.uuid];
+  const previousItems = new Map(previous?.items.map((item) => [item.uuid, item]));
+  const changedStreamUuids =
+    previous == null
+      ? undefined
+      : folder.items
+          .filter((item) => JSON.stringify(item) !== JSON.stringify(previousItems.get(item.uuid)))
+          .map((item) => item.streamUuid);
   store.applyFolderSnapshot(ownerKey, folder);
   if (activeCache.upsertCachedFolder != null) {
-    return writeRealtimeCacheBestEffort(() => activeCache.upsertCachedFolder?.(ownerKey, folder));
+    return writeRealtimeCacheBestEffort(() =>
+      activeCache.upsertCachedFolder?.(ownerKey, folder, changedStreamUuids),
+    );
   }
 }
 

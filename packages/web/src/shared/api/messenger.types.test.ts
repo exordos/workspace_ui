@@ -506,6 +506,10 @@ describe("Workspace messenger DTO guards", () => {
     ).toBe(true);
   });
 
+  it("accepts imported Telegram users in the Workspace directory", () => {
+    expect(isWorkspaceMessengerUserDto({ ...userDto, source: "telegram" })).toBe(true);
+  });
+
   it("accepts user payloads without first and last name when username is present", () => {
     expect(
       isWorkspaceMessengerUserDto({

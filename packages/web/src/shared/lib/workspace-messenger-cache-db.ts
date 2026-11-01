@@ -1091,8 +1091,9 @@ function updateCatalogRowsAtomically<TRow extends { id: string }>(
   storeName: string,
   rows: readonly TRow[],
   update: (store: IDBObjectStore, previous: TRow | undefined, incoming: TRow) => void,
+  sharedTransaction?: IDBTransaction,
 ): Promise<void> {
-  const transaction = db.transaction(storeName, "readwrite");
+  const transaction = sharedTransaction ?? db.transaction(storeName, "readwrite");
   const store = transaction.objectStore(storeName);
   for (const row of rows) {
     const request = store.get(row.id);
@@ -1100,7 +1101,7 @@ function updateCatalogRowsAtomically<TRow extends { id: string }>(
       update(store, request.result as TRow | undefined, row);
     };
   }
-  return transactionDone(transaction);
+  return sharedTransaction == null ? transactionDone(transaction) : Promise.resolve();
 }
 
 function updateRowById<TRow>(
@@ -1258,6 +1259,7 @@ async function upsertFolders(
   ownerKey: string,
   folders: readonly WorkspaceMessengerCachedFolder[],
   options: CatalogUpsertOptions = {},
+  sharedTransaction?: IDBTransaction,
 ): Promise<void> {
   if (folders.length === 0) return;
 
@@ -1272,6 +1274,7 @@ async function upsertFolders(
       if (options.shouldApply?.() === false) return;
       if (shouldUpsertCatalogRow(previous, row.folder.updatedAt, options)) store.put(row);
     },
+    sharedTransaction,
   );
 }
 
@@ -1280,6 +1283,7 @@ async function upsertFolderItems(
   ownerKey: string,
   folderItems: readonly WorkspaceMessengerCachedFolderItem[],
   options: CatalogUpsertOptions = {},
+  sharedTransaction?: IDBTransaction,
 ): Promise<void> {
   if (folderItems.length === 0) return;
 
@@ -1288,15 +1292,45 @@ async function upsertFolderItems(
   const rows = folderItems.map((folderItem) =>
     toFolderItemRow(ownerKey, folderItem, cacheUpdatedAt),
   );
-  await updateCatalogRowsAtomically<WorkspaceMessengerFolderItemCacheRow>(
-    db,
-    stores.folderItems,
-    rows,
-    (store, previous, row) => {
-      if (options.shouldApply?.() === false) return;
-      if (shouldUpsertCatalogRow(previous, row.folderItem.updatedAt, options)) store.put(row);
-    },
-  );
+  const update = (
+    store: IDBObjectStore,
+    previous: WorkspaceMessengerFolderItemCacheRow | undefined,
+    row: WorkspaceMessengerFolderItemCacheRow,
+  ) => {
+    if (options.shouldApply?.() === false) return;
+    if (
+      shouldUpsertCatalogRow(previous, row.folderItem.updatedAt, options) &&
+      JSON.stringify(previous?.folderItem) !== JSON.stringify(row.folderItem)
+    )
+      store.put(row);
+  };
+  if (rows.length <= 8) {
+    await updateCatalogRowsAtomically(db, stores.folderItems, rows, update, sharedTransaction);
+    return;
+  }
+  const transaction = sharedTransaction ?? db.transaction(stores.folderItems, "readwrite");
+  const store = transaction.objectStore(stores.folderItems);
+  const previous = new Map<string, WorkspaceMessengerFolderItemCacheRow>();
+  const folders = new Set(rows.map((row) => row.folderUuid));
+  let pending = folders.size;
+  for (const folderUuid of folders) {
+    const request = store.index("byOwnerFolder").getAll([ownerKey, folderUuid]);
+    request.onsuccess = () => {
+      for (const row of request.result as WorkspaceMessengerFolderItemCacheRow[])
+        previous.set(row.id, row);
+      if (--pending > 0) return;
+      for (const row of rows) {
+        if (previous.has(row.id)) update(store, previous.get(row.id), row);
+        else {
+          // A moved item may still exist outside the incoming folder range.
+          const existing = store.get(row.id);
+          existing.onsuccess = () =>
+            update(store, existing.result as WorkspaceMessengerFolderItemCacheRow | undefined, row);
+        }
+      }
+    };
+  }
+  if (sharedTransaction == null) await transactionDone(transaction);
 }
 
 async function upsertUsers(
@@ -1370,6 +1404,68 @@ async function writeCatalogCollection<TItem>(
     new Set(items.map((item) => getCacheId(ownerKey, item))),
     reconcileFence,
   );
+}
+
+export async function readMessengerStreamCatalogCache(
+  ownerKey: string,
+  streamUuid: string,
+  options: { includeFolders?: boolean } = {},
+): Promise<Pick<WorkspaceMessengerCatalogCacheSnapshot, "streams" | "topics" | "folders">> {
+  const empty = { streams: [], topics: [], folders: [] };
+  if (!isIndexedDBAvailable()) return empty;
+  try {
+    const db = await openWorkspaceMessengerCacheDb();
+    const stores = WORKSPACE_MESSENGER_CACHE_STORES;
+    const transaction = db.transaction(
+      options.includeFolders === false
+        ? [stores.streams, stores.topics]
+        : [stores.streams, stores.topics, stores.folders],
+      "readonly",
+    );
+    const [stream, topics, folders] = await Promise.all([
+      requestToPromise<WorkspaceMessengerStreamCacheRow | undefined>(
+        transaction.objectStore(stores.streams).get(cacheRowId(ownerKey, streamUuid)),
+      ),
+      requestToPromise<WorkspaceMessengerTopicCacheRow[]>(
+        transaction
+          .objectStore(stores.topics)
+          .index("byOwnerStream")
+          .getAll([ownerKey, streamUuid]),
+      ),
+      options.includeFolders === false
+        ? Promise.resolve([])
+        : requestToPromise<WorkspaceMessengerFolderCacheRow[]>(
+            transaction.objectStore(stores.folders).index("byOwner").getAll(ownerKey),
+          ),
+    ]);
+    return {
+      streams: stream == null ? [] : [stream.stream],
+      topics: topics.filter((row) => row.streamUuid === streamUuid).map((row) => row.topic),
+      folders: folders.map((row) => row.folder),
+    };
+  } catch {
+    return empty;
+  }
+}
+
+export async function readMessengerCachedStream(
+  ownerKey: string,
+  streamUuid: string,
+): Promise<WorkspaceMessengerCachedStream | null> {
+  if (!isIndexedDBAvailable()) return null;
+  try {
+    const db = await openWorkspaceMessengerCacheDb();
+    const storeName = WORKSPACE_MESSENGER_CACHE_STORES.streams;
+    const row = await requestToPromise<WorkspaceMessengerStreamCacheRow | undefined>(
+      db
+        .transaction(storeName, "readonly")
+        .objectStore(storeName)
+        .get(cacheRowId(ownerKey, streamUuid)),
+    );
+    return row?.stream ?? null;
+  } catch {
+    return null;
+  }
 }
 
 export async function readMessengerCatalogCache(
@@ -1559,15 +1655,19 @@ export async function upsertMessengerFolderSnapshotsCache(
   folderItems: readonly WorkspaceMessengerCachedFolderItem[] = [],
   options: { shouldApply?: () => boolean } = {},
 ): Promise<void> {
-  if (!isIndexedDBAvailable()) return;
+  if (!isIndexedDBAvailable() || (folders.length === 0 && folderItems.length === 0)) return;
 
   try {
     const db = await openWorkspaceMessengerCacheDb();
     if (options.shouldApply?.() === false) return;
+    const stores = WORKSPACE_MESSENGER_CACHE_STORES;
+    const transaction = db.transaction([stores.folders, stores.folderItems], "readwrite");
+    const completed = transactionDone(transaction);
     await Promise.all([
-      upsertFolders(db, ownerKey, folders, options),
-      upsertFolderItems(db, ownerKey, folderItems, options),
+      upsertFolders(db, ownerKey, folders, options, transaction),
+      upsertFolderItems(db, ownerKey, folderItems, options, transaction),
     ]);
+    await completed;
   } catch {
     return;
   }

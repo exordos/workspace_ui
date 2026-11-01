@@ -4,6 +4,7 @@ import type { User, UsersById } from "~/entities/user/user.types";
 import { getLocale, t, type Locale } from "~/i18n/i18n";
 import { summarizeWorkspaceMessageMarkdown } from "~/shared/lib/workspace-message-render/workspace-message-summary.lib";
 import { workspaceMessengerTopicRoute } from "~/shared/lib/workspace-messenger-route.lib";
+import { selectWorkspaceDirectStreamUuids } from "./messenger-conversation-ui-kind.lib";
 import {
   isWorkspaceTopicEffectivelyMuted,
   resolveWorkspaceActiveUnreadCount,
@@ -20,7 +21,8 @@ import type {
 } from "./messenger.types";
 
 const EMPTY_TOPIC_LIST: MessengerTopicListItem[] = [];
-type TopicCatalog = Pick<MessengerStoreState, "topicIds" | "topicsById">;
+type TopicCatalog = Pick<MessengerStoreState, "topicIds" | "topicsById"> &
+  Partial<Pick<MessengerStoreState, "streamsById">>;
 const topicsByStreamCache = new WeakMap<
   TopicCatalog["topicsById"],
   { topicIds: TopicCatalog["topicIds"]; byStream: Map<MessengerUuid, MessengerTopic[]> }
@@ -279,17 +281,27 @@ export function selectMessengerTopicsForStream(input: {
       projectId: input.projectId,
       messagesById: input.messagesById,
     });
-  const topics = (topicsByStream(input.state).get(input.streamUuid) ?? []).map((topic) =>
-    createMessengerTopicListItem({
-      organizationId: input.organizationId,
-      projectId: input.projectId,
-      topic,
-      messagesById: input.messagesById,
-      usersById: input.usersById,
-      currentUserUuid: input.currentUserUuid,
-      unreadMentionIndex,
-    }),
-  );
+  const streamUuids =
+    input.state.streamsById == null
+      ? [input.streamUuid]
+      : selectWorkspaceDirectStreamUuids(
+          input.state.streamsById,
+          input.streamUuid,
+          input.currentUserUuid,
+        );
+  const topics = streamUuids
+    .flatMap((uuid) => topicsByStream(input.state).get(uuid) ?? [])
+    .map((topic) =>
+      createMessengerTopicListItem({
+        organizationId: input.organizationId,
+        projectId: input.projectId,
+        topic,
+        messagesById: input.messagesById,
+        usersById: input.usersById,
+        currentUserUuid: input.currentUserUuid,
+        unreadMentionIndex,
+      }),
+    );
 
   if (topics.length === 0) return EMPTY_TOPIC_LIST;
   return topics.sort((a, b) =>

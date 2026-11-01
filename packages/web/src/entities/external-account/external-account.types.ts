@@ -5,19 +5,20 @@ import type {
 } from "~/shared/api/messenger-external-accounts.types";
 
 export type ExternalAccountUuid = string;
-export type ExternalAccountProvider = "zulip";
+export type ExternalAccountProvider = "zulip" | "telegram";
 export type ExternalAccountStatus = WorkspaceExternalAccountStatus;
 export type ExternalAccountSelectionMode = WorkspaceExternalAccountSelectionMode;
 export type ExternalAccountHistoryDepth = WorkspaceExternalAccountHistoryDepth;
 export type ExternalAccountLoadStatus = "idle" | "loading" | "ready" | "error";
 
 export interface ExternalAccountSettings {
-  kind: "zulip";
+  kind: "zulip" | "telegram";
   serverUrl?: string;
   email?: string;
   selectionMode?: ExternalAccountSelectionMode;
   historyDepth?: ExternalAccountHistoryDepth;
   defaultProjectId?: string;
+  peerKeys?: string[];
 }
 
 export interface ExternalAccount {

@@ -9,10 +9,12 @@ import {
   readMessengerCatalogCache,
   resetWorkspaceMessengerCacheDbSingletonForTests,
   upsertMessengerStreamBindingsCache,
+  upsertMessengerFolderSnapshotsCache,
 } from "~/shared/lib/workspace-messenger-cache-db";
 import {
   deleteMessengerStreamCache,
   messengerRealtimeBackgroundCache,
+  messengerRealtimeActiveCache,
   patchMessengerCachedMessage,
   readMessengerCatalogPayloadCache,
   readMessengerConversationWindowCache,
@@ -21,6 +23,8 @@ import {
   writeMessengerMessageBodyCache,
   restoreMessengerStreamCache,
   upsertMessengerStreamCache,
+  upsertMessengerTopicCache,
+  writeMessengerFolderSnapshotCache,
   writeMessengerCatalogPayloadCache,
 } from "./messenger-cache.lib";
 import type {
@@ -196,6 +200,193 @@ afterEach(async () => {
 });
 
 describe("messenger cache", () => {
+  it("preserves a newer item moved to another folder during a bulk snapshot", async () => {
+    const item = { ...createFolder().items[0]!, updatedAt: "2026-07-01T09:00:00.000Z" };
+    await writeMessengerCatalogPayloadCache(OWNER_KEY, {
+      ...createEmptyPayload(),
+      folders: [createFolder({ items: [item] })],
+    });
+    await upsertMessengerFolderSnapshotsCache(
+      OWNER_KEY,
+      [],
+      [
+        { ...item, folderUuid: "other-folder", updatedAt: DATE },
+        { ...item, uuid: "new-item", folderUuid: "other-folder", updatedAt: DATE },
+      ],
+    );
+    const snapshot = await readMessengerCatalogCache(OWNER_KEY);
+    expect(snapshot.folderItems.find((row) => row.uuid === FOLDER_ITEM_UUID)).toMatchObject({
+      folderUuid: FOLDER_UUID,
+      updatedAt: item.updatedAt,
+    });
+    expect(snapshot.folderItems).toHaveLength(2);
+  });
+  it("persists a small folder delta with only the affected items read", async () => {
+    const target = createFolder().items[0]!;
+    const second = {
+      ...target,
+      uuid: "second-target-item",
+      streamUuid: "second-target-stream",
+      conversationId: "stream:second-target-stream",
+    };
+    const unrelated = Array.from({ length: 100 }, (_, i) => ({
+      ...target,
+      uuid: `delta-item-${i}`,
+      streamUuid: `delta-stream-${i}`,
+    }));
+    await writeMessengerCatalogPayloadCache(OWNER_KEY, {
+      ...createEmptyPayload(),
+      folders: [createFolder({ items: [target, second, ...unrelated] })],
+    });
+    const bulkReads = vi.spyOn(IDBIndex.prototype, "getAll");
+    try {
+      await writeMessengerFolderSnapshotCache(
+        OWNER_KEY,
+        createFolder({
+          items: [{ ...target, unreadCount: 2 }, { ...second, unreadCount: 3 }, ...unrelated],
+        }),
+        [STREAM_UUID, second.streamUuid],
+      );
+      expect(bulkReads).not.toHaveBeenCalled();
+    } finally {
+      bulkReads.mockRestore();
+    }
+    const snapshot = await readMessengerCatalogCache(OWNER_KEY);
+    expect(snapshot.folderItems).toHaveLength(102);
+    expect(snapshot.folderItems.find((item) => item.uuid === FOLDER_ITEM_UUID)).toMatchObject({
+      unreadCount: 2,
+    });
+  });
+  it("leaves folder snapshots to the active applier without reading the whole folder twice", async () => {
+    await writeMessengerCatalogPayloadCache(OWNER_KEY, {
+      ...createEmptyPayload(),
+      streams: [createStream()],
+      folders: [createFolder()],
+    });
+    const reads = vi.spyOn(IDBIndex.prototype, "getAll");
+    try {
+      await messengerRealtimeActiveCache.upsertCachedStream(
+        OWNER_KEY,
+        createStream({ unreadCount: 2 }),
+      );
+      expect(
+        reads.mock.contexts.map((index) => (index as IDBIndex).objectStore.name),
+      ).not.toContain("folders");
+    } finally {
+      reads.mockRestore();
+    }
+  });
+  it("reads only the affected stream row for a realtime topic change", async () => {
+    await writeMessengerCatalogPayloadCache(OWNER_KEY, {
+      ...createEmptyPayload(),
+      streams: [createStream()],
+      topics: [createTopic()],
+    });
+    const reads = vi.spyOn(IDBIndex.prototype, "getAll");
+    try {
+      await upsertMessengerTopicCache(OWNER_KEY, createTopic({ name: "Changed topic" }));
+      expect(reads).not.toHaveBeenCalled();
+    } finally {
+      reads.mockRestore();
+    }
+  });
+  it("does not rewrite unchanged items when a realtime folder snapshot changes one chat", async () => {
+    const target = createFolder().items[0]!;
+    const unrelated = Array.from({ length: 100 }, (_, i) => ({
+      ...target,
+      uuid: `snapshot-item-${i}`,
+      streamUuid: `snapshot-stream-${i}`,
+      conversationId: `stream:snapshot-stream-${i}`,
+    }));
+    await writeMessengerCatalogPayloadCache(OWNER_KEY, {
+      ...createEmptyPayload(),
+      folders: [createFolder({ items: [target, ...unrelated] })],
+    });
+    const writes = vi.spyOn(IDBObjectStore.prototype, "put");
+    const reads = vi.spyOn(IDBObjectStore.prototype, "get");
+    const bulkReads = vi.spyOn(IDBIndex.prototype, "getAll");
+    try {
+      await writeMessengerFolderSnapshotCache(
+        OWNER_KEY,
+        createFolder({
+          unreadCount: 2,
+          items: [{ ...target, unreadCount: 2 }, ...unrelated],
+        }),
+      );
+      const itemWrites = writes.mock.calls
+        .map(([row]) => row)
+        .filter((row) => row.folderItem != null);
+      expect(itemWrites.map((row) => row.folderItem.uuid)).toEqual([FOLDER_ITEM_UUID]);
+      expect(
+        bulkReads.mock.contexts
+          .filter((index) => (index as IDBIndex).objectStore.name === "folderItems")
+          .map((index) => (index as IDBIndex).name),
+      ).toEqual(["byOwnerFolder"]);
+      expect(
+        reads.mock.contexts.filter((store) => (store as IDBObjectStore).name === "folderItems"),
+      ).toHaveLength(0);
+    } finally {
+      writes.mockRestore();
+      reads.mockRestore();
+      bulkReads.mockRestore();
+    }
+    const snapshot = await readMessengerCatalogCache(OWNER_KEY);
+    expect(snapshot.folderItems).toHaveLength(101);
+    expect(snapshot.folderItems.find((item) => item.uuid === FOLDER_ITEM_UUID)).toMatchObject({
+      unreadCount: 2,
+    });
+  });
+  it("does not scan unrelated catalog stores for live stream and topic updates", async () => {
+    await writeMessengerCatalogPayloadCache(OWNER_KEY, {
+      ...createEmptyPayload(),
+      streams: [createStream()],
+      topics: [createTopic()],
+    });
+    const reads = vi.spyOn(IDBIndex.prototype, "getAll");
+    try {
+      await upsertMessengerStreamCache(OWNER_KEY, createStream({ name: "Updated stream" }));
+      await upsertMessengerTopicCache(OWNER_KEY, createTopic({ name: "Updated topic" }));
+      const stores = reads.mock.contexts.map((index) => (index as IDBIndex).objectStore.name);
+      expect(stores).not.toContain("conversations");
+      expect(stores).not.toContain("streamBindings");
+      expect(stores).not.toContain("folderItems");
+      expect(stores).not.toContain("streams");
+    } finally {
+      reads.mockRestore();
+    }
+    const snapshot = await readMessengerCatalogCache(OWNER_KEY);
+    expect(snapshot.streams[0]).toMatchObject({ name: "Updated stream" });
+    expect(snapshot.topics[0]).toMatchObject({ name: "Updated topic" });
+  });
+  it("does not rewrite unrelated imported folder items for one stream unread update", async () => {
+    const target = createFolder().items[0]!;
+    const unrelated = Array.from({ length: 100 }, (_, i) => ({
+      ...target,
+      uuid: `other-item-${i}`,
+      streamUuid: `other-stream-${i}`,
+      conversationId: `stream:other-stream-${i}`,
+    }));
+    await writeMessengerCatalogPayloadCache(OWNER_KEY, {
+      ...createEmptyPayload(),
+      streams: [createStream()],
+      folders: [createFolder({ items: [target, ...unrelated] })],
+    });
+    const writes = vi.spyOn(IDBObjectStore.prototype, "put");
+    try {
+      await upsertMessengerStreamCache(OWNER_KEY, createStream({ unreadCount: 2 }));
+      const folderItemWrites = writes.mock.calls
+        .map(([row]) => row)
+        .filter((row) => row.folderItem != null);
+      expect(folderItemWrites.map((row) => row.folderItem.uuid)).toEqual([FOLDER_ITEM_UUID]);
+      const snapshot = await readMessengerCatalogCache(OWNER_KEY);
+      expect(snapshot.folderItems).toHaveLength(101);
+      expect(snapshot.folders[0]).toMatchObject({
+        items: [expect.objectContaining({ unreadCount: 2 }), ...unrelated],
+      });
+    } finally {
+      writes.mockRestore();
+    }
+  });
   it("restores stream color from the catalog cache", async () => {
     await writeMessengerCatalogPayloadCache(OWNER_KEY, {
       ...createEmptyPayload(),

@@ -45,6 +45,7 @@ import {
   adaptMessengerTopic,
 } from "./messenger-adapters.lib";
 import { upsertMessengerStreamCache } from "./messenger-cache.lib";
+import { createWorkspaceDirectStream } from "./messenger-create-chat-actions.lib";
 import {
   buildMessengerRequestOptions,
   type MessengerRequestOptionsOverrides,
@@ -699,9 +700,27 @@ export async function createMessengerTopic({
   if (action.isStale())
     return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
 
+  let targetStreamUuid = streamUuid;
+  const catalog = useMessengerStore.getState();
+  const selected =
+    catalog.ownerKey === action.ownerKey ? catalog.streamsById[streamUuid] : undefined;
+  if (selected?.isPrivate && selected.directUserUuid != null && selected.sourceName !== "native") {
+    const native = await createWorkspaceDirectStream({
+      runtimeContext,
+      getRuntimeContext,
+      clientOptions,
+      signal,
+      directUserUuid: selected.directUserUuid,
+    });
+    if (native.status === "skipped") return native;
+    if (action.isStale())
+      return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
+    targetStreamUuid = native.stream.uuid;
+  }
+
   const dto = await (client.createStreamTopic ?? defaultCreateStreamTopic)(
     buildMessengerRequestOptions(runtimeContext, clientOptions, signal),
-    { stream_uuid: streamUuid, name },
+    { stream_uuid: targetStreamUuid, name },
   );
   if (action.isStale())
     return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };

@@ -6,6 +6,7 @@ import {
   resolveWorkspaceDisplayedUnread,
 } from "~/entities/messenger/messenger-notification-mode.lib";
 import type { MessengerSidebarActivityCounts } from "~/entities/messenger/messenger-sidebar.lib";
+import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import type {
   MessengerFolder,
   MessengerSidebarStreamItem,
@@ -24,6 +25,7 @@ import { useRightDrawer } from "~/shared/contexts/right-drawer";
 import { resolveAvatarBackgroundColor } from "~/shared/lib/avatar-color.lib";
 import { formatMessageTimeRelative } from "~/shared/lib/datetime.lib";
 import { sidebarRowClass } from "~/shared/lib/format";
+import { useIntersectedOnce } from "~/shared/lib/intersected-once.hook";
 import { isTabVisible, onVisibilityChange } from "~/shared/lib/visibility";
 import {
   parseWorkspaceMessengerRoute,
@@ -196,8 +198,14 @@ const WorkspaceSidebarTopicRow = React.memo(function WorkspaceSidebarTopicRow({
 }>): React.ReactElement {
   useTranslation();
   React.useContext(SidebarCalendarContext);
+  const ownStreamNotificationMode = useMessengerStore(
+    (state) => state.streamsById[topic.streamUuid]?.notificationMode ?? streamNotificationMode,
+  );
   const isActive = activeTopicUuid === topic.topicUuid;
-  const isMuted = isWorkspaceTopicEffectivelyMuted(topic.notificationMode, streamNotificationMode);
+  const isMuted = isWorkspaceTopicEffectivelyMuted(
+    topic.notificationMode,
+    ownStreamNotificationMode,
+  );
   const displayedUnread = resolveWorkspaceDisplayedUnread(topic);
   const title = formatSidebarTopicTitle(topic.title);
 
@@ -205,7 +213,7 @@ const WorkspaceSidebarTopicRow = React.memo(function WorkspaceSidebarTopicRow({
     <WorkspaceTopicContextMenu
       topic={topic}
       streamTitle={streamTitle}
-      streamNotificationMode={streamNotificationMode}
+      streamNotificationMode={ownStreamNotificationMode}
       isDirectPrivate={isDirectPrivate}
     >
       <Link
@@ -413,6 +421,7 @@ const WorkspaceSidebarStreamRow = React.memo(function WorkspaceSidebarStreamRow(
     activeStreamUuid,
     activeTopicUuid,
   });
+
   const rowClass = sidebarChatRowLinkClass(compact, "stream");
   const avatarSize = compact ? "sm" : "md";
   // Highlight only the active route — never “expanded”.
@@ -561,6 +570,32 @@ const WorkspaceSidebarStreamRow = React.memo(function WorkspaceSidebarStreamRow(
           />
         </div>
       </WorkspaceStreamContextMenu>
+    </div>
+  );
+});
+
+const WorkspaceSidebarDeferredStreamRow = React.memo(function WorkspaceSidebarDeferredStreamRow(
+  props: React.ComponentProps<typeof WorkspaceSidebarStreamRow>,
+): React.ReactElement {
+  const ref = React.useRef<HTMLDivElement>(null);
+  const intersected = useIntersectedOnce(ref, { rootSelector: "[data-sidebar-scroll]" });
+  const visible =
+    intersected ||
+    props.expanded ||
+    props.searchMode ||
+    props.activeStreamUuid === props.stream.streamUuid;
+  return (
+    <div
+      ref={ref}
+      data-testid="workspace-deferred-stream-row"
+      aria-hidden={!visible || undefined}
+      style={
+        visible
+          ? undefined
+          : { minHeight: props.compact ? 32 : props.stream.preview == null ? 52 : 66 }
+      }
+    >
+      {visible ? <WorkspaceSidebarStreamRow {...props} /> : null}
     </div>
   );
 });
@@ -761,7 +796,7 @@ export const WorkspaceSidebar: React.FC<WorkspaceSidebarProps> = ({
           (folderScope === "all" ? allStreamsByUuid : localStreamsByUuid).get(stream.streamUuid) ??
           stream;
         return (
-          <WorkspaceSidebarStreamRow
+          <WorkspaceSidebarDeferredStreamRow
             key={stream.id}
             stream={stream}
             expanded={
@@ -769,7 +804,11 @@ export const WorkspaceSidebar: React.FC<WorkspaceSidebarProps> = ({
                 ? stream.topics.length > 0
                 : expandedStreamUuids.includes(stream.streamUuid)
             }
-            activeStreamUuid={activeStreamUuid}
+            activeStreamUuid={
+              activeStreamUuid != null && stream.streamUuids?.includes(activeStreamUuid)
+                ? stream.streamUuid
+                : activeStreamUuid
+            }
             activeTopicUuid={activeTopicUuid}
             normalizedQuery={normalizedQuery}
             searchMode={forceSearchExpansion}

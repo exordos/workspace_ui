@@ -132,6 +132,7 @@ export interface CreateWorkspaceChannelOptions extends MessengerCreateChatBaseOp
   description?: string;
   inviteOnly?: boolean;
   announce?: boolean;
+  announcementOnly?: boolean;
   memberUserUuids?: readonly MessengerUuid[];
 }
 
@@ -149,6 +150,7 @@ export interface RunWorkspaceChannelCreateOptions {
   description?: string;
   inviteOnly?: boolean;
   announce?: boolean;
+  announcementOnly?: boolean;
   memberUserUuids?: readonly MessengerUuid[];
 }
 
@@ -204,6 +206,7 @@ function nativeStreamBody(input: {
   description: string;
   inviteOnly?: boolean;
   announce?: boolean;
+  announcementOnly?: boolean;
   directUserUuid?: MessengerUuid;
 }): WorkspaceMessengerCreateStreamRequestBody {
   return {
@@ -212,6 +215,7 @@ function nativeStreamBody(input: {
     source_name: "native",
     ...(input.inviteOnly !== undefined ? { invite_only: input.inviteOnly } : {}),
     ...(input.announce !== undefined ? { announce: input.announce } : {}),
+    ...(input.announcementOnly !== undefined ? { announcement_only: input.announcementOnly } : {}),
     ...(input.directUserUuid != null ? { direct_user_uuid: input.directUserUuid } : {}),
   };
 }
@@ -322,6 +326,7 @@ async function createWorkspaceChannelAttempt({
   description = "",
   inviteOnly,
   announce,
+  announcementOnly,
   memberUserUuids,
   encryption = false,
   encryptionBootstrap = realChatInitialKeyBootstrap,
@@ -422,6 +427,7 @@ async function createWorkspaceChannelAttempt({
         description,
         inviteOnly: encryption ? false : inviteOnly,
         announce: encryption ? false : announce,
+        announcementOnly: encryption ? false : announcementOnly,
       }),
       ...(encryption ? { encryption: true, current_encryption_key_uuid: encryptionKeyUuid } : {}),
     });
@@ -532,6 +538,7 @@ export async function runWorkspaceChannelCreate(
     description: options.description?.trim() ?? "",
     inviteOnly: options.inviteOnly,
     announce: options.announce,
+    announcementOnly: options.announcementOnly,
     memberUserUuids: options.memberUserUuids,
     encryption: options.encryption,
     encryptionBootstrap: options.encryptionBootstrap,

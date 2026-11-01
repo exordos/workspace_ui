@@ -9,6 +9,7 @@ export const WORKSPACE_USER_CACHE_DB_VERSION = DB_VERSION;
 
 export interface WorkspaceUserCacheProfile {
   uuid: string;
+  source?: "iam" | "zulip" | "telegram";
   username: string;
   displayName: string;
   firstName: string | null;

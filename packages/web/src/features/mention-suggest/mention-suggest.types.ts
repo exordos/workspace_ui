@@ -5,10 +5,11 @@
  * Filters users from the users store by matching query against Workspace user fields.
  */
 
-import type { UserPresenceStatus } from "~/entities/user/user.types";
+import type { User, UserPresenceStatus } from "~/entities/user/user.types";
 
 export interface MentionSuggestion {
   userUuid: string;
+  source?: User["source"];
   displayName: string;
   username: string;
   email: string;

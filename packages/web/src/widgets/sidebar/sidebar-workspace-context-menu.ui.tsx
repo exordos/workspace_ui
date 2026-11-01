@@ -189,14 +189,17 @@ function resolveSelectedWorkspaceFolder(
   );
 }
 
+const EMPTY_MENU_FOLDERS: MessengerFolder[] = [];
+
 function useWorkspaceMenuFolders(
   streamUuid: string,
   folderScope: "selected" | "all",
+  enabled: boolean,
 ): {
   userCreatedFolders: MessengerFolder[];
   selectedFolderItem: MessengerFolderItem | null;
 } {
-  const folders = useMessengerStore(selectMessengerFolders);
+  const folders = useMessengerStore(enabled ? selectMessengerFolders : () => EMPTY_MENU_FOLDERS);
   const selectedFolderId = useSidebarConfigStore((s) => s.selectedFolderId);
 
   return useMemo(() => {
@@ -215,6 +218,50 @@ function useWorkspaceStreamNotificationMode(
   streamUuid: string,
 ): WorkspaceMessengerStreamNotificationMode {
   return useMessengerStore((s) => s.streamsById[streamUuid]?.notificationMode ?? "mentions_only");
+}
+
+function WorkspaceStreamNotificationPicker({
+  streamUuid,
+  isDirectPrivate,
+  multiple,
+  onSelect,
+}: {
+  streamUuid: string;
+  isDirectPrivate: boolean;
+  multiple: boolean;
+  onSelect: () => void;
+}): React.ReactElement {
+  const mode = useWorkspaceStreamNotificationMode(streamUuid);
+  const source = useMessengerStore((state) => state.streamsById[streamUuid]?.sourceName);
+  const [pending, setPending] = useState(false);
+  const provider = source === "telegram" ? "Telegram" : source === "zulip" ? "Zulip" : "Workspace";
+  const label = multiple
+    ? `${provider} · ${t("channel.notifications")}`
+    : t("channel.notifications");
+  const update = useCallback(
+    (next: WorkspaceMessengerStreamNotificationMode) => {
+      if (pending || mode === next) return;
+      onSelect();
+      setPending(true);
+      void runWorkspaceStreamNotificationUpdate({ streamUuid, notificationMode: next })
+        .catch((error) => reportWorkspaceMenuActionError("stream-notifications", error))
+        .finally(() => setPending(false));
+    },
+    [mode, onSelect, pending, streamUuid],
+  );
+  return (
+    <div className="px-2 py-1">
+      <p className="mb-1 text-[10px] font-medium text-text-muted">{label}</p>
+      <StreamNotificationLevelSwitch
+        value={mapWorkspaceStreamNotificationModeToLevel(mode, isDirectPrivate)}
+        options={isDirectPrivate ? DIRECT_PRIVATE_STREAM_NOTIFICATION_OPTIONS : undefined}
+        groupLabel={label}
+        disabled={pending}
+        size="sm"
+        onChange={(level) => update(mapNotificationLevelToWorkspaceStreamMode(level))}
+      />
+    </div>
+  );
 }
 
 interface WorkspaceNameDialogProps {
@@ -316,16 +363,15 @@ export const WorkspaceStreamContextMenu = React.memo(function WorkspaceStreamCon
     handleKeyboardContextMenu,
     handleMenuOpenChange,
   } = useDropdownContextMenuAnchor();
-  const notificationMode = useWorkspaceStreamNotificationMode(stream.streamUuid);
   const { userCreatedFolders, selectedFolderItem } = useWorkspaceMenuFolders(
     stream.streamUuid,
     folderScope,
+    menuOpen,
   );
   const rightDrawer = useRightDrawer();
   const archive = useWorkspaceArchiveConfirmation(stream);
   const { open: openArchiveConfirmation, pending: archivePending } = archive;
   const rowRef = useRef<HTMLDivElement>(null);
-  const [notificationPending, setNotificationPending] = useState(false);
   const [readPending, setReadPending] = useState(false);
   const [pinPending, setPinPending] = useState(false);
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
@@ -336,21 +382,9 @@ export const WorkspaceStreamContextMenu = React.memo(function WorkspaceStreamCon
   const [createTopicPending, setCreateTopicPending] = useState(false);
   const [pendingFolderUuids, setPendingFolderUuids] = useState(() => new Set<string>());
 
-  const handleSetNotificationMode = useCallback(
-    (mode: WorkspaceMessengerStreamNotificationMode): void => {
-      if (notificationPending || notificationMode === mode) return;
-      handleMenuOpenChange(false);
-      setNotificationPending(true);
-      void runWorkspaceStreamNotificationUpdate({
-        streamUuid: stream.streamUuid,
-        notificationMode: mode,
-      })
-        .catch((error) => reportWorkspaceMenuActionError("stream-notifications", error))
-        .finally(() => {
-          setNotificationPending(false);
-        });
-    },
-    [handleMenuOpenChange, notificationMode, notificationPending, stream.streamUuid],
+  const closeNotificationMenu = useCallback(
+    () => handleMenuOpenChange(false),
+    [handleMenuOpenChange],
   );
 
   const handlePinToggle = useCallback((): void => {
@@ -468,23 +502,20 @@ export const WorkspaceStreamContextMenu = React.memo(function WorkspaceStreamCon
       type: "custom",
       key: "stream-notifications",
       render: () => (
-        <div className="px-2 py-1">
-          <p className="mb-1 text-[10px] font-medium text-text-muted">
-            {t("channel.notifications")}
-          </p>
-          <StreamNotificationLevelSwitch
-            value={mapWorkspaceStreamNotificationModeToLevel(notificationMode, isDirectPrivate)}
-            options={isDirectPrivate ? DIRECT_PRIVATE_STREAM_NOTIFICATION_OPTIONS : undefined}
-            disabled={notificationPending}
-            size="sm"
-            onChange={(level) =>
-              handleSetNotificationMode(mapNotificationLevelToWorkspaceStreamMode(level))
-            }
-          />
-        </div>
+        <>
+          {(stream.streamUuids ?? [stream.streamUuid]).map((uuid) => (
+            <WorkspaceStreamNotificationPicker
+              key={uuid}
+              streamUuid={uuid}
+              multiple={(stream.streamUuids?.length ?? 1) > 1}
+              isDirectPrivate={isDirectPrivate}
+              onSelect={closeNotificationMenu}
+            />
+          ))}
+        </>
       ),
     }),
-    [handleSetNotificationMode, isDirectPrivate, notificationMode, notificationPending],
+    [closeNotificationMenu, isDirectPrivate, stream.streamUuid, stream.streamUuids],
   );
 
   const folderAssignmentsItem = useMemo<DropdownMenuItem>(

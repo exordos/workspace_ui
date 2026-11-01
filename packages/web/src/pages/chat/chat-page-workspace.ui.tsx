@@ -1359,7 +1359,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
     return selectMessengerSidebarTopicsForStream({
       organizationId: runtimeContext.organizationId,
       projectId: runtimeContext.projectId,
-      state: { topicIds, topicsById },
+      state: { topicIds, topicsById, streamsById },
       streamUuid: selection.streamUuid,
       streamNotificationMode: streamsById[selection.streamUuid]?.notificationMode ?? null,
       messagesById: allWorkspaceMessagesById,
@@ -1660,7 +1660,9 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
   }, [headerView]);
   const composerReadOnlyReason =
     selection.status === "conversation"
-      ? undefined
+      ? stream?.canSend === false
+        ? t("workspaceMessenger.streamReadOnly")
+        : undefined
       : t("workspaceMessenger.routeUnsupportedForSend");
   const currentUserUuid = runtimeContext?.userUuid ?? "";
   const composerMentionContext = useMemo<ComposerMentionContextInput>(
@@ -1868,6 +1870,11 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
   );
   const handleSend = useCallback(
     (content: string, _subject?: string, _files?: File[], options?: MessengerSendOptions) => {
+      if (stream?.canSend === false) {
+        const error = t("workspaceMessenger.streamReadOnly");
+        setSendError(error);
+        throw new Error(error);
+      }
       const hasSecrets = stream?.encryption !== true && hasWorkspaceSecretDraft(content);
       let encryption: MessengerOutgoingMessage["encryption"] | null =
         stream?.encryption === true
@@ -2066,6 +2073,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
       runtimeContext,
       setComposerDraftShadow,
       stream?.encryption,
+      stream?.canSend,
       encryptedChat.session,
       encryptedChat.sendKeyUuid,
       workspaceReplyHandoffBlocksSend,
@@ -3930,14 +3938,16 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
       if (selection.status !== "conversation" || selection.kind !== "stream") {
         return;
       }
+      const topic = topicsById[topicUuid];
+      if (topic == null) return;
 
       handleOpenWorkspaceReference({
         kind: "topic",
-        streamUuid: selection.streamUuid,
+        streamUuid: topic.streamUuid,
         topicUuid,
       });
     },
-    [handleOpenWorkspaceReference, selection],
+    [handleOpenWorkspaceReference, selection, topicsById],
   );
 
   const directPartnerUuid = headerView.kind === "directPrivate" ? headerView.directUserUuid : null;

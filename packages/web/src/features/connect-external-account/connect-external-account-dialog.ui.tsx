@@ -5,6 +5,7 @@ import { AppDialog, DialogCancelButton } from "~/shared/ui/app-dialog";
 import { Button } from "~/shared/ui/button";
 import { ConnectExternalAccountForm } from "./connect-external-account-form.ui";
 import { useConnectExternalAccount } from "./connect-external-account.hook";
+import { ConnectTelegramAccount } from "./connect-telegram-account.ui";
 import type { ConnectExternalAccountDialogProps } from "./connect-external-account.types";
 
 function lifecycleText(account: ExternalAccount): string {
@@ -62,12 +63,14 @@ export const ConnectExternalAccountDialog = React.memo<ConnectExternalAccountDia
       editAccount,
       onCompleted: handleCompleted,
     });
+    const chooseZulip = useCallback(() => vm.setProvider("zulip"), [vm.setProvider]);
+    const isTelegram = vm.draft.provider === "telegram";
     const showForm =
       vm.phase === "credentials" &&
       (vm.lifecycleAccount == null || vm.lifecycleAccount.status === "auth_required");
     const showLifecycle = vm.lifecycleAccount != null && vm.phase !== "automaticDone";
     let title = t("connectExternalAccount.title");
-    let description = t("connectExternalAccount.description");
+    let description: string | undefined = t("connectExternalAccount.description");
     if (vm.phase === "automaticDone") {
       title = t("connectExternalAccount.done.title");
       description = t("connectExternalAccount.done.description");
@@ -77,6 +80,8 @@ export const ConnectExternalAccountDialog = React.memo<ConnectExternalAccountDia
     } else if (vm.reconnecting) {
       title = t("connectExternalAccount.reconnectTitle");
     }
+
+    if (isTelegram) description = undefined;
 
     return (
       <AppDialog
@@ -94,12 +99,20 @@ export const ConnectExternalAccountDialog = React.memo<ConnectExternalAccountDia
           ) : undefined
         }
       >
-        {showLifecycle ? (
+        {isTelegram && open ? (
+          <ConnectTelegramAccount
+            key={`${runtimeContext?.accountId}:${runtimeContext?.projectId}:${runtimeContext?.runtimeGeneration}`}
+            runtimeContext={runtimeContext}
+            account={editAccount ?? reconnectAccount}
+            onChooseZulip={chooseZulip}
+          />
+        ) : null}
+        {!isTelegram && showLifecycle ? (
           <div className="mb-4">
             <AccountLifecycle account={vm.lifecycleAccount!} onReset={vm.resetCredentials} />
           </div>
         ) : null}
-        {vm.phase === "checking" && vm.lifecycleAccount == null ? (
+        {!isTelegram && vm.phase === "checking" && vm.lifecycleAccount == null ? (
           <div
             className="rounded-lg border border-border-subtle bg-bg px-3 py-3 text-sm text-text-primary"
             role="status"
@@ -111,7 +124,7 @@ export const ConnectExternalAccountDialog = React.memo<ConnectExternalAccountDia
             )}
           </div>
         ) : null}
-        {showForm ? (
+        {!isTelegram && showForm ? (
           <ConnectExternalAccountForm
             editing={editAccount != null}
             draft={vm.draft}

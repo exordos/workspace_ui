@@ -276,15 +276,18 @@ describe("CreateChatDialog", () => {
     expect(announce).not.toBeChecked();
   });
 
-  it("keeps announcement-only control visible but disabled for Workspace", () => {
+  it("lets a user select announcement-only policy for a native channel", () => {
     seedWorkspaceSession();
     renderDialog();
 
     fireEvent.click(screen.getByRole("tab", { name: "Create channel" }));
 
-    expect(screen.getByLabelText("Announcement-only channel")).toBeDisabled();
+    const policy = screen.getByLabelText("Announcement-only channel");
+    expect(policy).toBeEnabled();
+    fireEvent.click(policy);
+    expect(policy).toBeChecked();
     expect(
-      screen.getByText("Announcement-only policy is not connected to Workspace yet."),
-    ).toBeInTheDocument();
+      screen.queryByText("Announcement-only policy is not connected to Workspace yet."),
+    ).not.toBeInTheDocument();
   });
 });

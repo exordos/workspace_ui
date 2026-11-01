@@ -19,6 +19,8 @@ import {
   readCachedMessagesByUuids,
   readConversationMessageWindow,
   readMessengerCatalogCache,
+  readMessengerStreamCatalogCache,
+  readMessengerCachedStream,
   readMessengerReadBoundaries,
   readOwnMessageReaction,
   readOwnMessageReactions,
@@ -340,9 +342,14 @@ function conversationFromTopic(
 export async function writeMessengerFolderSnapshotCache(
   ownerKey: string,
   folder: MessengerFolder,
+  changedStreamUuids?: readonly MessengerUuid[],
 ): Promise<void> {
   const safeFolder = withoutRemovedCachedFolderItems(ownerKey, folder);
-  await upsertMessengerFolderSnapshotsCache(ownerKey, [safeFolder], safeFolder.items);
+  const items =
+    changedStreamUuids == null
+      ? safeFolder.items
+      : safeFolder.items.filter((item) => changedStreamUuids.includes(item.streamUuid));
+  await upsertMessengerFolderSnapshotsCache(ownerKey, [safeFolder], items);
   await purgeRemovedStreamCaches(
     ownerKey,
     folder.items.map((item) => item.streamUuid),
@@ -371,10 +378,12 @@ export async function replaceMessengerFolderSnapshotsCache(
 export async function upsertMessengerStreamCache(
   ownerKey: string,
   stream: MessengerStream,
-  options: { shouldApply?: () => boolean } = {},
+  options: { shouldApply?: () => boolean; updateFolders?: boolean } = {},
 ): Promise<void> {
   if (options.shouldApply?.() === false || isStreamCacheRemoved(ownerKey, stream.uuid)) return;
-  const snapshot = await readMessengerCatalogCache(ownerKey);
+  const snapshot = await readMessengerStreamCatalogCache(ownerKey, stream.uuid, {
+    includeFolders: options.updateFolders !== false,
+  });
   if (options.shouldApply?.() === false || isStreamCacheRemoved(ownerKey, stream.uuid)) return;
   const topics = snapshot.topics.filter((topic) => topic.streamUuid === stream.uuid);
   const cachedFolders = snapshot.folders as unknown as MessengerFolder[];
@@ -402,7 +411,9 @@ export async function upsertMessengerStreamCache(
       : upsertMessengerFolderSnapshotsCache(
           ownerKey,
           changedFolders,
-          changedFolders.flatMap((folder) => folder.items),
+          changedFolders.flatMap((folder) =>
+            folder.items.filter((item) => item.streamUuid === stream.uuid),
+          ),
           options,
         ),
   ]);
@@ -459,9 +470,8 @@ export async function upsertMessengerTopicCache(
   topic: MessengerTopic,
 ): Promise<void> {
   if (isStreamCacheRemoved(ownerKey, topic.streamUuid)) return;
-  const snapshot = await readMessengerCatalogCache(ownerKey);
+  const stream = await readMessengerCachedStream(ownerKey, topic.streamUuid);
   if (isStreamCacheRemoved(ownerKey, topic.streamUuid)) return;
-  const stream = snapshot.streams.find((item) => item.uuid === topic.streamUuid);
   const conversations =
     stream == null
       ? []
@@ -837,7 +847,9 @@ export const messengerRealtimeActiveCache = {
   deleteCachedMessage: deleteMessengerCachedMessage,
   writeConversationMessagePage: writeMessengerLiveMessageCache,
   writeCreatedMessages: writeMessengerRealtimeMessagesCache,
-  upsertCachedStream: upsertMessengerStreamCache,
+  // The active applier persists its changed folder snapshots in the same event.
+  upsertCachedStream: (ownerKey: string, stream: MessengerStream) =>
+    upsertMessengerStreamCache(ownerKey, stream, { updateFolders: false }),
   deleteCachedStream: deleteMessengerStreamCache,
   upsertCachedStreamBindings: upsertMessengerStreamBindingsCache,
   deleteCachedStreamBinding: deleteMessengerStreamBindingCache,
@@ -851,4 +863,5 @@ export const messengerRealtimeActiveCache = {
 
 export const messengerRealtimeBackgroundCache = {
   ...messengerRealtimeActiveCache,
+  upsertCachedStream: upsertMessengerStreamCache,
 };

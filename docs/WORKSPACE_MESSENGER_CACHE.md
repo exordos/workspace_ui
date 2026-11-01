@@ -25,6 +25,14 @@ The Workspace cache is implemented. Its original [July plan](archive/WORKSPACE_M
 - Retention and logout/account cleanup are owner-scoped. Do not clear another owner's cache as a shortcut.
 - Existing schema upgrades are part of the current contract. Historical permission to drop Zulip cache compatibility is not permission to discard current Workspace data.
 
+## External-provider direct conversations
+
+The catalog retains physical streams and topic UUIDs for each provider. Sidebar and topic-list projections group visible unencrypted direct streams only by the exact counterpart Workspace UUID, project and viewer. Names and email addresses do not establish identity. Encrypted conversations stay separate.
+
+A grouped row sums stream counters and retains each topic's physical route for message delivery. Default external topics are named `telegram` and `zulip`. Additional topics use the existing canonical native direct-stream creation action; they are never sent as new Telegram or Zulip threads. Stored catalogs, cache buckets and backend permissions keep their physical UUIDs.
+
+Telegram channel and basic-group catalog entries use the channel audience while retaining the backend's membership-restricted `private` access flag. Direct conversations remain personal. No history-depth or chat-selection settings are persisted for Telegram: all accessible history imports automatically.
+
 ## Realtime memory bounds
 
 REST catch-up delegates sorted event runs to batch-capable appliers. Adjacent `message.created` events are applied in groups of at most 100; edits, reads, deletes, catalog changes, duplicates and unsupported envelopes preserve their ordering barriers. Active message and pointer maps are copied once per group. Both active and background owners use the batch cache writer; background application never writes active message stores.
@@ -50,3 +58,23 @@ Topic grouping reuses one index per immutable catalog snapshot through weak keys
 Search-result storage helpers do not imply a working server search API. Check the current [API map](API_CLIENT_REFERENCE.md), [use cases](USE_CASES.md) and backend contracts before adding search or message-window behavior. Anchor navigation already has a [Workspace feature](../packages/web/src/features/workspace-message-anchor-navigation/); distinguish its implemented loading strategy from a server-provided page-around-message endpoint.
 
 For cache changes, test affected persistence and owner-switch races. For hydration/scroll changes, also verify the relevant user flow and state the limits of browser/native validation.
+
+## Provider posting capability and user provenance
+
+Stream DTOs can expose `can_send` and `announcement_only`. Adapters retain them as `canSend` and `announcementOnly`; older server/cache rows remain readable. The composer and its send callback respect an explicit capability denial. Stream snapshots propagate account disable/reauthorization and posting-right changes through the existing realtime and cache path. The backend remains authoritative for every write. `announce` continues to describe the creation notification. The existing announcement-only creation control sends `announcement_only` for an ordinary native channel.
+
+User DTO `source` is retained in the user store and durable profile cache. Profile and mention suggestions display Workspace, Zulip or Telegram provenance when available; older cached users do not invent a source. Mention URNs remain Workspace UUIDs, and the physical topic's provider resolves the destination identity.
+
+## Large imported catalogs
+
+Direct-conversation grouping indexes each immutable stream catalog once and keeps
+project, viewer and counterpart UUID boundaries. Closed stream menus subscribe
+to folder details only when opened. Sidebar rows reuse the existing visibility
+hook to defer interactive controls until near the scroll viewport; active,
+expanded and searched rows render immediately. A visited row remains mounted so
+sorting or scrolling does not discard an open menu or dialog.
+
+A folder snapshot and its changed item rows commit in one IndexedDB transaction.
+Small item deltas use point lookups, while full snapshots use the existing folder
+index. The same owner, generation and timestamp checks still apply before each
+write, and realtime cursors keep their existing ordered commit behavior.

@@ -258,6 +258,11 @@ function isNetworkError(error: unknown): boolean {
 
 function isRefreshTokenAuthRejection(error: unknown): error is WorkspaceIamAuthError {
   if (!(error instanceof WorkspaceIamAuthError)) return false;
+  // Older IAM servers expose an obsolete refresh-token algorithm as HTTP 500.
+  // That exact rejection requires a fresh login, rather than endless retries.
+  if (error.status === 500 && isRecord(error.data) && error.data.type === "InvalidAlgorithmError") {
+    return true;
+  }
   if (error.status !== 400 && error.status !== 401 && error.status !== 403) return false;
   return hasExplicitTerminalRefreshMarker(error.data);
 }

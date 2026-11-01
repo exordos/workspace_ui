@@ -9,7 +9,6 @@ import { useUsersStore } from "~/entities/user/user.model";
 import { removeWorkspaceSession } from "~/entities/workspace-auth/workspace-auth.lib";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { resolveWorkspacePostLogoutRoute } from "~/entities/workspace-auth/workspace-post-logout-route.lib";
-import { ManageExternalProviderEntry } from "~/features/manage-external-provider/manage-external-provider-entry.ui";
 import { useTranslation } from "~/i18n/i18n";
 import { IS_CONNECTION_DIAGNOSTICS_ENABLED } from "~/shared/config/constants";
 import { useRightDrawer } from "~/shared/contexts/right-drawer";
@@ -308,7 +307,6 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
                       <RightPanelExternalAccountsList
                         onConnect={() => setExternalAccountDialogOpen(true)}
                       />
-                      <ManageExternalProviderEntry runtimeContext={currentWorkspaceSession} />
                     </div>
                   )}
                 </>

@@ -1,10 +1,11 @@
 import type { WorkspaceMessengerUuid } from "./messenger.types";
 
-export type WorkspaceExternalAccountProvider = "zulip";
+export type WorkspaceExternalAccountProvider = "zulip" | "telegram";
 export type WorkspaceExternalAccountSelectionMode = "explicit" | "all";
 export type WorkspaceExternalAccountHistoryDepth = "new" | "7_days" | "30_days" | "90_days" | "all";
 export type WorkspaceExternalAccountStatus =
   | "new"
+  | "syncing"
   | "fast_backfill"
   | "active"
   | "error"
@@ -28,8 +29,8 @@ export interface WorkspaceZulipExternalAccountSettingsDto {
 export interface WorkspaceExternalAccountRegistryDto {
   uuid: WorkspaceMessengerUuid;
   provider: WorkspaceExternalAccountProvider;
-  settings: Partial<WorkspaceZulipExternalAccountSettingsDto>;
-  status: "new" | "backfill" | "fast_backfill" | "active" | "error";
+  settings: Partial<WorkspaceZulipExternalAccountSettingsDto> & { peer_keys?: string[] };
+  status: "new" | "syncing" | "backfill" | "fast_backfill" | "active" | "error";
   error_description?: string | null;
   revision?: number;
   created_at: string;
@@ -56,16 +57,25 @@ export type WorkspaceExternalAccountDto =
   | WorkspaceExternalAccountRegistryDto
   | WorkspaceExternalAccountLifecycleDto;
 
-export interface WorkspaceExternalAccountCreateRequestBody {
-  uuid: WorkspaceMessengerUuid;
-  provider: WorkspaceExternalAccountProvider;
-  settings: WorkspaceZulipExternalAccountSettingsDto & {
-    api_key: string;
-  };
-}
+export type WorkspaceTelegramExternalAccountSettingsDto = Record<string, never>;
+
+export type WorkspaceExternalAccountCreateRequestBody =
+  | {
+      uuid: WorkspaceMessengerUuid;
+      provider: "zulip";
+      settings: WorkspaceZulipExternalAccountSettingsDto & { api_key: string };
+    }
+  | {
+      uuid: WorkspaceMessengerUuid;
+      provider: "telegram";
+      settings: WorkspaceTelegramExternalAccountSettingsDto;
+    };
 
 export interface WorkspaceExternalAccountUpdateRequestBody {
-  settings: Partial<WorkspaceZulipExternalAccountSettingsDto> & { api_key?: string };
+  settings: Partial<WorkspaceZulipExternalAccountSettingsDto> & {
+    api_key?: string;
+    peer_keys?: string[];
+  };
 }
 
 export interface WorkspaceExternalAccountReconnectRequestBody {
@@ -153,9 +163,12 @@ export function isWorkspaceExternalAccountDto(
   if (isRecord(value) && "provider" in value) {
     return (
       isNonEmptyString(value.uuid) &&
-      value.provider === "zulip" &&
-      isRegistrySettings(value.settings) &&
+      (value.provider === "zulip" || value.provider === "telegram") &&
+      (value.provider === "telegram"
+        ? isTelegramRegistrySettings(value.settings)
+        : isRegistrySettings(value.settings)) &&
       (value.status === "new" ||
+        value.status === "syncing" ||
         value.status === "backfill" ||
         value.status === "fast_backfill" ||
         value.status === "active" ||
@@ -182,4 +195,8 @@ export function isWorkspaceExternalAccountDto(
     isNonEmptyString(value.created_at) &&
     isNonEmptyString(value.updated_at)
   );
+}
+
+function isTelegramRegistrySettings(value: unknown): boolean {
+  return isRecord(value) && Object.keys(value).length === 0;
 }

@@ -12,6 +12,7 @@ export function adaptWorkspaceExternalAccountDto(
     provider,
     settings: {
       kind: provider,
+      ...("peer_keys" in dto.settings ? { peerKeys: dto.settings.peer_keys } : {}),
       ...(dto.settings.server_url === undefined ? {} : { serverUrl: dto.settings.server_url }),
       ...(dto.settings.email === undefined ? {} : { email: dto.settings.email }),
       ...(dto.settings.selection_mode === undefined
