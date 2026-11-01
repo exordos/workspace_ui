@@ -107,7 +107,12 @@ export const ConnectTelegramAccount = React.memo<{
           </Button>
         </form>
       ) : null}
-      {vm.snapshot?.state === "authorized" ? (
+      {vm.snapshot?.state === "authorized" && vm.snapshot.history_enabled === false ? (
+        <p role="status" className="text-sm text-text-muted">
+          {t("connectExternalAccount.telegram.realtimeConnected")}
+        </p>
+      ) : null}
+      {vm.snapshot?.state === "authorized" && vm.snapshot.history_enabled !== false ? (
         <>
           <p className="text-sm text-text-muted">
             {t("connectExternalAccount.telegram.automaticImport")}

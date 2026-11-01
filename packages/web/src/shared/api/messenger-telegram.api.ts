@@ -15,6 +15,7 @@ export interface TelegramDialog {
 }
 
 export interface TelegramAuthSnapshot {
+  history_enabled?: boolean;
   state:
     | "disconnected"
     | "starting"
@@ -68,6 +69,7 @@ function isAuthSnapshot(value: unknown): value is TelegramAuthSnapshot {
     (value.generation === null || typeof value.generation === "string") &&
     (value.qr_url === undefined ||
       (typeof value.qr_url === "string" && value.qr_url.startsWith("tg://login?token="))) &&
+    (value.history_enabled === undefined || typeof value.history_enabled === "boolean") &&
     Array.isArray(value.dialogs) &&
     value.dialogs.every(isDialog)
   );

@@ -279,6 +279,7 @@
       "continue": "Continue",
       "failed": "Connection failed. Check the connection or try again.",
       "progress": "Importing history: {{count}} messages",
+      "realtimeConnected": "Telegram connected. New messages are synchronized.",
       "automaticImport": "All available chats and their full history are imported automatically. New messages arrive during import.",
       "finished": "History imported: {{count}} messages"
     }
