@@ -31,7 +31,7 @@ The catalog retains physical streams and topic UUIDs for each provider. Sidebar 
 
 A grouped row sums stream counters and retains each topic's physical route for message delivery. Default external topics are named `telegram` and `zulip`. Additional topics use the existing canonical native direct-stream creation action; they are never sent as new Telegram or Zulip threads. Stored catalogs, cache buckets and backend permissions keep their physical UUIDs.
 
-Telegram channel and basic-group catalog entries use the channel audience while retaining the backend's membership-restricted `private` access flag. Direct conversations remain personal. No history-depth or chat-selection settings are persisted for Telegram: all accessible history imports automatically.
+Telegram channel and basic-group catalog entries use the channel audience while retaining the backend's membership-restricted `private` access flag. Direct conversations remain personal. No history-depth or chat-selection settings are persisted for Telegram. The authentication snapshot reports importer availability through `history_enabled`: `false` shows the realtime connection confirmation, while `true` enables automatic full-history progress. An absent field retains compatibility with the original combined backend, which imports all accessible history automatically.
 
 ## Realtime memory bounds
 
