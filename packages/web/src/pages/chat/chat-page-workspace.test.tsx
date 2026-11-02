@@ -1729,6 +1729,77 @@ describe("ChatPage Workspace route", () => {
     expect(screen.getByRole("textbox")).toHaveValue("Keep this encrypted answer");
   });
 
+  it("keeps rapid encrypted additions in click order", async () => {
+    const { message } = seedEncryptedReplyComposer();
+    const second = {
+      ...message,
+      uuid: SECOND_MESSAGE_UUID,
+      payload: { kind: "e2ee" as const, keyUuid: "second-key", content: "second-ciphertext" },
+    };
+    const third = {
+      ...message,
+      uuid: "33333333-3333-4333-8333-333333333333",
+      payload: { kind: "e2ee" as const, keyUuid: "third-key", content: "third-ciphertext" },
+    };
+    replaceTestConversationWindow(`topic:${STREAM_UUID}:${TOPIC_UUID}`, [message, second, third]);
+    const deferred = createDeferred<string | null>();
+    vi.mocked(decryptRealChatMessage).mockImplementation(async (_runtime, source) =>
+      source.uuid === second.uuid
+        ? deferred.promise
+        : source.uuid === third.uuid
+          ? "Third secret"
+          : "First secret",
+    );
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+    await screen.findByRole("textbox");
+    act(() => captured.messageListProps?.onReplyMessage?.(message.uuid));
+    await screen.findByText("First secret");
+    act(() => {
+      captured.messageListProps?.onAddReplyMessage?.(second.uuid);
+      captured.messageListProps?.onAddReplyMessage?.(third.uuid);
+    });
+    await act(async () => {
+      deferred.resolve("Second secret");
+      await deferred.promise;
+    });
+    await screen.findByText("Third secret");
+    expect(screen.getAllByRole("tab")).toHaveLength(3);
+  });
+
+  it("revokes only the encrypted reply tab belonging to the changed key", async () => {
+    const { owner, message } = seedEncryptedReplyComposer();
+    const second = {
+      ...message,
+      uuid: SECOND_MESSAGE_UUID,
+      payload: { kind: "e2ee" as const, keyUuid: "second-key", content: "second-ciphertext" },
+    };
+    replaceTestConversationWindow(`topic:${STREAM_UUID}:${TOPIC_UUID}`, [message, second]);
+    vi.mocked(decryptRealChatMessage).mockImplementation((_runtime, source) =>
+      Promise.resolve(source.uuid === message.uuid ? "First secret" : "Second secret"),
+    );
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+    await screen.findByRole("textbox");
+    act(() => captured.messageListProps?.onReplyMessage?.(message.uuid));
+    await screen.findByText("First secret");
+    act(() => captured.messageListProps?.onAddReplyMessage?.(second.uuid));
+    await screen.findByText("Second secret");
+    act(() =>
+      notifyRealChatKeyChanges({
+        kind: "removed",
+        ownerKey: owner,
+        deviceId: "mock-device",
+        streamUuid: STREAM_UUID,
+        keyUuid: "reply-key",
+      }),
+    );
+    expect(screen.queryByText("First secret")).not.toBeInTheDocument();
+    expect(screen.getByText("Second secret")).toBeInTheDocument();
+  });
+
   it("replies to historical markdown in an encrypted chat and cancels the ephemeral quote", async () => {
     const { message, send } = seedEncryptedReplyComposer();
     replaceTestConversationWindow(`topic:${STREAM_UUID}:${TOPIC_UUID}`, [

@@ -146,7 +146,10 @@ import type {
   WorkspaceReplySession,
   WorkspaceReplyTab,
 } from "~/features/workspace-reply/workspace-reply.types";
-import type { WorkspaceReplyTabSelectSource } from "~/features/workspace-reply/workspace-reply.ui";
+import {
+  WorkspaceReplyTabs,
+  type WorkspaceReplyTabSelectSource,
+} from "~/features/workspace-reply/workspace-reply.ui";
 import { t } from "~/i18n/i18n";
 import { useOpenSearch } from "~/shared/contexts/open-search";
 import { useRightDrawer } from "~/shared/contexts/right-drawer";
@@ -212,6 +215,10 @@ import {
   setConversationViewMemoryOwner,
 } from "./chat-page-conversation-view-memory.lib";
 import { ChatPageDeleteConfirmBar } from "./chat-page-delete-confirm-bar.ui";
+import {
+  isEncryptedReplySourceCurrent,
+  isEncryptedReplySourceAffectedByKeyChange,
+} from "./chat-page-encrypted-reply.lib";
 import { resolveInitialPositionReady } from "./chat-page-initial-position.lib";
 import { ChatPageInlineAlerts } from "./chat-page-inline-alerts.ui";
 import { ChatPageSelectionBar } from "./chat-page-selection-bar.ui";
@@ -248,7 +255,8 @@ interface WorkspaceEncryptedComposerState {
   scopeKey: string;
   conversationId: MessengerConversationId;
   text: string;
-  reply: { source: MessengerMessage; tab: WorkspaceReplyTab } | null;
+  replySession: WorkspaceReplySession;
+  sources: Record<string, MessengerMessage>;
 }
 
 interface WorkspaceComposerSendCleanup {
@@ -625,10 +633,19 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
   const pendingWorkspaceJitsiHeaderCallRef = useRef(false);
   const workspaceChatUiActionEpochRef = useRef(0);
   const encryptedReplyAttemptRef = useRef(0);
+  const encryptedReplyQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const encryptedReplyQueueEpochRef = useRef(0);
   const [encryptedComposerState, setEncryptedComposerState] =
     useState<WorkspaceEncryptedComposerState | null>(null);
   const encryptedComposerStateRef = useRef(encryptedComposerState);
   const pendingEncryptedReplySourceRef = useRef<MessengerMessage | null>(null);
+  const cancelEncryptedReplies = useCallback(() => {
+    encryptedReplyQueueEpochRef.current += 1;
+    encryptedReplyQueueRef.current = Promise.resolve();
+    encryptedReplyAttemptRef.current += 1;
+    pendingEncryptedReplySourceRef.current = null;
+  }, []);
+  const [encryptedTabFocusSuppressed, setEncryptedTabFocusSuppressed] = useState(false);
   const updateEncryptedComposerState = useCallback(
     (
       update: (
@@ -909,64 +926,66 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
       ? encryptedComposerState
       : null;
   useLayoutEffect(() => {
-    encryptedReplyAttemptRef.current += 1;
-    pendingEncryptedReplySourceRef.current = null;
+    cancelEncryptedReplies();
     updateEncryptedComposerState((current) =>
       current?.scopeKey === encryptedComposerScopeKey && current?.conversationId === conversationId
         ? current
         : null,
     );
     return () => {
-      encryptedReplyAttemptRef.current += 1;
+      cancelEncryptedReplies();
     };
-  }, [conversationId, encryptedComposerScopeKey, updateEncryptedComposerState]);
+  }, [
+    cancelEncryptedReplies,
+    conversationId,
+    encryptedComposerScopeKey,
+    updateEncryptedComposerState,
+  ]);
   useEffect(() => {
     if (encryptedComposerScopeKey == null) return;
-    const clear = () => {
-      encryptedReplyAttemptRef.current += 1;
-      pendingEncryptedReplySourceRef.current = null;
-      updateEncryptedComposerState((current) =>
-        current == null ? null : { ...current, reply: null },
-      );
+    const invalidate = (affected: (source: MessengerMessage) => boolean) => {
+      const pending = pendingEncryptedReplySourceRef.current;
+      if (pending != null && affected(pending)) {
+        encryptedReplyAttemptRef.current += 1;
+        pendingEncryptedReplySourceRef.current = null;
+      }
+      updateEncryptedComposerState((current) => {
+        if (current == null) return null;
+        let replySession = current.replySession;
+        const activeAnswer = replySession.tabs.find(
+          (tab) => tab.id === replySession.activeTabId,
+        )?.answer;
+        const sources = { ...current.sources };
+        for (const [id, source] of Object.entries(sources)) {
+          if (affected(source)) {
+            replySession = removeWorkspaceReplyTab(replySession, id);
+            delete sources[id];
+          }
+        }
+        if (replySession === current.replySession) return current;
+        return {
+          ...current,
+          replySession,
+          sources,
+          text: replySession.tabs.length === 0 ? (activeAnswer ?? current.text) : current.text,
+        };
+      });
     };
-    const unsubscribeKeys = subscribeRealChatKeyChanges((change) => {
-      const source =
-        encryptedComposerStateRef.current?.reply?.source ?? pendingEncryptedReplySourceRef.current;
-      if (
-        change == null ||
-        (change.kind === "removed" &&
-          change.ownerKey === ownerKey &&
-          change.streamUuid === streamUuid &&
-          source?.payload.kind === "e2ee" &&
-          change.keyUuid === source.payload.keyUuid)
-      )
-        clear();
-    });
-    const unsubscribeMessages = useWorkspaceMessageStore.subscribe((messages) => {
-      const source = encryptedComposerStateRef.current?.reply?.source;
-      if (source == null) return;
-      const latest = selectWorkspaceMessageById(messages, source.uuid);
-      if (
-        messages.ownerKey !== ownerKey ||
-        latest?.payload.kind !== source.payload.kind ||
-        latest.projectId !== source.projectId ||
-        latest.authorUuid !== source.authorUuid ||
-        latest.streamUuid !== source.streamUuid ||
-        latest.topicUuid !== source.topicUuid ||
-        ((source.payload.kind === "e2ee" || source.payload.kind === "markdown") &&
-          (latest.payload.kind !== source.payload.kind ||
-            latest.payload.content !== source.payload.content)) ||
-        (source.payload.kind === "e2ee" &&
-          latest.payload.kind === "e2ee" &&
-          latest.payload.keyUuid !== source.payload.keyUuid)
-      )
-        clear();
-    });
+    const unsubscribeKeys = subscribeRealChatKeyChanges((change) =>
+      invalidate((source) => isEncryptedReplySourceAffectedByKeyChange(source, ownerKey, change)),
+    );
+    const unsubscribeMessages = useWorkspaceMessageStore.subscribe((messages) =>
+      invalidate(
+        (source) =>
+          messages.ownerKey !== ownerKey ||
+          !isEncryptedReplySourceCurrent(source, selectWorkspaceMessageById(messages, source.uuid)),
+      ),
+    );
     return () => {
       unsubscribeKeys();
       unsubscribeMessages();
     };
-  }, [encryptedComposerScopeKey, ownerKey, streamUuid, updateEncryptedComposerState]);
+  }, [encryptedComposerScopeKey, ownerKey, updateEncryptedComposerState]);
   const [dismissedKeyNotice, setDismissedKeyNotice] = useState<string | null>(null);
   const keyNoticeId = `${ownerKey}:${streamUuid}:${stream?.currentEncryptionKey?.keyUuid}`;
   const hasOutdatedSendingKey =
@@ -2408,8 +2427,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
       }
       invalidateWorkspaceReplyHandoffClaim();
       const attempt = ++composerEditAttemptRef.current;
-      encryptedReplyAttemptRef.current += 1;
-      pendingEncryptedReplySourceRef.current = null;
+      cancelEncryptedReplies();
       const isUiActionCurrent = captureWorkspaceChatUiAction();
       const payload = message.payload;
       encryptedEditSourceRef.current = null;
@@ -2518,6 +2536,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
       });
     },
     [
+      cancelEncryptedReplies,
       captureWorkspaceChatUiAction,
       createWorkspaceReplyTabIdentity,
       invalidateWorkspaceReplyHandoffClaim,
@@ -2617,7 +2636,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
   );
 
   const handleEncryptedReplyMessage = useCallback(
-    async (messageUuid: string, selectedText?: string) => {
+    async (messageUuid: string, selectedText?: string, add = false) => {
       if (
         runtimeContext == null ||
         ownerKey == null ||
@@ -2661,15 +2680,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
           latestMessages.ownerKey === ownerKey &&
           catalog.ownerKey === ownerKey &&
           catalog.streamsById[source.streamUuid]?.encryption === true &&
-          latest?.payload.kind === payload.kind &&
-          latest.projectId === source.projectId &&
-          latest.authorUuid === source.authorUuid &&
-          latest.streamUuid === source.streamUuid &&
-          latest.topicUuid === source.topicUuid &&
-          (latest.payload.kind === "e2ee" || latest.payload.kind === "markdown") &&
-          latest.payload.content === payload.content &&
-          (payload.kind !== "e2ee" ||
-            (latest.payload.kind === "e2ee" && latest.payload.keyUuid === payload.keyUuid))
+          isEncryptedReplySourceCurrent(source, latest)
         );
       };
       let plaintext: string | null;
@@ -2717,28 +2728,34 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
         }
         return;
       }
+      setEncryptedTabFocusSuppressed(false);
       // Decrypted quotes and answers stay in page memory and never enter durable drafts.
-      updateEncryptedComposerState((current) => ({
-        scopeKey: encryptedComposerScopeKey,
-        conversationId: targetConversationId,
-        text:
+      updateEncryptedComposerState((current) => {
+        const valid =
           current?.scopeKey === encryptedComposerScopeKey &&
-          current.conversationId === conversationId
-            ? current.text
-            : "",
-        reply: {
-          source,
-          tab: {
-            ...identity,
-            messageUuid: source.uuid,
-            senderUuid: source.authorUuid,
-            senderName,
-            quotedContent: plaintext,
-            ...(selectedText == null || selectedText.trim().length === 0 ? {} : { selectedText }),
-            answer: "",
-          },
-        },
-      }));
+          current.conversationId === targetConversationId;
+        const session = valid ? current.replySession : EMPTY_WORKSPACE_REPLY_SESSION;
+        const text = valid ? current.text : "";
+        const quote = {
+          messageUuid: source.uuid,
+          senderUuid: source.authorUuid,
+          senderName,
+          quotedContent: plaintext,
+          ...(selectedText == null || selectedText.trim().length === 0 ? {} : { selectedText }),
+        };
+        const replySession = add
+          ? addWorkspaceReplyTab(session, quote, identity)
+          : replyToWorkspaceReply(session, quote, identity, text);
+        const activeId = replySession.activeTabId;
+        return {
+          scopeKey: encryptedComposerScopeKey,
+          conversationId: targetConversationId,
+          text: session.tabs.length === 0 ? "" : text,
+          replySession,
+          sources:
+            activeId == null ? {} : { ...(valid ? current.sources : {}), [activeId]: source },
+        };
+      });
     },
     [
       captureWorkspaceChatUiAction,
@@ -2770,6 +2787,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
   const handleReplyMessage = useCallback(
     (messageUuid: string, selectedText?: string) => {
       if (stream?.encryption === true) {
+        cancelEncryptedReplies();
         void handleEncryptedReplyMessage(messageUuid, selectedText);
         return;
       }
@@ -2834,6 +2852,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
       });
     },
     [
+      cancelEncryptedReplies,
       createWorkspaceReplyTabIdentity,
       handleEncryptedReplyMessage,
       stream?.encryption,
@@ -2849,6 +2868,15 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
 
   const handleAddReplyMessage = useCallback(
     (messageUuid: string, selectedText?: string) => {
+      if (stream?.encryption === true) {
+        const epoch = encryptedReplyQueueEpochRef.current;
+        const run = async () => {
+          if (encryptedReplyQueueEpochRef.current === epoch)
+            await handleEncryptedReplyMessage(messageUuid, selectedText, true);
+        };
+        encryptedReplyQueueRef.current = encryptedReplyQueueRef.current.then(run, run);
+        return;
+      }
       const target = resolveWorkspaceReplyTarget(messageUuid, selectedText);
       if (target == null) return;
       const { quote } = target;
@@ -2875,6 +2903,8 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
     },
     [
       createWorkspaceReplyTabIdentity,
+      handleEncryptedReplyMessage,
+      stream?.encryption,
       invalidateWorkspaceReplyHandoffClaim,
       isRestoredWorkspaceReplyEdit,
       resolveWorkspaceReplyTarget,
@@ -4025,6 +4055,10 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
     anchorRouteRequest != null ||
     (messageNavigationIntent != null && messageNavigationIntent.phase !== "superseded");
 
+  const encryptedReplySession =
+    currentEncryptedComposer?.replySession ?? EMPTY_WORKSPACE_REPLY_SESSION;
+  const activeReplySession =
+    stream?.encryption === true ? encryptedReplySession : workspaceReplySession;
   const resolvedComposerTarget = resolveSendTarget();
   const workspaceAttachmentTarget: WorkspaceComposerAttachmentTarget | null =
     runtimeContext != null &&
@@ -4183,7 +4217,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
             onReplyMessage={handleReplyMessage}
             onReplySelectedMessages={replyTargetReady ? handleReplySelectedMessages : undefined}
             onAddReplyMessage={
-              selection.kind !== "topic" || workspaceReplySession.tabs.length === 0
+              selection.kind !== "topic" || activeReplySession.tabs.length === 0
                 ? undefined
                 : handleAddReplyMessage
             }
@@ -4258,7 +4292,9 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
     hasKeyUpdateComposerNotice ||
     (!showStreamTopicPrompt &&
       (hasSelectionComposerNotice || hasInlineComposerNotice || hasDeleteComposerNotice));
-  const encryptedReplyTab = currentEncryptedComposer?.reply?.tab;
+  const encryptedReplyTab = encryptedReplySession.tabs.find(
+    (tab) => tab.id === encryptedReplySession.activeTabId,
+  );
   const encryptedReplyQuote: ReplyQuote | null =
     encryptedReplyTab == null
       ? null
@@ -4271,40 +4307,89 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
           permalinkUrl: null,
         };
   const encryptedReplyBody =
-    encryptedReplyTab == null
+    encryptedReplySession.tabs.length === 0
       ? undefined
-      : buildWorkspaceReplyMarkdown([
-          { ...encryptedReplyTab, answer: currentEncryptedComposer?.text ?? "" },
-        ]);
+      : buildWorkspaceReplyMarkdown(encryptedReplySession.tabs);
   const handleEncryptedComposerValueChange = useCallback(
     (text: string) => {
       if (encryptedComposerScopeKey == null || conversationId == null) return;
-      updateEncryptedComposerState((current) => ({
-        scopeKey: encryptedComposerScopeKey,
-        conversationId,
-        text,
-        reply:
+      updateEncryptedComposerState((current) => {
+        const valid =
           current?.scopeKey === encryptedComposerScopeKey &&
-          current.conversationId === conversationId
-            ? current.reply
-            : null,
-      }));
+          current.conversationId === conversationId;
+        const replySession = valid ? current.replySession : EMPTY_WORKSPACE_REPLY_SESSION;
+        return {
+          scopeKey: encryptedComposerScopeKey,
+          conversationId,
+          text: replySession.tabs.length === 0 ? text : (current?.text ?? ""),
+          replySession:
+            replySession.tabs.length === 0
+              ? replySession
+              : setWorkspaceReplyAnswer(replySession, text),
+          sources: valid ? current.sources : {},
+        };
+      });
     },
     [conversationId, encryptedComposerScopeKey, updateEncryptedComposerState],
   );
   const handleClearEncryptedReply = useCallback(
     (reason?: MessageComposerReplyClearReason) => {
-      encryptedReplyAttemptRef.current += 1;
+      cancelEncryptedReplies();
       updateEncryptedComposerState((current) =>
         current == null
           ? null
           : {
               ...current,
-              reply: null,
-              ...(reason === "submit" ? { text: "" } : {}),
+              replySession: EMPTY_WORKSPACE_REPLY_SESSION,
+              sources: {},
+              text:
+                reason === "submit"
+                  ? ""
+                  : (current.replySession.tabs.find(
+                      (tab) => tab.id === current.replySession.activeTabId,
+                    )?.answer ?? current.text),
             },
       );
     },
+    [cancelEncryptedReplies, updateEncryptedComposerState],
+  );
+  const handleEncryptedSelectTab = useCallback(
+    (id: string, source?: WorkspaceReplyTabSelectSource) => {
+      setEncryptedTabFocusSuppressed(source === "keyboard");
+      updateEncryptedComposerState((current) =>
+        current == null
+          ? null
+          : { ...current, replySession: selectWorkspaceReplyTab(current.replySession, id) },
+      );
+    },
+    [updateEncryptedComposerState],
+  );
+  const handleEncryptedRemoveTab = useCallback(
+    (id: string) => {
+      cancelEncryptedReplies();
+      updateEncryptedComposerState((current) => {
+        if (current == null) return null;
+        const removed = current.replySession.tabs.find((tab) => tab.id === id);
+        const replySession = removeWorkspaceReplyTab(current.replySession, id);
+        const sources = { ...current.sources };
+        delete sources[id];
+        return {
+          ...current,
+          replySession,
+          sources,
+          text: replySession.tabs.length === 0 ? (removed?.answer ?? current.text) : current.text,
+        };
+      });
+    },
+    [cancelEncryptedReplies, updateEncryptedComposerState],
+  );
+  const handleEncryptedReorderTab = useCallback(
+    (id: string, index: number) =>
+      updateEncryptedComposerState((current) =>
+        current == null
+          ? null
+          : { ...current, replySession: reorderWorkspaceReplyTab(current.replySession, id, index) },
+      ),
     [updateEncryptedComposerState],
   );
   const restoredAttachments = useMemo(
@@ -4341,13 +4426,26 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
         onCancelEdit={handleCancelEdit}
         capabilities={encryptedComposerCapabilities}
         disabled={isTopicClosed || !encryptedChatAvailable}
-        initialValue={currentEncryptedComposer?.text ?? ""}
-        draftSessionKey={`${encryptedComposerScopeKey}:${conversationId}`}
+        initialValue={encryptedReplyTab?.answer ?? currentEncryptedComposer?.text ?? ""}
+        draftSessionKey={`${encryptedComposerScopeKey}:${conversationId}:${encryptedReplyTab?.id ?? "draft"}`}
         onValueChange={handleEncryptedComposerValueChange}
+        leadingContent={
+          encryptedReplySession.tabs.length > 1 ? (
+            <WorkspaceReplyTabs
+              session={encryptedReplySession}
+              onSelect={handleEncryptedSelectTab}
+              onRemove={handleEncryptedRemoveTab}
+              onReorder={handleEncryptedReorderTab}
+            />
+          ) : null
+        }
+        allowEmptyActiveValueSend={encryptedReplySession.tabs.some(
+          (tab) => tab.answer.trim().length > 0,
+        )}
         replyQuote={encryptedReplyQuote}
         outgoingBodyOverride={encryptedReplyBody}
         onClearReply={handleClearEncryptedReply}
-        focusKey={encryptedReplyTab?.id}
+        focusKey={encryptedTabFocusSuppressed ? null : encryptedReplyTab?.id}
         optimisticClearOnSend
         aiMessagesContext={[]}
         joinedTop={composerJoinedTop}
@@ -4358,8 +4456,13 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
       conversationId,
       currentEncryptedComposer?.text,
       encryptedReplyQuote,
+      encryptedReplySession,
+      handleEncryptedSelectTab,
+      handleEncryptedRemoveTab,
+      handleEncryptedReorderTab,
       encryptedReplyBody,
       encryptedReplyTab?.id,
+      encryptedTabFocusSuppressed,
       handleEncryptedComposerValueChange,
       handleClearEncryptedReply,
       handleSend,

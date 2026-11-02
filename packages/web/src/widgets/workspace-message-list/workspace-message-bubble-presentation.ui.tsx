@@ -846,7 +846,7 @@ export const WorkspaceMessageBubblePresentation: React.FC<WorkspaceMessageBubble
             }
             requestMessageKeyPending={interactiveActions?.requestMessageKeyPending}
             onReplyMessage={locked ? undefined : interactiveActions?.onReplyMessage}
-            onAddReplyMessage={encryptedPayload ? undefined : interactiveActions?.onAddReplyMessage}
+            onAddReplyMessage={locked ? undefined : interactiveActions?.onAddReplyMessage}
             onForwardMessage={encryptedPayload ? undefined : interactiveActions?.onForwardMessage}
             onToggleMessageSelection={
               encryptedPayload ? undefined : interactiveActions?.onToggleMessageSelection

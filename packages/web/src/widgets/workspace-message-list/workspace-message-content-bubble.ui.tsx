@@ -19,7 +19,12 @@ export function WorkspaceMessageContentBubble({
   const actions = useMemo(
     () =>
       encrypted && !encryptedChat && props.actions != null
-        ? { ...props.actions, onReplyMessage: undefined, onEditMessage: undefined }
+        ? {
+            ...props.actions,
+            onReplyMessage: undefined,
+            onAddReplyMessage: undefined,
+            onEditMessage: undefined,
+          }
         : props.actions,
     [encrypted, encryptedChat, props.actions],
   );
