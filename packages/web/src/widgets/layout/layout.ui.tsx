@@ -219,10 +219,6 @@ export const Layout: React.FC = () => {
     rightDrawerOpen,
     setRightDrawerOpen,
     setSidebarOpen,
-    sidebarChats: [],
-    activeStreamSlug: activeStreamSlug ?? null,
-    activeDmIdParam: dmIdParam ?? null,
-    navigate,
   });
 
   useLayoutEscapeNavigation({

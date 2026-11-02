@@ -17,6 +17,7 @@ import {
 } from "~/entities/workspace-auth/workspace-session-storage-scope.lib";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { setLocale } from "~/i18n/i18n";
+import { normalizeHotkeyOverrides, type HotkeyOverrides } from "~/shared/lib/hotkeys";
 import { logStoreAction } from "~/shared/lib/logger";
 import { resolveAuthIdleTimeout } from "./auth-idle-timeout.lib";
 import type {
@@ -72,6 +73,8 @@ function createDefaultSettings(): AppSettings {
     chatClickAction: "general",
     composerToolbarExpanded: false,
     authIdleTimeout: "3d",
+    hotkeysEnabled: true,
+    hotkeyOverrides: {},
   };
 }
 
@@ -89,6 +92,8 @@ const FALLBACK_SETTINGS: Omit<AppSettings, "language"> = {
   chatClickAction: "general",
   composerToolbarExpanded: false,
   authIdleTimeout: "3d",
+  hotkeysEnabled: true,
+  hotkeyOverrides: {},
 };
 
 function resolveFolderRailLayout(value: unknown): FolderRailLayout {
@@ -151,6 +156,8 @@ function loadSettings(
         ? parsed.language
         : resolveBrowserLanguage();
     return {
+      hotkeysEnabled: typeof parsed.hotkeysEnabled === "boolean" ? parsed.hotkeysEnabled : true,
+      hotkeyOverrides: normalizeHotkeyOverrides(parsed.hotkeyOverrides),
       prioritizePersonalUnread,
       prioritizeUnmutedUnreadChannels,
       messengerSidebarSortMode: resolveMessengerSidebarSortMode(parsed.messengerSidebarSortMode),
@@ -178,13 +185,14 @@ function loadSettings(
 function persistSettings(
   settings: AppSettings,
   scope: WorkspaceSessionStorageScope = getCurrentWorkspaceSessionStorageScope(),
-): void {
-  if (typeof window === "undefined") return;
+): boolean {
+  if (typeof window === "undefined") return false;
   try {
     const { key } = getStorageKeysForScope(scope);
     localStorage.setItem(key, JSON.stringify(settings));
+    return true;
   } catch {
-    /* quota exceeded */
+    return false;
   }
 }
 
@@ -201,6 +209,8 @@ interface SettingsState extends AppSettings {
   setChatClickAction: (action: ChatClickAction) => void;
   setComposerToolbarExpanded: (expanded: boolean) => void;
   setAuthIdleTimeout: (timeout: AuthIdleTimeout) => void;
+  setHotkeysEnabled: (enabled: boolean) => boolean;
+  setHotkeyOverrides: (overrides: HotkeyOverrides) => boolean;
   resetToDefaults: () => void;
 }
 
@@ -280,6 +290,28 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     logStoreAction("settings", "setAuthIdleTimeout", { authIdleTimeout });
     set({ authIdleTimeout });
     persistSettings({ ...get(), authIdleTimeout });
+  },
+
+  setHotkeysEnabled(hotkeysEnabled) {
+    // Save first so the screen does not show a change that was not stored.
+    if (!persistSettings({ ...get(), hotkeysEnabled })) return false;
+    set({ hotkeysEnabled });
+    return true;
+  },
+
+  setHotkeyOverrides(value) {
+    const hotkeyOverrides = normalizeHotkeyOverrides(value);
+    // Reject the whole change if any entry was removed or changed by validation.
+    const entries = Object.entries(value);
+    if (
+      entries.length !== Object.keys(hotkeyOverrides).length ||
+      entries.some(([key, binding]) => hotkeyOverrides[key as keyof HotkeyOverrides] !== binding)
+    ) {
+      return false;
+    }
+    if (!persistSettings({ ...get(), hotkeyOverrides })) return false;
+    set({ hotkeyOverrides });
+    return true;
   },
 
   resetToDefaults() {

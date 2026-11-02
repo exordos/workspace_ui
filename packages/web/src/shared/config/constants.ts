@@ -105,5 +105,5 @@ export const COMPOSER_FORMATTING_TOOLBAR_ALWAYS_VISIBLE = true;
 // Keyboard shortcuts
 // ---
 
-/** Master switch for app keyboard shortcuts (navigation, composer, F6 zones, mouse back/forward). */
-export const KEYBOARD_SHORTCUTS_ENABLED = false;
+/** Legacy mouse back/forward remains disabled independently of keyboard settings. */
+export const MOUSE_HISTORY_NAVIGATION_ENABLED = false;

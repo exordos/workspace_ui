@@ -35,6 +35,12 @@ import {
   THEME_MODES,
 } from "./right-panel-user-menu-constants.lib";
 
+const HotkeySettingsDialog = React.lazy(() =>
+  import("~/features/hotkey-settings/hotkey-settings.ui").then((module) => ({
+    default: module.HotkeySettingsDialog,
+  })),
+);
+
 interface NestedHeaderProps {
   title: string;
   onBack: () => void;
@@ -128,6 +134,8 @@ export function RightPanelUserSettings({
   showHeader?: boolean;
 }>): React.ReactElement {
   const { t, locale: currentLocale, supportedLocales: locales } = useTranslation();
+  const [hotkeysOpen, setHotkeysOpen] = useState(false);
+  const hotkeysTriggerId = React.useId();
   const notificationSound = useSettingsStore((s) => s.notificationSound);
   const setNotificationSound = useSettingsStore((s) => s.setNotificationSound);
   const dockBounceEnabled = useSettingsStore((s) => s.dockBounceEnabled);
@@ -185,6 +193,14 @@ export function RightPanelUserSettings({
       ) : null}
       <ScrollArea className="min-h-0 flex-1 pb-5 pt-3">
         <div className="space-y-0 px-2">
+          <PanelMenuRow
+            id={hotkeysTriggerId}
+            label={t("hotkeys.title")}
+            icon="command"
+            variant="nested"
+            onClick={() => setHotkeysOpen(true)}
+            right={<Icon name="chevron-right" size={16} />}
+          />
           <PanelMenuRow
             label={t("settings.chatClickAction")}
             subtitle={t("settings.chatClickActionHint")}
@@ -346,6 +362,17 @@ export function RightPanelUserSettings({
           ) : null}
         </div>
       </ScrollArea>
+      {hotkeysOpen && (
+        <React.Suspense fallback={null}>
+          <HotkeySettingsDialog
+            onClose={() => setHotkeysOpen(false)}
+            onCloseAutoFocus={(event) => {
+              event.preventDefault();
+              document.getElementById(hotkeysTriggerId)?.focus();
+            }}
+          />
+        </React.Suspense>
+      )}
     </div>
   );
 }

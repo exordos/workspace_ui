@@ -1,4 +1,4 @@
-import { fireEvent, screen } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useThemeStore } from "~/entities/theme/theme.model";
 import { useSettingsStore } from "~/features/settings/settings.model";
@@ -22,6 +22,18 @@ describe("RightPanelUserSettings", () => {
     useSettingsStore.getState().resetToDefaults();
     useThemeStore.setState({ mode: "system", paletteId: "blue-cold" });
     setLocale("en");
+  });
+
+  it("opens shortcuts over settings and restores focus without closing the drawer", async () => {
+    const closeDrawer = vi.fn();
+    renderWithProviders(<RightPanelUserSettings onBack={vi.fn()} onClose={closeDrawer} />);
+    const trigger = screen.getByRole("button", { name: "Keyboard shortcuts" });
+    fireEvent.click(trigger);
+    const dialog = await screen.findByRole("dialog", { name: "Keyboard shortcuts" });
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    await waitFor(() => expect(trigger).toHaveFocus());
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(closeDrawer).not.toHaveBeenCalled();
   });
 
   it("lets macOS desktop users disable and re-enable Dock bouncing", () => {

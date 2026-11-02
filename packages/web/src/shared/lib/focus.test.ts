@@ -5,13 +5,7 @@
  * (sidebar, chat, composer), and the Tab/Shift+Tab flow. Correctness here
  * is essential for keyboard-only users and screen reader accessibility.
  */
-import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
-
-vi.mock("~/shared/config/constants", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("~/shared/config/constants")>();
-  return { ...actual, KEYBOARD_SHORTCUTS_ENABLED: true };
-});
-
+import { describe, expect, it, beforeEach, afterEach } from "vitest";
 import {
   getFocusableElements,
   getFirstFocusable,

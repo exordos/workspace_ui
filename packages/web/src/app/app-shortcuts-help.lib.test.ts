@@ -1,22 +1,21 @@
 import { describe, expect, it } from "vitest";
-import { formatShortcut } from "~/shared/lib/shortcuts";
+import { t } from "~/i18n/i18n";
+import { formatHotkey } from "~/shared/lib/hotkeys";
 import { buildShortcutHelpSections } from "./app-shortcuts-help.lib";
 
 describe("app-shortcuts-help", () => {
-  it("builds non-empty sections from shortcut catalog", () => {
-    const sections = buildShortcutHelpSections();
-    expect(sections.length).toBeGreaterThan(0);
-  });
-
-  it("contains interface help shortcut entry with formatted combo", () => {
-    const sections = buildShortcutHelpSections();
-    const interfaceSection = sections.find((section) => section.category === "Interface");
-    expect(interfaceSection).toBeDefined();
-
-    const helpEntry = interfaceSection?.entries.find(
-      (entry) => entry.label === "Keyboard shortcuts help",
+  it("shows effective bindings and omits disabled actions", () => {
+    const entries = buildShortcutHelpSections({
+      "composer.editLastMessage": "Alt+U",
+      "interface.help": null,
+    }).flatMap((section) => section.entries);
+    expect(entries).toContainEqual({
+      label: t("hotkeys.actions.composer.editLastMessage"),
+      combo: formatHotkey("Alt+U"),
+    });
+    expect(entries.some((entry) => entry.label === t("hotkeys.actions.interface.help"))).toBe(
+      false,
     );
-    expect(helpEntry).toBeDefined();
-    expect(helpEntry?.combo).toBe(formatShortcut("mod+/"));
+    expect(entries.some((entry) => entry.combo === formatHotkey("Escape"))).toBe(true);
   });
 });

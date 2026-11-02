@@ -5,19 +5,6 @@
 
 import { parseWorkspaceMessengerRoute } from "~/shared/lib/workspace-messenger-route.lib";
 
-export const COMPOSER_FOCUS_ZONE_SELECTOR = '[data-focus-zone="composer"]';
-
-export function isModalShortcutContextOpen(): boolean {
-  return document.querySelector("[data-shortcut-context='modal']") != null;
-}
-
-export function isComposerTextareaFocused(
-  activeElement: Element | null = document.activeElement,
-): boolean {
-  if (!(activeElement instanceof HTMLTextAreaElement)) return false;
-  return activeElement.closest(COMPOSER_FOCUS_ZONE_SELECTOR) != null;
-}
-
 /** True when focus is in an input, textarea, select, or contenteditable element. */
 export function isInteractiveElementFocused(
   activeElement: Element | null = document.activeElement,

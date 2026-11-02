@@ -2,16 +2,13 @@ import { describe, expect, it, vi } from "vitest";
 import { handleComposerWriteBodyKeyDown } from "./message-composer-write-body-keydown.lib";
 import type { KeyboardEvent, RefObject } from "react";
 
-vi.mock("~/shared/config/constants", () => ({
-  KEYBOARD_SHORTCUTS_ENABLED: false,
-}));
-
 function createKeyEvent(
   key: string,
   init: Partial<KeyboardEvent> = {},
 ): KeyboardEvent<HTMLTextAreaElement> {
   return {
     key,
+    nativeEvent: new globalThis.KeyboardEvent("keydown", { key }),
     shiftKey: false,
     metaKey: false,
     ctrlKey: false,
@@ -34,7 +31,6 @@ function baseOptions(
     sendNewlineMode: "enter-sends" as const,
     isEditing: false,
     textareaRef: { current: null } as RefObject<HTMLTextAreaElement | null>,
-    applyFormattingShortcut: vi.fn(),
     onActiveMentionIndexChange: vi.fn(),
     onMentionSelect: vi.fn(),
     onHideMentionDropdown: vi.fn(),
@@ -64,27 +60,23 @@ describe("handleComposerWriteBodyKeyDown", () => {
     expect(onCancelEdit).toHaveBeenCalled();
   });
 
-  it("does not apply Mod+B formatting when global shortcuts are disabled", () => {
-    const applyFormattingShortcut = vi.fn();
-    const event = createKeyEvent("b", { ctrlKey: true });
-    handleComposerWriteBodyKeyDown(baseOptions({ event, applyFormattingShortcut }));
-
-    expect(applyFormattingShortcut).not.toHaveBeenCalled();
+  it("leaves composition and already handled events untouched", () => {
+    for (const init of [
+      { nativeEvent: new globalThis.KeyboardEvent("keydown", { isComposing: true }) },
+      { defaultPrevented: true },
+    ]) {
+      const options = baseOptions({ event: createKeyEvent("Enter", init) });
+      handleComposerWriteBodyKeyDown(options);
+      expect(options.onSend).not.toHaveBeenCalled();
+      expect(options.event.preventDefault).not.toHaveBeenCalled();
+    }
   });
 
-  it("edits last message on ArrowUp when global shortcuts are disabled", () => {
-    const onEditLastMessage = vi.fn();
-    const event = createKeyEvent("ArrowUp");
-    handleComposerWriteBodyKeyDown(
-      baseOptions({
-        event,
-        value: " \n\t ",
-        onEditLastMessage,
-      }),
-    );
-
-    expect(event.preventDefault).toHaveBeenCalled();
-    expect(onEditLastMessage).toHaveBeenCalledTimes(1);
+  it("does not send repeatedly when Enter is held", () => {
+    const options = baseOptions({ event: createKeyEvent("Enter", { repeat: true }) });
+    handleComposerWriteBodyKeyDown(options);
+    expect(options.onSend).not.toHaveBeenCalled();
+    expect(options.event.preventDefault).toHaveBeenCalled();
   });
 
   it("blurs composer on Escape when not editing", () => {

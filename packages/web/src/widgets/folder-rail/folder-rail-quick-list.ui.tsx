@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { folderColorValueToCssHex } from "~/features/manage-folders/folder-colors";
 import { t } from "~/i18n/i18n";
-import { useShortcut } from "~/shared/lib/shortcuts";
+import { useAppHotkey } from "~/shared/lib/hotkeys";
 import { DropdownMenu, type DropdownMenuItem } from "~/shared/ui/dropdown-menu";
 import { Icon } from "~/shared/ui/icon";
 import { SearchInput } from "~/shared/ui/search-input";
@@ -11,7 +11,7 @@ import {
   resolveQuickListItemClassName,
 } from "./folder-rail-quick-list.lib";
 import { FolderRailUnreadBadge } from "./folder-rail-unread-badge.ui";
-import { FOLDER_QUICK_LIST_SHORTCUT, resolveFolderSystemType } from "./folder-rail.lib";
+import { resolveFolderSystemType } from "./folder-rail.lib";
 import type { FolderQuickListProps } from "./folder-rail-quick-list.types";
 
 export const FolderQuickList: React.FC<FolderQuickListProps> = React.memo(function FolderQuickList({
@@ -51,8 +51,7 @@ export const FolderQuickList: React.FC<FolderQuickListProps> = React.memo(functi
     setActiveIndex(null);
   }, []);
 
-  useShortcut(FOLDER_QUICK_LIST_SHORTCUT, openQuickList, {
-    context: "sidebar",
+  useAppHotkey("navigation.folderList", openQuickList, {
     enabled: folders.length > 0,
   });
 

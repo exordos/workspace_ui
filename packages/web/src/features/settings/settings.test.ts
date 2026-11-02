@@ -326,6 +326,41 @@ describe("useSettingsStore", () => {
     });
   });
 
+  describe("hotkey settings", () => {
+    it("restores saved bindings per owner and sanitizes corrupt overrides", () => {
+      const { sessionB } = setWorkspaceSessionScope("account-a");
+      expect(useSettingsStore.getState().setHotkeysEnabled(false)).toBe(true);
+      const overrides = { "composer.editLastMessage": "Alt+U" } as const;
+      expect(useSettingsStore.getState().setHotkeyOverrides(overrides)).toBe(true);
+      localStorage.setItem(
+        `workspace-settings:${workspaceRuntimeOwnerKey(sessionB)}`,
+        JSON.stringify({
+          hotkeysEnabled: true,
+          hotkeyOverrides: { unknown: "Ctrl+X" },
+        }),
+      );
+      useWorkspaceAuthStore.getState().setCurrentAccountId("account-b");
+      expect(useSettingsStore.getState().hotkeysEnabled).toBe(true);
+      expect(useSettingsStore.getState().hotkeyOverrides).toEqual({});
+      useWorkspaceAuthStore.getState().setCurrentAccountId("account-a");
+      expect(useSettingsStore.getState().hotkeysEnabled).toBe(false);
+      expect(useSettingsStore.getState().hotkeyOverrides).toEqual(overrides);
+    });
+
+    it("reports storage failure without changing settings", () => {
+      const write = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+        throw new Error("quota exceeded");
+      });
+      expect(useSettingsStore.getState().setHotkeysEnabled(false)).toBe(false);
+      expect(useSettingsStore.getState().hotkeysEnabled).toBe(true);
+      expect(
+        useSettingsStore.getState().setHotkeyOverrides({ "composer.editLastMessage": "Alt+U" }),
+      ).toBe(false);
+      expect(useSettingsStore.getState().hotkeyOverrides).toEqual({});
+      write.mockRestore();
+    });
+  });
+
   describe("workspace owner scope", () => {
     it("persists settings under the active workspace owner key", () => {
       const { sessionA } = setWorkspaceSessionScope("account-a");

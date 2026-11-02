@@ -1,5 +1,6 @@
 import React from "react";
 import { SCROLL_AREA_CLASS } from "~/shared/config/constants";
+import { useAppHotkey } from "~/shared/lib/hotkeys";
 import { useMessageComposerInlineImageDropCaret } from "./message-composer-inline-image-drop-caret.hook";
 import { ComposerMentionDropdown } from "./message-composer-mention-dropdown.ui";
 import { handleComposerWriteBodyKeyDown } from "./message-composer-write-body-keydown.lib";
@@ -32,6 +33,17 @@ export const MessageComposerWriteBody = React.memo(function MessageComposerWrite
   reserveExpandControlSpace = false,
   compactInline = false,
 }: MessageComposerWriteBodyProps) {
+  useAppHotkey("composer.editLastMessage", () => onEditLastMessage?.(), {
+    target: textareaRef,
+    enabled:
+      !disabled && !showMentions && !isEditing && value.trim() === "" && onEditLastMessage != null,
+  });
+  const formattingOptions = { target: textareaRef, enabled: !disabled && !showMentions };
+  useAppHotkey("composer.bold", () => applyFormattingShortcut("**"), formattingOptions);
+  useAppHotkey("composer.italic", () => applyFormattingShortcut("*"), formattingOptions);
+  useAppHotkey("composer.strike", () => applyFormattingShortcut("~~"), formattingOptions);
+  useAppHotkey("composer.code", () => applyFormattingShortcut("`"), formattingOptions);
+
   const inlineImageDropCaretHandlers = useMessageComposerInlineImageDropCaret(textareaRef);
   const listboxId = `${textareaId}-suggestions`;
   const activeSuggestion = mentionSuggestions[activeMentionIndex];
@@ -100,14 +112,12 @@ export const MessageComposerWriteBody = React.memo(function MessageComposerWrite
             sendNewlineMode,
             isEditing,
             textareaRef,
-            applyFormattingShortcut,
             onActiveMentionIndexChange,
             onMentionSelect,
             onHideMentionDropdown,
             onValueChange,
             onDetectMention,
             onSend,
-            onEditLastMessage,
             onCancelEdit,
           });
         }}
