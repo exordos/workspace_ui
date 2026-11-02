@@ -73,7 +73,12 @@ export function isHotkeyBlockedByModal(target?: HTMLElement | null): boolean {
 export function useAppHotkey(
   id: HotkeyId,
   callback: (event: KeyboardEvent) => void,
-  options: { target?: RefObject<HTMLElement | null>; enabled?: boolean } = {},
+  options: {
+    target?: RefObject<HTMLElement | null>;
+    enabled?: boolean;
+    preventDefault?: boolean;
+    allowInputTarget?: (element: HTMLElement) => boolean;
+  } = {},
 ): void {
   const settings = useHotkeySettings();
   const binding = getHotkeyBinding(id, settings.overrides);
@@ -87,7 +92,8 @@ export function useAppHotkey(
         (!options.target &&
           event.target instanceof HTMLElement &&
           (event.target.isContentEditable ||
-            /^(INPUT|TEXTAREA|SELECT)$/.test(event.target.tagName))) ||
+            /^(INPUT|TEXTAREA|SELECT)$/.test(event.target.tagName)) &&
+          !options.allowInputTarget?.(event.target)) ||
         event.defaultPrevented ||
         event.isComposing ||
         event.keyCode === 229 ||
@@ -96,7 +102,7 @@ export function useAppHotkey(
         isHotkeyBlockedByModal(options.target?.current)
       )
         return;
-      event.preventDefault();
+      if (options.preventDefault !== false) event.preventDefault();
       callback(event);
     },
     {

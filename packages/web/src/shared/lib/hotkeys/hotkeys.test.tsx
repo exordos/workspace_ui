@@ -31,6 +31,9 @@ describe("hotkey policy", () => {
     ]) {
       expect(validateHotkeyBinding("navigation.back", key, {})).not.toBeNull();
     }
+    expect(validateHotkeyBinding("interface.quoteMessage", "Control+L", {})).toBeNull();
+    expect(validateHotkeyBinding("interface.theme", "Control+L", {})).toBe("reserved");
+    expect(validateHotkeyBinding("interface.quoteMessage", "Meta+L", {})).toBe("reserved");
     expect(validateHotkeyBinding("interface.theme", "Control+B", {})).toBe("conflict");
     expect(validateHotkeyBinding("composer.editLastMessage", "ArrowUp", {})).toBeNull();
     expect(
@@ -111,6 +114,24 @@ describe("hotkey dispatch", () => {
     dialog.hidden = true;
     expect(isHotkeyBlockedByModal()).toBe(false);
     dialog.remove();
+  });
+  it("lets the quote handler decide whether to consume Ctrl+L", () => {
+    const action = vi.fn();
+    function Quote() {
+      useAppHotkey("interface.quoteMessage", action, { preventDefault: false });
+      return <button>target</button>;
+    }
+    render(<Quote />);
+    const event = new KeyboardEvent("keydown", {
+      key: "l",
+      code: "KeyL",
+      ctrlKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    expect(screen.getByText("target").dispatchEvent(event)).toBe(true);
+    expect(action).toHaveBeenCalledOnce();
+    expect(event.defaultPrevented).toBe(false);
   });
   it("dispatches formatting on the Russian keyboard layout", () => {
     const action = vi.fn();

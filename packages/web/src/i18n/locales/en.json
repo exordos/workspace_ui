@@ -1037,7 +1037,8 @@
         "theme": "Change theme",
         "help": "Help",
         "sidebar": "Toggle sidebar",
-        "infoPanel": "Chat information"
+        "infoPanel": "Chat information",
+        "quoteMessage": "Quote message"
       },
       "composer": {
         "editLastMessage": "Edit last message",
@@ -1059,6 +1060,7 @@
     "save": "Save",
     "cancel": "Cancel",
     "recordInput": "Press a shortcut",
+    "quoteHint": "Select text, focus a message with Tab, or point to it.",
     "localDescription": "Settings are stored on this device. Composer shortcuts apply while editing a message.",
     "editLastMessageHint": "When the composer is empty and not editing a message"
   },

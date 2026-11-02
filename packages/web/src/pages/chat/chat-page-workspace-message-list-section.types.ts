@@ -56,6 +56,7 @@ export interface ChatPageWorkspaceMessageListSectionProps {
   requestMessageKeyPending?: boolean;
   getKeyRequestActions?: WorkspaceMessageListActions["getKeyRequestActions"];
   getKeyServiceState?: WorkspaceMessageListActions["getKeyServiceState"];
+  onReplySelectedMessages?: () => void;
   onReplyMessage?: (messageUuid: MessengerUuid, selectedText?: string) => void;
   onAddReplyMessage?: (messageUuid: MessengerUuid, selectedText?: string) => void;
   onForwardMessage?: (messageUuid: MessengerUuid, selectedText?: string) => void;

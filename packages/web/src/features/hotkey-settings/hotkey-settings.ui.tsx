@@ -151,6 +151,11 @@ export function HotkeySettingsDialog({
                         >
                           <span className="min-w-0">
                             {t(item.labelKey)}
+                            {item.id === "interface.quoteMessage" && (
+                              <span className="block text-text-secondary">
+                                {t("hotkeys.quoteHint")}
+                              </span>
+                            )}
                             {item.id === "composer.editLastMessage" ? (
                               <span className="block text-text-secondary">
                                 {t("hotkeys.editLastMessageHint")}

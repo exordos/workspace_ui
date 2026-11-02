@@ -24,6 +24,7 @@ import {
 import { WorkspaceAvatar } from "~/features/workspace-avatar/workspace-avatar.ui";
 import { t, useTranslation } from "~/i18n/i18n";
 import { formatCount, UNREAD_COUNT_DISPLAY_LIMIT } from "~/shared/lib/count-format.lib";
+import { useAppHotkey } from "~/shared/lib/hotkeys";
 import type { WorkspaceMessageFileReference } from "~/shared/lib/workspace-message-render/workspace-message-document.types";
 import { workspaceMessengerMessageAnchor } from "~/shared/lib/workspace-messenger-route.lib";
 import { FloatingScrollToBottomButton } from "~/shared/ui/floating-scroll-to-bottom-button";
@@ -813,6 +814,7 @@ const WorkspaceMessageListContent: React.FC<
   anchorNavigationActive = false,
   onFocusedMessageApplied,
   onFocusedMessageMissing,
+  onReplySelectedMessages,
   selectionMode = false,
   selectedMessageUuids = EMPTY_SELECTED_MESSAGE_UUIDS,
   readRequestBoundaryMessageUuids = EMPTY_READ_REQUEST_BOUNDARY_MESSAGE_UUIDS,
@@ -1279,6 +1281,60 @@ const WorkspaceMessageListContent: React.FC<
       cancelPendingLatestWindow();
     };
   }, [cancelPendingLatestWindow, conversationId]);
+  const messageRowSelector = "article[data-server-message-uuid]";
+  useAppHotkey(
+    "interface.quoteMessage",
+    (event) => {
+      const container = scrollContainerRef.current;
+      if (selectionMode) {
+        if (selectedMessageUuids.size > 0 && onReplySelectedMessages != null) {
+          event.preventDefault();
+          onReplySelectedMessages();
+        }
+        return;
+      }
+      if (container == null || actions?.onReplyMessage == null) return;
+      const selection = window.getSelection();
+      let row: HTMLElement | null;
+      let selectedText: string | undefined;
+      if (selection && !selection.isCollapsed) {
+        if (selection.rangeCount !== 1) return;
+        // Both ends of the selection must be inside the same message body.
+        const common = selection.getRangeAt(0).commonAncestorContainer;
+        const element = common instanceof Element ? common : common.parentElement;
+        const body = element?.closest('[data-message-body="true"]');
+        row = body?.closest<HTMLElement>(messageRowSelector) ?? null;
+        selectedText = selection.toString();
+        if (!selectedText.trim()) return;
+      } else {
+        row =
+          document.activeElement?.closest<HTMLElement>(messageRowSelector) ??
+          container.querySelector<HTMLElement>(`${messageRowSelector}:hover`);
+      }
+      if (!row || !container.contains(row)) return;
+      const uuid = row.dataset.serverMessageUuid;
+      const bubble = row.querySelector<HTMLElement>('[data-hotkey-reply-eligible="true"]');
+      if (!uuid || !bubble) return;
+      event.preventDefault();
+      actions.onReplyMessage(
+        uuid,
+        bubble.dataset.messageHasSecrets === "true" ? undefined : selectedText,
+      );
+    },
+    {
+      enabled: selectionMode ? onReplySelectedMessages != null : actions?.onReplyMessage != null,
+      allowInputTarget: (element) =>
+        // The chat opens with focus in the empty composer.
+        (!selectionMode &&
+          element instanceof HTMLTextAreaElement &&
+          element.value === "" &&
+          element.closest('[data-focus-zone="composer"]') != null) ||
+        (selectionMode &&
+          element.matches('[data-workspace-message-selection-control] input[type="checkbox"]') &&
+          scrollContainerRef.current?.contains(element) === true),
+      preventDefault: false,
+    },
+  );
   const unreadMessagesLabel =
     unreadCount > 0
       ? t("chat.unreadMessagesWithCount", {

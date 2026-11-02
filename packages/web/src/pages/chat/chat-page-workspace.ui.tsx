@@ -4025,145 +4025,6 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
     anchorRouteRequest != null ||
     (messageNavigationIntent != null && messageNavigationIntent.phase !== "superseded");
 
-  let body: React.ReactNode;
-  if (previewPresentation != null || selection.status === "conversation") {
-    body = (
-      <div
-        className="relative flex min-h-0 flex-1 flex-col overflow-hidden"
-        data-message-anchor-layer-host="true"
-      >
-        {selection.status === "conversation" &&
-        (previewPresentation == null || anchorHandoffPending) ? (
-          <ChatPageWorkspaceMessageListSection
-            messagesLoading={messagesStatus.loading || opening.pending}
-            hasInitialPayload={routeMessages.length > 0 || conversationWindow != null}
-            initialPositionReady={initialPositionReady}
-            initialPositionCancelled={opening.cancelled}
-            onUserScrollInput={takeOpeningControl}
-            messages={routeMessages}
-            outgoingMessages={outgoingMessages}
-            currentUserUuid={currentUserUuid}
-            conversationId={selection.conversationId}
-            scrollToBottomKey={buildWorkspaceMessageScrollKey({
-              conversationId: selection.conversationId,
-              focusTarget: activeMessageFocusTarget,
-              messageAnchorUuid,
-              locationKey: location.key,
-            })}
-            onLoadOlder={handleLoadOlder}
-            isLoadingOlder={
-              routeMessages.length > 0 &&
-              ((!hasAnchorRoute &&
-                conversationPaginationState?.conversationId === selection.conversationId &&
-                conversationPaginationState.direction === "before") ||
-                (messagesStatus.loading && windowPaginationDirection === "before"))
-            }
-            isLoadingNewer={
-              messagesStatus.loading &&
-              routeMessages.length > 0 &&
-              windowPaginationDirection === "after"
-            }
-            onLoadNewer={handleLoadNewer}
-            hasOlderMessages={!opening.pending && beforePageMarker != null}
-            hasNewerMessages={!opening.pending && afterPageMarker != null}
-            lastMessageUuid={lastMessageUuid}
-            onLoadLatestWindow={handleLoadLatestWindow}
-            onCancelLatestWindowLoad={handleCancelLatestWindowLoad}
-            onTailNavigationRequested={handleTailNavigationRequested}
-            firstUnreadUuid={firstUnreadMessage?.uuid}
-            unreadCount={unreadCount}
-            focusedMessageTarget={activeMessageFocusTarget}
-            anchorHandoffPending={anchorHandoffPending}
-            anchorNavigationActive={anchorNavigationActive}
-            onFocusedMessageApplied={onDomFocusApplied}
-            onFocusedMessageMissing={onDomFocusMissing}
-            selectionMode={selectionMode}
-            selectedMessageUuids={selectedMessageUuids}
-            readRequestBoundaryMessageUuids={readRequestBoundaryMessageUuids}
-            onUnreadMessagesVisible={
-              anchorHandoffPending || !opening.ready ? undefined : scheduleReadBatch
-            }
-            onUnreadMessagesAtBottom={
-              anchorHandoffPending ||
-              !opening.ready ||
-              conversationWindow?.mode === "around-anchor" ||
-              selection.kind !== "topic"
-                ? undefined
-                : scheduleTopicReadAtBottom
-            }
-            onReplyMessage={handleReplyMessage}
-            onAddReplyMessage={
-              selection.kind !== "topic" || workspaceReplySession.tabs.length === 0
-                ? undefined
-                : handleAddReplyMessage
-            }
-            onForwardMessage={handleForwardMessage}
-            onOpenMessageInChat={handleOpenMessageInChat}
-            onOpenMentionUser={openWorkspaceUserProfile == null ? undefined : handleOpenMentionUser}
-            onOpenWorkspaceReference={handleOpenWorkspaceReference}
-            onToggleMessageSelection={handleToggleMessageSelection}
-            onEditMessage={handleEditMessage}
-            onRequestMessageKey={handleRequestMessageKey}
-            onRequestSecretKey={handleRequestSecretKey}
-            requestMessageKeyPending={encryptedChat.loading || encryptedChat.state.pending}
-            getKeyRequestActions={getKeyRequestActions}
-            getKeyServiceState={getKeyServiceState}
-            onRequestDeleteMessage={handleRequestDeleteMessage}
-            onCopyMessageText={handleCopyMessageText}
-            onToggleMessageReaction={handleToggleMessageReaction}
-            onDownloadFile={handleDownloadFile}
-            onLoadWorkspaceFilePreview={handleLoadWorkspaceFilePreview}
-            onOpenWorkspaceMedia={handleOpenWorkspaceMedia}
-            onOpenUnsupportedFilePreview={handleOpenUnsupportedFilePreview}
-            onRetryOutgoingMessage={handleRetryOutgoingMessage}
-            onRemoveOutgoingMessage={handleRemoveOutgoingMessage}
-            jitsiServerBaseUrl={workspaceMeetUrl}
-            jitsiLocationName={jitsiLocationName}
-            onOpenJitsiCall={handleOpenWorkspaceJitsiCall}
-            messagesLoadError={messagesLoadError}
-            onRetryMessagesLoad={retryMessagesLoad}
-            boundaryLoadFailed={windowPaginationErrorDirection != null}
-            onRetryBoundaryLoad={handleRetryBoundaryLoad}
-            scrollToBottomAfterSendNonce={scrollToBottomAfterSendNonce}
-            resolveAuthorLabel={resolveAuthorLabel}
-            resolveTopicLabel={resolveMessageTopicLabel}
-            presentation={messageListPresentation}
-            resolveMention={resolveMention}
-          />
-        ) : null}
-        {previewPresentation != null ? (
-          <div
-            key={`preview:${previewPresentation.intentId}`}
-            className="absolute inset-0 z-base flex min-h-0 flex-col bg-bg"
-            data-message-anchor-preview-layer="true"
-          >
-            <WorkspaceMessageAnchorTransition
-              presentation={previewPresentation}
-              currentUserUuid={currentUserUuid}
-              usersById={usersById}
-              errorDetail={navigationError?.detail}
-              onRetry={retryMessageNavigation}
-              onTailNavigationRequested={
-                conversationId == null ? undefined : handleTailNavigationRequested
-              }
-              resolveAuthorLabel={resolveAuthorLabel}
-              resolveMention={resolveMention}
-            />
-          </div>
-        ) : null}
-      </div>
-    );
-  } else if (selection.status !== "invalid-route" && routeSelection.status === "message") {
-    body = <WorkspaceChatBlockingLoader />;
-  } else {
-    body = (
-      <WorkspaceChatState
-        title={t("workspaceMessenger.invalidRoute")}
-        detail={t("workspaceMessenger.invalidRouteHint")}
-      />
-    );
-  }
-
   const resolvedComposerTarget = resolveSendTarget();
   const workspaceAttachmentTarget: WorkspaceComposerAttachmentTarget | null =
     runtimeContext != null &&
@@ -4253,6 +4114,146 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
     updateWorkspaceComposerDraft,
     workspaceReplySession,
   ]);
+  let body: React.ReactNode;
+  if (previewPresentation != null || selection.status === "conversation") {
+    body = (
+      <div
+        className="relative flex min-h-0 flex-1 flex-col overflow-hidden"
+        data-message-anchor-layer-host="true"
+      >
+        {selection.status === "conversation" &&
+        (previewPresentation == null || anchorHandoffPending) ? (
+          <ChatPageWorkspaceMessageListSection
+            messagesLoading={messagesStatus.loading || opening.pending}
+            hasInitialPayload={routeMessages.length > 0 || conversationWindow != null}
+            initialPositionReady={initialPositionReady}
+            initialPositionCancelled={opening.cancelled}
+            onUserScrollInput={takeOpeningControl}
+            messages={routeMessages}
+            outgoingMessages={outgoingMessages}
+            currentUserUuid={currentUserUuid}
+            conversationId={selection.conversationId}
+            scrollToBottomKey={buildWorkspaceMessageScrollKey({
+              conversationId: selection.conversationId,
+              focusTarget: activeMessageFocusTarget,
+              messageAnchorUuid,
+              locationKey: location.key,
+            })}
+            onLoadOlder={handleLoadOlder}
+            isLoadingOlder={
+              routeMessages.length > 0 &&
+              ((!hasAnchorRoute &&
+                conversationPaginationState?.conversationId === selection.conversationId &&
+                conversationPaginationState.direction === "before") ||
+                (messagesStatus.loading && windowPaginationDirection === "before"))
+            }
+            isLoadingNewer={
+              messagesStatus.loading &&
+              routeMessages.length > 0 &&
+              windowPaginationDirection === "after"
+            }
+            onLoadNewer={handleLoadNewer}
+            hasOlderMessages={!opening.pending && beforePageMarker != null}
+            hasNewerMessages={!opening.pending && afterPageMarker != null}
+            lastMessageUuid={lastMessageUuid}
+            onLoadLatestWindow={handleLoadLatestWindow}
+            onCancelLatestWindowLoad={handleCancelLatestWindowLoad}
+            onTailNavigationRequested={handleTailNavigationRequested}
+            firstUnreadUuid={firstUnreadMessage?.uuid}
+            unreadCount={unreadCount}
+            focusedMessageTarget={activeMessageFocusTarget}
+            anchorHandoffPending={anchorHandoffPending}
+            anchorNavigationActive={anchorNavigationActive}
+            onFocusedMessageApplied={onDomFocusApplied}
+            onFocusedMessageMissing={onDomFocusMissing}
+            selectionMode={selectionMode}
+            selectedMessageUuids={selectedMessageUuids}
+            readRequestBoundaryMessageUuids={readRequestBoundaryMessageUuids}
+            onUnreadMessagesVisible={
+              anchorHandoffPending || !opening.ready ? undefined : scheduleReadBatch
+            }
+            onUnreadMessagesAtBottom={
+              anchorHandoffPending ||
+              !opening.ready ||
+              conversationWindow?.mode === "around-anchor" ||
+              selection.kind !== "topic"
+                ? undefined
+                : scheduleTopicReadAtBottom
+            }
+            onReplyMessage={handleReplyMessage}
+            onReplySelectedMessages={replyTargetReady ? handleReplySelectedMessages : undefined}
+            onAddReplyMessage={
+              selection.kind !== "topic" || workspaceReplySession.tabs.length === 0
+                ? undefined
+                : handleAddReplyMessage
+            }
+            onForwardMessage={handleForwardMessage}
+            onOpenMessageInChat={handleOpenMessageInChat}
+            onOpenMentionUser={openWorkspaceUserProfile == null ? undefined : handleOpenMentionUser}
+            onOpenWorkspaceReference={handleOpenWorkspaceReference}
+            onToggleMessageSelection={handleToggleMessageSelection}
+            onEditMessage={handleEditMessage}
+            onRequestMessageKey={handleRequestMessageKey}
+            onRequestSecretKey={handleRequestSecretKey}
+            requestMessageKeyPending={encryptedChat.loading || encryptedChat.state.pending}
+            getKeyRequestActions={getKeyRequestActions}
+            getKeyServiceState={getKeyServiceState}
+            onRequestDeleteMessage={handleRequestDeleteMessage}
+            onCopyMessageText={handleCopyMessageText}
+            onToggleMessageReaction={handleToggleMessageReaction}
+            onDownloadFile={handleDownloadFile}
+            onLoadWorkspaceFilePreview={handleLoadWorkspaceFilePreview}
+            onOpenWorkspaceMedia={handleOpenWorkspaceMedia}
+            onOpenUnsupportedFilePreview={handleOpenUnsupportedFilePreview}
+            onRetryOutgoingMessage={handleRetryOutgoingMessage}
+            onRemoveOutgoingMessage={handleRemoveOutgoingMessage}
+            jitsiServerBaseUrl={workspaceMeetUrl}
+            jitsiLocationName={jitsiLocationName}
+            onOpenJitsiCall={handleOpenWorkspaceJitsiCall}
+            messagesLoadError={messagesLoadError}
+            onRetryMessagesLoad={retryMessagesLoad}
+            boundaryLoadFailed={windowPaginationErrorDirection != null}
+            onRetryBoundaryLoad={handleRetryBoundaryLoad}
+            scrollToBottomAfterSendNonce={scrollToBottomAfterSendNonce}
+            resolveAuthorLabel={resolveAuthorLabel}
+            resolveTopicLabel={resolveMessageTopicLabel}
+            presentation={messageListPresentation}
+            resolveMention={resolveMention}
+          />
+        ) : null}
+        {previewPresentation != null ? (
+          <div
+            key={`preview:${previewPresentation.intentId}`}
+            className="absolute inset-0 z-base flex min-h-0 flex-col bg-bg"
+            data-message-anchor-preview-layer="true"
+          >
+            <WorkspaceMessageAnchorTransition
+              presentation={previewPresentation}
+              currentUserUuid={currentUserUuid}
+              usersById={usersById}
+              errorDetail={navigationError?.detail}
+              onRetry={retryMessageNavigation}
+              onTailNavigationRequested={
+                conversationId == null ? undefined : handleTailNavigationRequested
+              }
+              resolveAuthorLabel={resolveAuthorLabel}
+              resolveMention={resolveMention}
+            />
+          </div>
+        ) : null}
+      </div>
+    );
+  } else if (selection.status !== "invalid-route" && routeSelection.status === "message") {
+    body = <WorkspaceChatBlockingLoader />;
+  } else {
+    body = (
+      <WorkspaceChatState
+        title={t("workspaceMessenger.invalidRoute")}
+        detail={t("workspaceMessenger.invalidRouteHint")}
+      />
+    );
+  }
+
   const composerJoinedTop =
     hasKeyUpdateComposerNotice ||
     (!showStreamTopicPrompt &&

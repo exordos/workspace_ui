@@ -24,6 +24,7 @@ const definitions = [
   ["interface.help", "Mod+/"],
   ["interface.sidebar", "Mod+\\"],
   ["interface.infoPanel", "Mod+."],
+  ["interface.quoteMessage", "Control+L"],
   ["composer.editLastMessage", "ArrowUp"],
   ["composer.bold", "Mod+B"],
   ["composer.italic", "Mod+I"],
@@ -107,7 +108,8 @@ export function validateHotkeyBinding(
     (platformModifier && parsed.shift && key === "r") ||
     /^(Mod|Ctrl|Control|Meta)\+[1-9]$/i.test(normalized) ||
     /^(Mod|Ctrl|Control|Meta)\+Shift\+T$/i.test(normalized) ||
-    /^(Mod|Ctrl|Control|Meta)\+[ACFVXLNORPSTWYZQ]$/i.test(normalized) ||
+    (/^(Mod|Ctrl|Control|Meta)\+[ACFVXLNORPSTWYZQ]$/i.test(normalized) &&
+      !(id === "interface.quoteMessage" && /^(Ctrl|Control)\+L$/i.test(binding))) ||
     /^(Mod|Ctrl|Control|Meta)\+Shift\+Z$/i.test(normalized) ||
     /^(Shift\+(Insert|Delete)|(Control|Ctrl|Mod|Meta)\+Insert)$/i.test(normalized) ||
     /^Alt\+F4$/i.test(normalized)
