@@ -1407,9 +1407,10 @@ describe("ChatPage Workspace route", () => {
       renderWorkspaceChatPageWithShellContexts(
         `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
       );
-      await screen.findByRole("textbox");
+      const textbox = await screen.findByRole("textbox");
+      await waitFor(() => expect(textbox).toBeEnabled());
       if (entry === "menu") act(() => captured.messageListProps?.onEditMessage?.(message.uuid));
-      else fireEvent.keyDown(screen.getByRole("textbox"), { key: "ArrowUp" });
+      else fireEvent.keyDown(textbox, { key: "ArrowUp" });
       await waitFor(() => expect(screen.getByRole("textbox")).toHaveValue("Original secret"));
       fireEvent.change(screen.getByRole("textbox"), { target: { value: "Edited secret" } });
       fireEvent.click(screen.getByRole("button", { name: t("common.save") }));
