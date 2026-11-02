@@ -1685,6 +1685,63 @@ describe("messenger conversation messages loader", () => {
     ).toBe("newer-next");
   });
 
+  it("includes realtime received while the final newer page is pending", async () => {
+    const runtimeContext = createRuntimeContext();
+    const ownerKey = prepareStoreOwner(runtimeContext);
+    const conversationId = `topic:${STREAM_A}:${TOPIC_A}` as const;
+    replaceConversationWindow({
+      conversationId,
+      messages: [adaptMessengerMessage(createMessageDto())],
+      afterPageMarker: "newer-cursor",
+      mode: "around-anchor",
+      anchorMessageUuid: MESSAGE_A,
+    });
+    const pageRequest = createDeferred<MessengerCollectionPage<WorkspaceMessengerMessageDto>>();
+    const syncReactions = () =>
+      Promise.resolve({
+        status: "applied" as const,
+        ownerKey,
+        messageUuids: [MESSAGE_B],
+        reactions: 0,
+      });
+    const loading = loadMessengerMessageWindowPage({
+      runtimeContext,
+      conversationId,
+      direction: "after",
+      pageMarker: "newer-cursor",
+      expectedRevision:
+        useWorkspaceMessageStore.getState().conversationWindowsById[conversationId]!.revision,
+      client: { getMessagesPage: () => pageRequest.promise },
+      boundaryCache: { readReadBoundaries: () => Promise.resolve([]) },
+      ownReactionSync: { hydrateFromCache: syncReactions, syncOwner: syncReactions },
+    });
+    useWorkspaceMessageStore
+      .getState()
+      .applyLiveCreatedMessage(
+        adaptMessengerMessage(createMessageDto({ uuid: MESSAGE_C, created_at: DATE_LATEST })),
+      );
+    expect(
+      selectWorkspaceMessagesForConversation(
+        useWorkspaceMessageStore.getState(),
+        conversationId,
+      ).map((message) => message.uuid),
+    ).toEqual([MESSAGE_A]);
+
+    pageRequest.resolve({
+      items: [createMessageDto({ uuid: MESSAGE_B, created_at: DATE_LATER })],
+      nextPageMarker: null,
+      pageLimit: 50,
+    });
+
+    await expect(loading).resolves.toMatchObject({ status: "applied", nextPageMarker: null });
+    expect(
+      selectWorkspaceMessagesForConversation(
+        useWorkspaceMessageStore.getState(),
+        conversationId,
+      ).map((message) => message.uuid),
+    ).toEqual([MESSAGE_A, MESSAGE_B, MESSAGE_C]);
+  });
+
   it("returns a failed page result when post-fetch reaction sync throws", async () => {
     const runtimeContext = createRuntimeContext();
     const ownerKey = prepareStoreOwner(runtimeContext);
