@@ -35,8 +35,8 @@ export const AppShortcutsHelpModal: React.FC<AppShortcutsHelpModalProps> = ({
                 key={`${section.category}-${entry.label}-${entry.combo}`}
                 className="flex items-center justify-between gap-2 rounded bg-bg px-2 py-1.5 text-xs text-text-primary"
               >
-                <span className="truncate">{entry.label}</span>
-                <kbd className="rounded border border-border-subtle bg-card-bg px-1.5 py-0.5 font-mono text-[11px] text-text-primary">
+                <span className="min-w-0">{entry.label}</span>
+                <kbd className="shrink-0 whitespace-nowrap rounded border border-border-subtle bg-card-bg px-1.5 py-0.5 font-mono text-[11px] text-text-primary">
                   {entry.combo}
                 </kbd>
               </div>
