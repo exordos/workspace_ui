@@ -1509,6 +1509,7 @@
     "hideTopBanner": "Скрыть плашку",
     "addFolder": "Добавить папку",
     "scrollToBottom": "Прокрутить вниз",
+    "scrollToBottomWithManyUnread": "Прокрутить вниз, {{countLabel}} непрочитанных сообщений",
     "scrollToBottomWithUnread_one": "Прокрутить вниз, {{count}} непрочитанное сообщение",
     "scrollToBottomWithUnread_few": "Прокрутить вниз, {{count}} непрочитанных сообщения",
     "scrollToBottomWithUnread_many": "Прокрутить вниз, {{count}} непрочитанных сообщений",

@@ -1,4 +1,5 @@
 import React, { useCallback } from "react";
+import { UNREAD_COUNT_DISPLAY_LIMIT } from "~/shared/lib/count-format.lib";
 import type { BadgeVariant } from "~/shared/ui/badge";
 import { Badge, MentionBadge } from "~/shared/ui/badge";
 import { Icon } from "~/shared/ui/icon";
@@ -52,7 +53,11 @@ function SidebarChatRowActionSlot({
           className={`flex h-5 items-center justify-center ${hasExpandChevron ? "group-focus-within/stream:hidden group-hover/stream:hidden" : ""}`}
           data-testid="sidebar-chat-row-unread-badge"
         >
-          <Badge count={unreadCount} variant={unreadBadgeVariant} />
+          <Badge
+            maxCount={UNREAD_COUNT_DISPLAY_LIMIT}
+            count={unreadCount}
+            variant={unreadBadgeVariant}
+          />
         </div>
       )}
       {hasExpandChevron && (

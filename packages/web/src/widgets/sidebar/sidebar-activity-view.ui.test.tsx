@@ -27,6 +27,23 @@ function renderCompact(path = "/org/acme/project/project-1/inbox") {
 }
 
 describe("SidebarActivityView compact rail", () => {
+  it.each([false, true])("bounds only unread activity counts when open=%s", (open) => {
+    render(
+      <MemoryRouter>
+        <SidebarActivityView
+          open={open}
+          onToggle={vi.fn()}
+          counts={{ inbox: 1001, mentions: 1001, drafts: 1001, markedMessages: 2002 }}
+          isCompactDensity={false}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getAllByText("1k+")).toHaveLength(2);
+    expect(screen.getByText("1001")).toBeInTheDocument();
+    expect(screen.getByText("2002")).toBeInTheDocument();
+  });
+
   it("renders activity items as equal-width buttons that fill the row", () => {
     renderCompact();
 

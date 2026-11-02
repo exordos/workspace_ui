@@ -2158,6 +2158,22 @@ describe("WorkspaceMessageList", () => {
     );
   });
 
+  it("formats the unread divider above the exact display limit", () => {
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[createWorkspaceMessage({ uuid: "unread-anchor" })]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        firstUnreadUuid="unread-anchor"
+        unreadCount={1001}
+      />,
+    );
+
+    expect(container.querySelector("[data-unread-divider='true']")).toHaveTextContent(
+      "Unread messages • 1k+",
+    );
+  });
+
   it("does not render an unread divider without an anchor in the current messages", () => {
     const { container, rerender } = render(
       <WorkspaceMessageList

@@ -519,6 +519,55 @@ describe("WorkspaceSidebar context menu", () => {
     expect(screen.getByText("5")).toHaveClass("bg-sidebar-unread");
   });
 
+  it.each([
+    { topicCount: 600, topicLabel: "600", streamCount: 1200, streamLabel: "1k+" },
+    { topicCount: 1001, topicLabel: "1k+", streamCount: 2002, streamLabel: "2k+" },
+  ])(
+    "formats stream sum $streamCount while keeping topic count $topicCount",
+    ({ topicCount, topicLabel, streamCount, streamLabel }) => {
+      useSidebarConfigStore.getState().setConfig({ expandedStreamUuids: [STREAM_UUID] });
+      renderWorkspaceSidebar([
+        createStream({
+          unreadCount: streamCount,
+          activeUnreadCount: streamCount,
+          passiveUnreadCount: 0,
+          topics: [
+            createTopic({ unreadCount: topicCount, activeUnreadCount: topicCount }),
+            createTopic({
+              id: "topic:second",
+              topicUuid: "second",
+              title: "Second",
+              unreadCount: topicCount,
+              activeUnreadCount: topicCount,
+            }),
+          ],
+        }),
+      ]);
+
+      expect(screen.getByText(streamLabel)).toHaveClass("bg-sidebar-unread");
+      expect(screen.getAllByText(topicLabel)).toHaveLength(2);
+      expect(screen.queryByText(String(streamCount))).not.toBeInTheDocument();
+    },
+  );
+
+  it("formats a passive topic independently without hiding a small active count", () => {
+    useSidebarConfigStore.getState().setConfig({ expandedStreamUuids: [STREAM_UUID] });
+    renderWorkspaceSidebar([
+      createStream({
+        unreadCount: 1003,
+        activeUnreadCount: 2,
+        passiveUnreadCount: 1001,
+        topics: [
+          createTopic({ unreadCount: 1001, activeUnreadCount: 0, passiveUnreadCount: 1001 }),
+        ],
+      }),
+    ]);
+
+    expect(screen.getByText("2")).toHaveClass("bg-sidebar-unread");
+    expect(screen.getByText("1k+")).toHaveClass("bg-notice-disable");
+    expect(screen.queryByText("1001")).not.toBeInTheDocument();
+  });
+
   it("dims muted topic cards without striking their titles through", () => {
     useSidebarConfigStore.getState().setConfig({ expandedStreamUuids: [STREAM_UUID] });
 
