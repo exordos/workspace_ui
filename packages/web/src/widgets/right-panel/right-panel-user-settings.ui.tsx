@@ -101,16 +101,18 @@ function OptionSurface({
 
 function SettingsOptionRow({
   label,
+  subtitle,
   active,
   onClick,
 }: Readonly<{
   label: string;
+  subtitle?: string;
   active: boolean;
   onClick: () => void;
 }>): React.ReactElement {
   return (
     <li>
-      <RightPanelOptionButton label={label} active={active} onClick={onClick} />
+      <RightPanelOptionButton label={label} subtitle={subtitle} active={active} onClick={onClick} />
     </li>
   );
 }
@@ -228,14 +230,10 @@ export function RightPanelUserSettings({
               />
               <SettingsOptionRow
                 label={t("settings.chatClickActionLatestTopic")}
+                subtitle={t("settings.chatClickActionAvatarHint")}
                 active={chatClickAction === "latestTopic"}
                 onClick={() => setChatClickAction("latestTopic")}
               />
-              {chatClickAction === "latestTopic" ? (
-                <li className="px-3 pb-2 text-xs text-text-secondary">
-                  {t("settings.chatClickActionAvatarHint")}
-                </li>
-              ) : null}
             </OptionSurface>
           ) : null}
 
