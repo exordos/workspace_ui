@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { t } from "~/i18n/i18n";
 import { writeText } from "~/shared/lib/clipboard";
 import { Icon } from "~/shared/ui/icon";
@@ -12,6 +12,8 @@ const joinClasses = (...classes: (string | false | null | undefined)[]): string 
 
 export const Copyable: React.FC<CopyableProps> = React.memo(function Copyable({
   value,
+  onCopy,
+  disabled = false,
   children,
   showOnHover = true,
   copyAriaLabel,
@@ -21,6 +23,8 @@ export const Copyable: React.FC<CopyableProps> = React.memo(function Copyable({
   iconSize = DEFAULT_ICON_SIZE,
 }) {
   const [copyState, setCopyState] = useState<"idle" | "success" | "error">("idle");
+  const timerRef = useRef<number | undefined>(undefined);
+  const attemptRef = useRef(0);
   const keepVisibleDuringSuccess = showOnHover && copyState === "success";
   const hasContent = children != null;
 
@@ -35,26 +39,26 @@ export const Copyable: React.FC<CopyableProps> = React.memo(function Copyable({
       event.preventDefault();
       event.stopPropagation();
 
-      void writeText(value).then((ok) => {
-        setCopyState(ok ? "success" : "error");
-      });
+      const attempt = ++attemptRef.current;
+      window.clearTimeout(timerRef.current);
+      void (onCopy != null ? onCopy() : writeText(value ?? ""))
+        .catch(() => false)
+        .then((ok) => {
+          if (attempt !== attemptRef.current) return;
+          setCopyState(ok ? "success" : "error");
+          timerRef.current = window.setTimeout(() => setCopyState("idle"), RESET_STATE_TIMEOUT_MS);
+        });
     },
-    [value],
+    [onCopy, value],
   );
 
-  useEffect(() => {
-    if (copyState === "idle") {
-      return;
-    }
-
-    const timer = window.setTimeout(() => {
-      setCopyState("idle");
-    }, RESET_STATE_TIMEOUT_MS);
-
-    return () => {
-      window.clearTimeout(timer);
-    };
-  }, [copyState]);
+  useEffect(
+    () => () => {
+      attemptRef.current += 1;
+      window.clearTimeout(timerRef.current);
+    },
+    [],
+  );
 
   let copyButtonVisibilityClass = "opacity-100";
   if (showOnHover) {
@@ -70,6 +74,7 @@ export const Copyable: React.FC<CopyableProps> = React.memo(function Copyable({
     <button
       type="button"
       onClick={handleCopy}
+      disabled={disabled}
       aria-label={actionLabel}
       title={actionLabel}
       data-copy-state={copyState}

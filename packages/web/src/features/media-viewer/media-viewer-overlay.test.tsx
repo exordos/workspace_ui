@@ -178,7 +178,54 @@ describe("MediaViewerOverlay", () => {
     expect(screen.getByRole("toolbar", { name: /media viewer/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /open in new tab/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /download/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /copy image/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /close/i })).toBeInTheDocument();
+  });
+
+  it("copies the current image and hides copy when navigating to video", async () => {
+    const image = new Blob(["image"], { type: "image/png" });
+    const writeImage = vi.fn().mockResolvedValue(true);
+    Object.defineProperty(window, "electronAPI", {
+      configurable: true,
+      value: { clipboard: { writeImage } },
+    });
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, blob: () => Promise.resolve(image) });
+    vi.stubGlobal("fetch", fetchMock);
+    useMediaViewerStore.getState().open([
+      { url: "blob:viewer-image", type: "image" },
+      { url: "blob:viewer-video", type: "video" },
+    ]);
+
+    render(<MediaViewerOverlay />);
+    fireEvent.click(screen.getByRole("button", { name: /copy image/i }));
+    await waitFor(() => expect(writeImage).toHaveBeenCalledOnce());
+    expect(await screen.findByRole("button", { name: /^copied$/i })).toHaveAttribute(
+      "data-copy-state",
+      "success",
+    );
+    expect(fetchMock).toHaveBeenCalledWith("blob:viewer-image");
+    fireEvent.click(screen.getByRole("button", { name: /next/i }));
+    expect(screen.queryByRole("button", { name: /copy image/i })).not.toBeInTheDocument();
+  });
+
+  it("shows an error instead of success when copying fails", async () => {
+    const image = new Blob(["image"], { type: "image/png" });
+    Object.defineProperty(window, "electronAPI", {
+      configurable: true,
+      value: { clipboard: { writeImage: vi.fn().mockResolvedValue(false) } },
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({ ok: true, blob: () => Promise.resolve(image) }),
+    );
+    useMediaViewerStore.getState().open([{ url: "blob:viewer-image", type: "image" }]);
+
+    render(<MediaViewerOverlay />);
+    fireEvent.click(screen.getByRole("button", { name: /copy image/i }));
+    expect(await screen.findByRole("button", { name: /failed to copy/i })).toHaveAttribute(
+      "data-copy-state",
+      "error",
+    );
   });
 
   it("hides the open-in-new-tab control in Electron", () => {
@@ -235,6 +282,7 @@ describe("MediaViewerOverlay", () => {
 
     expect(openButton).toBeDisabled();
     expect(downloadButton).toBeDisabled();
+    expect(screen.getByRole("button", { name: /copy image/i })).toBeDisabled();
   });
 
   it("opens resolved display URL in a new tab when toolbar open is clicked", async () => {
