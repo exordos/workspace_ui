@@ -6,6 +6,42 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.9.9] — 2026-11-02
+
+### Added
+
+- Configure keyboard shortcuts in Settings, including Ctrl+L for quoting, with
+  validation for reserved keys and conflicting bindings.
+- Copy images directly from the media viewer where clipboard support is available.
+
+### Changed
+
+- Enable supported application shortcuts by default. Individual bindings and the
+  global shortcut switch are stored per account; some navigation actions start unbound.
+- Display unread counts above 1000 as whole-thousand buckets: 1001–1999 as
+  `1k+`, 2000–2999 as `2k+`, and so on. Counts through 1000, drafts, and starred
+  totals keep their existing display. Numeric data and read/notification behavior
+  are unchanged; backend-bounded categories can remain approximate below 1000.
+
+### Fixed
+
+- Retain new realtime messages when loading more history expands the loaded window.
+- Improve message quick actions, copy feedback, and the Settings tooltip.
+
+### Requirements and compatibility
+
+- Bundle `@tanstack/react-hotkeys` 0.21.0 and its `@tanstack/hotkeys` 0.23.0 dependency.
+  Existing deployment and Node requirements are unchanged.
+- Keyboard settings use the existing account-scoped local storage. Browser/system
+  editing keys remain reserved. Mouse history navigation remains disabled.
+- The durable messenger cache schema and server API contracts are unchanged.
+
+### Migration notes
+
+- Update `workspace_ui` to `0.9.9`; no manual migration or cache reset is required.
+  Review Keyboard Shortcuts in Settings to change or disable the new defaults.
+- Save or send protected drafts before reloading; they remain only in account memory.
+
 ## [0.9.8] — 2026-11-02
 
 ### Added
