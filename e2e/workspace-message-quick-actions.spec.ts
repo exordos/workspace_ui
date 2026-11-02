@@ -156,7 +156,10 @@ async function expectActionsHidden(actions: Locator): Promise<void> {
 }
 
 test.describe("Workspace message quick actions @mock", () => {
-  test("Ctrl+L quotes the whole message under the pointer", async ({ authenticated }) => {
+  test("Ctrl+L adds the message under the pointer and keeps the first answer", async ({
+    authenticated,
+  }) => {
+    await installNarrowMessages(authenticated, "peer", "Second quote");
     await openStreamChatWithComposer(authenticated);
     const row = authenticated.locator(`[data-message-uuid='${E2E_MESSAGE_UUID}']`);
     await row.locator("[data-workspace-message-bubble='true']").hover();
@@ -167,9 +170,22 @@ test.describe("Workspace message quick actions @mock", () => {
     await expect(composer).toHaveValue("Draft");
     await composer.fill("");
     await authenticated.keyboard.press("Control+l");
-    await expect(authenticated.locator("[data-composer-reply-quote='true']")).toContainText(
-      "E2E initial message",
-    );
+    const quote = authenticated.locator("[data-composer-reply-quote='true']");
+    await expect(quote).toContainText("Second quote");
+    await composer.fill("Answer to keep");
+    await authenticated
+      .locator(`[data-message-uuid='${PREVIOUS_MESSAGE_UUID}'] [data-workspace-message-bubble]`)
+      .hover();
+    await authenticated.keyboard.press("Control+l");
+    await expect(quote).toContainText("First short message");
+    const tabs = authenticated
+      .locator('[role="tablist"]')
+      .filter({ has: authenticated.getByRole("tab", { name: /ответ|reply/i }) })
+      .getByRole("tab");
+    await expect(tabs).toHaveCount(2);
+    await tabs.first().click();
+    await expect(quote).toContainText("Second quote");
+    await expect(composer).toHaveValue("Answer to keep");
   });
 
   test("Ctrl+L quotes the selected part of a message", async ({ authenticated }) => {
