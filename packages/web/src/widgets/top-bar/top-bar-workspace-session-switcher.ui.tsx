@@ -9,6 +9,7 @@ import {
 import { resolveWorkspacePostLogoutRoute } from "~/entities/workspace-auth/workspace-post-logout-route.lib";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { t } from "~/i18n/i18n";
+import { UNREAD_COUNT_DISPLAY_LIMIT } from "~/shared/lib/count-format.lib";
 import { resolveMessengerNavigationPath } from "~/shared/lib/last-messenger-route.lib";
 import { withOrgRoutePrefix } from "~/shared/lib/org-route";
 import {
@@ -233,7 +234,11 @@ export const InstanceSwitcher: React.FC = () => {
                     data-testid={`workspace-session-unread-${session.accountId}`}
                     className="pointer-events-none absolute right-0 top-0"
                   >
-                    <Badge count={unreadCount} variant="unread" />
+                    <Badge
+                      maxCount={UNREAD_COUNT_DISPLAY_LIMIT}
+                      count={unreadCount}
+                      variant="unread"
+                    />
                   </span>
                 )}
               </span>

@@ -1,3 +1,4 @@
+import { UNREAD_COUNT_DISPLAY_LIMIT } from "~/shared/lib/count-format.lib";
 import { Badge } from "./badge";
 import { MentionBadge } from "./mention-badge";
 import { UnreadCountBadge } from "./unread-count-badge";
@@ -27,6 +28,20 @@ export const CountsAndSizes: Story = {
       <Badge count={99} />
       <Badge count={458} rounded="md" />
       <Badge count={12345} variant="muted" rounded="md" />
+    </div>
+  ),
+};
+
+export const BoundedCounts: Story = {
+  render: () => (
+    <div className="flex items-center gap-4">
+      <Badge count={999} maxCount={UNREAD_COUNT_DISPLAY_LIMIT} />
+      <Badge count={1000} maxCount={UNREAD_COUNT_DISPLAY_LIMIT} />
+      <Badge count={1001} maxCount={UNREAD_COUNT_DISPLAY_LIMIT} />
+      <Badge count={1999} maxCount={UNREAD_COUNT_DISPLAY_LIMIT} />
+      <Badge count={2000} maxCount={UNREAD_COUNT_DISPLAY_LIMIT} />
+      <Badge count={2002} maxCount={UNREAD_COUNT_DISPLAY_LIMIT} variant="muted" />
+      <UnreadCountBadge count={3001} />
     </div>
   ),
 };

@@ -1,6 +1,7 @@
 // Shared floating scroll-to-bottom button so feed and message-list share the same UI and behavior.
 import React from "react";
 import { t } from "~/i18n/i18n";
+import { formatCount, UNREAD_COUNT_DISPLAY_LIMIT } from "~/shared/lib/count-format.lib";
 import { UnreadCountBadge } from "~/shared/ui/badge";
 import { Icon } from "~/shared/ui/icon";
 
@@ -14,6 +15,11 @@ interface FloatingScrollToBottomButtonProps {
 function resolveAriaLabel(unreadCount: number): string {
   if (unreadCount <= 0) {
     return t("a11y.scrollToBottom");
+  }
+  if (unreadCount > UNREAD_COUNT_DISPLAY_LIMIT) {
+    return t("a11y.scrollToBottomWithManyUnread", {
+      countLabel: formatCount(unreadCount, UNREAD_COUNT_DISPLAY_LIMIT),
+    });
   }
   return t("a11y.scrollToBottomWithUnread", { count: unreadCount });
 }

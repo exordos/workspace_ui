@@ -1497,6 +1497,7 @@
     "hideTopBanner": "Hide banner",
     "addFolder": "Add folder",
     "scrollToBottom": "Scroll to bottom",
+    "scrollToBottomWithManyUnread": "Scroll to bottom, {{countLabel}} unread messages",
     "scrollToBottomWithUnread_one": "Scroll to bottom, {{count}} unread message",
     "scrollToBottomWithUnread_other": "Scroll to bottom, {{count}} unread messages",
     "messageMenu": "Message menu",

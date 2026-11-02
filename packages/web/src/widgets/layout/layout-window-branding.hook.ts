@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { brand } from "~/shared/lib/brand";
+import { formatCount, UNREAD_COUNT_DISPLAY_LIMIT } from "~/shared/lib/count-format.lib";
 import { getElectronAPI } from "~/shared/lib/electron";
 
 function formatWebWindowTitleWithUnreadCount(
@@ -8,7 +9,8 @@ function formatWebWindowTitleWithUnreadCount(
   activeChatWindowTitle = "",
 ): string {
   const safeUnreadCount = Number.isFinite(unreadCount) ? Math.floor(unreadCount) : 0;
-  const prefix = safeUnreadCount > 0 ? `(${safeUnreadCount}) ` : "";
+  const prefix =
+    safeUnreadCount > 0 ? `(${formatCount(safeUnreadCount, UNREAD_COUNT_DISPLAY_LIMIT)}) ` : "";
   const chatTitle = activeChatWindowTitle.trim();
   return chatTitle.length > 0 ? `${prefix}${chatTitle} - ${appName}` : `${prefix}${appName}`;
 }

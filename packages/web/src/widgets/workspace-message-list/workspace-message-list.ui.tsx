@@ -23,6 +23,7 @@ import {
 } from "~/features/message-presentation/message-presentation.hook";
 import { WorkspaceAvatar } from "~/features/workspace-avatar/workspace-avatar.ui";
 import { t, useTranslation } from "~/i18n/i18n";
+import { formatCount, UNREAD_COUNT_DISPLAY_LIMIT } from "~/shared/lib/count-format.lib";
 import type { WorkspaceMessageFileReference } from "~/shared/lib/workspace-message-render/workspace-message-document.types";
 import { workspaceMessengerMessageAnchor } from "~/shared/lib/workspace-messenger-route.lib";
 import { FloatingScrollToBottomButton } from "~/shared/ui/floating-scroll-to-bottom-button";
@@ -1280,7 +1281,9 @@ const WorkspaceMessageListContent: React.FC<
   }, [cancelPendingLatestWindow, conversationId]);
   const unreadMessagesLabel =
     unreadCount > 0
-      ? t("chat.unreadMessagesWithCount", { count: unreadCount })
+      ? t("chat.unreadMessagesWithCount", {
+          count: formatCount(unreadCount, UNREAD_COUNT_DISPLAY_LIMIT),
+        })
       : t("chat.unreadMessages");
 
   if (visibleListItems.length === 0) {

@@ -7,6 +7,7 @@ import {
 import type { MessengerStream, MessengerTopicListItem } from "~/entities/messenger/messenger.types";
 import { WorkspaceTopicContextMenu } from "~/features/workspace-topic-actions/workspace-topic-context-menu.ui";
 import { t } from "~/i18n/i18n";
+import { UNREAD_COUNT_DISPLAY_LIMIT } from "~/shared/lib/count-format.lib";
 import { resolveTopicDisplayInfo } from "~/shared/lib/topic-display.lib";
 import { Badge, MentionBadge } from "~/shared/ui/badge";
 import { Icon } from "~/shared/ui/icon";
@@ -71,6 +72,7 @@ const RightPanelTopicRow = React.memo(function RightPanelTopicRow({
             {topic.hasUnreadPersonalMention === true ? <MentionBadge /> : null}
             {displayedUnread != null ? (
               <Badge
+                maxCount={UNREAD_COUNT_DISPLAY_LIMIT}
                 count={displayedUnread.count}
                 variant={displayedUnread.passive ? "muted" : "unread"}
               />
