@@ -24,6 +24,7 @@ import ChevronDownIcon from "~/shared/assets/icons/chevron-down.svg?react";
 import ChevronRightIcon from "~/shared/assets/icons/chevron-right.svg?react";
 import ChevronUpIcon from "~/shared/assets/icons/chevron-up.svg?react";
 import CloseIcon from "~/shared/assets/icons/close.svg?react";
+import CommandIcon from "~/shared/assets/icons/command.svg?react";
 import CopyIcon from "~/shared/assets/icons/copy.svg?react";
 import DashboardCustomizeIcon from "~/shared/assets/icons/dashboard_customize.svg?react";
 import DeleteIcon from "~/shared/assets/icons/delete.svg?react";
@@ -152,6 +153,7 @@ const ICONS: Record<string, IconSvgComponent> = {
   profile: ProfileIcon,
   reply: ReplyIcon,
   close: CloseIcon,
+  command: CommandIcon,
   // Material notifications / notifications_off — 28×28 padded (Figma 13072:28507 / 28503)
   bell: BellIcon,
   bell_off: BellOffIcon,

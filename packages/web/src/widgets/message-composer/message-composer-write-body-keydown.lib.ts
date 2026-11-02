@@ -1,4 +1,3 @@
-import { KEYBOARD_SHORTCUTS_ENABLED } from "~/shared/config/constants";
 import { isNewlineCommand, isSendCommand } from "./message-composer-input-commands.lib";
 import { applyListContinuationOnNewline } from "./message-composer-list-continuation.lib";
 import type { ComposerSuggestion } from "./message-composer-mention-dropdown.types";
@@ -14,62 +13,13 @@ export interface HandleComposerWriteBodyKeyDownOptions {
   sendNewlineMode: MessageComposerWriteBodyProps["sendNewlineMode"];
   isEditing: boolean;
   textareaRef: RefObject<HTMLTextAreaElement | null>;
-  applyFormattingShortcut: MessageComposerWriteBodyProps["applyFormattingShortcut"];
   onActiveMentionIndexChange: MessageComposerWriteBodyProps["onActiveMentionIndexChange"];
   onMentionSelect: (suggestion: ComposerSuggestion) => void;
   onHideMentionDropdown: MessageComposerWriteBodyProps["onHideMentionDropdown"];
   onValueChange: MessageComposerWriteBodyProps["onValueChange"];
   onDetectMention: MessageComposerWriteBodyProps["onDetectMention"];
   onSend: MessageComposerWriteBodyProps["onSend"];
-  onEditLastMessage?: MessageComposerWriteBodyProps["onEditLastMessage"];
   onCancelEdit?: MessageComposerWriteBodyProps["onCancelEdit"];
-}
-
-function handleFormattingShortcuts(
-  event: KeyboardEvent<HTMLTextAreaElement>,
-  applyFormattingShortcut: MessageComposerWriteBodyProps["applyFormattingShortcut"],
-): boolean {
-  const normalizedKey = event.key.toLowerCase();
-  const isModPressed = event.metaKey || event.ctrlKey;
-  if (!isModPressed || event.altKey) return false;
-
-  if (normalizedKey === "b") {
-    event.preventDefault();
-    applyFormattingShortcut("**");
-    return true;
-  }
-  if (normalizedKey === "i") {
-    event.preventDefault();
-    applyFormattingShortcut("*");
-    return true;
-  }
-  if (normalizedKey === "e") {
-    event.preventDefault();
-    applyFormattingShortcut("`");
-    return true;
-  }
-  if (normalizedKey === "x" && event.shiftKey) {
-    event.preventDefault();
-    applyFormattingShortcut("~~");
-    return true;
-  }
-  return false;
-}
-
-function handleEditLastMessageShortcut(
-  event: KeyboardEvent<HTMLTextAreaElement>,
-  options: Pick<
-    HandleComposerWriteBodyKeyDownOptions,
-    "value" | "showMentions" | "isEditing" | "onEditLastMessage"
-  >,
-): boolean {
-  if (event.key !== "ArrowUp") return false;
-  if (options.showMentions || options.value.trim().length > 0 || options.isEditing) return false;
-  if (event.shiftKey || event.metaKey || event.ctrlKey || event.altKey) return false;
-  if (options.onEditLastMessage == null) return false;
-  event.preventDefault();
-  options.onEditLastMessage();
-  return true;
 }
 
 function handleMentionNavigation(
@@ -138,7 +88,8 @@ function handleSendOrNewline(
     if (options.showMentions) {
       options.onHideMentionDropdown();
     }
-    void options.onSend();
+    // Holding Enter must not send the message more than once.
+    if (!event.repeat) void options.onSend();
     return true;
   }
 
@@ -168,11 +119,12 @@ function handleSendOrNewline(
   return true;
 }
 
-/** Keyboard handler for composer textarea (formatting, mentions, send, list continuation). */
+/** Local editor keys run before configurable application shortcuts. */
 export function handleComposerWriteBodyKeyDown(
   options: HandleComposerWriteBodyKeyDownOptions,
 ): void {
   const { event } = options;
+  if (event.defaultPrevented || event.nativeEvent.isComposing || event.keyCode === 229) return;
 
   if (handleMentionNavigation(event, options)) return;
 
@@ -191,19 +143,4 @@ export function handleComposerWriteBodyKeyDown(
   }
 
   if (handleSendOrNewline(event, options)) return;
-
-  if (
-    handleEditLastMessageShortcut(event, {
-      value: options.value,
-      showMentions: options.showMentions,
-      isEditing: options.isEditing,
-      onEditLastMessage: options.onEditLastMessage,
-    })
-  ) {
-    return;
-  }
-
-  if (!KEYBOARD_SHORTCUTS_ENABLED) return;
-
-  if (handleFormattingShortcuts(event, options.applyFormattingShortcut)) return;
 }

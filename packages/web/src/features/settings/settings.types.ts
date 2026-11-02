@@ -6,6 +6,7 @@
  */
 
 import type { MessengerSidebarSortMode } from "~/entities/messenger/messenger-sidebar.lib";
+import type { HotkeyOverrides } from "~/shared/lib/hotkeys";
 
 export type NotificationSound = "default" | "subtle" | "digital" | "glass" | "pulse" | "none";
 export type AppLanguage = "en" | "ru";
@@ -27,4 +28,6 @@ export interface AppSettings {
   chatClickAction: ChatClickAction;
   composerToolbarExpanded: boolean;
   authIdleTimeout: AuthIdleTimeout;
+  hotkeysEnabled: boolean;
+  hotkeyOverrides: HotkeyOverrides;
 }

@@ -24,6 +24,9 @@ type Story = StoryObj<typeof meta>;
 export const Default: Story = {};
 export const ShowOnHover: Story = { args: { showOnHover: true } };
 export const IconOnly: Story = { args: { children: undefined } };
+export const CustomCopyAction: Story = {
+  args: { children: undefined, onCopy: () => Promise.resolve(true) },
+};
 export const LongValue: Story = {
   args: {
     value: "workspace-design-system-review@example.test",

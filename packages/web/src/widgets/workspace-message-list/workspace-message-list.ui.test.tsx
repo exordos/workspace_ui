@@ -210,6 +210,104 @@ function WorkspaceMessageSelectionHarness({
   );
 }
 
+describe("message quote shortcut", () => {
+  afterEach(() => {
+    window.getSelection()?.removeAllRanges();
+    cleanup();
+  });
+
+  it("quotes the focused message unless text is selected in another message", () => {
+    const onReplyMessage = vi.fn();
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({ uuid: "first", markdown: "First message" }),
+          createWorkspaceMessage({
+            uuid: "second",
+            markdown: "Second message",
+            createdAt: "2026-07-03T09:01:00.000Z",
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onReplyMessage }}
+      />,
+    );
+    const first = container.querySelector<HTMLElement>("[data-message-uuid='first']")!;
+    const pressQuote = () =>
+      fireEvent.keyDown(document.activeElement ?? document.body, {
+        key: "l",
+        code: "KeyL",
+        ctrlKey: true,
+      });
+    first.querySelector<HTMLElement>("[data-workspace-message-bubble]")!.focus();
+    pressQuote();
+    expect(onReplyMessage).toHaveBeenLastCalledWith("first", undefined);
+    selectMessageBodyText(container, "second", "Second");
+    pressQuote();
+    expect(onReplyMessage).toHaveBeenLastCalledWith("second", "Second");
+  });
+
+  it("does not pass selected DOM text from messages containing secrets", () => {
+    const onReplyMessage = vi.fn();
+    const urn =
+      "urn:secret:v1:11111111-1111-4111-8111-111111111111:22222222-2222-4222-8222-222222222222:AAAA";
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({ uuid: "secret", markdown: `Public [secret](<${urn}>)` }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onReplyMessage }}
+      />,
+    );
+    selectMessageBodyText(container, "secret", "Public");
+    fireEvent.keyDown(window, { key: "l", code: "KeyL", ctrlKey: true });
+    expect(onReplyMessage).toHaveBeenCalledWith("secret", undefined);
+  });
+
+  it("does not consume Ctrl+L without a message target", () => {
+    const onReplyMessage = vi.fn();
+    render(
+      <WorkspaceMessageList
+        messages={[createWorkspaceMessage()]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onReplyMessage }}
+      />,
+    );
+    const event = new KeyboardEvent("keydown", {
+      key: "l",
+      code: "KeyL",
+      ctrlKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    window.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(false);
+    expect(onReplyMessage).not.toHaveBeenCalled();
+  });
+
+  it("replies to checked messages while a selection checkbox has focus", () => {
+    const reply = vi.fn();
+    const { getByRole } = render(
+      <WorkspaceMessageList
+        messages={[createWorkspaceMessage({ uuid: "selected" })]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        selectionMode
+        selectedMessageUuids={new Set(["selected"])}
+        onReplySelectedMessages={reply}
+      />,
+    );
+    const checkbox = getByRole("checkbox");
+    checkbox.focus();
+    fireEvent.keyDown(checkbox, { key: "l", code: "KeyL", ctrlKey: true });
+    expect(reply).toHaveBeenCalledOnce();
+  });
+});
+
 describe("WorkspaceMessageList", () => {
   beforeEach(() => {
     setLocale("en");

@@ -20,6 +20,7 @@ export interface AppDialogProps {
    * Default true so AppDialog carries a standard dismiss affordance.
    */
   showCloseButton?: boolean;
+  onOpenAutoFocus?: (event: Event) => void;
   onCloseAutoFocus?: (event: Event) => void;
 }
 
@@ -37,6 +38,7 @@ export interface AppDialogShellProps {
   onOpenChange: (open: boolean) => void;
   contentClassName: string;
   children: ReactNode;
+  onOpenAutoFocus?: (event: Event) => void;
   onCloseAutoFocus?: (event: Event) => void;
   modal?: boolean;
   ariaDescribedBy?: string;

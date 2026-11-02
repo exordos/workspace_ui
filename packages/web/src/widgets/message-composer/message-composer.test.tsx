@@ -13,6 +13,7 @@ import type { User } from "~/entities/user/user.types";
 import { useMentionSuggestStore } from "~/features/mention-suggest/mention-suggest.model";
 import { useSettingsStore } from "~/features/settings/settings.model";
 import { computeFloatingPickerPosition } from "~/shared/lib/floating-panel-position.lib";
+import { HotkeysProvider, type HotkeyOverrides } from "~/shared/lib/hotkeys";
 import { renderWithProviders } from "~/test/render";
 import { resetComposerSavedSnippetsModelForTests } from "./message-composer-saved-snippets.model";
 import { MessageComposer } from "./message-composer.ui";
@@ -28,11 +29,6 @@ function installElectronTextEditingApi(): void {
     textEditing: { execute: textEditingExecuteMock },
   };
 }
-
-vi.mock("~/shared/config/constants", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("~/shared/config/constants")>();
-  return { ...actual, KEYBOARD_SHORTCUTS_ENABLED: true };
-});
 
 vi.mock("~/shared/lib/webview", async () => {
   const actual = await vi.importActual("~/shared/lib/webview");
@@ -3231,6 +3227,37 @@ describe("MessageComposer upload progress", () => {
 });
 
 describe("MessageComposer edit-last shortcut", () => {
+  it("applies changed bindings immediately and keeps the empty-input condition", () => {
+    const onEditLastMessage = vi.fn();
+    const view = (overrides: HotkeyOverrides, enabled = true) => (
+      <HotkeysProvider
+        overrides={overrides}
+        enabled={enabled}
+        onOverridesChange={() => true}
+        onEnabledChange={() => true}
+      >
+        <MessageComposer onSend={vi.fn()} onEditLastMessage={onEditLastMessage} />
+      </HotkeysProvider>
+    );
+    const { rerender } = renderWithProviders(view({}));
+    const textbox = screen.getByRole("textbox");
+    fireEvent.keyDown(textbox, { key: "ArrowUp" });
+    expect(onEditLastMessage).toHaveBeenCalledTimes(1);
+    const overrides = { "composer.editLastMessage": "Alt+U" } as const;
+    rerender(view(overrides));
+    fireEvent.keyDown(textbox, { key: "ArrowUp" });
+    expect(onEditLastMessage).toHaveBeenCalledTimes(1);
+    fireEvent.keyDown(textbox, { key: "u", code: "KeyU", altKey: true });
+    expect(onEditLastMessage).toHaveBeenCalledTimes(2);
+    fireEvent.change(textbox, { target: { value: "draft" } });
+    fireEvent.keyDown(textbox, { key: "u", code: "KeyU", altKey: true });
+    expect(onEditLastMessage).toHaveBeenCalledTimes(2);
+    fireEvent.change(textbox, { target: { value: "" } });
+    rerender(view(overrides, false));
+    fireEvent.keyDown(textbox, { key: "u", code: "KeyU", altKey: true });
+    expect(onEditLastMessage).toHaveBeenCalledTimes(2);
+  });
+
   it("calls edit callback on ArrowUp when input is empty", () => {
     const onEditLastMessage = vi.fn();
     renderWithProviders(<MessageComposer onSend={vi.fn()} onEditLastMessage={onEditLastMessage} />);

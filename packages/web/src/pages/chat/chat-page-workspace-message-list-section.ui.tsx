@@ -46,6 +46,7 @@ export const ChatPageWorkspaceMessageListSection = React.memo(
     requestMessageKeyPending,
     getKeyRequestActions,
     getKeyServiceState,
+    onReplySelectedMessages,
     onReplyMessage,
     onAddReplyMessage,
     onForwardMessage,
@@ -237,6 +238,7 @@ export const ChatPageWorkspaceMessageListSection = React.memo(
             anchorNavigationActive={anchorNavigationActive}
             onFocusedMessageApplied={onFocusedMessageApplied}
             onFocusedMessageMissing={onFocusedMessageMissing}
+            onReplySelectedMessages={onReplySelectedMessages}
             selectionMode={selectionMode}
             selectedMessageUuids={selectedMessageUuids}
             readRequestBoundaryMessageUuids={readRequestBoundaryMessageUuids}

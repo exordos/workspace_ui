@@ -3,7 +3,6 @@ import { Outlet, useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WorkspaceAuthSession } from "~/entities/workspace-auth/workspace-auth.model";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
-import type * as ShortcutsModule from "~/shared/lib/shortcuts";
 import { renderWithProviders } from "~/test/render";
 import App from "./app";
 import { WebViewShell } from "./webview-shell";
@@ -63,14 +62,6 @@ vi.mock("~/shared/lib/navigation-history", () => ({
 vi.mock("~/shared/lib/plugins", () => ({
   setPluginNavigate: () => undefined,
 }));
-
-vi.mock("~/shared/lib/shortcuts", async (importOriginal) => {
-  const actual = await importOriginal<typeof ShortcutsModule>();
-  return {
-    ...actual,
-    useShortcut: () => undefined,
-  };
-});
 
 vi.mock("~/shared/lib/webview", () => ({
   isWebView: () => false,

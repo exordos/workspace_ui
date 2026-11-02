@@ -801,6 +801,10 @@ export const WorkspaceMessageBubblePresentation: React.FC<WorkspaceMessageBubble
           maxWidth: authorOutside ? undefined : quickActionsMaxWidth,
         }}
         data-workspace-message-bubble="true"
+        data-message-has-secrets={renderedBody.hasSecrets ? "true" : undefined}
+        data-hotkey-reply-eligible={
+          quickActionItems.some((action) => action.key === "reply") || undefined
+        }
         data-workspace-message-interactive-body={containsInteractiveBody ? "true" : "false"}
         data-payload-kind={serverMessage?.payload.kind}
         data-encrypted-message-locked={locked ? "true" : undefined}

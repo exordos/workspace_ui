@@ -123,6 +123,7 @@ export interface WorkspaceMessageListProps {
   anchorNavigationActive?: boolean;
   onFocusedMessageApplied?: (target: WorkspaceMessageAnchorFocusTarget) => void;
   onFocusedMessageMissing?: (target: WorkspaceMessageAnchorFocusTarget) => void;
+  onReplySelectedMessages?: () => void;
   selectionMode?: boolean;
   selectedMessageUuids?: ReadonlySet<MessengerUuid>;
   readRequestBoundaryMessageUuids?: ReadonlySet<MessengerUuid>;

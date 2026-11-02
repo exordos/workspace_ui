@@ -156,6 +156,41 @@ async function expectActionsHidden(actions: Locator): Promise<void> {
 }
 
 test.describe("Workspace message quick actions @mock", () => {
+  test("Ctrl+L quotes the whole message under the pointer", async ({ authenticated }) => {
+    await openStreamChatWithComposer(authenticated);
+    const row = authenticated.locator(`[data-message-uuid='${E2E_MESSAGE_UUID}']`);
+    await row.locator("[data-workspace-message-bubble='true']").hover();
+    const composer = await expectReadyMessageComposer(authenticated);
+    await composer.fill("Draft");
+    await authenticated.keyboard.press("Control+l");
+    await expect(authenticated.locator("[data-composer-reply-quote='true']")).toHaveCount(0);
+    await expect(composer).toHaveValue("Draft");
+    await composer.fill("");
+    await authenticated.keyboard.press("Control+l");
+    await expect(authenticated.locator("[data-composer-reply-quote='true']")).toContainText(
+      "E2E initial message",
+    );
+  });
+
+  test("Ctrl+L quotes the selected part of a message", async ({ authenticated }) => {
+    await openStreamChatWithComposer(authenticated);
+    const row = authenticated.locator(`[data-message-uuid='${E2E_MESSAGE_UUID}']`);
+    const bubble = row.locator("[data-workspace-message-bubble='true']");
+    await bubble.focus();
+    await bubble.getByText("E2E initial message", { exact: true }).evaluate((body) => {
+      const range = document.createRange();
+      range.setStart(body.firstChild!, 4);
+      range.setEnd(body.firstChild!, 11);
+      const selection = window.getSelection()!;
+      selection.removeAllRanges();
+      selection.addRange(range);
+    });
+    await authenticated.keyboard.press("Control+l");
+    const quote = authenticated.locator("[data-composer-reply-quote='true']");
+    await expect(quote).toContainText("initial");
+    await expect(quote).not.toContainText("E2E initial message");
+  });
+
   test("decrypted messages expose hover reactions and send a genuinely encrypted quick reply", async ({
     authenticated: page,
   }) => {

@@ -1,4 +1,4 @@
-import { fireEvent, screen } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useThemeStore } from "~/entities/theme/theme.model";
 import { useSettingsStore } from "~/features/settings/settings.model";
@@ -22,6 +22,18 @@ describe("RightPanelUserSettings", () => {
     useSettingsStore.getState().resetToDefaults();
     useThemeStore.setState({ mode: "system", paletteId: "blue-cold" });
     setLocale("en");
+  });
+
+  it("opens shortcuts over settings and restores focus without closing the drawer", async () => {
+    const closeDrawer = vi.fn();
+    renderWithProviders(<RightPanelUserSettings onBack={vi.fn()} onClose={closeDrawer} />);
+    const trigger = screen.getByRole("button", { name: "Keyboard shortcuts" });
+    fireEvent.click(trigger);
+    const dialog = await screen.findByRole("dialog", { name: "Keyboard shortcuts" });
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    await waitFor(() => expect(trigger).toHaveFocus());
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(closeDrawer).not.toHaveBeenCalled();
   });
 
   it("lets macOS desktop users disable and re-enable Dock bouncing", () => {
@@ -50,22 +62,28 @@ describe("RightPanelUserSettings", () => {
     expect(screen.queryByRole("switch", { name: "Bounce Dock icon" })).not.toBeInTheDocument();
   });
 
-  it("selects either named chat click mode", () => {
+  it("keeps the latest topic hint inside its option before and after selecting either mode", () => {
     renderWithProviders(<RightPanelUserSettings onBack={vi.fn()} onClose={vi.fn()} />);
     expect(screen.getByText("What to open when clicking a chat")).toBeInTheDocument();
     fireEvent.click(screen.getByTestId("right-panel-settings-chat-click-trigger"));
     const general = screen.getByRole("button", { name: "General chat and topics" });
     const latest = screen.getByRole("button", { name: "Latest topic" });
+    const panel = screen.getByTestId("right-panel-settings-chat-click-options");
+    const hintText = "Click the avatar to open the general chat";
+    const hint = within(latest).getByText(hintText);
+    expect(within(panel).getAllByRole("listitem")).toHaveLength(2);
+    expect(latest).toHaveAccessibleDescription(hintText);
+    expect(hint).toBeVisible();
     expect(general).toHaveAttribute("aria-pressed", "true");
-    expect(screen.queryByText("Click the avatar to open the general chat")).not.toBeInTheDocument();
-    fireEvent.click(latest);
+    fireEvent.click(hint);
     expect(useSettingsStore.getState().chatClickAction).toBe("latestTopic");
     expect(latest).toHaveAttribute("aria-pressed", "true");
     expect(general).toHaveAttribute("aria-pressed", "false");
-    expect(screen.getByText("Click the avatar to open the general chat")).toBeInTheDocument();
+    expect(hint).toBeVisible();
     fireEvent.click(general);
     expect(useSettingsStore.getState().chatClickAction).toBe("general");
-    expect(screen.queryByText("Click the avatar to open the general chat")).not.toBeInTheDocument();
+    expect(hint).toBeVisible();
+    expect(within(panel).getAllByRole("listitem")).toHaveLength(2);
   });
 
   it("navigates back and closes from the nested header", () => {

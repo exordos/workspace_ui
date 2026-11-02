@@ -4,6 +4,7 @@
  * Uses resolved display URLs (blob or public) — never raw protected URLs without auth.
  */
 
+import { writeImage } from "~/shared/lib/clipboard";
 import { guard } from "~/shared/lib/guards";
 import { AUTH_IMAGE_PLACEHOLDER_SRC } from "~/shared/lib/media-display-url.lib";
 import { isValidUrl, sanitizeFilename } from "~/shared/lib/validation";
@@ -139,6 +140,15 @@ async function fetchMediaItemBlob(item: MediaItem, displayUrl?: string): Promise
   if (sourceUrl === "") return null;
 
   return await fetchPublicMediaBlob(sourceUrl);
+}
+
+export function copyMediaImage(item: MediaItem, displayUrl: string): Promise<boolean> {
+  const image = fetchMediaItemBlob(item, displayUrl).then((blob) => {
+    if (blob == null) throw new Error("Image could not be loaded");
+    return blob;
+  });
+  void image.catch(() => undefined);
+  return writeImage(image);
 }
 
 export async function downloadMediaItem(item: MediaItem, displayUrl?: string): Promise<boolean> {
