@@ -6,6 +6,41 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.9.8] — 2026-11-02
+
+### Added
+
+- Insert a global date and time from the composer; each reader sees the instant
+  in their own time zone. Invalid, escaped, or zone-less values remain literal.
+- Choose whether a chat click opens the general conversation or latest topic;
+  the avatar retains access to the general conversation.
+
+### Fixed
+
+- Prepare encrypted history before mounting message rows, batch key reads, and
+  reuse recent conversation windows in memory. Preserve scroll anchors as
+  quotes and media expand, and invalidate plaintext when keys or ownership change.
+- Show whole encrypted payloads in ordinary native chats when the required key
+  is available. Reply and Edit remain unavailable for these messages.
+- Recover failed image and video previews after matching file updates and offer
+  a Retry action for persistent errors.
+- Keep grouped author avatars visible while scrolling and hide the quick-reaction
+  scrollbar.
+
+### Requirements and compatibility
+
+- Deployment requirements, dependencies, and the durable messenger cache schema
+  are unchanged. Decrypted conversation windows are cached only in memory.
+- The default chat-click action remains the general conversation. Older clients
+  can show time extensions as literal Markdown.
+- Existing encrypted-message and protected-fragment key requirements still apply.
+  Attachment bytes remain unencrypted by these controls.
+
+### Migration notes
+
+- Update `workspace_ui` to `0.9.8`. No manual migration or cache reset is required.
+  Save or send protected drafts before reloading; they remain only in account memory.
+
 ## [0.9.7] — 2026-10-29
 
 ### Added
