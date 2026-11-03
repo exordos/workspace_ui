@@ -69,7 +69,7 @@ export const MediaViewerToolbar: React.FC<MediaViewerToolbarProps> = ({
         <Copyable
           key={copyKey}
           showOnHover={false}
-          buttonClassName={`${TOOLBAR_BUTTON_CLASS} !h-10 !w-10 !rounded-lg !text-text-primary`}
+          buttonClassName={`${TOOLBAR_BUTTON_CLASS} !h-10 !w-10 !rounded-lg`}
           iconSize={20}
           onCopy={onCopy}
           disabled={!actionsEnabled}
