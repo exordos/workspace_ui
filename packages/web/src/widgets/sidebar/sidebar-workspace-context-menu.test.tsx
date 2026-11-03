@@ -4,6 +4,7 @@ import { useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MESSENGER_ALL_CHATS_FOLDER_UUID } from "~/entities/messenger/messenger-folder-system-type.lib";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
+import * as messengerModel from "~/entities/messenger/messenger.model";
 import type {
   MessengerFolder,
   MessengerSidebarStreamItem,
@@ -21,6 +22,12 @@ import { useSidebarConfigStore } from "./sidebar-config.model";
 import { SIDEBAR_SYSTEM_ALL_FOLDER_ID } from "./sidebar-folder.constants";
 import { WorkspaceStreamContextMenu } from "./sidebar-workspace-context-menu.ui";
 import { WorkspaceSidebar } from "./sidebar-workspace.ui";
+
+const intersected = vi.hoisted(() => vi.fn(() => true));
+vi.mock("~/shared/lib/intersected-once.hook", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("~/shared/lib/intersected-once.hook")>()),
+  useIntersectedOnce: intersected,
+}));
 
 const runWorkspaceStreamNotificationUpdateMock = vi.fn();
 const runWorkspaceTopicNotificationUpdateMock = vi.fn();
@@ -277,6 +284,31 @@ function renderWorkspaceSidebar(
 }
 
 describe("WorkspaceSidebar context menu", () => {
+  it("defers offscreen stream controls until the row is near the viewport", () => {
+    intersected.mockReturnValue(false);
+    const item = createStream();
+    const view = (row: MessengerSidebarStreamItem) => (
+      <WorkspaceSidebar
+        streams={[row]}
+        loading={false}
+        error={null}
+        activityCounts={{ inboxCount: null, mentionsCount: null }}
+        workspaceStreamCount={1}
+      />
+    );
+    const rendered = renderWithProviders(view(item), {
+      route: "/org/acme/project/project-a/inbox",
+    });
+    try {
+      expect(screen.queryByRole("link", { name: /engineering/i })).not.toBeInTheDocument();
+      intersected.mockReturnValue(true);
+      rendered.rerender(view({ ...item, unreadCount: item.unreadCount + 1 }));
+      expect(screen.getByRole("link", { name: /engineering/i })).toBeInTheDocument();
+    } finally {
+      intersected.mockReturnValue(true);
+    }
+  });
+
   afterEach(() => {
     act(() => useWorkspaceAuthStore.getState().clear());
     useMessengerStore.getState().clear();
@@ -296,6 +328,25 @@ describe("WorkspaceSidebar context menu", () => {
     runWorkspaceStreamArchiveMock.mockReset();
     runWorkspaceTopicReadMock.mockReset();
     reportUnexpectedErrorMock.mockReset();
+  });
+
+  it("keeps closed context menus unsubscribed from the folder catalog", async () => {
+    seedArchiveContext();
+    const folders = vi.spyOn(messengerModel, "selectMessengerFolders");
+    try {
+      renderArchiveMenu(createStream());
+      act(() =>
+        useMessengerStore
+          .getState()
+          .applyFolderSnapshot(useMessengerStore.getState().ownerKey!, createFolder()),
+      );
+      expect(folders).not.toHaveBeenCalled();
+      fireEvent.contextMenu(screen.getByRole("link", { name: /engineering/i }));
+      await screen.findByRole("menu");
+      expect(folders).toHaveBeenCalled();
+    } finally {
+      folders.mockRestore();
+    }
   });
 
   it.each(["directPrivate", "channel"] as const)(
@@ -682,6 +733,51 @@ describe("WorkspaceSidebar context menu", () => {
     expect(allMessagesOption).toHaveAttribute("aria-checked", "true");
     fireEvent.click(allMessagesOption);
     expect(runWorkspaceStreamNotificationUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it("changes the selected provider's notifications in a grouped personal chat", async () => {
+    seedArchiveContext();
+    const original = useMessengerStore.getState().streamsById[STREAM_UUID]!;
+    useMessengerStore.setState({
+      streamsById: {
+        [STREAM_UUID]: { ...original, sourceName: "native" },
+        telegram: {
+          ...original,
+          uuid: "telegram",
+          sourceName: "telegram",
+          notificationMode: "muted",
+        },
+        zulip: { ...original, uuid: "zulip", sourceName: "zulip" },
+      },
+    });
+    runWorkspaceStreamNotificationUpdateMock.mockResolvedValue({ status: "applied" });
+    renderWorkspaceSidebar([
+      createStream({
+        title: "Alice",
+        uiKind: "directPrivate",
+        isPrivate: true,
+        audience: "private",
+        directUserUuid: "user-alice",
+        streamUuids: [STREAM_UUID, "telegram", "zulip"],
+      }),
+    ]);
+    fireEvent.contextMenu(screen.getByRole("link", { name: /alice/i }));
+    const telegram = await screen.findByRole("radiogroup", { name: "Telegram · Notifications" });
+    expect(within(telegram).getByRole("radio", { name: "Muted" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    expect(
+      screen.getByRole("radiogroup", { name: "Workspace · Notifications" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("radiogroup", { name: "Zulip · Notifications" })).toBeInTheDocument();
+    fireEvent.click(within(telegram).getByRole("radio", { name: "All messages" }));
+    await waitFor(() =>
+      expect(runWorkspaceStreamNotificationUpdateMock).toHaveBeenCalledExactlyOnceWith({
+        streamUuid: "telegram",
+        notificationMode: "all_messages",
+      }),
+    );
   });
 
   it("keeps mentions mode available for a private non-direct channel", async () => {

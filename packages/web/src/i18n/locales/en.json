@@ -183,10 +183,11 @@
     "reconnectTitle": "Reconnect external account",
     "description": "Connect an external account to this Workspace profile.",
     "servicesTitle": "External integrations",
-    "servicesHint": "Connect Zulip to synchronize all chats and their full history with Workspace.",
+    "servicesHint": "Connect Zulip or Telegram to synchronize chats and history with Workspace.",
     "provider": "Provider",
     "providers": {
-      "zulip": "Zulip"
+      "zulip": "Zulip",
+      "telegram": "Telegram"
     },
     "serverUrl": "Server URL",
     "serverUrlHint": "https://chat.example.com",
@@ -259,7 +260,8 @@
       "connectedShort": "Connected",
       "checking": "Checking…",
       "checkingShort": "Checking",
-      "unsupportedProvider": "This provider is not supported yet"
+      "unsupportedProvider": "This provider is not supported yet",
+      "syncing": "Importing history"
     },
     "edit": {
       "action": "Edit",
@@ -267,6 +269,19 @@
       "description": "Update the server URL, email or API key for this external account.",
       "save": "Save changes",
       "apiKeyHint": "Leave blank to keep the current key"
+    },
+    "telegram": {
+      "description": "Scan the QR code in Telegram to connect your account. All available chats and their full history will be imported automatically.",
+      "connect": "Connect Telegram",
+      "starting": "Preparing a secure connection…",
+      "scan": "In Telegram, open Settings → Devices → Link Desktop Device and scan this QR code.",
+      "password": "Telegram two-step verification password",
+      "continue": "Continue",
+      "failed": "Connection failed. Check the connection or try again.",
+      "progress": "Importing history: {{count}} messages",
+      "realtimeConnected": "Telegram connected. New messages are synchronized.",
+      "automaticImport": "All available chats and their full history are imported automatically. New messages arrive during import.",
+      "finished": "History imported: {{count}} messages"
     }
   },
   "externalAccounts": {
@@ -501,6 +516,7 @@
     "topicReopenFailed": "Could not reopen the topic.",
     "rightPanelUnsupported": "Workspace info is not connected for this chat.",
     "routeUnsupportedForSend": "Sending is not available from this chat link yet.",
+    "streamReadOnly": "You can only read messages in this channel.",
     "messageActionTargetMissing": "Message is not loaded anymore.",
     "uploadsUnsupported": "File uploads are not connected to Workspace messaging yet.",
     "fileDownloadFailed": "File download failed. Try again later.",
@@ -756,7 +772,7 @@
     "announceChannel": "Announce channel creation",
     "announcementOnly": "Announcement-only channel",
     "announcementOnlyUnsupported": "Unavailable: moderator/administrator system groups not found",
-    "workspaceAnnouncementOnlyUnsupported": "Announcement-only policy is not connected to Workspace yet.",
+    "workspaceAnnouncementOnlyUnsupported": "Announcement-only policy is unavailable for encrypted chats.",
     "members": "Members",
     "memberBadgeCreator": "Creator",
     "memberBadgeChannelAdmin": "Channel admin",

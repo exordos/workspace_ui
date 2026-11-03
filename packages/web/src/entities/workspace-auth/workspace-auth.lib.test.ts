@@ -977,6 +977,39 @@ describe("workspace-auth flow", () => {
     expect(useWorkspaceAuthStore.getState().sessions).toEqual([]);
   });
 
+  it("requests a new login after repeated legacy IAM algorithm rejections", async () => {
+    const session = await loginAndGetCurrentSession();
+    const rejection = new WorkspaceIamAuthError("Workspace IAM token request failed", 500, {
+      type: "InvalidAlgorithmError",
+      code: 10000001,
+      message: "The specified alg value is not allowed",
+    });
+    refreshWorkspaceIamToken.mockRejectedValue(rejection);
+
+    expect(classifyWorkspaceAuthRefreshError(rejection)).toMatchObject({
+      reason: "refresh-expired",
+    });
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      await expect(ensureFreshWorkspaceSession(session.accountId, { force: true })).rejects.toBe(
+        rejection,
+      );
+      if (attempt < 2) expect(useWorkspaceAuthStore.getState().sessions).toEqual([session]);
+    }
+
+    expect(useWorkspaceAuthStore.getState().sessions).toEqual([]);
+  });
+
+  it("keeps ordinary IAM server failures transient even with generic algorithm wording", () => {
+    const failure = classifyWorkspaceAuthRefreshError(
+      new WorkspaceIamAuthError("Workspace IAM token request failed", 500, {
+        type: "InternalServerError",
+        message: "The specified alg value is not allowed",
+      }),
+    );
+
+    expect(failure).toMatchObject({ reason: "server-unavailable" });
+  });
+
   it("resets refresh-expired attempts after a transient IAM 400", async () => {
     const session = await loginAndGetCurrentSession();
     refreshWorkspaceIamToken

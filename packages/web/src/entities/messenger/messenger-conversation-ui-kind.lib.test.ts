@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   selectWorkspaceConversationUiKind,
+  selectWorkspaceDirectStreamUuids,
   selectWorkspaceStreamConversationUiKind,
 } from "./messenger-conversation-ui-kind.lib";
 import type { MessengerConversation, MessengerStream } from "./messenger.types";
@@ -41,4 +42,32 @@ describe("workspace conversation UI kind", () => {
 
     expect(selectWorkspaceConversationUiKind(conversation)).toBe("directPrivate");
   });
+});
+
+it("indexes a direct catalog once when several rows share its snapshot", () => {
+  const first = {
+    uuid: "first",
+    projectId: "project",
+    userUuid: "viewer",
+    isPrivate: true,
+    directUserUuid: "peer",
+    encryption: false,
+    isArchived: false,
+  } as MessengerStream;
+  const second = { ...first, uuid: "second" };
+  const catalog = { first, second };
+  const values = vi.spyOn(Object, "values");
+  try {
+    expect(selectWorkspaceDirectStreamUuids(catalog, first.uuid, "viewer")).toEqual([
+      "first",
+      "second",
+    ]);
+    expect(selectWorkspaceDirectStreamUuids(catalog, second.uuid, "viewer")).toEqual([
+      "first",
+      "second",
+    ]);
+    expect(values).toHaveBeenCalledTimes(1);
+  } finally {
+    values.mockRestore();
+  }
 });

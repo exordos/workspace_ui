@@ -65,6 +65,22 @@ describe("ConnectExternalAccountDialog", () => {
     vi.mocked(useConnectExternalAccount).mockReturnValue(hookResult());
   });
 
+  it("shows the Telegram login instructions once and lets its state own the description", () => {
+    const state = hookResult();
+    vi.mocked(useConnectExternalAccount).mockReturnValue({
+      ...state,
+      draft: { ...state.draft, provider: "telegram" },
+      lifecycleAccount: null,
+      phase: "credentials",
+    });
+    renderWithProviders(
+      <ConnectExternalAccountDialog open onOpenChange={vi.fn()} runtimeContext={null} />,
+    );
+    expect(
+      screen.getAllByText(/Scan the QR code in Telegram to connect your account/),
+    ).toHaveLength(1);
+  });
+
   it("shows lifecycle progress instead of declaring success after POST", () => {
     renderWithProviders(
       <ConnectExternalAccountDialog open onOpenChange={vi.fn()} runtimeContext={null} />,

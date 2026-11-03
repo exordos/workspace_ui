@@ -1,5 +1,8 @@
 import React from "react";
-import { resolveUserPresenceVisual } from "~/entities/user/user-selectors.lib";
+import {
+  resolveUserPresenceVisual,
+  selectUserSourceLabel,
+} from "~/entities/user/user-selectors.lib";
 import { WorkspaceAvatar } from "~/features/workspace-avatar/workspace-avatar.ui";
 import { t } from "~/i18n/i18n";
 import { getWorkspaceComposerReferenceLabel } from "./message-composer-reference.lib";
@@ -72,7 +75,12 @@ export const ComposerMentionDropdown = React.memo(function ComposerMentionDropdo
 
           const user = suggestion;
           const initials = user.displayName.slice(0, 1) || user.username.slice(0, 1) || "?";
-          const secondaryText = user.username ? `@${user.username}` : user.email;
+          const secondaryText = [
+            selectUserSourceLabel(user),
+            user.username ? `@${user.username}` : user.email,
+          ]
+            .filter(Boolean)
+            .join(" · ");
           const presence = resolveUserPresenceVisual(user.status);
           return (
             <button

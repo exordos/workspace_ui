@@ -23,11 +23,13 @@ import type {
 
 // Backend DTOs become Workspace messenger domain objects here.
 // This keeps the old UI from depending directly on snake_case and API response shape.
-// UI uses a simple audience label while backend source of truth is stream.private.
+// Catalog kind is independent of Telegram membership privacy.
 function streamAudience(
-  stream: Pick<WorkspaceMessengerStreamDto, "private">,
+  stream: Pick<WorkspaceMessengerStreamDto, "private" | "source_name" | "direct_user_uuid">,
 ): "channel" | "private" {
-  return stream.private ? "private" : "channel";
+  return stream.private && (stream.source_name !== "telegram" || stream.direct_user_uuid != null)
+    ? "private"
+    : "channel";
 }
 
 export function adaptMessengerStream(dto: WorkspaceMessengerStreamDto): MessengerStream {
@@ -57,6 +59,11 @@ export function adaptMessengerStream(dto: WorkspaceMessengerStreamDto): Messenge
           },
     inviteOnly: dto.invite_only,
     announce: dto.announce,
+    announcementOnly: dto.announcement_only ?? false,
+    canSend:
+      dto.can_send ??
+      (dto.announcement_only !== true ||
+        ["owner", "administrator", "moderator"].includes(dto.role)),
     isArchived: dto.is_archived,
     color: dto.color ?? null,
     directUserUuid: dto.direct_user_uuid ?? null,

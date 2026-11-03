@@ -3515,6 +3515,40 @@ describe("ChatPage Workspace route", () => {
     );
   });
 
+  it("opens each provider and native topic from the same direct conversation", async () => {
+    const owner = workspaceRuntimeOwnerKey(createSession());
+    const payload = createDirectPrivateBootstrapPayload();
+    const stream = payload.streams[0]!;
+    const topic = payload.topics[0]!;
+    const nativeStream = "77777777-7777-4777-8777-777777777777";
+    const nativeTopic = "77777777-7777-4777-8777-777777777778";
+    useMessengerStore.getState().replaceBootstrapState(owner, {
+      ...payload,
+      streams: [
+        { ...stream, sourceName: "telegram" },
+        { ...stream, uuid: STREAM_UUID, sourceName: "zulip" },
+        { ...stream, uuid: nativeStream, sourceName: "native" },
+      ],
+      topics: [
+        { ...topic, name: "telegram" },
+        { ...topic, uuid: TOPIC_UUID, streamUuid: STREAM_UUID, name: "zulip" },
+        { ...topic, uuid: nativeTopic, streamUuid: nativeStream, name: "Native notes" },
+      ],
+    });
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${DIRECT_STREAM_UUID}`,
+    );
+    const prompt = await screen.findByTestId("stream-topic-prompt");
+    expect(within(prompt).getByRole("button", { name: /#\s*telegram/ })).toBeInTheDocument();
+    expect(within(prompt).getByRole("button", { name: /#\s*Native notes/ })).toBeInTheDocument();
+    fireEvent.click(within(prompt).getByRole("button", { name: /#\s*zulip/ }));
+    await waitFor(() =>
+      expect(screen.getByTestId("workspace-location")).toHaveTextContent(
+        `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+      ),
+    );
+  });
+
   it("focuses a Workspace message route from the active store without loading a window", async () => {
     updateTestConversationWindow(`topic:${STREAM_UUID}:${TOPIC_UUID}`);
     renderWorkspaceChatPageWithShellContexts(
@@ -10527,6 +10561,29 @@ describe("ChatPage Workspace route", () => {
     });
 
     expect(openWorkspaceUserProfile).toHaveBeenCalledWith(USER_B_UUID);
+  });
+
+  it("blocks the composer and programmatic send when the provider makes a stream read-only", async () => {
+    const session = createSession();
+    const ownerKey = workspaceRuntimeOwnerKey(session);
+    const payload = createBootstrapPayload();
+    useMessengerStore.getState().clear();
+    useMessengerStore.getState().startBootstrap(ownerKey);
+    useMessengerStore.getState().replaceBootstrapState(ownerKey, {
+      ...payload,
+      streams: payload.streams.map((stream) => ({ ...stream, canSend: false })),
+    });
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+    await screen.findByTestId("chat-header");
+    expect(captured.composerProps?.readOnlyReason).toBe(
+      "You can only read messages in this channel.",
+    );
+    expect(() => captured.composerProps!.onSend("Must not be sent")).toThrow(
+      "You can only read messages in this channel.",
+    );
+    expect(captured.sendMessengerMessage).not.toHaveBeenCalled();
   });
 
   it("keeps old chat routes in a controlled Workspace state", () => {

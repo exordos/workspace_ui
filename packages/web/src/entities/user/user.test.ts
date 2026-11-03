@@ -21,6 +21,7 @@ import {
 import {
   applyBootstrapUsers,
   fromWorkspaceUserCacheProfile,
+  toWorkspaceUserCacheProfile,
   hydrateUsersFromCache,
   loadUserByUuid,
   refreshUsers,
@@ -1101,4 +1102,15 @@ describe("user selectors", () => {
       selectUserStatusLabel(createUser({ statusEmoji: "party_parrot", statusText: "Ship" })),
     ).toBe("Ship");
   });
+});
+
+describe("provider provenance", () => {
+  it.each(["iam", "zulip", "telegram"] as const)(
+    "keeps %s provenance through DTO and durable cache",
+    (source) => {
+      const user = adaptWorkspaceMessengerUserDto(createUserDto({ source }));
+      expect(user.source).toBe(source);
+      expect(fromWorkspaceUserCacheProfile(toWorkspaceUserCacheProfile(user)).source).toBe(source);
+    },
+  );
 });

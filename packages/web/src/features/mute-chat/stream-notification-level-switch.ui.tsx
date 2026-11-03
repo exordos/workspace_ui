@@ -19,6 +19,7 @@ export interface StreamNotificationLevelSwitchProps {
   className?: string;
   /** i18n key for radiogroup label. */
   groupLabelKey?: "channel.notifications" | "channel.topicNotifications";
+  groupLabel?: string;
   /** Stream vs topic visibility_policy icon set. */
   options?: readonly NotificationLevelOption[];
 }
@@ -31,6 +32,7 @@ export const StreamNotificationLevelSwitch = React.memo<StreamNotificationLevelS
     size = "md",
     className,
     groupLabelKey = "channel.notifications",
+    groupLabel,
     options = STREAM_NOTIFICATION_LEVEL_OPTIONS,
   }) => {
     const handleSelect = useCallback(
@@ -47,7 +49,7 @@ export const StreamNotificationLevelSwitch = React.memo<StreamNotificationLevelS
     return (
       <div
         role="radiogroup"
-        aria-label={t(groupLabelKey)}
+        aria-label={groupLabel ?? t(groupLabelKey)}
         className={`${containerClass} ${className ?? ""}`}
       >
         {options.map((option) => {

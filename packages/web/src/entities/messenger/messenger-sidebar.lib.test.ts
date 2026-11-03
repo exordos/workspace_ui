@@ -2499,3 +2499,68 @@ describe("All folder creation visibility", () => {
     ).toBe(STREAM_A);
   });
 });
+
+describe("linked provider direct conversations", () => {
+  it("shows one verified peer with Telegram, Zulip and native topics while retaining physical routes", () => {
+    const streams = [
+      stream({
+        uuid: STREAM_A,
+        sourceName: "telegram",
+        isPrivate: true,
+        directUserUuid: "peer",
+        name: "Same name",
+      }),
+      stream({
+        uuid: STREAM_B,
+        sourceName: "zulip",
+        isPrivate: true,
+        directUserUuid: "peer",
+        name: "Same name",
+      }),
+      stream({ uuid: STREAM_C, sourceName: "native", isPrivate: true, directUserUuid: "peer" }),
+    ];
+    const topics = [
+      topic({ uuid: TOPIC_A, streamUuid: STREAM_A, name: "telegram" }),
+      topic({ uuid: TOPIC_B, streamUuid: STREAM_B, name: "zulip" }),
+      topic({ uuid: TOPIC_C, streamUuid: STREAM_C, name: "Native" }),
+    ];
+    const rows = selectMessengerSidebarStreams(
+      {
+        streamIds: streams.map((s) => s.uuid),
+        streamsById: Object.fromEntries(streams.map((s) => [s.uuid, s])),
+        topicIds: topics.map((t) => t.uuid),
+        topicsById: Object.fromEntries(topics.map((t) => [t.uuid, t])),
+        foldersById: {},
+        conversationsById: {},
+      },
+      { organizationId: ORGANIZATION_ID, projectId: PROJECT_ID, currentUserUuid: "user" },
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.streamUuids).toEqual(expect.arrayContaining([STREAM_A, STREAM_B, STREAM_C]));
+    expect(rows[0]?.topics.map((t) => t.title).sort()).toEqual(["Native", "telegram", "zulip"]);
+    expect(rows[0]?.topics.find((t) => t.title === "telegram")?.route).toContain(
+      `/stream/${STREAM_A}/topic/${TOPIC_A}`,
+    );
+    expect(rows[0]?.unreadCount).toBe(9);
+  });
+
+  it("does not combine identical names belonging to different identities or encrypted chats", () => {
+    const streams = [
+      stream({ uuid: STREAM_A, isPrivate: true, directUserUuid: "peer-a", name: "Same" }),
+      stream({ uuid: STREAM_B, isPrivate: true, directUserUuid: "peer-b", name: "Same" }),
+      stream({ uuid: STREAM_C, isPrivate: true, directUserUuid: "peer-a", encryption: true }),
+    ];
+    const rows = selectMessengerSidebarStreams(
+      {
+        streamIds: streams.map((s) => s.uuid),
+        streamsById: Object.fromEntries(streams.map((s) => [s.uuid, s])),
+        topicIds: [],
+        topicsById: {},
+        foldersById: {},
+        conversationsById: {},
+      },
+      { organizationId: ORGANIZATION_ID, projectId: PROJECT_ID, currentUserUuid: "user" },
+    );
+    expect(rows).toHaveLength(3);
+  });
+});

@@ -52,9 +52,12 @@ export const ConnectExternalAccountForm = React.memo<ConnectExternalAccountFormP
         <Select
           id="external-account-provider"
           value={draft.provider}
-          onValueChange={() => onProviderChange("zulip")}
+          onValueChange={(value) => onProviderChange(value === "telegram" ? "telegram" : "zulip")}
           disabled={submitting || editing}
-          options={[{ value: "zulip", label: t("connectExternalAccount.providers.zulip") }]}
+          options={[
+            { value: "zulip", label: t("connectExternalAccount.providers.zulip") },
+            { value: "telegram", label: t("connectExternalAccount.providers.telegram") },
+          ]}
         />
       </FormField>
     );

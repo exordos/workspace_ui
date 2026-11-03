@@ -9,18 +9,20 @@ export const WORKSPACE_EXTERNAL_ACCOUNT_CACHE_DB_VERSION = DB_VERSION;
 
 export interface WorkspaceExternalAccountCacheProfile {
   uuid: string;
-  provider: "zulip";
+  provider: "zulip" | "telegram";
   settings: {
-    kind: "zulip";
+    kind: "zulip" | "telegram";
     serverUrl?: string;
     email?: string;
     selectionMode?: "explicit" | "all";
     historyDepth?: "new" | "7_days" | "30_days" | "90_days" | "all";
     defaultProjectId?: string;
+    peerKeys?: string[];
   };
   credentialPresent?: boolean;
   status:
     | "new"
+    | "syncing"
     | "fast_backfill"
     | "active"
     | "error"

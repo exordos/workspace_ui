@@ -118,6 +118,34 @@ afterEach(async () => {
 });
 
 describe("workspace-messenger-cache-db", () => {
+  it("commits one folder snapshot and its changed items in one transaction", async () => {
+    await openWorkspaceMessengerCacheDb();
+    const transactions = vi.spyOn(IDBDatabase.prototype, "transaction");
+    try {
+      await upsertMessengerFolderSnapshotsCache(
+        OWNER,
+        [{ uuid: "folder-a" }],
+        [
+          {
+            uuid: "item-a",
+            folderUuid: "folder-a",
+            conversationId: STREAM_CONVERSATION,
+            streamUuid: STREAM,
+            chatType: "stream",
+          },
+        ],
+      );
+      const writes = transactions.mock.calls.filter((args) => args[1] === "readwrite");
+      expect(writes).toHaveLength(1);
+      expect(new Set(writes[0]![0])).toEqual(new Set(["folders", "folderItems"]));
+    } finally {
+      transactions.mockRestore();
+    }
+    const snapshot = await readMessengerCatalogCache(OWNER);
+    expect(snapshot.folders).toHaveLength(1);
+    expect(snapshot.folderItems).toHaveLength(1);
+  });
+
   it.each(["database-open", "row-read"] as const)(
     "rejects catalog writes invalidated during %s",
     async (phase) => {

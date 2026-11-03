@@ -14,7 +14,7 @@ export type WorkspaceMessengerRole = "guest" | "member" | "moderator" | "adminis
 
 // DTO в этом файле повторяют JSON от сервера как есть.
 // В UI их не тащим: сначала переводим в доменные типы из entities/messenger.
-export type WorkspaceMessengerSourceName = "native" | "zulip";
+export type WorkspaceMessengerSourceName = "native" | "zulip" | "telegram";
 export type WorkspaceMessengerStreamNotificationMode = "mentions_only" | "muted" | "all_messages";
 export type WorkspaceMessengerTopicNotificationMode = "mute" | "default" | "unmute" | "follow";
 export type WorkspaceMessengerTopicSummaryReasoningEffort =
@@ -44,6 +44,8 @@ export interface WorkspaceMessengerStreamDto {
   provider_identity?: string | null;
   invite_only: boolean;
   announce: boolean;
+  announcement_only?: boolean;
+  can_send?: boolean;
   private: boolean;
   encryption?: boolean;
   current_encryption_key_uuid?: WorkspaceMessengerUuid | null;
@@ -297,7 +299,7 @@ export interface WorkspaceMessengerFolderDto {
 export interface WorkspaceMessengerUserDto {
   uuid: WorkspaceMessengerUuid;
   username: string;
-  source: "iam" | "zulip";
+  source: "iam" | "zulip" | "telegram";
   avatar?: string | null;
   status: WorkspaceMessengerUserStatus;
   status_emoji?: string | null;
@@ -344,6 +346,7 @@ export interface WorkspaceMessengerCreateStreamRequestBody {
   source_name: WorkspaceMessengerSourceName;
   invite_only?: boolean;
   announce?: boolean;
+  announcement_only?: boolean;
   direct_user_uuid?: WorkspaceMessengerUuid;
   encryption?: boolean;
   current_encryption_key_uuid?: WorkspaceMessengerUuid | null;
@@ -354,6 +357,7 @@ export interface WorkspaceMessengerUpdateStreamRequestBody {
   description?: string;
   invite_only?: boolean;
   announce?: boolean;
+  announcement_only?: boolean;
 }
 
 export interface WorkspaceMessengerStreamNotificationRequestBody {
@@ -838,7 +842,7 @@ function isRole(value: unknown): value is WorkspaceMessengerRole {
 }
 
 function isSourceName(value: unknown): value is WorkspaceMessengerSourceName {
-  return value === "native" || value === "zulip";
+  return value === "native" || value === "zulip" || value === "telegram";
 }
 
 function isDeliveryClass(value: unknown): value is WorkspaceMessengerDeliveryClass {
@@ -1163,6 +1167,8 @@ export function isWorkspaceMessengerStreamDto(
     (value.provider_identity == null || typeof value.provider_identity === "string") &&
     typeof value.invite_only === "boolean" &&
     typeof value.announce === "boolean" &&
+    (value.announcement_only === undefined || typeof value.announcement_only === "boolean") &&
+    (value.can_send === undefined || typeof value.can_send === "boolean") &&
     typeof value.private === "boolean" &&
     (value.encryption === undefined || typeof value.encryption === "boolean") &&
     (value.current_encryption_key_uuid === undefined ||
@@ -1363,7 +1369,7 @@ export function isWorkspaceMessengerUserDto(value: unknown): value is WorkspaceM
     isUuid(value.uuid) &&
     typeof value.username === "string" &&
     value.username.trim().length > 0 &&
-    (value.source === "iam" || value.source === "zulip") &&
+    (value.source === "iam" || value.source === "zulip" || value.source === "telegram") &&
     (value.avatar == null || typeof value.avatar === "string") &&
     isUserStatus(value.status) &&
     (value.status_emoji == null || typeof value.status_emoji === "string") &&

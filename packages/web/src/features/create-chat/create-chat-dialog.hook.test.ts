@@ -394,6 +394,30 @@ describe("useCreateChatDialog", () => {
     expect(onChannelCreated).toHaveBeenCalledTimes(1);
   });
 
+  it("shows the source beside users in both direct and channel member pickers", () => {
+    seedWorkspaceSession();
+    useUsersStore.getState().replaceUsers([
+      {
+        ...createUser({ uuid: "telegram-user", email: "telegram@example.com" }),
+        source: "telegram",
+      },
+      { ...createUser({ uuid: "zulip-user", statusText: "Available" }), source: "zulip" },
+      { ...createUser({ uuid: "native-user", email: "workspace@example.com" }), source: "iam" },
+    ]);
+    const { result } = renderHook(() => useCreateChatDialog(defaultHookOptions()));
+    for (const users of [result.current.filteredUsers, result.current.channelUsers]) {
+      expect(users.find((user) => user.userId === "telegram-user")?.statusLabel).toBe(
+        "Telegram · telegram@example.com",
+      );
+      expect(users.find((user) => user.userId === "zulip-user")?.statusLabel).toBe(
+        "Zulip · Available",
+      );
+      expect(users.find((user) => user.userId === "native-user")?.statusLabel).toBe(
+        "Workspace · workspace@example.com",
+      );
+    }
+  });
+
   it("offers the zero UUID as a direct chat candidate while excluding the current user", () => {
     seedWorkspaceSession();
     useUsersStore.getState().replaceUsers([
@@ -422,38 +446,43 @@ describe("useCreateChatDialog", () => {
     ]);
   });
 
-  it("creates a Workspace channel with selected member UUIDs", async () => {
-    seedWorkspaceSession();
-    seedUsers();
-    const stream = createStream({ uuid: "stream-a", name: "engineering" });
-    vi.mocked(runWorkspaceChannelCreate).mockResolvedValue({
-      status: "applied",
-      ownerKey: "owner",
-      stream,
-      defaultTopic: createTopic({ uuid: "topic-a", streamUuid: stream.uuid }),
-      streamBindings: [],
-    });
-
-    const { result } = renderHook(() => useCreateChatDialog(defaultHookOptions()));
-
-    act(() => {
-      result.current.setChannelName("  engineering  ");
-      result.current.toggleChannelUser("alice-user");
-    });
-    act(() => {
-      result.current.createChannel();
-    });
-
-    await waitFor(() => {
-      expect(runWorkspaceChannelCreate).toHaveBeenCalledWith({
-        name: "engineering",
-        description: "",
-        memberUserUuids: ["alice-user"],
-        inviteOnly: false,
-        announce: false,
+  it.each([false, true])(
+    "creates a Workspace channel with announcementOnly=%s",
+    async (announcementOnly) => {
+      seedWorkspaceSession();
+      seedUsers();
+      const stream = createStream({ uuid: "stream-a", name: "engineering" });
+      vi.mocked(runWorkspaceChannelCreate).mockResolvedValue({
+        status: "applied",
+        ownerKey: "owner",
+        stream,
+        defaultTopic: createTopic({ uuid: "topic-a", streamUuid: stream.uuid }),
+        streamBindings: [],
       });
-    });
-  });
+
+      const { result } = renderHook(() => useCreateChatDialog(defaultHookOptions()));
+
+      act(() => {
+        result.current.setChannelName("  engineering  ");
+        result.current.toggleChannelUser("alice-user");
+        result.current.setChannelAnnouncementOnly(announcementOnly);
+      });
+      act(() => {
+        result.current.createChannel();
+      });
+
+      await waitFor(() => {
+        expect(runWorkspaceChannelCreate).toHaveBeenCalledWith({
+          name: "engineering",
+          description: "",
+          memberUserUuids: ["alice-user"],
+          inviteOnly: false,
+          announce: false,
+          announcementOnly,
+        });
+      });
+    },
+  );
 
   it.each([
     { encryption: false, query: "Bob" },
@@ -555,6 +584,7 @@ describe("useCreateChatDialog", () => {
       memberUserUuids: ["alice-user"],
       inviteOnly: false,
       announce: false,
+      announcementOnly: false,
       encryption: true,
       creationAttempt: expect.any(Object),
     });

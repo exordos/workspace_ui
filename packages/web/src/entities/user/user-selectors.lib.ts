@@ -1,6 +1,18 @@
 import type { PresenceVisual } from "~/shared/ui/presence-indicator";
 import type { User, UserPresenceStatus, UsersById, UserUuid } from "./user.types";
 
+export function selectUserSourceLabel(
+  user: Pick<User, "source"> | null | undefined,
+): string | null {
+  return user?.source === "iam"
+    ? "Workspace"
+    : user?.source === "telegram"
+      ? "Telegram"
+      : user?.source === "zulip"
+        ? "Zulip"
+        : null;
+}
+
 export function isSelectableWorkspaceUser(user: User | null | undefined): user is User {
   return user != null;
 }

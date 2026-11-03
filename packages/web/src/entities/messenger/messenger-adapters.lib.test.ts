@@ -182,6 +182,24 @@ describe("messenger adapters", () => {
     });
   });
 
+  it("classifies source-private Telegram channels as channels while retaining their access flag", () => {
+    const channel = {
+      ...streamDto,
+      source_name: "telegram" as const,
+      private: true,
+      direct_user_uuid: null,
+    };
+    expect(adaptMessengerStream(channel)).toMatchObject({ audience: "channel", isPrivate: true });
+    expect(adaptStreamToMessengerConversation(channel)).toMatchObject({
+      audience: "channel",
+      isPrivate: true,
+    });
+    expect(adaptMessengerStream({ ...channel, direct_user_uuid: USER_UUID })).toMatchObject({
+      audience: "private",
+      isPrivate: true,
+    });
+  });
+
   it("maps private streams to private audience without changing id shape", () => {
     const privateStream = {
       ...streamDto,
@@ -534,5 +552,21 @@ it("preserves encrypted stream metadata and defaults pre-encryption snapshots sa
   ).toMatchObject({
     encryption: true,
     currentEncryptionKey: { keyUuid: MESSAGE_UUID },
+  });
+});
+
+describe("stream send capability", () => {
+  it("preserves a provider denial even for the local stream owner", () => {
+    expect(
+      adaptMessengerStream({ ...streamDto, source_name: "telegram", can_send: false }).canSend,
+    ).toBe(false);
+  });
+  it("uses native announcement roles for an older server without the capability", () => {
+    expect(
+      adaptMessengerStream({ ...streamDto, announcement_only: true, role: "member" }).canSend,
+    ).toBe(false);
+    expect(
+      adaptMessengerStream({ ...streamDto, announcement_only: true, role: "owner" }).canSend,
+    ).toBe(true);
   });
 });

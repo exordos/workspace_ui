@@ -105,7 +105,17 @@ const ExternalAccountRow = React.memo<{
   return (
     <li className="min-w-0" data-testid="external-account-row">
       <div className="flex h-10 min-w-0 items-center gap-3 rounded-lg">
-        <ZulipExternalAccountIcon className="h-10 w-10 shrink-0" aria-hidden />
+        {account.provider === "telegram" ? (
+          <span
+            role="img"
+            aria-label={providerLabel}
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent"
+          >
+            <Icon name="send" size={24} aria-hidden />
+          </span>
+        ) : (
+          <ZulipExternalAccountIcon className="h-10 w-10 shrink-0" aria-hidden />
+        )}
         <div className="flex min-w-0 flex-1 flex-col justify-center gap-1">
           <span className="truncate text-sm leading-4 text-text-primary">
             {account.settings.email ?? account.settings.serverUrl ?? providerLabel}

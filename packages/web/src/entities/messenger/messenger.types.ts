@@ -116,6 +116,8 @@ export interface MessengerStream {
   currentEncryptionKey?: { keyUuid: string } | null;
   inviteOnly: boolean;
   announce: boolean;
+  announcementOnly?: boolean;
+  canSend?: boolean;
   isArchived: boolean;
   color?: number | null;
   directUserUuid: MessengerUuid | null;
@@ -310,6 +312,8 @@ export interface MessengerTopicListItem {
 export type MessengerSidebarTopicItem = MessengerTopicListItem;
 
 export interface MessengerSidebarStreamItem {
+  /** Physical streams represented by this direct-conversation row. */
+  streamUuids?: readonly MessengerUuid[];
   id: MessengerConversationId;
   streamUuid: MessengerUuid;
   directUserUuid: MessengerUuid | null;

@@ -6,6 +6,7 @@ export type UserLoadStatus = "idle" | "loading" | "ready" | "error";
 
 export interface User {
   uuid: UserUuid;
+  source?: "iam" | "zulip" | "telegram";
   username: string;
   firstName: string | null;
   lastName: string | null;

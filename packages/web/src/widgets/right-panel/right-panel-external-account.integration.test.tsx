@@ -238,4 +238,20 @@ describe("RightPanelConnectExternalAccountDialog", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("Could not load external accounts");
     expect(screen.queryByText("No external accounts connected yet.")).not.toBeInTheDocument();
   });
+  it("identifies a Telegram account without the Zulip provider icon", () => {
+    seedRuntime();
+    seedAccounts([
+      {
+        ...account,
+        provider: "telegram",
+        settings: { kind: "telegram", peerKeys: [], historyDepth: "all" },
+        status: "syncing",
+      },
+    ]);
+    renderWithProviders(<RightPanelExternalAccountsList onConnect={vi.fn()} />);
+    expect(screen.getByRole("img", { name: "Telegram" })).toBeInTheDocument();
+    fireEvent.pointerDown(screen.getByRole("button", { name: "External account actions" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Edit" }));
+    expect(screen.getByTestId("editing-account")).toHaveTextContent(account.uuid);
+  });
 });

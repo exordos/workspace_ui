@@ -1,7 +1,7 @@
 import type { ExternalAccount } from "~/entities/external-account/external-account.types";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 
-export type ConnectExternalAccountProvider = "zulip";
+export type ConnectExternalAccountProvider = "zulip" | "telegram";
 export type ConnectExternalAccountError =
   | "fill"
   | "duplicate"

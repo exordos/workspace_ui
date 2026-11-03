@@ -2476,6 +2476,55 @@ describe("messenger realtime active applier", () => {
     ]);
   });
 
+  it("does not rewrite unchanged folder items for repeated counter snapshots", async () => {
+    const context = createContext();
+    const upsertCachedFolder = vi.fn();
+    const applier = createMessengerRealtimeActiveApplier({ cache: { upsertCachedFolder } });
+    useMessengerStore.getState().startBootstrap(context.ownerKey);
+    const folder = createFolderDto();
+    await applier.applyEvent(
+      { epoch_version: 73, type: "folder", kind: "folder.created", folder },
+      context,
+    );
+    upsertCachedFolder.mockClear();
+    await applier.applyEvent(
+      {
+        epoch_version: 74,
+        type: "folder",
+        kind: "folder.updated",
+        folder: { ...folder, unread_count: 7, updated_at: DATE_LATER },
+      },
+      context,
+    );
+    expect(upsertCachedFolder).toHaveBeenCalledWith(
+      context.ownerKey,
+      expect.objectContaining({ unreadCount: 7 }),
+      [],
+    );
+    upsertCachedFolder.mockClear();
+    await applier.applyEvent(
+      {
+        epoch_version: 75,
+        type: "folder",
+        kind: "folder.updated",
+        folder: {
+          ...folder,
+          folder_items: folder.folder_items.map((item) => ({
+            ...item,
+            unread_count: 8,
+            active_unread_count: 8,
+            updated_at: DATE_LATER,
+          })),
+          updated_at: DATE_LATER,
+        },
+      },
+      context,
+    );
+    expect(upsertCachedFolder).toHaveBeenCalledWith(context.ownerKey, expect.anything(), [
+      STREAM_A,
+    ]);
+  });
+
   it("projects realtime stream unread snapshots into folder items and aggregate counters", () => {
     const context = createContext();
     const upsertCachedFolder = vi.fn();
@@ -2536,7 +2585,7 @@ describe("messenger realtime active applier", () => {
         items: [expect.objectContaining({ unreadCount: 5 })],
       }),
     );
-    expect(upsertCachedFolder).toHaveBeenCalledWith(context.ownerKey, folder);
+    expect(upsertCachedFolder).toHaveBeenCalledWith(context.ownerKey, folder, [STREAM_A]);
   });
 
   it("removes realtime folder item membership while preserving the backend folder counter", () => {

@@ -39,6 +39,7 @@ export function useComposerMentions(
     selectSelectableWorkspaceUsers(usersById, userIds).forEach((user) => {
       suggestions.push({
         userUuid: user.uuid,
+        source: user.source,
         displayName: selectUserDisplayName(user, user.uuid),
         username: user.username,
         email: user.email ?? "",

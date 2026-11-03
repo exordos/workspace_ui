@@ -189,6 +189,7 @@ function filterWorkspaceMessengerUsersDto(
 export function toWorkspaceUserCacheProfile(user: User): WorkspaceUserCacheProfile {
   return {
     uuid: user.uuid,
+    source: user.source,
     username: user.username,
     displayName: user.displayName,
     firstName: user.firstName,
@@ -203,6 +204,7 @@ export function toWorkspaceUserCacheProfile(user: User): WorkspaceUserCacheProfi
 export function fromWorkspaceUserCacheProfile(profile: WorkspaceUserCacheProfile): User {
   return {
     uuid: profile.uuid,
+    source: profile.source,
     username: profile.username,
     firstName: profile.firstName,
     lastName: profile.lastName,

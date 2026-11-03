@@ -37,7 +37,7 @@ export type ConnectExternalAccountPhase = "credentials" | "checking" | "automati
 
 function emptyDraft(account?: ExternalAccount | null): ConnectExternalAccountDraft {
   return {
-    provider: "zulip",
+    provider: account?.provider ?? "zulip",
     serverUrl: account?.settings.serverUrl ?? "",
     email: account?.settings.email ?? "",
     apiKey: "",
