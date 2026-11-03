@@ -301,6 +301,7 @@ export const ZULIP_SHORTCODE_TO_UNIFIED_OVERRIDES: Readonly<Record<string, strin
   prohibited: "1F6AB",
   no_phones: "1F4F5",
   alert: "1F6A8",
+  info: "2139-FE0F",
   warning: "26A0-FE0F",
   radioactive: "2622-FE0F",
   biohazard: "2623-FE0F",
