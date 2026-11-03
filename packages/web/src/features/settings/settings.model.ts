@@ -125,7 +125,7 @@ function resolveChatListDensity(value: unknown): ChatListDensity {
 }
 
 function resolveMessengerSidebarSortMode(value: unknown): MessengerSidebarSortMode {
-  return value === "unread_first" ? "unread_first" : "last_message";
+  return value === "unread_first" || value === "alphabetical" ? value : "last_message";
 }
 
 function readSettingsRaw(key: string, legacyKey: string | null): string | null {

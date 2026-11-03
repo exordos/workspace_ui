@@ -1250,6 +1250,7 @@
     "messengerSidebarSortMode": "Stream and topic order",
     "messengerSidebarSortModeLastMessage": "Last message",
     "messengerSidebarSortModeUnreadFirst": "Unread first",
+    "messengerSidebarSortModeAlphabetical": "By name",
     "folderLayout": "Folder layout",
     "folderLayoutVertical": "Vertical rail",
     "folderLayoutHorizontal": "Horizontal tabs",

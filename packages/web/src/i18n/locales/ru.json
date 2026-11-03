@@ -1262,6 +1262,7 @@
     "messengerSidebarSortMode": "Порядок стримов и топиков",
     "messengerSidebarSortModeLastMessage": "По последнему сообщению",
     "messengerSidebarSortModeUnreadFirst": "Сначала непрочитанные",
+    "messengerSidebarSortModeAlphabetical": "По имени",
     "folderLayout": "Отображение папок",
     "folderLayoutVertical": "Вертикальная панель",
     "folderLayoutHorizontal": "Горизонтальные вкладки",

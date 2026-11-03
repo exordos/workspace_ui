@@ -564,6 +564,11 @@ export function RightPanelUserAppearance({
                   active={messengerSidebarSortMode === "unread_first"}
                   onClick={() => setMessengerSidebarSortMode("unread_first")}
                 />
+                <SettingsOptionRow
+                  label={t("settings.messengerSidebarSortModeAlphabetical")}
+                  active={messengerSidebarSortMode === "alphabetical"}
+                  onClick={() => setMessengerSidebarSortMode("alphabetical")}
+                />
               </OptionSurface>
             ) : null}
           </div>

@@ -238,6 +238,13 @@ function compareSidebarStreams(
   if (a.pinnedAt != null && b.pinnedAt == null) return -1;
   if (a.pinnedAt == null && b.pinnedAt != null) return 1;
 
+  if (sortMode === "alphabetical") {
+    return (
+      a.title.localeCompare(b.title, getLocale(), { sensitivity: "base", numeric: true }) ||
+      a.streamUuid.localeCompare(b.streamUuid)
+    );
+  }
+
   const groupCompare = streamGroupRank(a) - streamGroupRank(b);
   if (groupCompare !== 0) return groupCompare;
 
