@@ -6,6 +6,31 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.9.10] — 2026-11-03
+
+### Added
+
+- Keep multiple quoted replies in encrypted chats using the shared reply tabs.
+  Repeating Ctrl+L adds another quote while preserving the previous tab's answer during the current session.
+
+### Fixed
+
+- Remove only affected encrypted quotes when their source message or key changes.
+- Wrap long shortcut descriptions while keeping key combinations on one line.
+- Render the `:info:` emoji shortcode using the information symbol.
+
+### Requirements and compatibility
+
+- Deployment requirements, dependencies, server API contracts, and the durable
+  messenger cache schema are unchanged.
+- Decrypted quotes and replies stay in account memory. Existing encrypted-chat
+  key requirements still apply; these controls do not encrypt attachment bytes.
+
+### Migration notes
+
+- Update `workspace_ui` to `0.9.10`; no manual migration or cache reset is required.
+  Save or send protected drafts before reloading; they remain only in account memory.
+
 ## [0.9.9] — 2026-11-02
 
 ### Added
