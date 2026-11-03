@@ -1281,6 +1281,7 @@ const WorkspaceMessageListContent: React.FC<
       cancelPendingLatestWindow();
     };
   }, [cancelPendingLatestWindow, conversationId]);
+  const quoteMessage = actions?.onAddReplyMessage ?? actions?.onReplyMessage;
   const messageRowSelector = "article[data-server-message-uuid]";
   useAppHotkey(
     "interface.quoteMessage",
@@ -1293,7 +1294,7 @@ const WorkspaceMessageListContent: React.FC<
         }
         return;
       }
-      if (container == null || actions?.onReplyMessage == null) return;
+      if (container == null || !quoteMessage) return;
       const selection = window.getSelection();
       let row: HTMLElement | null;
       let selectedText: string | undefined;
@@ -1316,18 +1317,15 @@ const WorkspaceMessageListContent: React.FC<
       const bubble = row.querySelector<HTMLElement>('[data-hotkey-reply-eligible="true"]');
       if (!uuid || !bubble) return;
       event.preventDefault();
-      actions.onReplyMessage(
-        uuid,
-        bubble.dataset.messageHasSecrets === "true" ? undefined : selectedText,
-      );
+      quoteMessage(uuid, bubble.dataset.messageHasSecrets === "true" ? undefined : selectedText);
     },
     {
-      enabled: selectionMode ? onReplySelectedMessages != null : actions?.onReplyMessage != null,
+      enabled: selectionMode ? onReplySelectedMessages != null : quoteMessage != null,
       allowInputTarget: (element) =>
-        // The chat opens with focus in the empty composer.
+        // Adding a quote also works while typing an answer to the first one.
         (!selectionMode &&
           element instanceof HTMLTextAreaElement &&
-          element.value === "" &&
+          (element.value === "" || actions?.onAddReplyMessage != null) &&
           element.closest('[data-focus-zone="composer"]') != null) ||
         (selectionMode &&
           element.matches('[data-workspace-message-selection-control] input[type="checkbox"]') &&
