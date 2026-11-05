@@ -33,21 +33,6 @@ vi.mock("~/shared/lib/toast/toast", () => ({
   },
 }));
 
-function dispatchShortcut(combo: string): void {
-  const isMac = /Mac|iPhone|iPad|iPod/.test(navigator.userAgent);
-  const parts = combo.toLowerCase().split("+");
-  window.dispatchEvent(
-    new KeyboardEvent("keydown", {
-      key: parts.find((part) => !["mod", "alt", "shift"].includes(part)) ?? "",
-      ...(parts.includes("mod") ? (isMac ? { metaKey: true } : { ctrlKey: true }) : {}),
-      shiftKey: parts.includes("shift"),
-      altKey: parts.includes("alt"),
-      bubbles: true,
-      cancelable: true,
-    }),
-  );
-}
-
 describe("FolderRail visual parity", () => {
   const originalResizeObserver = globalThis.ResizeObserver;
   let latestFolderRailResizeCallback: ResizeObserverCallback | null = null;
@@ -897,7 +882,7 @@ describe("FolderRail visual parity", () => {
       contentScrollHeight: 240,
     });
 
-    dispatchShortcut("Alt+Shift+F");
+    fireEvent.keyDown(window, { key: "А", code: "KeyF", altKey: true, shiftKey: true });
 
     const searchInput = await screen.findByPlaceholderText("Search folders");
     await waitFor(() => {
