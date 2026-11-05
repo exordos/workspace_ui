@@ -258,8 +258,17 @@ describe("RightPanelWorkspaceInfo", () => {
         ownerUuid: ALICE_USER_UUID,
       });
       const onChatScreenChange = vi.fn();
+      const info = createInfo({
+        topicSummary: {
+          topicUuid: "topic-a",
+          topicName: "Roadmap",
+          text: "",
+          hasNewMessages: false,
+          enabled: true,
+        },
+      });
       const { rerender } = renderWithProviders(
-        <RightPanelWorkspaceInfo info={createInfo()} onChatScreenChange={onChatScreenChange} />,
+        <RightPanelWorkspaceInfo info={info} onChatScreenChange={onChatScreenChange} />,
       );
       const entry = screen.queryByRole("button", { name: t("e2ee.keyTitle") });
       if (sourceName !== "native") {
@@ -268,11 +277,12 @@ describe("RightPanelWorkspaceInfo", () => {
       }
       expect(entry).toBeInTheDocument();
       if (entry == null) throw new Error("Missing key manager entry");
+      expect(screen.getByText(t("workspaceMessenger.topicSummary.title"))).toAppearBefore(entry);
       fireEvent.click(entry);
       expect(onChatScreenChange).toHaveBeenCalledWith("key");
       rerender(
         <RightPanelWorkspaceInfo
-          info={createInfo()}
+          info={info}
           onChatScreenChange={onChatScreenChange}
           chatScreen="key"
         />,

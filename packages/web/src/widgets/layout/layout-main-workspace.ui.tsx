@@ -68,6 +68,10 @@ export const LayoutMainWorkspace = React.memo(function LayoutMainWorkspace({
       infoStreamUuid != null &&
       state.streamsById[infoStreamUuid]?.encryption === true,
   );
+  const showChannelInfo =
+    rightDrawerMode === "info" &&
+    workspaceRightPanelInfo?.kind === "channel" &&
+    (rightDrawerChatScreen == null || rightDrawerChatScreen.screen === "info");
   const [sidebarBounds, setSidebarBounds] = useState(() => getLayoutSidebarWidthBounds());
   const sidebarWidth = clampLayoutSidebarWidth(sidebarPreferredWidth, sidebarBounds);
   const dragStartRef = useRef<{ pointerX: number; width: number } | null>(null);
@@ -198,8 +202,7 @@ export const LayoutMainWorkspace = React.memo(function LayoutMainWorkspace({
             onClose={onCloseRightDrawer}
             onBack={rightDrawerCanGoBack ? onBackRightDrawer : undefined}
             title={accountDrawerTitle}
-            // Account and encrypted-chat menus own their insets; other panels keep drawer padding.
-            contentFlush={showAccountMenuRows || showEncryptedMenuRows}
+            contentFlush={showAccountMenuRows || showEncryptedMenuRows || showChannelInfo}
           >
             <RightPanel
               onClose={onCloseRightDrawer}
