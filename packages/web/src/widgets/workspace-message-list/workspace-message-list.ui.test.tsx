@@ -7373,7 +7373,12 @@ describe("WorkspaceMessageList", () => {
     expect(screen.getByRole("menuitem", { name: "Edit message" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Delete" })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByLabelText("Thumbs up"));
+    const quickReaction = screen.getByLabelText("Thumbs up");
+    expect(quickReaction.parentElement?.parentElement).toHaveClass(
+      "overflow-x-auto",
+      "scrollbar-none",
+    );
+    fireEvent.click(quickReaction);
     expect(onToggleMessageReaction).toHaveBeenCalledWith("own-menu-message", "👍");
   });
 

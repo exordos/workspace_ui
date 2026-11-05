@@ -2371,7 +2371,7 @@ describe("MessageComposer mode tabs", () => {
     fireEvent.click(screen.getByRole("button", { name: /show formatting tools/i }));
 
     const toolbarRow = screen.getByTestId("composer-toolbar-row");
-    expect(toolbarRow).toHaveClass("h-8", "overflow-x-auto");
+    expect(toolbarRow).toHaveClass("h-8", "overflow-x-auto", "scrollbar-none");
     expect(toolbarRow).not.toHaveClass("px-3", "pb-2");
     expect(toolbarRow.firstElementChild).toHaveClass("gap-2", "pl-2");
     expect(toolbarRow.firstElementChild).not.toHaveClass("pl-3", "pl-5");

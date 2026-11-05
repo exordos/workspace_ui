@@ -6,6 +6,7 @@ import { writeImage, writeText } from "~/shared/lib/clipboard";
 import { formatWorkspaceMessageTimesForCopy } from "~/shared/lib/workspace-message-render/workspace-message-marked.lib";
 import { DropdownMenu, type DropdownMenuItem } from "~/shared/ui/dropdown-menu";
 import { Icon } from "~/shared/ui/icon";
+import { ScrollArea } from "~/shared/ui/scroll-area";
 import { subscribeWorkspaceMessageQuickReactionUsage } from "./workspace-message-quick-reaction-history.lib";
 import {
   getWorkspaceMessageQuickReactions,
@@ -232,7 +233,7 @@ export const WorkspaceMessageBubbleMenu = React.memo(function WorkspaceMessageBu
         key: "quick-reactions",
         render: () => (
           <div className="flex w-60 max-w-[calc(100vw-2rem)] items-center gap-0.5 border-b border-border-subtle px-3 py-2">
-            <div className="min-w-0 flex-1 overflow-x-auto scrollbar-none">
+            <ScrollArea axis="x" scrollbar="hidden" className="flex-1">
               <div className="flex w-max items-center gap-0.5">
                 {quickReactions.map((reaction) => (
                   <button
@@ -250,7 +251,7 @@ export const WorkspaceMessageBubbleMenu = React.memo(function WorkspaceMessageBu
                   </button>
                 ))}
               </div>
-            </div>
+            </ScrollArea>
             <WorkspaceReactionEmojiPicker
               open={emojiPickerOpen}
               onOpenChange={setEmojiPickerOpen}

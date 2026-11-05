@@ -10,6 +10,7 @@ import {
   type DropdownMenuContentProps,
   type DropdownMenuItem,
 } from "~/shared/ui/dropdown-menu";
+import { ScrollArea } from "~/shared/ui/scroll-area";
 
 const CLOSED_TOPIC_MENU_CONTENT_PROPS: DropdownMenuContentProps = {
   side: "top",
@@ -63,8 +64,11 @@ export const ChatPageStreamTopicPrompt = React.memo(function ChatPageStreamTopic
         {t("chat.selectTopicToWrite")}
       </span>
       {topics.length > 0 ? (
-        <nav
-          className="min-w-0 flex-1 overflow-x-auto scrollbar-none"
+        <ScrollArea
+          as="nav"
+          axis="x"
+          scrollbar="hidden"
+          className="flex-1"
           aria-label={t("chat.selectTopicToWrite")}
           data-testid="stream-topic-rail"
         >
@@ -77,7 +81,7 @@ export const ChatPageStreamTopicPrompt = React.memo(function ChatPageStreamTopic
               />
             ))}
           </div>
-        </nav>
+        </ScrollArea>
       ) : null}
     </ChatPageTopicPromptFrame>
   );

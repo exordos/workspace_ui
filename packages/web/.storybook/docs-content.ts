@@ -1156,15 +1156,27 @@ export const docsContent: Readonly<Record<string, ComponentDocsContent>> = {
   },
   "Shared/Layout/ScrollArea": {
     description: text(
-      "Shared vertical scroll container with the existing scrollbar styling. It does not own virtualization, data loading or message anchors.",
-      "Общий контейнер вертикальной прокрутки с существующим оформлением полосы прокрутки. Он не управляет виртуализацией, загрузкой данных или якорями сообщений.",
+      "Shared scroll container with configurable axes and scrollbar visibility. Hiding the scrollbar preserves native scrolling. It does not own virtualization, data loading or message anchors.",
+      "Общий контейнер с настройкой направления прокрутки и видимости полосы. Скрытие полосы сохраняет нативную прокрутку. Он не управляет виртуализацией, загрузкой данных или якорями сообщений.",
     ),
     props: {
       children: common.children,
       className: common.className,
       as: text(
-        "Container element; the current public contract allows div.",
-        "Элемент контейнера; текущий публичный контракт допускает div.",
+        "Container element: div (default) or nav for navigation lists.",
+        "Элемент контейнера: div (по умолчанию) или nav для списков навигации.",
+      ),
+      axis: text(
+        "Scroll horizontally (x), vertically (y, default), or along both axes (both).",
+        "Горизонтальная (x), вертикальная (y, по умолчанию) прокрутка или обе оси (both).",
+      ),
+      scrollbar: text(
+        "Show the themed scrollbar (visible, default) or hide it without disabling scrolling (hidden).",
+        "Показывать полосу в теме приложения (visible, по умолчанию) или скрывать её, сохраняя прокрутку (hidden).",
+      ),
+      horizontalWheel: text(
+        "For axis=x, map vertical wheel motion to horizontal scrolling (true by default). Horizontal gestures and modified events stay native; at the edges, outer scrolling is preserved. Set false to keep all wheel events native.",
+        "Для axis=x преобразует вертикальное колесо в горизонтальную прокрутку (по умолчанию true). Горизонтальные жесты и события с модификаторами остаются нативными; на краях сохраняется внешняя прокрутка. Значение false оставляет все события колеса браузеру.",
       ),
     },
   },
