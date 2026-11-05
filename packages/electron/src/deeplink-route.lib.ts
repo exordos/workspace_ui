@@ -24,3 +24,66 @@ export function resolveNotificationClickRoute(options: unknown): string | null {
   const trimmed = clickRoute.trim();
   return isSafeDeeplinkRoute(trimmed) ? trimmed : null;
 }
+
+/** Validate only the external protocol boundary; tray and notification routes keep their contracts. */
+export function parseExternalDeepLink(value: string): string | null {
+  if (/[\\\u0000-\u0020]/.test(value)) return null;
+  try {
+    const url = new URL(value);
+    if (
+      url.protocol !== "ew:" ||
+      url.hostname !== "open" ||
+      url.port ||
+      url.username ||
+      url.password
+    )
+      return null;
+    const route = `${url.pathname || "/"}${url.search}${url.hash}`;
+    if (!route.startsWith("/") || !isSafeDeeplinkRoute(route)) return null;
+    if (/%(?:2f|5c|00|0a|0d)/i.test(route)) return null;
+    const messageSegment = /\/message\/([^/?#]+)/.exec(url.pathname)?.[1];
+    if (
+      messageSegment != null &&
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(messageSegment)
+    )
+      return null;
+    // Accept the existing service routes and complete project messenger routes.
+    if (/^\/org\/[^/?#]+\/?$/.test(route)) return route;
+    if (
+      /^\/(?:calendar|mail|calls|licenses|settings|logs)\/?(?:[?#].*)?$/.test(route) ||
+      route === "/"
+    )
+      return route;
+    if (/^\/org\/[^/]+\/(?:calendar|mail|calls|licenses|settings|logs)\/?(?:[?#].*)?$/.test(route))
+      return route;
+    if (
+      /^\/org\/[^/]+\/project\/[^/]+\/(?:messenger|inbox|feed|activity\/[^/]+|message\/[^/]+|stream\/[^/]+(?:\/topic\/[^/]+)?)\/?(?:[?#].*)?$/.test(
+        route,
+      )
+    )
+      return route;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/** Last route wins while the renderer has no navigation subscriber. */
+export function createDeepLinkDelivery() {
+  let pending: string | null = null;
+  let ready = false;
+  return {
+    enqueue(route: string) {
+      pending = route;
+    },
+    setReady(value: boolean) {
+      ready = value;
+    },
+    take(): string | null {
+      if (!ready) return null;
+      const route = pending;
+      pending = null;
+      return route;
+    },
+  };
+}

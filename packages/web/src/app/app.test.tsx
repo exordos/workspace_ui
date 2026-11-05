@@ -7,6 +7,9 @@ import { renderWithProviders } from "~/test/render";
 import App from "./app";
 import { WebViewShell } from "./webview-shell";
 
+const layoutOwners = vi.hoisted(() => [] as (string | null)[]);
+vi.mock("~/pages/login/login-page.ui", () => ({ LoginPage: () => <div>login-page</div> }));
+
 vi.mock("~/pages/inbox/inbox-page.ui", () => ({
   InboxPage: () => <div>inbox-page</div>,
 }));
@@ -21,11 +24,14 @@ vi.mock("~/pages/chat/chat-page.ui", () => ({
 
 vi.mock("~/widgets/layout/layout.ui", () => {
   return {
-    Layout: () => (
-      <div data-testid="layout-shell">
-        <Outlet />
-      </div>
-    ),
+    Layout: () => {
+      layoutOwners.push(useWorkspaceAuthStore.getState().currentAccountId);
+      return (
+        <div data-testid="layout-shell">
+          <Outlet />
+        </div>
+      );
+    },
   };
 });
 
@@ -78,6 +84,7 @@ function LocationProbe() {
 
 describe("App default routing", () => {
   afterEach(() => {
+    layoutOwners.length = 0;
     useWorkspaceAuthStore.setState({ sessions: [], currentAccountId: null, runtimeGeneration: 0 });
   });
 
@@ -263,6 +270,75 @@ describe("App default routing", () => {
     });
 
     expect(await screen.findByText("inbox-page")).toBeInTheDocument();
+  });
+
+  it.each([
+    "/org/unknown/project/project-a/message/message-uuid",
+    "/org/zulip.example.com/project/unknown/message/message-uuid",
+  ])(
+    "preserves unmatched message target %s and asks for login without mounting the shell",
+    async (route) => {
+      setAuthorizedSession();
+      renderWithProviders(
+        <>
+          <App />
+          <LocationProbe />
+        </>,
+        { route },
+      );
+      expect(await screen.findByText("login-page")).toBeInTheDocument();
+      expect(screen.getByTestId("location-path")).toHaveTextContent(route);
+      expect(screen.queryByTestId("layout-shell")).not.toBeInTheDocument();
+      expect(layoutOwners).toEqual([]);
+    },
+  );
+
+  it("selects the exact message project before mounting the shell", async () => {
+    const current = createSession();
+    const target = createSessionWithOverrides({
+      accountId: "target-account",
+      projectId: "target-project",
+    });
+    useWorkspaceAuthStore.setState({
+      sessions: [current, target],
+      currentAccountId: current.accountId,
+      runtimeGeneration: 1,
+    });
+    renderWithProviders(<App />, {
+      route: "/org/zulip.example.com/project/target-project/message/message-uuid",
+    });
+    expect(await screen.findByTestId("chat-page")).toBeInTheDocument();
+    expect(layoutOwners.length).toBeGreaterThan(0);
+    expect(layoutOwners.every((owner) => owner === target.accountId)).toBe(true);
+  });
+
+  it("keeps the active matching account when another account has the same organization/project", async () => {
+    const other = createSession();
+    const active = createSessionWithOverrides({ accountId: "active-account" });
+    useWorkspaceAuthStore.setState({
+      sessions: [other, active],
+      currentAccountId: active.accountId,
+      runtimeGeneration: 1,
+    });
+    renderWithProviders(<App />, {
+      route: "/org/zulip.example.com/project/project-a/message/message-uuid",
+    });
+    expect(await screen.findByTestId("chat-page")).toBeInTheDocument();
+    expect(layoutOwners.every((owner) => owner === active.accountId)).toBe(true);
+  });
+
+  it("selects a message account even when the current account is missing", async () => {
+    const target = createSession();
+    useWorkspaceAuthStore.setState({
+      sessions: [target],
+      currentAccountId: null,
+      runtimeGeneration: 1,
+    });
+    renderWithProviders(<App />, {
+      route: "/org/zulip.example.com/project/project-a/message/message-uuid",
+    });
+    expect(await screen.findByTestId("chat-page")).toBeInTheDocument();
+    expect(layoutOwners.every((owner) => owner === target.accountId)).toBe(true);
   });
 
   it("renders workspace webview routes with ChatPage", async () => {

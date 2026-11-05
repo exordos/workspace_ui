@@ -8,6 +8,7 @@ import type { WorkspaceRuntimeContextGetter } from "~/entities/workspace-runtime
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import {
   getMessagesPage as defaultGetMessagesPage,
+  MessengerApiError,
   type MessengerCollectionPage,
   type MessengerClientOptions,
 } from "~/shared/api/messenger-client";
@@ -157,6 +158,7 @@ export type MessengerMessageAnchorResolveResult =
       ownerKey: string;
       conversationId: MessengerConversationId | null;
       error: string;
+      reason?: "not-found" | "access-denied";
     };
 
 export interface MessengerFetchedMessageWindow {
@@ -182,6 +184,7 @@ export type MessengerMessageWindowFetchResult =
       ownerKey: string;
       conversationId: MessengerConversationId;
       error: string;
+      reason?: "not-found" | "access-denied";
     };
 
 export type MessengerMessageWindowApplyResult =
@@ -302,6 +305,19 @@ function normalizeMessagesError(error: unknown): string {
     return error.message;
   }
   return "Messenger messages loading failed";
+}
+
+function messageAnchorFailure(error: unknown): {
+  error: string;
+  reason?: "not-found" | "access-denied";
+} {
+  if (error instanceof MessengerApiError && (error.status === 403 || error.status === 404)) {
+    return {
+      error: "Message unavailable",
+      reason: error.status === 403 ? "access-denied" : "not-found",
+    };
+  }
+  return { error: normalizeMessagesError(error) };
 }
 
 async function restoreReadBoundariesForRequest({
@@ -1409,7 +1425,7 @@ export async function resolveMessengerMessageAnchor({
       status: "failed",
       ownerKey,
       conversationId: null,
-      error: normalizeMessagesError(error),
+      ...messageAnchorFailure(error),
     };
   }
 }
@@ -1506,7 +1522,7 @@ export async function fetchMessengerMessageWindow({
       status: "failed",
       ownerKey,
       conversationId: targetConversationId,
-      error: normalizeMessagesError(error),
+      ...messageAnchorFailure(error),
     };
   }
 }

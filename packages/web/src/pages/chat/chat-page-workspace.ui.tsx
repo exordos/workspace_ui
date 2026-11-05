@@ -157,11 +157,16 @@ import type { RightDrawerContextValue } from "~/shared/contexts/right-drawer.typ
 import { chatBottomNoticeBarClassName } from "~/shared/lib/chat-bottom-notice-bar.lib";
 import { writeText } from "~/shared/lib/clipboard";
 import { createLogger } from "~/shared/lib/logger";
+import { toast } from "~/shared/lib/toast/toast";
 import {
   createWorkspaceFileResourceCache,
   type WorkspaceFileResourceCache,
 } from "~/shared/lib/workspace-file-loader.lib";
 import { isWorkspaceMessageWithinLimit } from "~/shared/lib/workspace-message-limits.lib";
+import {
+  buildWorkspaceMessagePermalink,
+  resolveWorkspaceMessageWebOrigin,
+} from "~/shared/lib/workspace-message-permalink.lib";
 import type {
   WorkspaceMessageFileReference,
   WorkspaceMessageMentionResolution,
@@ -3066,6 +3071,38 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
     [conversationId, isRestoredWorkspaceReplyEdit, ownerKey, updateWorkspaceComposerDraft],
   );
 
+  const handleCopyMessageLink = useCallback(
+    async (messageUuid: string) => {
+      const message = selectWorkspaceMessageById(useWorkspaceMessageStore.getState(), messageUuid);
+      const url =
+        runtimeContext == null ||
+        message == null ||
+        useWorkspaceMessageStore.getState().ownerKey !== ownerKey ||
+        message.projectId !== runtimeContext.projectId
+          ? null
+          : buildWorkspaceMessagePermalink(
+              resolveWorkspaceMessageWebOrigin({
+                organizationOrigin: runtimeContext.organizationOrigin,
+              }) ?? undefined,
+              {
+                orgId: runtimeContext.organizationId,
+                projectId: message.projectId,
+                messageUuid: message.uuid,
+              },
+            );
+      if (url == null) {
+        setActionError(t("message.messageLinkUnavailable"));
+        return;
+      }
+      const isCurrent = captureWorkspaceChatUiAction();
+      const copied = await writeText(url);
+      if (!isCurrent()) return;
+      if (copied) toast.success(t("message.messageLinkCopied"));
+      else setActionError(t("message.copyFailed"));
+    },
+    [captureWorkspaceChatUiAction, ownerKey, runtimeContext],
+  );
+
   const handleCopyMessageText = useCallback(
     async (messageUuid: string, selectedText?: string) => {
       const message = selectWorkspaceMessageById(useWorkspaceMessageStore.getState(), messageUuid);
@@ -3913,6 +3950,12 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
     },
     [openWorkspaceUserProfile],
   );
+  const handleOpenMessagePermalink = useCallback(
+    (path: string) => {
+      void navigate(path);
+    },
+    [navigate],
+  );
   const handleOpenMessageInChat = useCallback(
     (messageUuid: MessengerUuid) => {
       startMessageNavigation(messageUuid, "local-quote");
@@ -4222,6 +4265,10 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
                 : handleAddReplyMessage
             }
             onForwardMessage={handleForwardMessage}
+            messageWebOrigin={resolveWorkspaceMessageWebOrigin({
+              organizationOrigin: runtimeContext?.organizationOrigin,
+            })}
+            onOpenMessagePermalink={handleOpenMessagePermalink}
             onOpenMessageInChat={handleOpenMessageInChat}
             onOpenMentionUser={openWorkspaceUserProfile == null ? undefined : handleOpenMentionUser}
             onOpenWorkspaceReference={handleOpenWorkspaceReference}
@@ -4233,6 +4280,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
             getKeyRequestActions={getKeyRequestActions}
             getKeyServiceState={getKeyServiceState}
             onRequestDeleteMessage={handleRequestDeleteMessage}
+            onCopyMessageLink={handleCopyMessageLink}
             onCopyMessageText={handleCopyMessageText}
             onToggleMessageReaction={handleToggleMessageReaction}
             onDownloadFile={handleDownloadFile}

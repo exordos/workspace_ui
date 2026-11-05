@@ -6,6 +6,7 @@ import {
 } from "~/entities/message/message.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
+import { MessengerApiError } from "~/shared/api/messenger-client";
 import type {
   MessengerCollectionPage,
   MessengerClientOptions,
@@ -738,6 +739,45 @@ describe("messenger conversation messages loader", () => {
       useMessengerOutboxStore.getState().outgoingMessagesByPlacementUuid[outgoing.placementUuid],
     ).toBeUndefined();
   });
+
+  it.each([403, 404])(
+    "returns unavailable without backend response details for HTTP %s",
+    async (status) => {
+      const runtimeContext = createRuntimeContext();
+      prepareStoreOwner(runtimeContext);
+      const failure = new MessengerApiError("private backend response", status, {
+        content: "private",
+      });
+      const result = await resolveMessengerMessageAnchor({
+        runtimeContext,
+        messageUuid: MESSAGE_A,
+        client: { getMessage: () => Promise.reject(failure) },
+      });
+      expect(result).toMatchObject({
+        status: "failed",
+        error: "Message unavailable",
+        reason: status === 403 ? "access-denied" : "not-found",
+      });
+      const anchor = await resolveMessengerMessageAnchor({
+        runtimeContext,
+        messageUuid: MESSAGE_A,
+        client: { getMessage: () => Promise.resolve(createMessageDto()) },
+      });
+      if (anchor.status !== "resolved") throw new Error("Expected resolved anchor");
+      await expect(
+        fetchMessengerMessageWindow({
+          runtimeContext,
+          anchor,
+          targetConversationId: anchor.conversationId,
+          client: { getMessagePagesAroundResolvedMessage: () => Promise.reject(failure) },
+        }),
+      ).resolves.toMatchObject({
+        status: "failed",
+        error: "Message unavailable",
+        reason: status === 403 ? "access-denied" : "not-found",
+      });
+    },
+  );
 
   it("resolves an anchor body without changing its visible window", async () => {
     const runtimeContext = createRuntimeContext();

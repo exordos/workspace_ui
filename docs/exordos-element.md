@@ -52,6 +52,15 @@ TLS, preserve the client `Host`, and forward HTTP to port 80 of the load
 balancer exported by `workspace_ui`. A user can then point any DNS name at the
 public load balancer without rebuilding or editing the element manifest.
 
+Message permalinks use the public web origin and the path
+`/org/<organization>/project/<project>/message/<message-uuid>`. The
+`workspace_web` route serves the SPA for a direct request to that path.
+For separate web and API hosts, set `VITE_WORKSPACE_WEB_ORIGIN` to the public
+HTTPS web origin when building both clients. Otherwise, the browser uses its
+web origin. The desktop client uses the origin of
+`VITE_DEFAULT_LOGIN_ORGANIZATION_URL` when available and falls back to the
+message's organization origin.
+
 The Workspace load balancer accepts every non-empty hostname and forwards
 nginx's normalized `$host` value to the backend. It also identifies the
 external scheme as `https`, so IAM redirects remain on the hostname chosen by

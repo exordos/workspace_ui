@@ -168,7 +168,7 @@ function parseSafeUrlForRoute(href: string): URL | null {
 }
 
 function resolveWorkspaceMessageRouteUuid(href: string): string | null {
-  const url = parseSafeUrlForRoute(href);
+  const url = href.startsWith("/") && !href.startsWith("//") ? parseSafeUrlForRoute(href) : null;
   if (url == null) {
     return null;
   }

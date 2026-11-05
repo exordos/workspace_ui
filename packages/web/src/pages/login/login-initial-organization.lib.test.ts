@@ -8,29 +8,16 @@ describe("resolveInitialLoginOrganization", () => {
     vi.stubEnv("DEV", true);
     expect(
       resolveInitialLoginOrganization({
-        realmPrefill: null,
         browserOrigin: "http://localhost:5176",
         defaultOrganizationUrl: "http://127.0.0.1:23190",
       }),
     ).toEqual({ organizationUrl: "http://127.0.0.1:23190", autoAdvance: true });
   });
 
-  it("uses an explicitly provided local realm in DEV", () => {
-    vi.stubEnv("DEV", true);
-    expect(
-      resolveInitialLoginOrganization({
-        realmPrefill: "http://localhost:23190",
-        browserOrigin: "http://localhost:5176",
-        defaultOrganizationUrl: "",
-      }),
-    ).toEqual({ organizationUrl: "http://localhost:23190", autoAdvance: true });
-  });
-
   it("does not infer a backend from the local Vite origin in DEV", () => {
     vi.stubEnv("DEV", true);
     expect(
       resolveInitialLoginOrganization({
-        realmPrefill: null,
         browserOrigin: "http://localhost:5176",
         defaultOrganizationUrl: "",
       }),
@@ -41,7 +28,6 @@ describe("resolveInitialLoginOrganization", () => {
     vi.stubEnv("DEV", false);
     expect(
       resolveInitialLoginOrganization({
-        realmPrefill: null,
         browserOrigin: "http://localhost:5176",
         defaultOrganizationUrl: "http://127.0.0.1:23190",
       }),
@@ -51,7 +37,6 @@ describe("resolveInitialLoginOrganization", () => {
   it("uses the browser origin and advances when it is a valid organization URL", () => {
     expect(
       resolveInitialLoginOrganization({
-        realmPrefill: null,
         browserOrigin: "https://workspace.example.com",
         defaultOrganizationUrl: "",
       }),
@@ -61,23 +46,9 @@ describe("resolveInitialLoginOrganization", () => {
     });
   });
 
-  it("uses an explicit browser realm before the current origin", () => {
-    expect(
-      resolveInitialLoginOrganization({
-        realmPrefill: "https://other.example.com",
-        browserOrigin: "https://workspace.example.com",
-        defaultOrganizationUrl: "https://default.example.com",
-      }),
-    ).toEqual({
-      organizationUrl: "https://other.example.com",
-      autoAdvance: true,
-    });
-  });
-
   it("uses the configured default organization before a valid browser origin", () => {
     expect(
       resolveInitialLoginOrganization({
-        realmPrefill: null,
         browserOrigin: "https://workspace.example.com",
         defaultOrganizationUrl: "https://default.example.com",
       }),
@@ -90,7 +61,6 @@ describe("resolveInitialLoginOrganization", () => {
   it("uses the browser origin when the configured default is invalid", () => {
     expect(
       resolveInitialLoginOrganization({
-        realmPrefill: null,
         browserOrigin: "https://workspace.example.com",
         defaultOrganizationUrl: "not-a-url",
       }),
@@ -103,7 +73,6 @@ describe("resolveInitialLoginOrganization", () => {
   it("keeps the organization step empty when neither source is valid", () => {
     expect(
       resolveInitialLoginOrganization({
-        realmPrefill: null,
         browserOrigin: "http://localhost:5173",
         defaultOrganizationUrl: "",
       }),
@@ -113,16 +82,24 @@ describe("resolveInitialLoginOrganization", () => {
     });
   });
 
-  it("does not advance an Electron realm prefill", () => {
+  it("uses the matching session origin for a message on a shared installation", () => {
     expect(
       resolveInitialLoginOrganization({
-        realmPrefill: "https://workspace.example.com",
-        browserOrigin: null,
+        browserOrigin: "https://workspace.example.com",
         defaultOrganizationUrl: "https://default.example.com",
+        sessionOrigins: ["https://previous.example.com", "https://other.example.com:8443"],
+        messageOrgId: "other.example.com-8443",
       }),
-    ).toEqual({
-      organizationUrl: "https://workspace.example.com",
-      autoAdvance: false,
-    });
+    ).toEqual({ organizationUrl: "https://other.example.com:8443", autoAdvance: true });
+  });
+
+  it("requires a manual choice when the organization ID matches two distinct origins", () => {
+    expect(
+      resolveInitialLoginOrganization({
+        browserOrigin: "https://my-team.example.com",
+        defaultOrganizationUrl: "https://my--team.example.com",
+        messageOrgId: "my-team.example.com",
+      }),
+    ).toEqual({ organizationUrl: "", autoAdvance: false });
   });
 });

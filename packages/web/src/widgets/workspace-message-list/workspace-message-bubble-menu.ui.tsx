@@ -1,6 +1,7 @@
 import EmojiPicker, { EmojiStyle, Theme, type EmojiClickData } from "emoji-picker-react";
 import React, { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { isMessengerUuid } from "~/entities/messenger/messenger-ids.lib";
 import { t } from "~/i18n/i18n";
 import { writeImage, writeText } from "~/shared/lib/clipboard";
 import { formatWorkspaceMessageTimesForCopy } from "~/shared/lib/workspace-message-render/workspace-message-marked.lib";
@@ -170,6 +171,7 @@ export const WorkspaceMessageBubbleMenu = React.memo(function WorkspaceMessageBu
   onEditMessage,
   onRequestDeleteMessage,
   onCopyMessageText,
+  onCopyMessageLink,
   onToggleMessageReaction,
   onLoadWorkspaceFilePreview,
   getSelectedText,
@@ -205,6 +207,19 @@ export const WorkspaceMessageBubbleMenu = React.memo(function WorkspaceMessageBu
 
   const menuItems = useMemo<DropdownMenuItem[]>(() => {
     const items: DropdownMenuItem[] = [];
+    const appendCopyMessageLink = (section: DropdownMenuItem[]) => {
+      if (onCopyMessageLink == null || !isMessengerUuid(message.uuid)) return;
+      section.push({
+        type: "action",
+        key: "copy-message-link",
+        icon: "links_compact",
+        label: t("message.copyMessageLink"),
+        onSelect: () => {
+          void onCopyMessageLink(message.uuid);
+          closeMenu();
+        },
+      });
+    };
     let markdown: string | undefined;
     if (message.payload.kind === "markdown") {
       markdown = message.payload.content;
@@ -221,9 +236,11 @@ export const WorkspaceMessageBubbleMenu = React.memo(function WorkspaceMessageBu
             closeMenu();
           },
         });
+        appendCopyMessageLink(items);
         return items;
       }
     } else {
+      appendCopyMessageLink(items);
       return items;
     }
 
@@ -360,6 +377,7 @@ export const WorkspaceMessageBubbleMenu = React.memo(function WorkspaceMessageBu
         },
       });
     }
+    appendCopyMessageLink(secondaryActionItems);
     if (onToggleMessageSelection != null) {
       secondaryActionItems.push({
         type: "action",
@@ -415,6 +433,7 @@ export const WorkspaceMessageBubbleMenu = React.memo(function WorkspaceMessageBu
     message.uuid,
     onAddReplyMessage,
     onCopyMessageText,
+    onCopyMessageLink,
     onEditMessage,
     onForwardMessage,
     onLoadWorkspaceFilePreview,

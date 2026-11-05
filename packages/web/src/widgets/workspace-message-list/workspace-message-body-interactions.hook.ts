@@ -13,6 +13,10 @@ import CopyIconRaw from "~/shared/assets/icons/copy.svg?raw";
 import { writeText } from "~/shared/lib/clipboard";
 import { createLogger } from "~/shared/lib/logger";
 import { isValidUrl } from "~/shared/lib/validation";
+import {
+  parseWorkspaceMessagePermalink,
+  resolveWorkspaceMessageWebOrigin,
+} from "~/shared/lib/workspace-message-permalink.lib";
 import type { WorkspaceMessageFileReference } from "~/shared/lib/workspace-message-render/workspace-message-document.types";
 import type { WorkspaceMessageBubbleMenuAnchor } from "./workspace-message-bubble-menu.types";
 import type { WorkspaceMessageConversationReference } from "./workspace-message-list.types";
@@ -36,6 +40,8 @@ export interface UseWorkspaceMessageBodyInteractionsParams {
   enableCodeCopy: boolean;
   fileReferences: readonly WorkspaceMessageFileReference[];
   onOpenMentionUser?: (userUuid: string) => void;
+  messageWebOrigin?: string | null;
+  onOpenMessagePermalink?: (path: string) => void;
   onOpenMessageInChat?: (messageUuid: string) => void;
   onOpenWorkspaceReference?: (reference: WorkspaceMessageConversationReference) => void;
   onDownloadFile?: (file: WorkspaceMessageFileReference) => void | Promise<void>;
@@ -340,6 +346,8 @@ export function useWorkspaceMessageBodyInteractions({
   fileReferences,
   onOpenMentionUser,
   onOpenMessageInChat,
+  onOpenMessagePermalink,
+  messageWebOrigin,
   onOpenWorkspaceReference,
   onDownloadFile,
   onOpenWorkspaceMedia,
@@ -632,7 +640,18 @@ export function useWorkspaceMessageBodyInteractions({
         return;
       }
 
-      if (link.dataset.workspaceMessageLink === "true") {
+      const webOrigin = messageWebOrigin ?? resolveWorkspaceMessageWebOrigin();
+      const permalink = parseWorkspaceMessagePermalink(href, webOrigin == null ? [] : [webOrigin]);
+      if (permalink != null) {
+        if (isPrimaryUnmodifiedClick(event) && onOpenMessagePermalink != null) {
+          event.preventDefault();
+          event.stopPropagation();
+          onOpenMessagePermalink(permalink.path);
+        }
+        return;
+      }
+
+      if (link.dataset.workspaceMessageLink === "true" && href.startsWith("#workspace-message-")) {
         const messageUuid = link.dataset.workspaceMessageUuid?.trim();
         event.preventDefault();
         if (
@@ -678,6 +697,8 @@ export function useWorkspaceMessageBodyInteractions({
     [
       onOpenMentionUser,
       onOpenMessageInChat,
+      onOpenMessagePermalink,
+      messageWebOrigin,
       onOpenWorkspaceReference,
       onOpenUnsupportedFilePreview,
       requestWorkspaceFileDownload,

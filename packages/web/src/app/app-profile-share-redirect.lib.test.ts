@@ -53,7 +53,7 @@ describe("profile share entry routing", () => {
     });
     const url = new URL(route, SECOND.organizationOrigin);
     expect(url.pathname).toBe("/login");
-    expect(url.searchParams.get("realm")).toBe(SECOND.organizationOrigin);
+    expect(url.searchParams.has("realm")).toBe(false);
     expect(url.searchParams.get("redirectTo")).toBe(`/${HASH}`);
   });
 });

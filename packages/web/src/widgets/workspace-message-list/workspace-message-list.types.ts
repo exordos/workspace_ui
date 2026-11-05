@@ -50,6 +50,8 @@ export interface WorkspaceMessageListActions {
   onReplyMessage?: (messageUuid: MessengerUuid, selectedText?: string) => void;
   onAddReplyMessage?: (messageUuid: MessengerUuid, selectedText?: string) => void;
   onForwardMessage?: (messageUuid: MessengerUuid, selectedText?: string) => void;
+  messageWebOrigin?: string | null;
+  onOpenMessagePermalink?: (path: string) => void;
   onOpenMessageInChat?: (messageUuid: MessengerUuid) => void;
   onOpenWorkspaceReference?: (reference: WorkspaceMessageConversationReference) => void;
   onOpenAuthorProfile?: (userUuid: MessengerUuid) => void;
@@ -57,6 +59,7 @@ export interface WorkspaceMessageListActions {
   onToggleMessageSelection?: (messageUuid: MessengerUuid) => void;
   onEditMessage?: (messageUuid: MessengerUuid) => void;
   onRequestDeleteMessage?: (messageUuid: MessengerUuid) => void;
+  onCopyMessageLink?: (messageUuid: MessengerUuid) => void | Promise<void>;
   onCopyMessageText?: (messageUuid: MessengerUuid, selectedText?: string) => void | Promise<void>;
   onToggleMessageReaction?: (messageUuid: MessengerUuid, emojiName: string) => void | Promise<void>;
   onOpenMentionUser?: (userUuid: MessengerUuid) => void;

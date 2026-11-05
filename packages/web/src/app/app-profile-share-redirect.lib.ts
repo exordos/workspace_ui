@@ -21,7 +21,6 @@ export function resolveProfileShareEntryRoute({
   if (matching == null) {
     const query = new URLSearchParams({
       redirectTo: preserveWorkspaceProfileShareHash("/", hash),
-      realm: browserOrigin,
     });
     return `/login?${query.toString()}`;
   }
