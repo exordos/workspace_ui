@@ -35,23 +35,24 @@ describe("hotkey settings", () => {
     fireEvent.click(edit);
     await waitFor(() => expect(screen.getByLabelText("Press a shortcut")).toHaveFocus());
     fireEvent.keyDown(screen.getByLabelText("Press a shortcut"), {
-      key: "b",
+      key: "и",
       code: "KeyB",
       ctrlKey: true,
     });
     expect(screen.getByRole("alert")).toHaveTextContent("already in use");
     fireEvent.keyDown(screen.getByLabelText("Press a shortcut"), {
-      key: "c",
+      key: "с",
       code: "KeyC",
       ctrlKey: true,
     });
     expect(screen.getByRole("alert")).toHaveTextContent("reserved");
     fireEvent.keyDown(screen.getByLabelText("Press a shortcut"), {
-      key: "k",
+      key: "Л",
       code: "KeyK",
       ctrlKey: true,
       shiftKey: true,
     });
+    expect(screen.getByLabelText("Press a shortcut")).toHaveValue("Ctrl+Shift+K");
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() =>
       expect(screen.queryByLabelText("Press a shortcut")).not.toBeInTheDocument(),

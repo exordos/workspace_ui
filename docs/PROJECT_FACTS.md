@@ -63,6 +63,10 @@ Unread counts above 1000 display as whole thousands rounded down with a plus sig
 
 See the [badge threshold story](../packages/web/src/shared/ui/badge/badge.stories.tsx) for 999, 1000, 1001, 1999, 2000 and larger aggregates in the application themes and locales.
 
+## Keyboard shortcuts
+
+`shared/lib/hotkeys` owns shortcut policy, recording and app registration through TanStack Hotkeys. Main-keyboard letter, digit and punctuation bindings are stored and displayed using US QWERTY labels. Recording derives these labels from `KeyboardEvent.code`; `useAppHotkey` converts them to TanStack physical bindings (for example `Mod+B` becomes `Mod+[KeyB]`). Keypad and international positions retain explicit physical codes so recording preserves their identity. Matching therefore follows key positions across keyboard layouts. Conflict checks compare the same physical bindings on Windows and macOS, including aliases written as shifted symbols. Existing input, modal, composition, repeat and AltGraph guards still apply.
+
 ## Verification
 
 Run commands from the repository root unless stated otherwise.

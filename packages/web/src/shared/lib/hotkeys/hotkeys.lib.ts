@@ -6,6 +6,7 @@ import {
   isModifierKey,
   normalizeHotkey,
   areHotkeysEqual,
+  PUNCTUATION_CODE_MAP,
   type Hotkey,
 } from "@tanstack/react-hotkeys";
 
@@ -57,6 +58,73 @@ export function getHotkeyBinding(id: HotkeyId, overrides: HotkeyOverrides): stri
 export function formatHotkey(binding: string): string {
   return formatForDisplay(binding as Hotkey);
 }
+
+// Stored labels use US QWERTY positions, regardless of the active OS layout.
+const keyByCode = new Map<string, string>([
+  ...Array.from("ABCDEFGHIJKLMNOPQRSTUVWXYZ", (key): [string, string] => [`Key${key}`, key]),
+  ...Array.from("0123456789", (key): [string, string] => [`Digit${key}`, key]),
+  ...Object.entries(PUNCTUATION_CODE_MAP),
+]);
+const codeByKey = new Map(Array.from(keyByCode, ([code, key]) => [key, code]));
+// Keep keypad and international keys distinct from the main keyboard positions.
+const specialKeyByCode = new Map<string, string>([
+  ...Array.from("0123456789", (key): [string, string] => [`Numpad${key}`, key]),
+  ["NumpadAdd", "+"],
+  ["NumpadSubtract", "-"],
+  ["NumpadMultiply", "*"],
+  ["NumpadDivide", "/"],
+  ["NumpadDecimal", "."],
+  ["NumpadComma", ","],
+  ["NumpadEqual", "="],
+  ["NumpadEnter", "Enter"],
+  ["IntlBackslash", "IntlBackslash"],
+  ["IntlRo", "IntlRo"],
+  ["IntlYen", "IntlYen"],
+]);
+const shiftedKeys = new Map(
+  Object.entries({
+    "~": "`",
+    "!": "1",
+    "@": "2",
+    "#": "3",
+    $: "4",
+    "%": "5",
+    "^": "6",
+    "&": "7",
+    "*": "8",
+    "(": "9",
+    ")": "0",
+    _: "-",
+    "+": "=",
+    "{": "[",
+    "}": "]",
+    "|": "\\",
+    ":": ";",
+    '"': "'",
+    "<": ",",
+    ">": ".",
+    "?": "/",
+  }),
+);
+
+export function toPhysicalHotkey(
+  binding: string | null,
+  platform?: "mac" | "windows" | "linux",
+): string | null {
+  if (binding == null) return null;
+  const parsed = parseHotkey(binding, platform);
+  if (parsed.key == null) return binding;
+  const { key, ...modifiers } = parsed;
+  const baseKey = shiftedKeys.get(key);
+  const code = codeByKey.get(baseKey ?? key);
+  if (code == null) return binding;
+  // Preserve old bindings written as a shifted glyph, such as Control+?.
+  return normalizeHotkey(
+    { ...modifiers, code, shift: modifiers.shift || baseKey != null },
+    platform,
+  );
+}
+
 export function hotkeyFromEvent(event: KeyboardEvent): string | null {
   if (
     event.isComposing ||
@@ -67,10 +135,19 @@ export function hotkeyFromEvent(event: KeyboardEvent): string | null {
   )
     return null;
   try {
-    // Use the physical letter key when the current layout uses non-Latin letters.
-    if (/^Key[A-Z]$/.test(event.code) && /\P{ASCII}/u.test(event.key)) {
+    const key = keyByCode.get(event.code);
+    if (key != null) {
       return normalizeHotkey({
-        key: event.code.slice(3),
+        key,
+        ctrl: event.ctrlKey,
+        alt: event.altKey,
+        shift: event.shiftKey,
+        meta: event.metaKey,
+      });
+    }
+    if (specialKeyByCode.has(event.code)) {
+      return normalizeHotkey({
+        code: event.code,
         ctrl: event.ctrlKey,
         alt: event.altKey,
         shift: event.shiftKey,
@@ -87,14 +164,17 @@ export function validateHotkeyBinding(
   binding: string,
   overrides: HotkeyOverrides,
 ): "invalid" | "reserved" | "conflict" | null {
-  if (
-    !HOTKEYS.some((item) => item.id === id) ||
-    !validateHotkey(binding).valid ||
-    binding.includes("[")
-  )
-    return "invalid";
-  const normalized = normalizeHotkey(binding);
-  const parsed = parseHotkey(binding);
+  if (!HOTKEYS.some((item) => item.id === id) || !validateHotkey(binding).valid) return "invalid";
+  const recorded = parseHotkey(binding);
+  let policyBinding = binding;
+  if (recorded.code != null) {
+    const key = specialKeyByCode.get(recorded.code);
+    if (key == null) return "invalid";
+    const { ctrl, alt, shift, meta } = recorded;
+    policyBinding = normalizeHotkey({ key, ctrl, alt, shift, meta });
+  }
+  const normalized = normalizeHotkey(policyBinding);
+  const parsed = parseHotkey(policyBinding);
   const key = parsed.key?.toLowerCase();
   const platformModifier = parsed.ctrl || parsed.meta;
   // Keep system and text editing keys available to the browser and the user.
@@ -104,7 +184,7 @@ export function validateHotkeyBinding(
       !parsed.meta &&
       !parsed.alt &&
       !(id === "composer.editLastMessage" && key === "arrowup" && !parsed.shift)) ||
-    (platformModifier && (key === "+" || key === "-" || key === "0")) ||
+    (platformModifier && (key === "+" || key === "=" || key === "-" || key === "0")) ||
     (platformModifier && parsed.shift && key === "r") ||
     /^(Mod|Ctrl|Control|Meta)\+[1-9]$/i.test(normalized) ||
     /^(Mod|Ctrl|Control|Meta)\+Shift\+T$/i.test(normalized) ||
@@ -121,8 +201,13 @@ export function validateHotkeyBinding(
       (item) =>
         item.id !== id &&
         getHotkeyBinding(item.id, overrides) &&
-        (areHotkeysEqual(getHotkeyBinding(item.id, overrides)! as Hotkey, normalized, "mac") ||
-          areHotkeysEqual(getHotkeyBinding(item.id, overrides)! as Hotkey, normalized, "windows")),
+        (["mac", "windows"] as const).some((platform) =>
+          areHotkeysEqual(
+            toPhysicalHotkey(getHotkeyBinding(item.id, overrides), platform)! as Hotkey,
+            toPhysicalHotkey(binding, platform)! as Hotkey,
+            platform,
+          ),
+        ),
     )
   )
     return "conflict";
