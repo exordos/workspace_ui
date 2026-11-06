@@ -1796,7 +1796,7 @@ describe("MessageComposer mention suggestions", () => {
 });
 
 describe("MessageComposer formatting shortcuts", () => {
-  it("applies bold wrapper on mod+b", async () => {
+  it.each(["b", "и"])("applies bold wrapper on mod+b when the layout types %s", async (key) => {
     renderWithProviders(<MessageComposer onSend={vi.fn()} />);
 
     const textbox = screen.getByRole("textbox");
@@ -1806,7 +1806,7 @@ describe("MessageComposer formatting shortcuts", () => {
     fireEvent.change(textbox, { target: { value: "hello" } });
     textbox.setSelectionRange(0, 5);
 
-    fireEvent.keyDown(textbox, { key: "b", ctrlKey: true });
+    fireEvent.keyDown(textbox, { key, code: "KeyB", ctrlKey: true });
 
     await waitFor(() => {
       expect(textbox).toHaveValue("**hello**");
@@ -1822,14 +1822,14 @@ describe("MessageComposer formatting shortcuts", () => {
     }
     fireEvent.change(textbox, { target: { value: "sample" } });
     textbox.setSelectionRange(0, 6);
-    fireEvent.keyDown(textbox, { key: "x", ctrlKey: true, shiftKey: true });
+    fireEvent.keyDown(textbox, { key: "x", code: "KeyX", ctrlKey: true, shiftKey: true });
 
     await waitFor(() => {
       expect(textbox).toHaveValue("~~sample~~");
     });
 
     textbox.setSelectionRange(2, 8);
-    fireEvent.keyDown(textbox, { key: "e", ctrlKey: true });
+    fireEvent.keyDown(textbox, { key: "e", code: "KeyE", ctrlKey: true });
 
     await waitFor(() => {
       expect(textbox).toHaveValue("~~`sample`~~");
@@ -2371,7 +2371,7 @@ describe("MessageComposer mode tabs", () => {
     fireEvent.click(screen.getByRole("button", { name: /show formatting tools/i }));
 
     const toolbarRow = screen.getByTestId("composer-toolbar-row");
-    expect(toolbarRow).toHaveClass("h-8", "overflow-x-auto");
+    expect(toolbarRow).toHaveClass("h-8", "overflow-x-auto", "scrollbar-none");
     expect(toolbarRow).not.toHaveClass("px-3", "pb-2");
     expect(toolbarRow.firstElementChild).toHaveClass("gap-2", "pl-2");
     expect(toolbarRow.firstElementChild).not.toHaveClass("pl-3", "pl-5");

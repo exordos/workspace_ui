@@ -43,6 +43,7 @@ import { t } from "~/i18n/i18n";
 import { OpenSearchContext } from "~/shared/contexts/open-search";
 import { RightDrawerContext } from "~/shared/contexts/right-drawer";
 import type { RightDrawerContextValue } from "~/shared/contexts/right-drawer.types";
+import { resetToastStateForTests, useToastStore } from "~/shared/lib/toast/toast.model";
 import { formatLocalMessageTime } from "~/shared/lib/workspace-message-time.lib";
 import {
   deleteWorkspaceMessengerCacheDatabase,
@@ -2504,6 +2505,43 @@ describe("ChatPage Workspace route", () => {
     }
   });
 
+  it.each([true, false])(
+    "copies a scoped HTTPS permalink and reports clipboard success=%s",
+    async (success) => {
+      resetToastStateForTests();
+      const message = createMessage();
+      replaceTestConversationWindow(`topic:${STREAM_UUID}:${TOPIC_UUID}`, [message]);
+      const descriptor = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+      const writeText = success
+        ? vi.fn().mockResolvedValue(undefined)
+        : vi.fn().mockRejectedValue(new Error("Denied"));
+      Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+      try {
+        renderWorkspaceChatPageWithShellContexts(
+          `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+        );
+        await screen.findByTestId("workspace-message-list-section");
+        await act(async () => {
+          await captured.messageListProps?.onCopyMessageLink?.(message.uuid);
+        });
+        const copiedUrl = new URL(writeText.mock.calls[0]?.[0] as string);
+        expect(copiedUrl.pathname).toBe(`/org/org-a/project/project-a/message/${message.uuid}`);
+        expect(copiedUrl.origin).toBe(window.location.origin);
+        if (success)
+          expect(useToastStore.getState().toasts.at(-1)?.message).toBe(
+            t("message.messageLinkCopied"),
+          );
+        else expect(screen.getByText(t("message.copyFailed"))).toBeInTheDocument();
+        if (!success)
+          expect(screen.queryByText(t("message.messageLinkCopied"))).not.toBeInTheDocument();
+      } finally {
+        resetToastStateForTests();
+        if (descriptor == null) Reflect.deleteProperty(navigator, "clipboard");
+        else Object.defineProperty(navigator, "clipboard", descriptor);
+      }
+    },
+  );
+
   it.each([
     { failure: "decryption", scope: "current" },
     { failure: "decryption", scope: "route" },
@@ -3515,7 +3553,36 @@ describe("ChatPage Workspace route", () => {
     );
   });
 
-  it("focuses a Workspace message route from the active store without loading a window", async () => {
+  it("hides cached direct-link message content while validating access and after denial", async () => {
+    updateTestConversationWindow(`topic:${STREAM_UUID}:${TOPIC_UUID}`);
+    const request = createDeferred<{
+      status: "failed";
+      ownerKey: string;
+      reason: "access-denied";
+      error: string;
+    }>();
+    captured.loadWorkspaceMessageWindowAroundMessage.mockReturnValueOnce(request.promise);
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/message/${MESSAGE_UUID}`,
+    );
+    await waitFor(() =>
+      expect(captured.loadWorkspaceMessageWindowAroundMessage).toHaveBeenCalledOnce(),
+    );
+    expect(screen.queryByText("workspace message")).not.toBeInTheDocument();
+    await act(async () => {
+      request.resolve({
+        status: "failed",
+        ownerKey: useWorkspaceMessageStore.getState().ownerKey ?? "",
+        reason: "access-denied",
+        error: "No access",
+      });
+      await request.promise;
+    });
+    expect(screen.queryByText("workspace message")).not.toBeInTheDocument();
+    expect(document.querySelector("[data-message-anchor-transition='true']")).not.toBeNull();
+  });
+
+  it("revalidates a direct Workspace message route even when it is cached", async () => {
     updateTestConversationWindow(`topic:${STREAM_UUID}:${TOPIC_UUID}`);
     renderWorkspaceChatPageWithShellContexts(
       `/org/org-a/project/project-a/message/${MESSAGE_UUID}`,
@@ -3527,7 +3594,7 @@ describe("ChatPage Workspace route", () => {
     await waitFor(() =>
       expect(captured.messageListProps?.focusedMessageTarget?.messageUuid).toBe(MESSAGE_UUID),
     );
-    expect(captured.loadWorkspaceMessageWindowAroundMessage).not.toHaveBeenCalled();
+    expect(captured.loadWorkspaceMessageWindowAroundMessage).toHaveBeenCalledOnce();
     expect(captured.loadWorkspaceMessages).not.toHaveBeenCalled();
   });
 
@@ -3535,7 +3602,7 @@ describe("ChatPage Workspace route", () => {
     const conversationId = `topic:${STREAM_UUID}:${TOPIC_UUID}`;
     updateTestConversationWindow(conversationId);
     renderWorkspaceChatPageWithShellContexts(
-      `/org/org-a/project/project-a/message/${MESSAGE_UUID}`,
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}#message-${MESSAGE_UUID}`,
     );
     await waitFor(() =>
       expect(captured.messageListProps?.focusedMessageTarget?.messageUuid).toBe(MESSAGE_UUID),
@@ -4022,7 +4089,7 @@ describe("ChatPage Workspace route", () => {
     captured.loadWorkspaceMessageWindowAroundMessage.mockReturnValueOnce(windowRequest.promise);
 
     renderWorkspaceChatPageWithShellContexts(
-      `/org/org-a/project/project-a/message/${MESSAGE_UUID}`,
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}#message-${MESSAGE_UUID}`,
     );
 
     await waitFor(() =>
@@ -4044,7 +4111,8 @@ describe("ChatPage Workspace route", () => {
     expect(screen.getByText("workspace message")).toBeInTheDocument();
     expect(document.querySelector("[data-message-anchor-transition='true']")).not.toBeNull();
     expect(screen.queryByTestId("workspace-message-list-section")).not.toBeInTheDocument();
-    expect(captured.messageListProps).toBeNull();
+    expect(captured.messageListProps?.messages ?? []).toEqual([]);
+    expect(captured.messageListProps?.focusedMessageTarget ?? null).toBeNull();
     expect(scrollIntoView).not.toHaveBeenCalled();
     expect(captured.realListFocusedMessageApplied).not.toHaveBeenCalled();
     expect(captured.realListFocusedMessageMissing).not.toHaveBeenCalled();
@@ -4109,7 +4177,7 @@ describe("ChatPage Workspace route", () => {
 
     try {
       renderWorkspaceChatPageWithShellContexts(
-        `/org/org-a/project/project-a/message/${MESSAGE_UUID}`,
+        `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}#message-${MESSAGE_UUID}`,
       );
 
       expect(await screen.findByText("Bob")).toBeInTheDocument();
@@ -4281,7 +4349,7 @@ describe("ChatPage Workspace route", () => {
 
     try {
       renderWorkspaceChatPageWithShellContexts(
-        `/org/org-a/project/project-a/message/${MESSAGE_UUID}`,
+        `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}#message-${MESSAGE_UUID}`,
       );
       await waitFor(() => expect(captured.realListFocusedMessageApplied).toHaveBeenCalledOnce());
       const ownerAProps = captured.messageListProps;

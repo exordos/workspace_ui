@@ -433,7 +433,7 @@ function MemberList(props: EncryptedChatInfoProps) {
         ) : null}
       </h3>
       {props.members.length > 0 ? (
-        <ul className="space-y-1">
+        <ul className="space-y-1 px-2">
           {props.members.map((member) => (
             <li key={member.id} className="group/member">
               <WorkspaceMemberCard

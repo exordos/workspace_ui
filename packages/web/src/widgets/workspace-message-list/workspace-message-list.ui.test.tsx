@@ -4891,35 +4891,21 @@ describe("WorkspaceMessageList", () => {
     openSpy.mockRestore();
   });
 
-  it("keeps Workspace message permalinks as internal links", () => {
-    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
-    const workspaceMessageUuid = "11111111-1111-4111-8111-111111111111";
-    const { container } = render(
+  it("opens trusted Workspace message permalinks with their full scope", () => {
+    const onOpenMessagePermalink = vi.fn();
+    const path = "/org/org-a/project/project-b/message/11111111-1111-4111-8111-111111111111";
+    render(
       <WorkspaceMessageList
-        messages={[
-          createWorkspaceMessage({
-            uuid: "workspace-permalink-message",
-            markdown: `[jump](https://workspace.example/org/org-a/project/project-a/message/${workspaceMessageUuid})`,
-          }),
-        ]}
+        messages={[createWorkspaceMessage({ markdown: `https://workspace.example${path}` })]}
         currentUserUuid="current-user-uuid"
         conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ messageWebOrigin: "https://workspace.example", onOpenMessagePermalink }}
       />,
     );
-
-    const link = container.querySelector<HTMLAnchorElement>(
-      `[data-workspace-message-link='true'][href='https://workspace.example/org/org-a/project/project-a/message/${workspaceMessageUuid}']`,
-    );
-
-    expect(link).toHaveAttribute("data-workspace-message-uuid", workspaceMessageUuid);
-    expect(link).not.toHaveAttribute("target");
-
-    link?.addEventListener("click", (event) => event.preventDefault());
-    fireEvent.click(link!);
-
-    expect(openSpy).not.toHaveBeenCalled();
-
-    openSpy.mockRestore();
+    const link = screen.getByRole("link");
+    expect(link).toHaveAttribute("target", "_blank");
+    fireEvent.click(link);
+    expect(onOpenMessagePermalink).toHaveBeenCalledExactlyOnceWith(path);
   });
 
   it("opens canonical Workspace URN entities through UUID callbacks", () => {
@@ -7373,7 +7359,12 @@ describe("WorkspaceMessageList", () => {
     expect(screen.getByRole("menuitem", { name: "Edit message" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Delete" })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByLabelText("Thumbs up"));
+    const quickReaction = screen.getByLabelText("Thumbs up");
+    expect(quickReaction.parentElement?.parentElement).toHaveClass(
+      "overflow-x-auto",
+      "scrollbar-none",
+    );
+    fireEvent.click(quickReaction);
     expect(onToggleMessageReaction).toHaveBeenCalledWith("own-menu-message", "👍");
   });
 
@@ -7456,6 +7447,57 @@ describe("WorkspaceMessageList", () => {
     fireEvent.contextMenu(bubble!, { clientX: 120, clientY: 80 });
 
     expect(await screen.findByRole("menuitem", { name: "Copy text" })).toBeInTheDocument();
+  });
+
+  it("offers a peer message permalink separately from the URL under the cursor", async () => {
+    const onCopyMessageLink = vi.fn();
+    const uuid = "11111111-1111-4111-8111-111111111111";
+    render(
+      <WorkspaceMessageList
+        messages={[createWorkspaceMessage({ uuid, markdown: "[docs](https://example.com)" })]}
+        currentUserUuid="other-user"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onCopyMessageLink }}
+      />,
+    );
+    fireEvent.contextMenu(screen.getByRole("link"), { clientX: 120, clientY: 80 });
+    expect(await screen.findByRole("menuitem", { name: "Copy link" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy message link" }));
+    expect(onCopyMessageLink).toHaveBeenCalledExactlyOnceWith(uuid);
+  });
+
+  it.each(["sending", "failed"] as const)(
+    "does not offer a permalink for %s outbox entries with valid UUIDs",
+    (status) => {
+      const uuid = "11111111-1111-4111-8111-111111111111";
+      const { container } = render(
+        <WorkspaceMessageList
+          messages={[]}
+          outgoingMessages={[
+            createOutgoingMessage({ canonicalMessageUuid: uuid, placementUuid: uuid, status }),
+          ]}
+          currentUserUuid="current-user-uuid"
+          conversationId="topic:stream-uuid-1:topic-uuid-1"
+          actions={{ onCopyMessageLink: vi.fn() }}
+        />,
+      );
+      fireEvent.contextMenu(container.querySelector("[data-workspace-message-bubble='true']")!);
+      expect(screen.queryByRole("menuitem", { name: "Copy message link" })).not.toBeInTheDocument();
+    },
+  );
+
+  it("does not offer a permalink for a nonpersistent message identifier", async () => {
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[createWorkspaceMessage({ uuid: "local-message" })]}
+        currentUserUuid="other-user"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onCopyMessageLink: vi.fn() }}
+      />,
+    );
+    fireEvent.contextMenu(container.querySelector("[data-workspace-message-bubble='true']")!);
+    expect(await screen.findByRole("menuitem", { name: "Copy text" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Copy message link" })).not.toBeInTheDocument();
   });
 
   it("offers to copy a safe link from its right-click context", async () => {
@@ -7616,7 +7658,7 @@ describe("WorkspaceMessageList", () => {
       <WorkspaceMessageList
         messages={[
           createWorkspaceMessage({
-            uuid: "divider-order-message",
+            uuid: "11111111-1111-4111-8111-111111111111",
             authorUuid: "current-user-uuid",
             userUuid: "current-user-uuid",
             isOwn: true,
@@ -7626,6 +7668,7 @@ describe("WorkspaceMessageList", () => {
         currentUserUuid="current-user-uuid"
         conversationId="topic:stream-uuid-1:topic-uuid-1"
         actions={{
+          onCopyMessageLink: vi.fn(),
           onReplyMessage: vi.fn(),
           onAddReplyMessage: vi.fn(),
           onForwardMessage: vi.fn(),
@@ -7654,6 +7697,7 @@ describe("WorkspaceMessageList", () => {
       "Forward",
       "separator",
       "Copy text",
+      "Copy message link",
       "Select",
       "separator",
       "Edit message",

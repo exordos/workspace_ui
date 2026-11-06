@@ -4,6 +4,7 @@ import { createContext, useContext, type ReactNode, type RefObject } from "react
 import {
   HOTKEYS,
   getHotkeyBinding,
+  toPhysicalHotkey,
   validateHotkeyBinding,
   type HotkeyId,
   type HotkeyOverrides,
@@ -83,7 +84,7 @@ export function useAppHotkey(
   const settings = useHotkeySettings();
   const binding = getHotkeyBinding(id, settings.overrides);
   useHotkey(
-    binding as Hotkey | null,
+    toPhysicalHotkey(binding) as Hotkey | null,
     (event) => {
       // Let local controls handle the event first and leave text input alone.
       if (

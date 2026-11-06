@@ -40,6 +40,8 @@ import { parseWorkspaceProfileShareHash } from "~/shared/lib/workspace-profile-l
 import { ErrorBoundary, PageErrorFallback, PageLoader } from "~/shared/ui/error-boundary";
 import { configureWorkspaceI18nStorageScope } from "~/widgets/layout/layout-i18n-scope.lib";
 import { resolveElectronTrayNavigation } from "./app-electron-navigation.lib";
+import { resolveMessageEntrySession } from "./app-message-entry.lib";
+import { AppMessageEntry } from "./app-message-entry.ui";
 import { AuthenticatedAppRoutes, LoginAppRoutes, WebViewAppRoutes } from "./app-route-definitions";
 import { AppShortcutsHelpModal } from "./app-shortcuts-help-modal.ui";
 import { buildShortcutHelpSections } from "./app-shortcuts-help.lib";
@@ -142,6 +144,18 @@ const AppContent: React.FC = () => {
   }, [hasSessions, updateStatus, checkUpdates]);
 
   useEffect(() => {
+    const messageEntry = parseWorkspaceMessengerRoute(location.pathname);
+    if (messageEntry?.kind === "message") {
+      const targetSession = resolveMessageEntrySession(
+        sessions,
+        location.pathname,
+        currentAccountId,
+      );
+      if (targetSession != null && targetSession.accountId !== currentAccountId) {
+        setCurrentAccountId(targetSession.accountId);
+      }
+      return;
+    }
     if (!hasSessions || currentOrgRouteId == null) return;
     // The public share entry selects a session for its server before adding an org prefix.
     if (location.pathname === "/" && parseWorkspaceProfileShareHash(location.hash) != null) return;
@@ -230,7 +244,16 @@ const AppContent: React.FC = () => {
     return <WebViewAppRoutes />;
   }
 
-  if (sessions.length === 0) {
+  const messageRoute = parseWorkspaceMessengerRoute(location.pathname);
+  const targetMessageSession =
+    messageRoute?.kind === "message"
+      ? resolveMessageEntrySession(sessions, location.pathname, currentAccountId)
+      : null;
+  // Do not mount the shell or issue message requests under the previous runtime owner.
+  if (targetMessageSession != null && targetMessageSession.accountId !== currentAccountId) {
+    return <PageLoader />;
+  }
+  if (sessions.length === 0 || (messageRoute?.kind === "message" && targetMessageSession == null)) {
     return (
       <div ref={rootRef} className="h-full">
         <ErrorBoundary fallback={(api) => <PageErrorFallback onRetry={api.resetErrorBoundary} />}>
@@ -287,15 +310,17 @@ const App: React.FC = () => {
     [ownerKey],
   );
   return (
-    <HotkeysProvider
-      key={ownerKey ?? "anonymous"}
-      overrides={overrides}
-      enabled={enabled}
-      onOverridesChange={saveOverrides}
-      onEnabledChange={saveEnabled}
-    >
-      <AppContent />
-    </HotkeysProvider>
+    <AppMessageEntry>
+      <HotkeysProvider
+        key={ownerKey ?? "anonymous"}
+        overrides={overrides}
+        enabled={enabled}
+        onOverridesChange={saveOverrides}
+        onEnabledChange={saveEnabled}
+      >
+        <AppContent />
+      </HotkeysProvider>
+    </AppMessageEntry>
   );
 };
 

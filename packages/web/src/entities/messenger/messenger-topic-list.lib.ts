@@ -91,7 +91,7 @@ function messagePreviewText(message: MessengerMessage, organizationId: string): 
   return text;
 }
 
-export type MessengerTopicListSortMode = "last_message" | "unread_first";
+export type MessengerTopicListSortMode = "last_message" | "unread_first" | "alphabetical";
 
 export interface MessengerTopicUnreadMentionIndex {
   streamUuids: ReadonlySet<MessengerUuid>;

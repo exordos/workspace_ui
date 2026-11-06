@@ -23,7 +23,12 @@ import {
   getUserDataDirName,
   pickLegacyUserDataDirName,
 } from "./app-identity.lib";
-import { isSafeDeeplinkRoute, resolveNotificationClickRoute } from "./deeplink-route.lib";
+import {
+  createDeepLinkDelivery,
+  parseExternalDeepLink,
+  isSafeDeeplinkRoute,
+  resolveNotificationClickRoute,
+} from "./deeplink-route.lib";
 import { getShellContentSecurityPolicy } from "./security-policy.lib";
 import { createUnreadDotOverlaySvg } from "./unread-indicator.lib";
 import {
@@ -181,18 +186,20 @@ function appendLogsLine(rawLine: string): boolean {
 // ---------------------------------------------------------------------------
 
 const PROTOCOL = "ew";
-let pendingDeepLink: string | null = null;
+const deepLinkDelivery = createDeepLinkDelivery();
 
 if (!IS_DEV) {
   app.setAsDefaultProtocolClient(PROTOCOL);
 }
 
 function handleDeepLink(url: string): void {
-  if (!url.startsWith(`${PROTOCOL}://`)) return;
-  const route = url.replace(`${PROTOCOL}://open`, "").replace(`${PROTOCOL}://`, "");
-  const safeRoute = route || "/";
-  dispatchInternalNavigation(safeRoute);
+  const route = parseExternalDeepLink(url);
+  if (route != null) dispatchInternalNavigation(route);
 }
+
+// Queue the original Windows/Linux launch before later OS events can replace it.
+const startupUrl = [...process.argv].reverse().find((arg) => parseExternalDeepLink(arg) != null);
+if (startupUrl) handleDeepLink(startupUrl);
 
 // macOS: open-url event (app already running or launched via URL)
 app.on("open-url", (event, url) => {
@@ -212,7 +219,7 @@ if (!gotTheLock) {
     if (isQuitting) return;
 
     // Windows/Linux: deep link URL is in argv
-    const url = argv.find((arg) => arg.startsWith(`${PROTOCOL}://`));
+    const url = [...argv].reverse().find((arg) => parseExternalDeepLink(arg) != null);
     if (url) handleDeepLink(url);
 
     if (mainWindow) {
@@ -370,12 +377,13 @@ function createWindow(): void {
     mainWindow.maximize();
   }
 
+  deepLinkDelivery.setReady(false);
+  mainWindow.webContents.on("did-start-navigation", (_event, _url, isInPlace, isMainFrame) => {
+    if (isMainFrame && !isInPlace) deepLinkDelivery.setReady(false);
+  });
+
   mainWindow.once("ready-to-show", () => {
     mainWindow?.show();
-    if (pendingDeepLink && isSafeDeeplinkRoute(pendingDeepLink)) {
-      mainWindow?.webContents.send("deeplink:navigate", pendingDeepLink);
-    }
-    pendingDeepLink = null;
   });
 
   mainWindow.on("show", () => {
@@ -574,15 +582,16 @@ function showMainWindow(): void {
 function dispatchInternalNavigation(route: string): void {
   if (!isSafeDeeplinkRoute(route)) return;
 
-  if (!mainWindow) {
-    pendingDeepLink = route;
-    createWindow();
-    return;
-  }
+  deepLinkDelivery.enqueue(route);
+  if (!app.isReady()) return;
+  if (!mainWindow) createWindow();
+  focusMainWindow(flushPendingDeepLink);
+}
 
-  focusMainWindow(() => {
-    mainWindow?.webContents.send("deeplink:navigate", route);
-  });
+function flushPendingDeepLink(): void {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  const route = deepLinkDelivery.take();
+  if (route != null) mainWindow.webContents.send("deeplink:navigate", route);
 }
 
 function createTray(): void {
@@ -825,7 +834,7 @@ app.whenReady().then(() => {
   if (!IS_AUTO_UPDATE_DISABLED) {
     configureAutoUpdater();
   }
-  createWindow();
+  if (!mainWindow) createWindow();
   createTray();
   ensureDarwinDockIcons();
 });
@@ -1023,6 +1032,11 @@ function getUrlOrigin(value: string): string | null {
 // ---------------------------------------------------------------------------
 
 function registerIpcHandlers(): void {
+  ipcMain.on("deeplink:ready", (event, ready: unknown) => {
+    if (event.sender !== mainWindow?.webContents) return;
+    deepLinkDelivery.setReady(ready === true);
+    flushPendingDeepLink();
+  });
   // App info
   ipcMain.handle("app:getVersion", () => app.getVersion());
   ipcMain.handle("app:getPlatform", () => process.platform);

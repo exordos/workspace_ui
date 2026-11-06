@@ -149,7 +149,11 @@ const electronAPI = {
     onNavigate: (callback: (route: string) => void): (() => void) => {
       const handler = (_event: unknown, route: string) => callback(route);
       ipcRenderer.on("deeplink:navigate", handler);
-      return () => ipcRenderer.removeListener("deeplink:navigate", handler);
+      ipcRenderer.send("deeplink:ready", true);
+      return () => {
+        ipcRenderer.removeListener("deeplink:navigate", handler);
+        ipcRenderer.send("deeplink:ready", false);
+      };
     },
   },
 

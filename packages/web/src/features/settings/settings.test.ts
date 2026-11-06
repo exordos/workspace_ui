@@ -586,10 +586,20 @@ describe("loadSettings (module reload)", () => {
     expect(freshStore.getState().authIdleTimeout).toBe("3d");
   });
 
-  it("uses the default sidebar sort mode when the persisted value is invalid", async () => {
+  it("restores alphabetical sidebar sorting", async () => {
     localStorage.setItem(
       "workspace-settings",
       JSON.stringify({ messengerSidebarSortMode: "alphabetical" }),
+    );
+    vi.resetModules();
+    const { useSettingsStore: freshStore } = await import("./settings.model");
+    expect(freshStore.getState().messengerSidebarSortMode).toBe("alphabetical");
+  });
+
+  it("uses the default sidebar sort mode when the persisted value is invalid", async () => {
+    localStorage.setItem(
+      "workspace-settings",
+      JSON.stringify({ messengerSidebarSortMode: "invalid" }),
     );
     vi.resetModules();
     const { useSettingsStore: freshStore } = await import("./settings.model");

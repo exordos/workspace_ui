@@ -28,7 +28,11 @@ export function sanitizeInternalRedirectTarget(
   rawTarget: string | null | undefined,
 ): string | null {
   const trimmed = rawTarget?.trim();
-  if (!trimmed) {
+  const unsafeCharacters = Array.from(rawTarget ?? "").some((character) => {
+    const code = character.charCodeAt(0);
+    return character === "\\" || code < 32 || code === 127;
+  });
+  if (!trimmed || unsafeCharacters) {
     return null;
   }
 

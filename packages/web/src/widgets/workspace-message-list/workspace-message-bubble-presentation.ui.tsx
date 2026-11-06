@@ -608,6 +608,8 @@ export const WorkspaceMessageBubblePresentation: React.FC<WorkspaceMessageBubble
       fileReferences,
       onOpenMentionUser: interactiveActions?.onOpenMentionUser,
       onOpenMessageInChat: interactiveActions?.onOpenMessageInChat,
+      onOpenMessagePermalink: interactiveActions?.onOpenMessagePermalink,
+      messageWebOrigin: interactiveActions?.messageWebOrigin,
       onOpenWorkspaceReference: interactiveActions?.onOpenWorkspaceReference,
       onDownloadFile: interactiveActions?.onDownloadFile,
       onOpenWorkspaceMedia: interactiveActions?.onOpenWorkspaceMedia,
@@ -857,6 +859,7 @@ export const WorkspaceMessageBubblePresentation: React.FC<WorkspaceMessageBubble
                 : interactiveActions?.onEditMessage
             }
             onRequestDeleteMessage={locked ? undefined : interactiveActions?.onRequestDeleteMessage}
+            onCopyMessageLink={interactiveActions?.onCopyMessageLink}
             onCopyMessageText={locked ? undefined : interactiveActions?.onCopyMessageText}
             onToggleMessageReaction={
               locked ? undefined : interactiveActions?.onToggleMessageReaction

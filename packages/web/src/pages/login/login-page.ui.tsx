@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
   completeWorkspaceProjectLogin,
@@ -13,10 +13,14 @@ import { t } from "~/i18n/i18n";
 import { isWorkspaceIamOtpRequiredError } from "~/shared/api/workspace-iam-auth";
 import { isElectron } from "~/shared/lib/electron";
 import { env } from "~/shared/lib/env";
+import { buildOrgRouteIdFromOrigin } from "~/shared/lib/org-route";
 import { getOrganizationFallbackLogoUrl } from "~/shared/lib/organization-branding";
 import { normalizeServerBaseUrl } from "~/shared/lib/server-url.lib";
 import { isValidRealmUrl } from "~/shared/lib/validation";
-import { parseWorkspaceMessengerRoute } from "~/shared/lib/workspace-messenger-route.lib";
+import {
+  parseWorkspaceMessengerRoute,
+  type WorkspaceMessengerRouteMatch,
+} from "~/shared/lib/workspace-messenger-route.lib";
 import { parseWorkspaceProfileShareHash } from "~/shared/lib/workspace-profile-link.lib";
 import { Button } from "~/shared/ui/button";
 import { FormField } from "~/shared/ui/form-field";
@@ -37,45 +41,65 @@ import { normalizeLoginRegistrationUrl } from "./login-registration-url.lib";
 type LoginStep = "organization" | "credentials" | "otp" | "project";
 
 interface LoginServerSettings {
-  realm_base: string;
+  organizationOrigin: string;
   realm_name: string;
-  /** Resolved for login preview (may be empty when same-origin is blocked in the browser). */
   realm_icon: string;
-  /** Raw `realm_icon` from Zulip server_settings (path or absolute URL). */
-  realm_icon_raw: string;
-  realm_uri: string;
-  realm_url: string;
-  external_authentication_methods: {
-    name: string;
-    display_name: string;
-    display_icon?: string;
-    login_url: string;
-  }[];
   registrationUrl: string | null;
 }
 
 export const LoginPage: React.FC = () => {
+  const { pathname, search, hash } = useLocation();
+  const directRoute = parseWorkspaceMessengerRoute(pathname);
+  const directProfile = pathname === "/" && parseWorkspaceProfileShareHash(hash) != null;
+  let redirectTarget = sanitizeInternalRedirectTarget(
+    new URLSearchParams(search).get("redirectTo"),
+  );
+  if (directRoute?.kind === "message") {
+    redirectTarget = sanitizeInternalRedirectTarget(`${pathname}${search}${hash}`);
+  } else if (directProfile) {
+    redirectTarget = `/${hash}`;
+  }
+  const target =
+    directRoute?.kind === "message"
+      ? directRoute
+      : parseWorkspaceMessengerRoute(redirectTarget?.split(/[?#]/, 1)[0] ?? "");
+  const messageTarget = target?.kind === "message" ? target : null;
+  const profileShare =
+    redirectTarget?.startsWith("/#") === true &&
+    parseWorkspaceProfileShareHash(redirectTarget.slice(1)) != null;
+  const publicEntry = profileShare ? "profile" : "login";
+
+  // A different organization must start with fresh discovery and empty credentials.
+  return (
+    <OrganizationLogin
+      key={messageTarget ? `message:${messageTarget.orgId}` : publicEntry}
+      messageTarget={messageTarget}
+      profileShare={profileShare}
+      redirectTarget={redirectTarget}
+    />
+  );
+};
+
+function OrganizationLogin({
+  messageTarget,
+  profileShare,
+  redirectTarget,
+}: {
+  readonly messageTarget: Extract<WorkspaceMessengerRouteMatch, { kind: "message" }> | null;
+  readonly profileShare: boolean;
+  readonly redirectTarget: string | null;
+}) {
   const navigate = useNavigate();
-  const location = useLocation();
   const sessions = useWorkspaceAuthStore((s) => s.sessions);
   const isAddServer = sessions.length > 0;
-  const realmPrefill = useMemo(() => {
-    if (
-      !isElectron() &&
-      typeof window !== "undefined" &&
-      location.pathname === "/" &&
-      parseWorkspaceProfileShareHash(location.hash) != null
-    ) {
-      return window.location.origin;
-    }
-    const raw = new URLSearchParams(location.search).get("realm");
-    return raw?.trim() ? raw : null;
-  }, [location.hash, location.pathname, location.search]);
+  const messageOrgId = messageTarget?.orgId;
   const [initialOrganization] = useState(() =>
     resolveInitialLoginOrganization({
-      realmPrefill,
       browserOrigin: !isElectron() && typeof window !== "undefined" ? window.location.origin : null,
       defaultOrganizationUrl: env.DEFAULT_LOGIN_ORGANIZATION_URL,
+      messageOrgId,
+      sessionOrigins: sessions.map((session) => session.organizationOrigin),
+      profileShare,
     }),
   );
 
@@ -97,21 +121,6 @@ export const LoginPage: React.FC = () => {
   const fetchIdRef = useRef(0);
   const pendingAuthRealmRef = useRef<string | null>(null);
   const initialOrganizationFetchRef = useRef<string | null>(null);
-  const redirectTarget = useMemo(() => {
-    const searchParams = new URLSearchParams(location.search);
-    const explicit = sanitizeInternalRedirectTarget(searchParams.get("redirectTo"));
-    if (explicit) {
-      return explicit;
-    }
-    if (location.pathname === "/" && parseWorkspaceProfileShareHash(location.hash) != null) {
-      return `/${location.hash}`;
-    }
-    const workspaceRoute = parseWorkspaceMessengerRoute(location.pathname);
-    if (workspaceRoute?.kind !== "message") {
-      return null;
-    }
-    return sanitizeInternalRedirectTarget(`${location.pathname}${location.search}`);
-  }, [location.pathname, location.search, location.hash]);
   const realmTrim = realm.trim();
   const canContinueToAuth = realmTrim.length > 0 && isValidRealmUrl(realmTrim);
   const defaultOrganizationUrl = env.DEFAULT_LOGIN_ORGANIZATION_URL.trim();
@@ -119,68 +128,66 @@ export const LoginPage: React.FC = () => {
     env.DEFAULT_LOGIN_ORGANIZATION_NAME.trim() || t("auth.defaultOrganizationName");
   const hasDefaultOrganizationButton = defaultOrganizationUrl.length > 0;
 
-  const fetchSettings = useCallback(async (nextRealm: string) => {
-    if (!isValidRealmUrl(nextRealm)) {
-      setServerSettings(null);
-      setCheckedRealm(null);
-      return false;
-    }
-
-    const id = ++fetchIdRef.current;
-    setSettingsLoading(true);
-
-    try {
-      const data = await fetchWorkspaceServerSettingsForOrganization(nextRealm);
-      if (id !== fetchIdRef.current) {
+  const fetchSettings = useCallback(
+    async (nextRealm: string) => {
+      if (!isValidRealmUrl(nextRealm)) {
+        setServerSettings(null);
+        setCheckedRealm(null);
         return false;
       }
-      const realmBase = normalizeServerBaseUrl(nextRealm);
 
-      const nextSettings = {
-        realm_base: realmBase,
-        realm_name: data.realm_name,
-        realm_icon: resolveLoginIconUrl(realmBase, data.realm_icon),
-        realm_icon_raw: (data.realm_icon ?? "").trim(),
-        realm_uri: data.realm_uri,
-        realm_url: data.realm_url,
-        external_authentication_methods: [],
-        registrationUrl: normalizeLoginRegistrationUrl(data.registration_url),
-      };
+      const organizationOrigin = new URL(nextRealm).origin;
+      if (messageOrgId != null && buildOrgRouteIdFromOrigin(organizationOrigin) !== messageOrgId) {
+        setError(t("messageLinkEntry.wrongAccount"));
+        return false;
+      }
+      const id = ++fetchIdRef.current;
+      setSettingsLoading(true);
 
-      setServerSettings(nextSettings);
-      setCheckedRealm(nextRealm);
+      try {
+        const data = await fetchWorkspaceServerSettingsForOrganization(organizationOrigin);
+        if (id !== fetchIdRef.current) {
+          return false;
+        }
+        const nextSettings = {
+          organizationOrigin,
+          realm_name: data.realm_name,
+          realm_icon: resolveLoginIconUrl(normalizeServerBaseUrl(nextRealm), data.realm_icon),
+          registrationUrl: normalizeLoginRegistrationUrl(data.registration_url),
+        };
 
-      if (pendingAuthRealmRef.current === nextRealm) {
-        pendingAuthRealmRef.current = null;
+        setServerSettings(nextSettings);
+        setCheckedRealm(nextRealm);
 
-        if (nextSettings != null) {
+        if (pendingAuthRealmRef.current === nextRealm) {
+          pendingAuthRealmRef.current = null;
+
           setStep("credentials");
-        } else {
+        }
+
+        return true;
+      } catch {
+        if (id !== fetchIdRef.current) {
+          return false;
+        }
+
+        setServerSettings(null);
+        setCheckedRealm(nextRealm);
+
+        if (pendingAuthRealmRef.current === nextRealm) {
+          pendingAuthRealmRef.current = null;
           setError(t("auth.organizationSettingsLoadError"));
         }
-      }
 
-      return true;
-    } catch {
-      if (id !== fetchIdRef.current) {
-        return false;
+        return true;
+      } finally {
+        if (id === fetchIdRef.current) {
+          setSettingsLoading(false);
+        }
       }
-
-      setServerSettings(null);
-      setCheckedRealm(nextRealm);
-
-      if (pendingAuthRealmRef.current === nextRealm) {
-        pendingAuthRealmRef.current = null;
-        setError(t("auth.organizationSettingsLoadError"));
-      }
-
-      return true;
-    } finally {
-      if (id === fetchIdRef.current) {
-        setSettingsLoading(false);
-      }
-    }
-  }, []);
+    },
+    [messageOrgId],
+  );
 
   useEffect(() => {
     const initialRealm = initialOrganization.organizationUrl;
@@ -204,6 +211,9 @@ export const LoginPage: React.FC = () => {
       setError(null);
 
       if (nextRealm !== checkedRealm) {
+        ++fetchIdRef.current;
+        setSettingsLoading(false);
+        setPassword("");
         setCheckedRealm(null);
         setServerSettings(null);
         setPreparedLogin(null);
@@ -223,6 +233,9 @@ export const LoginPage: React.FC = () => {
   }, [fetchSettings, realmTrim]);
 
   const handleSelectDefaultOrganization = useCallback(() => {
+    ++fetchIdRef.current;
+    setSettingsLoading(false);
+    setPassword("");
     setRealm(defaultOrganizationUrl);
     setError(null);
     setCheckedRealm(null);
@@ -273,6 +286,7 @@ export const LoginPage: React.FC = () => {
 
   const handleBackToOrganizationStep = useCallback(() => {
     pendingAuthRealmRef.current = null;
+    setPassword("");
     setError(null);
     setPreparedLogin(null);
     setProjectId("");
@@ -286,30 +300,38 @@ export const LoginPage: React.FC = () => {
     e.currentTarget.src = getOrganizationFallbackLogoUrl();
   }, []);
 
+  const enterProjectStep = (login: PreparedWorkspaceProjectLogin) => {
+    setPassword("");
+    setOtpCode("");
+    if (
+      messageTarget != null &&
+      (buildOrgRouteIdFromOrigin(login.organizationOrigin) !== messageTarget.orgId ||
+        !login.projects.some((project) => project.id === messageTarget.projectId))
+    ) {
+      setStep("organization");
+      setError(t("messageLinkEntry.wrongAccount"));
+      return;
+    }
+    setPreparedLogin(login);
+    setProjectId(messageTarget?.projectId ?? login.projects[0]?.id ?? "");
+    setStep("project");
+  };
   const handleCredentialsSubmit = async (e: React.SyntheticEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError(null);
     const usernameTrim = username.trim();
-    if (!realmTrim || !usernameTrim || !password) {
+    if (serverSettings == null || !usernameTrim || !password) {
       setError(t("auth.fillAllFields"));
-      return;
-    }
-    if (!isValidRealmUrl(realmTrim)) {
-      setError(t("auth.invalidServerUrl"));
       return;
     }
     setLoading(true);
     try {
       const nextPreparedLogin = await prepareWorkspaceProjectLogin({
-        organizationUrl: realmTrim,
+        organizationUrl: serverSettings.organizationOrigin,
         login: usernameTrim,
         password,
       });
-      setPreparedLogin(nextPreparedLogin);
-      setPassword("");
-      setOtpCode("");
-      setProjectId(nextPreparedLogin.projects[0]?.id ?? "");
-      setStep("project");
+      enterProjectStep(nextPreparedLogin);
     } catch (err) {
       if (isWorkspaceIamOtpRequiredError(err)) {
         setOtpCode("");
@@ -326,7 +348,7 @@ export const LoginPage: React.FC = () => {
     e.preventDefault();
     setError(null);
     const usernameTrim = username.trim();
-    if (!realmTrim || !usernameTrim || !password || otpCode.length !== 6) {
+    if (serverSettings == null || !usernameTrim || !password || otpCode.length !== 6) {
       setError(t("auth.fillAllFields"));
       return;
     }
@@ -334,16 +356,12 @@ export const LoginPage: React.FC = () => {
     setLoading(true);
     try {
       const nextPreparedLogin = await prepareWorkspaceProjectLogin({
-        organizationUrl: realmTrim,
+        organizationUrl: serverSettings.organizationOrigin,
         login: usernameTrim,
         password,
         otpCode,
       });
-      setPreparedLogin(nextPreparedLogin);
-      setPassword("");
-      setOtpCode("");
-      setProjectId(nextPreparedLogin.projects[0]?.id ?? "");
-      setStep("project");
+      enterProjectStep(nextPreparedLogin);
     } catch (err) {
       if (isWorkspaceIamOtpRequiredError(err)) {
         setOtpCode("");
@@ -364,6 +382,14 @@ export const LoginPage: React.FC = () => {
       return;
     }
 
+    if (
+      messageTarget != null &&
+      (projectId !== messageTarget.projectId ||
+        buildOrgRouteIdFromOrigin(preparedLogin.organizationOrigin) !== messageTarget.orgId)
+    ) {
+      setError(t("messageLinkEntry.wrongAccount"));
+      return;
+    }
     setLoading(true);
     try {
       const { session } = await completeWorkspaceProjectLogin({ preparedLogin, projectId });
@@ -558,4 +584,4 @@ export const LoginPage: React.FC = () => {
       </div>
     </div>
   );
-};
+}

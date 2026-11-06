@@ -62,7 +62,14 @@ describe("ChatPageStreamTopicPrompt", () => {
       />,
     );
 
-    expect(screen.getByTestId("stream-topic-rail")).toHaveClass("overflow-x-auto");
+    const rail = screen.getByRole("navigation", { name: t("chat.selectTopicToWrite") });
+    expect(rail).toHaveClass("overflow-x-auto", "scrollbar-none");
+    Object.defineProperties(rail, {
+      clientWidth: { value: 200 },
+      scrollWidth: { value: 400 },
+    });
+    expect(fireEvent.wheel(rail, { deltaY: 100, cancelable: true })).toBe(false);
+    expect(rail.scrollLeft).toBe(100);
     expect(screen.getByRole("button", { name: /# Releases.*3/ })).toBeInTheDocument();
     expect(screen.getByText("3")).toHaveClass("bg-sidebar-unread");
 

@@ -218,6 +218,8 @@ describe("RightPanelUserAppearance", () => {
     fireEvent.click(screen.getByRole("button", { name: /stream and topic order/i }));
     fireEvent.click(screen.getByRole("button", { name: "Unread first" }));
     expect(useSettingsStore.getState().messengerSidebarSortMode).toBe("unread_first");
+    fireEvent.click(screen.getByRole("button", { name: "By name" }));
+    expect(useSettingsStore.getState().messengerSidebarSortMode).toBe("alphabetical");
 
     fireEvent.click(screen.getByRole("button", { name: /folder layout/i }));
     fireEvent.click(screen.getByRole("button", { name: "Horizontal tabs" }));

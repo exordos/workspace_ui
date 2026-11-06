@@ -700,6 +700,9 @@
     "unpin": "Unpin",
     "copy": "Copy text",
     "copyImage": "Copy image",
+    "copyMessageLink": "Copy message link",
+    "messageLinkCopied": "Message link copied",
+    "messageLinkUnavailable": "Message link unavailable",
     "copyLink": "Copy link",
     "openInChat": "Open in chat",
     "joinCall": "Join call",
@@ -1250,6 +1253,7 @@
     "messengerSidebarSortMode": "Stream and topic order",
     "messengerSidebarSortModeLastMessage": "Last message",
     "messengerSidebarSortModeUnreadFirst": "Unread first",
+    "messengerSidebarSortModeAlphabetical": "By name",
     "folderLayout": "Folder layout",
     "folderLayoutVertical": "Vertical rail",
     "folderLayoutHorizontal": "Horizontal tabs",
@@ -1761,5 +1765,13 @@
     "placeholder": "Select an option",
     "noOptions": "No options available",
     "showOptions": "Show options"
+  },
+  "messageLinkEntry": {
+    "wrongAccount": "Sign in to an account for the organization and project in this link.",
+    "title": "Open this message in Workspace",
+    "openApp": "Open in app",
+    "alwaysApp": "Always open in app (30 days)",
+    "continueWeb": "Continue in browser",
+    "alwaysWeb": "Always open in browser"
   }
 }

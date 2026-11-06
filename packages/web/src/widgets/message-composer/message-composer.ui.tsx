@@ -22,6 +22,7 @@ import { isWebView } from "~/shared/lib/webview";
 import { hasWorkspaceSecretDraft } from "~/shared/lib/workspace-secret-draft.lib";
 import { DropdownMenu, type DropdownMenuItem } from "~/shared/ui/dropdown-menu";
 import { WidgetErrorBoundary } from "~/shared/ui/error-boundary";
+import { ScrollArea } from "~/shared/ui/scroll-area";
 import {
   MessageComposerAiActionMenuLayer,
   MessageComposerSmartReplyStrip,
@@ -424,7 +425,12 @@ const MessageComposerToolbarRow = React.memo<MessageComposerToolbarRowProps>(
     if (!expanded) return null;
 
     return (
-      <div data-testid="composer-toolbar-row" className="h-8 flex-shrink-0 overflow-x-auto">
+      <ScrollArea
+        data-testid="composer-toolbar-row"
+        axis="x"
+        scrollbar="hidden"
+        className="h-8 flex-shrink-0"
+      >
         <div
           className={`flex w-max min-w-full items-center gap-2 ${COMPOSER_LEADING_CONTROLS_INSET}`}
         >
@@ -446,7 +452,7 @@ const MessageComposerToolbarRow = React.memo<MessageComposerToolbarRowProps>(
             />
           )}
         </div>
-      </div>
+      </ScrollArea>
     );
   },
 );

@@ -66,3 +66,46 @@ describe("resolveNotificationClickRoute", () => {
     assert.equal(routeLib.resolveNotificationClickRoute({ clickRoute: "//evil.example" }), null);
   });
 });
+
+describe("external protocol delivery", () => {
+  it("validates protocol, host and the complete route", () => {
+    const route = "/org/org/project/project/message/11111111-1111-4111-8111-111111111111";
+    assert.equal(routeLib.parseExternalDeepLink(`ew://open${route}`), route);
+    for (const destination of [
+      "/calendar",
+      "/settings",
+      "/logs",
+      "/org/org",
+      "/org/org/settings",
+      "/org/org/logs",
+    ]) {
+      assert.equal(routeLib.parseExternalDeepLink(`ew://open${destination}`), destination);
+    }
+    for (const url of [
+      `https://open${route}`,
+      `ew://evil${route}`,
+      `ew://user@open${route}`,
+      "ew://open//evil.example",
+      "ew://open/unknown",
+      "ew://open/org/o/project/p/message/not-a-uuid",
+      "ew://open/org/o/project/p/message/m%2fextra",
+    ]) {
+      assert.equal(routeLib.parseExternalDeepLink(url), null);
+    }
+  });
+  it("queues the last cold-start route until subscribed and consumes it once", () => {
+    const delivery = routeLib.createDeepLinkDelivery();
+    delivery.enqueue("/calendar");
+    delivery.enqueue("/mail");
+    assert.equal(delivery.take(), null);
+    delivery.setReady(true);
+    assert.equal(delivery.take(), "/mail");
+    assert.equal(delivery.take(), null);
+    delivery.setReady(false);
+    delivery.enqueue("/calls");
+    assert.equal(delivery.take(), null);
+    delivery.setReady(true);
+    assert.equal(delivery.take(), "/calls");
+    assert.equal(delivery.take(), null);
+  });
+});

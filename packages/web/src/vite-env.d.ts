@@ -2,6 +2,8 @@
 /// <reference types="vite-plugin-svgr/client" />
 
 interface ImportMetaEnv {
+  /** Public web client origin for shareable message links, required in Electron. */
+  readonly VITE_WORKSPACE_WEB_ORIGIN?: string;
   /** Optional default Zulip/Workspace API origin. Multi-org: use instance + dev header at runtime. */
   readonly VITE_WORKSPACE_API_ORIGIN?: string;
   /** Legacy Workspace API host for dev `/workspace/workspace/v1` proxy. Optional. */
