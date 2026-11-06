@@ -6,6 +6,44 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.9.11] — 2026-11-06
+
+### Added
+
+- Copy a shareable message link and open it in the browser or desktop app.
+  Desktop opening can be remembered per organization in the browser for 30 days,
+  with a browser fallback.
+- Sort streams and topics by name while preserving pinned-chat priority.
+
+### Fixed
+
+- Preserve the message's organization and project through sign-in and show an
+  unavailable-message state for missing or inaccessible messages.
+- Clear entered credentials when changing organizations and discover login
+  settings from the selected organization origin.
+- Match keyboard shortcuts by physical key position across keyboard layouts,
+  using US QWERTY labels and keeping keypad/international positions distinct.
+- Improve horizontal scrolling in tabs, composer tools, and reaction strips,
+  and refine chat details and media viewer controls.
+
+### Requirements and compatibility
+
+- Dependencies, server API contracts, and the durable messenger cache schema
+  are unchanged. Existing message permissions still apply to shared links.
+- For separate web and API hosts, set `VITE_WORKSPACE_WEB_ORIGIN` to the public
+  HTTPS web origin when building both clients. Same-origin web deployments
+  need no additional configuration.
+- The legacy `realm` login-prefill query is no longer consumed; select or enter
+  the organization instead. Message links retain their target during login.
+- Existing shortcut settings remain stored; matching now follows physical
+  positions. Review custom bindings when using multiple keyboard layouts.
+
+### Migration notes
+
+- Update `workspace_ui` to `0.9.11`; no manual data migration or cache reset is
+  required. Update the desktop client to use its new message-link handling.
+- Save or send protected drafts before reloading; they remain only in account memory.
+
 ## [0.9.10] — 2026-11-03
 
 ### Added
