@@ -4,6 +4,7 @@ import { isElectron } from "~/shared/lib/electron";
 import { AUTH_IMAGE_PLACEHOLDER_SRC } from "~/shared/lib/media-display-url.lib";
 import {
   canUseMediaViewerDisplayUrl,
+  copyMediaImage,
   downloadMediaItem,
   openMediaInNewTab,
 } from "./media-viewer-actions.lib";
@@ -98,6 +99,11 @@ export const MediaViewerOverlay: React.FC = () => {
     void downloadMediaItem(item, displayUrl);
   }, [displayUrl, item]);
 
+  const handleCopy = useCallback(() => {
+    if (item?.type !== "image" || displayUrl == null) return Promise.resolve(false);
+    return copyMediaImage(item, displayUrl);
+  }, [displayUrl, item]);
+
   const backdropPrev = hasMultipleItems ? handlePrev : undefined;
   const backdropNext = hasMultipleItems ? handleNext : undefined;
 
@@ -109,9 +115,12 @@ export const MediaViewerOverlay: React.FC = () => {
       <div className="relative flex min-h-0 w-full flex-1 flex-col">
         <MediaViewerToolbar
           actionsEnabled={actionsEnabled}
+          showCopy={item.type === "image"}
+          copyKey={`${currentIndex}:${displayUrl ?? ""}`}
           showOpenInNewTab={showOpenInNewTab}
           onOpenInNewTab={handleOpenInNewTab}
           onDownload={handleDownload}
+          onCopy={handleCopy}
           onClose={handleClose}
         />
         <div className="relative flex min-h-0 w-full flex-1 items-center justify-center px-16 pb-28 pt-14">

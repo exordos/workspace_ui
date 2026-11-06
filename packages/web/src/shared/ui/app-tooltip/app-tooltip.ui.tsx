@@ -12,13 +12,16 @@ interface AppTooltipProps {
   content: ReactNode;
   side?: "top" | "bottom";
   align?: "start" | "center" | "end";
+  size?: "default" | "compact";
+  textTone?: "default" | "primary";
+  closeDelay?: number;
   className?: string;
   wrapperClassName?: string;
 }
 
 const VIEWPORT_MARGIN = 12;
 const TRIGGER_GAP = 8;
-const CLOSE_DELAY = 120;
+const DEFAULT_CLOSE_DELAY = 120;
 
 /** Wrap a single focusable trigger; tooltip content should not contain controls. */
 export function AppTooltip({
@@ -26,6 +29,9 @@ export function AppTooltip({
   content,
   side = "bottom",
   align = "end",
+  size = "default",
+  textTone = "default",
+  closeDelay = DEFAULT_CLOSE_DELAY,
   className = "",
   wrapperClassName = "",
 }: Readonly<AppTooltipProps>) {
@@ -50,15 +56,23 @@ export function AppTooltip({
     setOpen(true);
   };
 
+  const closeIfInactive = () => {
+    if (!hoveredRef.current && !focusedRef.current) {
+      setOpen(false);
+      setPosition(null);
+    }
+  };
+
   const scheduleClose = () => {
     cancelClose();
+    if (closeDelay <= 0) {
+      closeIfInactive();
+      return;
+    }
     closeTimerRef.current = setTimeout(() => {
       closeTimerRef.current = null;
-      if (!hoveredRef.current && !focusedRef.current) {
-        setOpen(false);
-        setPosition(null);
-      }
-    }, CLOSE_DELAY);
+      closeIfInactive();
+    }, closeDelay);
   };
 
   const scrollWithKeyboard = (event: ReactKeyboardEvent<HTMLSpanElement>) => {
@@ -157,7 +171,7 @@ export function AppTooltip({
       window.removeEventListener("scroll", updatePosition, true);
       document.removeEventListener("keydown", dismissOnEscape);
     };
-  }, [open, side, align]);
+  }, [open, side, align, size]);
 
   const describedBy = [children.props["aria-describedby"], open ? id : undefined]
     .filter(Boolean)
@@ -196,7 +210,9 @@ export function AppTooltip({
               id={id}
               role="tooltip"
               tabIndex={-1}
-              className={`fixed z-toast w-80 overflow-y-auto rounded-xl border border-border-subtle bg-bg-elevated px-4 py-3 text-sm leading-relaxed text-text-secondary shadow-xl ${className}`.trim()}
+              className={`fixed z-toast overflow-y-auto rounded-xl border border-border-subtle bg-bg-elevated text-sm leading-relaxed shadow-xl ${
+                size === "compact" ? "w-max break-words px-2 py-1" : "w-80 px-4 py-3"
+              } ${textTone === "primary" ? "text-text-primary" : "text-text-secondary"} ${className}`.trim()}
               style={{
                 maxWidth: "calc(100vw - 24px)",
                 visibility: position ? "visible" : "hidden",

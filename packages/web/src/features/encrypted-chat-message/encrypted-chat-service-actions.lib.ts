@@ -62,7 +62,11 @@ export function getEncryptedChatServiceState({
   readonly projectId?: string;
   readonly session: Pick<
     RealChatSession,
-    "device" | "getRights" | "getGenerationState" | "getKeyRequestOutcome"
+    | "device"
+    | "getRights"
+    | "getGenerationState"
+    | "getKeyRequestOutcome"
+    | "canRespondToKeyRequest"
   > | null;
 }): EncryptedChatServiceState | null {
   const payload = message.payload;
@@ -82,7 +86,10 @@ export function getEncryptedChatServiceState({
   const outcome = requestUuid == null ? undefined : session.getKeyRequestOutcome(requestUuid);
   return {
     deviceId: session.device.deviceId,
-    canManageKeys: rights.canGrant || rights.canReject,
+    canManageKeys:
+      requestUuid == null
+        ? rights.canGrant || rights.canReject
+        : session.canRespondToKeyRequest(requestUuid),
     hasKey: session.getGenerationState(payload.keyUuid)?.access === "ready",
     requestStatus: outcome?.status ?? null,
   };

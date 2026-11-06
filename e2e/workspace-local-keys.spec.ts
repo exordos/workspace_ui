@@ -360,8 +360,15 @@ for (const role of ["owner", "member"] as const) {
           .getByText("Edited on MacBook", { exact: true }),
       ).toBeVisible();
       await source.reload();
-      await source.getByRole("textbox").press("ArrowUp");
-      await expect(source.getByRole("textbox")).toHaveValue("Edited on MacBook");
+      await expect(
+        source
+          .locator("[data-workspace-message-bubble]")
+          .getByText("Edited on MacBook", { exact: true }),
+      ).toBeVisible();
+      const reloadedEditor = source.getByRole("textbox");
+      await expect(reloadedEditor).toBeEnabled();
+      await reloadedEditor.press("ArrowUp");
+      await expect(reloadedEditor).toHaveValue("Edited on MacBook");
       await source.getByRole("button", { name: /^(cancel|отмена)$/i }).click();
       await expect(source.getByRole("textbox")).toHaveValue("");
       await targetGrant.screenshot({

@@ -10,7 +10,7 @@ import { describe, expect, it, vi, afterEach } from "vitest";
 
 vi.mock("~/shared/config/constants", async (importOriginal) => {
   const actual = await importOriginal<typeof import("~/shared/config/constants")>();
-  return { ...actual, KEYBOARD_SHORTCUTS_ENABLED: true };
+  return { ...actual, MOUSE_HISTORY_NAVIGATION_ENABLED: true };
 });
 
 import {

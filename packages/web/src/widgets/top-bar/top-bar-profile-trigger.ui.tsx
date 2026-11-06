@@ -115,16 +115,11 @@ export const TopBarProfileTrigger = React.memo(function TopBarProfileTrigger() {
     <button
       type="button"
       onClick={handleClick}
-      className="group relative flex items-center gap-2 rounded-lg p-1.5 text-left transition-colors hover:bg-card-bg-active"
+      className="relative flex items-center gap-2 rounded-lg p-1.5 text-left transition-colors hover:bg-card-bg-active"
       aria-label={t("nav.profile")}
       aria-expanded={isUserMenuOpen}
     >
-      <WorkspaceAvatar
-        size="xs"
-        interactive
-        avatarUrn={currentUser?.avatarUrl}
-        presence={presenceState}
-      >
+      <WorkspaceAvatar size="xs" avatarUrn={currentUser?.avatarUrl} presence={presenceState}>
         {avatarLetter}
       </WorkspaceAvatar>
       <div className="hidden w-max min-w-0 flex-col items-start leading-tight sm:flex">

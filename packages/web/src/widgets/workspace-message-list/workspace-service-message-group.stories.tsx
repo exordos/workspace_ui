@@ -81,7 +81,7 @@ function previewMessage(index: number, payload: MessengerMessage["payload"]): Me
   };
 }
 
-function ConversationPreview() {
+function ConversationPreview({ accountOnly = false }: Readonly<{ accountOnly?: boolean }>) {
   const [completed, setCompleted] = useState(false);
   const messages = [
     previewMessage(0, { kind: "markdown", content: t("chat.generalChat") }),
@@ -103,6 +103,7 @@ function ConversationPreview() {
         messages={messages}
         currentUserUuid="preview-manager"
         conversationId="topic:preview-stream:preview-topic"
+        presentation={accountOnly ? { serviceMessages: "account" } : undefined}
         resolveAuthorLabel={() => "Alex"}
         actions={{
           getKeyServiceState: () => ({
@@ -122,6 +123,9 @@ function ConversationPreview() {
 }
 
 export const Conversation: Story = { render: () => <ConversationPreview /> };
+export const OrdinaryChatAccountEvents: Story = {
+  render: () => <ConversationPreview accountOnly />,
+};
 
 function AutomaticCollapsePreview() {
   const [messages, setMessages] = useState(() => [

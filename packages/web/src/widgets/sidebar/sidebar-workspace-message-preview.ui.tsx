@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { useWorkspaceMessageStore } from "~/entities/message/message.model";
 import type { MessengerSidebarMessagePreview } from "~/entities/messenger/messenger.types";
 import { encryptedMessageLabel } from "~/features/encrypted-chat-message/encrypted-message-label.lib";
-import { useRealMessagePresentation } from "~/features/encrypted-chat-message/real-message-presentation.hook";
+import { useMessagePresentation } from "~/features/message-presentation/message-presentation.hook";
 import { useTranslation } from "~/i18n/i18n";
 import { parseWorkspaceMessageBody } from "~/shared/lib/workspace-message-render/workspace-message-parse.lib";
 import { summarizeWorkspaceMessageBody } from "~/shared/lib/workspace-message-render/workspace-message-summary.lib";
@@ -14,11 +14,12 @@ function EncryptedSidebarMessagePreview({
   const message = useWorkspaceMessageStore(
     (state) => state.messagesById[preview.messageUuid] ?? null,
   );
-  const presentation = useRealMessagePresentation(
-    message?.payload.kind === "e2ee" ? message : null,
-  );
+  const presentation = useMessagePresentation(message);
   const { t } = useTranslation();
-  const plaintext = presentation.status === "ready" ? presentation.plaintext : null;
+  const plaintext =
+    presentation?.status === "ready" && presentation.kind === "markdown"
+      ? presentation.markdown
+      : null;
   const document = useMemo(
     () => (plaintext === null ? null : parseWorkspaceMessageBody(plaintext)),
     [plaintext],
@@ -27,9 +28,9 @@ function EncryptedSidebarMessagePreview({
     document === null ? t("e2ee.lockedTitle") : summarizeWorkspaceMessageBody(document).text;
   if (message !== null && message.payload.kind !== "e2ee" && message.payload.kind !== "markdown") {
     text = encryptedMessageLabel(message.payload);
-  } else if (presentation.status === "loading") {
+  } else if (presentation?.status === "preparing") {
     text = t("e2ee.messageDecrypting");
-  } else if (presentation.status === "error") {
+  } else if (presentation?.status === "error") {
     text = t("e2ee.messageDecryptError");
   }
   return <SidebarMessagePreview senderName={preview.senderName} message={text} />;

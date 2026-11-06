@@ -61,7 +61,6 @@ function selfStream(): MessengerStream {
     description: "",
     unreadCount: 0,
     sourceName: "native",
-    source: { kind: "native" },
     audience: "private",
     isPrivate: true,
     inviteOnly: false,

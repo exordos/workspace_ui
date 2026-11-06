@@ -3,9 +3,10 @@ import { useWorkspaceMessageStore } from "~/entities/message/message.model";
 import { subscribeRealChatKeyChanges } from "~/entities/messenger/chat-crypto-resources.lib";
 import type { RealChatKeyChange } from "~/entities/messenger/chat-crypto-resources.lib";
 import {
-  decryptRealChatMessageResult,
+  decryptRealChatEnvelopeResult,
   type RealChatMessageDecryption,
 } from "~/entities/messenger/chat-crypto-runtime.lib";
+import { acquireChatCryptoSession } from "~/entities/messenger/chat-crypto-session.lib";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import type { MessengerMessage } from "~/entities/messenger/messenger.types";
 import {
@@ -13,16 +14,18 @@ import {
   useWorkspaceAuthStore,
 } from "~/entities/workspace-auth/workspace-auth.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
+import type { WorkspaceSecretUrnReference } from "~/shared/lib/workspace-reference-urn.lib";
 
-type RealMessagePresentation = (RealChatMessageDecryption | { readonly status: "loading" }) & {
+type SecretFragmentPresentation = (RealChatMessageDecryption | { readonly status: "loading" }) & {
   readonly retry: () => void;
   readonly canRequestKey?: boolean;
 };
 
-/** Plaintext is scoped presentation memory, with no message-store/cache or mock fallback. */
-export function useRealMessagePresentation(
+/** Secret fragments retain their own reveal and key-request lifecycle. */
+export function useSecretFragmentPresentation(
   message: MessengerMessage | null,
-): RealMessagePresentation {
+  secret: WorkspaceSecretUrnReference,
+): SecretFragmentPresentation {
   const sessions = useWorkspaceAuthStore((state) => state.sessions);
   const currentAccountId = useWorkspaceAuthStore((state) => state.currentAccountId);
   const runtime = useMemo(
@@ -31,7 +34,7 @@ export function useRealMessagePresentation(
   );
   const catalogOwner = useMessengerStore((state) => state.ownerKey);
   const messageOwner = useWorkspaceMessageStore((state) => state.ownerKey);
-  const streamUuid = message?.streamUuid;
+  const streamUuid = secret.streamUuid;
   const stream = useMessengerStore((state) =>
     streamUuid == null ? undefined : state.streamsById[streamUuid],
   );
@@ -48,19 +51,26 @@ export function useRealMessagePresentation(
   }, []);
   const owner = runtime === null ? null : workspaceRuntimeOwnerKey(runtime);
   const allowed =
-    message !== null &&
     runtime !== null &&
     owner === catalogOwner &&
     owner === messageOwner &&
-    message.projectId === runtime.projectId &&
-    stream?.encryption === true &&
-    message.payload.kind === "e2ee";
+    (message == null || message.projectId === runtime.projectId) &&
+    stream?.projectId === runtime.projectId &&
+    stream.userUuid === runtime.userUuid &&
+    (stream.encryption === true || stream.sourceName === "native");
   const scopeKey = allowed
-    ? JSON.stringify([owner, runtime.runtimeGeneration, message.uuid, message.payload])
+    ? JSON.stringify([owner, runtime.runtimeGeneration, message?.uuid, message?.payload, secret])
     : "";
   // A quote can switch to another source or a self-contained snapshot.
   if (result != null && result.scopeKey !== scopeKey) setResult(null);
-  const keyUuid = message?.payload.kind === "e2ee" ? message.payload.keyUuid : null;
+  const keyUuid = secret.keyUuid;
+  useEffect(() => {
+    if (!allowed || runtime == null) return;
+    // Keep the shared ingestion lifecycle alive while a forwarded secret is mounted.
+    const lease = acquireChatCryptoSession(runtime, streamUuid);
+    void lease.promise.catch(() => undefined);
+    return () => lease.release();
+  }, [allowed, runtime, streamUuid]);
   useEffect(() => {
     if (streamUuid == null || keyUuid == null) return;
     return subscribeRealChatKeyChanges((change?: RealChatKeyChange) => {
@@ -90,10 +100,23 @@ export function useRealMessagePresentation(
         current.runtimeGeneration === runtime.runtimeGeneration &&
         useWorkspaceMessageStore.getState().ownerKey === owner &&
         catalog.ownerKey === owner &&
-        catalog.streamsById[message.streamUuid]?.encryption === true
+        catalog.streamsById[secret.streamUuid]?.projectId === runtime.projectId &&
+        catalog.streamsById[secret.streamUuid]?.userUuid === runtime.userUuid &&
+        (catalog.streamsById[secret.streamUuid]?.encryption === true ||
+          catalog.streamsById[secret.streamUuid]?.sourceName === "native")
       );
     };
-    void decryptRealChatMessageResult(runtime, message, isCurrent)
+    const decryption = decryptRealChatEnvelopeResult(
+      runtime,
+      {
+        projectId: runtime.projectId,
+        streamUuid: secret.streamUuid,
+        keyUuid: secret.keyUuid,
+        envelope: secret.envelope,
+      },
+      isCurrent,
+    );
+    void decryption
       .then((value) => {
         if (isCurrent()) setResult({ scopeKey, revision, value });
       })
@@ -103,7 +126,7 @@ export function useRealMessagePresentation(
     return () => {
       disposed = true;
     };
-  }, [allowed, runtime, owner, scopeKey, message, revision]);
+  }, [allowed, runtime, owner, scopeKey, message, secret, revision]);
   if (!allowed) return { status: "missing-key", retry, canRequestKey: false };
   if (result?.scopeKey !== scopeKey) return { status: "loading", retry };
   // Unrelated key notifications must not hide verified text during a background check.

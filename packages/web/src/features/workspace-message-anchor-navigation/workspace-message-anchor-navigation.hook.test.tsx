@@ -174,6 +174,78 @@ describe("useWorkspaceMessageAnchorNavigation", () => {
     useWorkspaceMessageStore.getState().setOwner(null, false);
   });
 
+  it.each(["not-found", "access-denied"] as const)(
+    "checks a direct route before showing cached text and hides it after %s",
+    async (reason) => {
+      useWorkspaceMessageStore.getState().setOwner(workspaceRuntimeOwnerKey(runtimeContext), false);
+      seedWorkspaceMessageBody(resolved(MESSAGE_A).message);
+      const pending = createDeferred<MessengerMessageAnchorResolveResult>();
+      const base = createOptions();
+      const resolveAnchor = vi.fn(() => pending.promise);
+      const options = createOptions({
+        routeRequest: {
+          messageUuid: MESSAGE_A,
+          conversationId: null,
+          routeKey: "shared-message",
+          source: "direct-route",
+          scope: routeScope,
+        },
+        resolveKnownConversationId: () => CONVERSATION_A,
+        isMessageInWindow: () => true,
+        isMessageWindowReady: () => true,
+        loader: { ...base.loader, resolveAnchor },
+      });
+      const { result } = renderHook(() => useWorkspaceMessageAnchorNavigation(options));
+      await waitFor(() => expect(resolveAnchor).toHaveBeenCalledTimes(1));
+      expect(result.current.previewPresentation?.previewMessage).toBeNull();
+      expect(result.current.focusTarget).toBeNull();
+      await act(async () => {
+        pending.resolve({
+          status: "failed",
+          ownerKey: workspaceRuntimeOwnerKey(runtimeContext),
+          conversationId: null,
+          reason,
+          error: "private backend response",
+        });
+        await pending.promise;
+      });
+      expect(result.current.navigationError).toMatchObject({
+        kind: reason,
+        detail: options.unavailableError,
+        retryable: true,
+      });
+      expect(result.current.previewPresentation?.previewMessage).toBeNull();
+      act(() => result.current.retryMessageNavigation());
+      await waitFor(() => expect(resolveAnchor).toHaveBeenCalledTimes(2));
+      expect(result.current.previewPresentation?.previewMessage).toBeNull();
+    },
+  );
+
+  it("removes a local quote preview if loading the window loses access", async () => {
+    useWorkspaceMessageStore.getState().setOwner(workspaceRuntimeOwnerKey(runtimeContext), false);
+    seedWorkspaceMessageBody(resolved(MESSAGE_A).message);
+    const base = createOptions();
+    const options = createOptions({
+      loader: {
+        ...base.loader,
+        fetchWindow: () =>
+          Promise.resolve({
+            status: "failed",
+            ownerKey: workspaceRuntimeOwnerKey(runtimeContext),
+            conversationId: CONVERSATION_A,
+            reason: "access-denied",
+            error: "private",
+          }),
+      },
+    });
+    const { result } = renderHook(() => useWorkspaceMessageAnchorNavigation(options));
+    act(() => {
+      result.current.startMessageNavigation(MESSAGE_A);
+    });
+    await waitFor(() => expect(result.current.navigationError?.kind).toBe("access-denied"));
+    expect(result.current.previewPresentation?.previewMessage).toBeNull();
+  });
+
   it("presents a known owner-scoped body immediately without changing window membership", async () => {
     const ownerKey = workspaceRuntimeOwnerKey(runtimeContext);
     const message = resolved(MESSAGE_A).message;

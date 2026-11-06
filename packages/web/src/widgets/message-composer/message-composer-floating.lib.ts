@@ -1,7 +1,7 @@
 /**
  * Floating popover positioning for emoji, schedule, and saved-snippet menus.
  */
-import { computeFloatingPickerPosition } from "./message-composer-picker-position.lib";
+import { computeFloatingPickerPosition } from "~/shared/lib/floating-panel-position.lib";
 import type { CSSProperties } from "react";
 
 export function getFloatingPickerStyle(

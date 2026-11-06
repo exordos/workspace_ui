@@ -1,4 +1,5 @@
 import React from "react";
+import { UNREAD_COUNT_DISPLAY_LIMIT } from "~/shared/lib/count-format.lib";
 import type { BadgeSize } from "~/shared/ui/badge";
 import { Badge, MentionBadge } from "~/shared/ui/badge";
 
@@ -16,7 +17,14 @@ export const SidebarChatBadges = React.memo<SidebarChatBadgesProps>(
     return (
       <div className="flex items-center gap-1">
         {hasMention && <MentionBadge size={size} />}
-        {showUnread && <Badge count={unreadCount} variant="unread" size={size} />}
+        {showUnread && (
+          <Badge
+            maxCount={UNREAD_COUNT_DISPLAY_LIMIT}
+            count={unreadCount}
+            variant="unread"
+            size={size}
+          />
+        )}
       </div>
     );
   },

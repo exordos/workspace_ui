@@ -1,10 +1,19 @@
+import { Marked, type Token, type Tokens, type TokensList } from "marked";
+import { t } from "~/i18n/i18n";
 import {
   normalizeEmojiShortcodeName,
   resolveShortcodeToUnicode,
 } from "~/shared/lib/emoji-shortcodes.lib";
-import { parseWorkspaceReferenceUrn, parseWorkspaceUrlUrn } from "../workspace-reference-urn.lib";
+import { formatLocalMessageTime } from "../workspace-message-time.lib";
+import {
+  isWorkspaceSecretUrn,
+  parseWorkspaceReferenceUrn,
+  parseWorkspaceUrlUrn,
+} from "../workspace-reference-urn.lib";
 import { parseWorkspaceMessageFileHref } from "./workspace-message-file-reference.lib";
 import {
+  WORKSPACE_TIME_TOKEN_TYPE,
+  type WorkspaceTimeMarkedToken,
   createWorkspaceMarkdownLexer,
   inspectWorkspaceMarkdownTokens,
   prepareWorkspaceMarkdownTokens,
@@ -22,7 +31,6 @@ import type {
   WorkspaceMessageParseOptions,
   WorkspaceMessageQuoteReferenceBlock,
 } from "./workspace-message-document.types";
-import type { Token, Tokens, TokensList } from "marked";
 
 const NORMALIZE_LINE_BREAK_PATTERN = /\r\n?|\n/g;
 const WHITESPACE_PATTERN = /\s+/g;
@@ -121,6 +129,8 @@ function summarizeInlineForPreview(children: readonly WorkspaceMessageInline[]):
     children
       .map((child) => {
         switch (child.kind) {
+          case "time":
+            return formatLocalMessageTime(child.utc);
           case "text":
           case "code":
             return child.text;
@@ -192,6 +202,16 @@ function summarizeBlocksForPreview(blocks: readonly WorkspaceMessageBlock[]): st
   );
 }
 
+function safeRawTokenPreview(token: Token): string {
+  let raw = token.raw;
+  void new Marked().walkTokens([token], (child) => {
+    if (child.type === "link" && isWorkspaceSecretUrn(child.href)) {
+      raw = raw.replaceAll(child.raw, t("e2ee.secretFragment"));
+    }
+  });
+  return raw;
+}
+
 function toParagraphFromText(text: string): WorkspaceMessageBlock | null {
   if (text.length === 0) {
     return null;
@@ -211,6 +231,8 @@ function mentionDisplayTextFromInline(children: readonly WorkspaceMessageInline[
     children
       .map((child) => {
         switch (child.kind) {
+          case "time":
+            return formatLocalMessageTime(child.utc);
           case "text":
           case "code":
             return child.text;
@@ -569,6 +591,12 @@ function parseInlineTokens(
 
   const children = tokens.flatMap((token): WorkspaceMessageInline[] => {
     switch (token.type) {
+      case WORKSPACE_TIME_TOKEN_TYPE: {
+        const utc = (token as WorkspaceTimeMarkedToken).utc;
+        if (utc == null) return [{ kind: "text", text: (token as WorkspaceTimeMarkedToken).text }];
+        context.state.hasInlineRich = true;
+        return [{ kind: "time", utc }];
+      }
       case "text": {
         const nestedTokens = (token as Tokens.Text).tokens;
         if (nestedTokens != null && nestedTokens.length > 0) {
@@ -611,6 +639,10 @@ function parseInlineTokens(
         context.state.hasInlineRich = true;
         {
           const link = token as Tokens.Link;
+          // Never expose untrusted secret link labels or ciphertext in summaries.
+          if (isWorkspaceSecretUrn(link.href)) {
+            return [{ kind: "text", text: t("e2ee.secretFragment") }];
+          }
           const workspaceUrl = parseWorkspaceUrlUrn(link.href);
           if (workspaceUrl != null) {
             context.state.hasLinks = true;
@@ -929,7 +961,7 @@ function parseBlockTokens(
           (block): block is WorkspaceMessageBlock => block != null,
         );
       default:
-        return [toParagraphFromText(token.raw)].filter(
+        return [toParagraphFromText(safeRawTokenPreview(token))].filter(
           (block): block is WorkspaceMessageBlock => block != null,
         );
     }
@@ -983,8 +1015,7 @@ export function parseWorkspaceMessageBody(
   const sourceMarkdown = normalizeLineBreaks(markdown);
   const parseOptions = createCachedParseOptions(options);
   const markdownLexer = createWorkspaceMarkdownLexer();
-  const lexBlocks = (source: string): TokensList =>
-    markdownLexer.lexer(source, { async: false, breaks: true, gfm: true });
+  const lexBlocks = (source: string): TokensList => markdownLexer.lexer(source);
   const state = createParseState();
   const context: WorkspaceMessageParseContext = { options: parseOptions, state, lexBlocks };
   const tokens = lexBlocks(prepareSourceForMarkdownLexing(sourceMarkdown));

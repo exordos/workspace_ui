@@ -1,5 +1,11 @@
 import { useLayoutEffect, useRef, type RefObject } from "react";
 import { normalizeWorkspacePreviewBlob } from "~/entities/messenger/messenger-workspace-message-preview-blob.lib";
+import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
+import {
+  captureWorkspaceRuntimeRequestContext,
+  isWorkspaceRuntimeRequestContextCurrent,
+  workspaceRuntimeOwnerKey,
+} from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { useTranslation } from "~/i18n/i18n";
 import { createLogger } from "~/shared/lib/logger";
 import {
@@ -7,6 +13,11 @@ import {
   createDisplayableBlobUrl,
 } from "~/shared/lib/media-display-url.lib";
 import { MESSAGE_MEDIA_PREVIEW_CLASS_NAME } from "~/shared/lib/message-body-rich-text-classes";
+import {
+  getWorkspaceFileResourceInvalidationVersion,
+  invalidateWorkspaceFileResourceCache,
+  subscribeWorkspaceFileResourceInvalidation,
+} from "~/shared/lib/workspace-file-loader.lib";
 import {
   readMeasuredMediaSize,
   rememberMeasuredMediaSize,
@@ -46,12 +57,17 @@ interface MountedWorkspacePreview {
   previewImage: HTMLImageElement | null;
   previewVideo: HTMLVideoElement | null;
   videoExpandControl: HTMLButtonElement | null;
+  retryControl: HTMLButtonElement;
+  retryHandler: () => void;
+  onFallback: () => void;
+  unsubscribeInvalidation: (() => void) | null;
   createdPreviewImage: boolean;
   videoVisual: HTMLElement | null;
   label: HTMLElement | null;
   labelInitialText: string | null;
   objectUrl: string | null;
   imageErrorHandler: (() => void) | null;
+  imageLoadHandler: (() => void) | null;
   videoErrorHandler: (() => void) | null;
   fileUuid: string;
 }
@@ -60,10 +76,6 @@ type WorkspacePreviewFallbackReason = "display-error" | "load-error" | "missing-
 
 const WORKSPACE_PREVIEW_INTERSECTION_ROOT_MARGIN = "640px 0px";
 const WORKSPACE_PREVIEW_KEY_SEPARATOR = "\n";
-
-function isAbortError(error: unknown): boolean {
-  return error instanceof Error && error.name === "AbortError";
-}
 
 function buildWorkspaceMediaPreviewKey(
   fileReferences: readonly WorkspaceMessageFileReference[],
@@ -169,6 +181,17 @@ function isWorkspacePreviewAlreadyLoaded(placeholder: HTMLElement): boolean {
   return src.length > 0 && src !== AUTH_IMAGE_PLACEHOLDER_SRC;
 }
 
+function removeImagePreviewListeners(mount: MountedWorkspacePreview): void {
+  if (mount.imageErrorHandler != null) {
+    mount.previewImage?.removeEventListener("error", mount.imageErrorHandler);
+  }
+  if (mount.imageLoadHandler != null) {
+    mount.previewImage?.removeEventListener("load", mount.imageLoadHandler);
+  }
+  mount.imageErrorHandler = null;
+  mount.imageLoadHandler = null;
+}
+
 function revealFallback(
   mount: MountedWorkspacePreview,
   reason: WorkspacePreviewFallbackReason,
@@ -187,17 +210,13 @@ function revealFallback(
       mount.label.textContent = videoErrorLabel;
     }
   }
-  if (mount.placeholderInitialRole != null) {
-    mount.placeholder.setAttribute("role", mount.placeholderInitialRole);
-  }
+  mount.placeholder.setAttribute("role", "group");
   if (mount.placeholderInitialTabIndex != null) {
     mount.placeholder.setAttribute("tabindex", mount.placeholderInitialTabIndex);
   }
   mount.placeholder.classList.remove("workspace-message-file-preview-loaded");
+  removeImagePreviewListeners(mount);
   if (mount.previewImage != null) {
-    if (mount.imageErrorHandler != null) {
-      mount.previewImage.removeEventListener("error", mount.imageErrorHandler);
-    }
     if (mount.createdPreviewImage) {
       mount.previewImage.remove();
     } else {
@@ -237,8 +256,10 @@ function revealFallback(
   if (mount.label != null) {
     mount.label.hidden = false;
   }
-  mount.imageErrorHandler = null;
   mount.videoErrorHandler = null;
+  mount.placeholder.style.position = "relative";
+  mount.placeholder.appendChild(mount.retryControl);
+  mount.onFallback();
 }
 
 function retainObjectUrl(
@@ -279,13 +300,11 @@ function revealLoadedImagePreview(
   image.addEventListener("error", handleImageError);
   // The size is unknown only until the first load; from here the placeholder can
   // reserve the right box every later time this file is rendered.
-  image.addEventListener(
-    "load",
-    () => {
-      rememberMeasuredMediaSize(mount.fileUuid, image.naturalWidth, image.naturalHeight);
-    },
-    { once: true },
-  );
+  const handleImageLoad = () => {
+    rememberMeasuredMediaSize(mount.fileUuid, image.naturalWidth, image.naturalHeight);
+  };
+  image.addEventListener("load", handleImageLoad, { once: true });
+  mount.imageLoadHandler = handleImageLoad;
 
   retainObjectUrl(mount, displayUrl, objectUrlRegistry);
   mount.previewImage = image;
@@ -376,13 +395,12 @@ function revealLoadedVideoPreview(
 function cleanupPreview(mount: MountedWorkspacePreview): void {
   const wasLoaded = mount.placeholder.dataset.workspacePreviewStatus === "loaded";
   mount.abortController.abort();
+  mount.unsubscribeInvalidation?.();
+  mount.retryControl.removeEventListener("click", mount.retryHandler);
+  mount.retryControl.remove();
   mount.intersectionObserver?.disconnect();
   mount.intersectionObserver = null;
-  if (mount.previewImage != null) {
-    if (mount.imageErrorHandler != null) {
-      mount.previewImage.removeEventListener("error", mount.imageErrorHandler);
-    }
-  }
+  removeImagePreviewListeners(mount);
   if (mount.previewImage != null) {
     if (mount.createdPreviewImage) {
       mount.previewImage.remove();
@@ -447,7 +465,6 @@ function cleanupPreview(mount: MountedWorkspacePreview): void {
     mount.label.textContent = mount.labelInitialText;
   }
   delete mount.placeholder.dataset.workspacePreviewStatus;
-  mount.imageErrorHandler = null;
   mount.videoErrorHandler = null;
 
   if (wasLoaded) {
@@ -462,6 +479,8 @@ export function useWorkspaceMessageFilePreviews({
   onLoadWorkspaceFilePreview,
 }: UseWorkspaceMessageFilePreviewsParams): void {
   const { t } = useTranslation();
+  const runtimeGeneration = useWorkspaceAuthStore((state) => state.runtimeGeneration);
+  const retryLabel = t("common.retry");
   const openVideoViewerLabel = t("mediaViewer.openVideo");
   const videoQueuedLabel = t("mediaViewer.videoQueued");
   const videoLoadingLabel = t("mediaViewer.videoLoading");
@@ -492,6 +511,13 @@ export function useWorkspaceMessageFilePreviews({
       return;
     }
 
+    const getRuntimeContext = useWorkspaceAuthStore.getState().getCurrentRuntimeContext;
+    const requestContext = captureWorkspaceRuntimeRequestContext(getRuntimeContext);
+    const ownerKey = requestContext == null ? null : workspaceRuntimeOwnerKey(requestContext);
+    const isRuntimeCurrent = () =>
+      requestContext == null
+        ? getRuntimeContext() == null
+        : isWorkspaceRuntimeRequestContextCurrent(requestContext, getRuntimeContext);
     const placeholders = Array.from(
       bodyElement.querySelectorAll<HTMLElement>(
         "[data-workspace-file='true'][data-workspace-file-kind='media'][data-workspace-media-kind][data-workspace-file-uuid]",
@@ -521,6 +547,13 @@ export function useWorkspaceMessageFilePreviews({
       }
 
       const abortController = new AbortController();
+      const isCurrent = () => !abortController.signal.aborted && isRuntimeCurrent();
+      const retryControl = document.createElement("button");
+      retryControl.type = "button";
+      retryControl.dataset.workspacePreviewRetry = "true";
+      retryControl.textContent = retryLabel;
+      retryControl.className =
+        "absolute inset-x-2 bottom-2 rounded-md border border-border-subtle bg-bg-elevated px-3 py-1.5 text-sm font-medium text-text-primary hover:bg-bg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft";
       const mount: MountedWorkspacePreview = {
         abortController,
         intersectionObserver: null,
@@ -541,6 +574,10 @@ export function useWorkspaceMessageFilePreviews({
         previewImage: null,
         previewVideo: null,
         videoExpandControl: null,
+        retryControl,
+        retryHandler: () => undefined,
+        onFallback: () => undefined,
+        unsubscribeInvalidation: null,
         createdPreviewImage: false,
         videoVisual: placeholder.querySelector<HTMLElement>(
           ".workspace-message-file-placeholder__video-visual",
@@ -551,6 +588,7 @@ export function useWorkspaceMessageFilePreviews({
             ?.textContent ?? null,
         objectUrl: null,
         imageErrorHandler: null,
+        imageLoadHandler: null,
         videoErrorHandler: null,
         fileUuid,
       };
@@ -567,12 +605,31 @@ export function useWorkspaceMessageFilePreviews({
       }
       reservePreviewLayout(placeholder, reference);
 
-      let previewStarted = false;
+      let previewInFlight = false;
+      const readInvalidationVersion = () =>
+        ownerKey == null ? 0 : getWorkspaceFileResourceInvalidationVersion(ownerKey, fileUuid);
+      let latestInvalidationVersion = readInvalidationVersion();
+      let attemptedInvalidationVersion = latestInvalidationVersion;
+      const hasFailed = () =>
+        placeholder.dataset.workspacePreviewStatus === "load-error" ||
+        placeholder.dataset.workspacePreviewStatus === "display-error";
       const startPreviewLoad = () => {
-        if (previewStarted || abortController.signal.aborted) {
+        if (previewInFlight || !isCurrent()) {
           return;
         }
-        previewStarted = true;
+        previewInFlight = true;
+        attemptedInvalidationVersion = latestInvalidationVersion;
+        if (document.activeElement === retryControl) {
+          placeholder.focus({ preventScroll: true });
+        }
+        retryControl.remove();
+        placeholder.style.position = mount.placeholderInitialPosition;
+        if (mount.placeholderInitialRole != null) {
+          placeholder.setAttribute("role", mount.placeholderInitialRole);
+        }
+        if (mount.placeholderInitialAriaLabel != null) {
+          placeholder.setAttribute("aria-label", mount.placeholderInitialAriaLabel);
+        }
         placeholder.dataset.workspacePreviewStatus = "loading";
         placeholder.setAttribute("aria-busy", "true");
         if (reference.mediaKind === "video") {
@@ -588,6 +645,7 @@ export function useWorkspaceMessageFilePreviews({
 
         const loadWorkspaceFilePreview = latestLoadWorkspaceFilePreviewRef.current;
         if (loadWorkspaceFilePreview == null) {
+          previewInFlight = false;
           revealFallback(
             mount,
             "missing-loader",
@@ -597,33 +655,18 @@ export function useWorkspaceMessageFilePreviews({
         }
 
         void (async () => {
-          let blob: Blob;
+          let blobLoaded = false;
           try {
-            blob = await loadWorkspaceFilePreview(reference, abortController.signal);
-          } catch (error: unknown) {
-            if (!abortController.signal.aborted && !isAbortError(error)) {
-              previewLog.warn("preview load failed", {
+            const blob = await loadWorkspaceFilePreview(reference, abortController.signal);
+            blobLoaded = true;
+            if (!isCurrent()) {
+              previewLog.debug("preview aborted before display", {
                 fileUuid,
-                error: error instanceof Error ? error.name : "unknown",
+                stage: "after-blob",
               });
-              revealFallback(
-                mount,
-                "load-error",
-                reference.mediaKind === "video" ? videoLoadFailedLabel : undefined,
-              );
+              return;
             }
-            return;
-          }
 
-          if (abortController.signal.aborted) {
-            previewLog.debug("preview aborted before display", {
-              fileUuid,
-              stage: "after-blob",
-            });
-            return;
-          }
-
-          try {
             const normalizedBlob = normalizeWorkspacePreviewBlob(blob, reference.contentType);
             if (normalizedBlob.type !== blob.type) {
               previewLog.debug("preview blob retyped", {
@@ -634,7 +677,7 @@ export function useWorkspaceMessageFilePreviews({
             }
 
             const displayUrl = await createDisplayableBlobUrl(normalizedBlob, objectUrlRegistry);
-            if (abortController.signal.aborted) {
+            if (!isCurrent()) {
               previewLog.debug("preview aborted before display", {
                 fileUuid,
                 stage: "after-display-url",
@@ -655,20 +698,52 @@ export function useWorkspaceMessageFilePreviews({
               revealLoadedImagePreview(mount, reference, displayUrl, objectUrlRegistry);
             }
           } catch (error: unknown) {
-            if (!abortController.signal.aborted && !isAbortError(error)) {
-              previewLog.warn("preview display failed", {
-                fileUuid,
-                error: error instanceof Error ? error.name : "unknown",
-              });
-              revealFallback(
-                mount,
-                "display-error",
-                reference.mediaKind === "video" ? videoDisplayFailedLabel : undefined,
-              );
-            }
+            if (!isCurrent()) return;
+            const reason = blobLoaded ? "display-error" : "load-error";
+            previewLog.warn("preview failed", {
+              fileUuid,
+              reason,
+              error: error instanceof Error ? error.name : "unknown",
+            });
+            const videoErrorLabel = blobLoaded ? videoDisplayFailedLabel : videoLoadFailedLabel;
+            revealFallback(
+              mount,
+              reason,
+              reference.mediaKind === "video" ? videoErrorLabel : undefined,
+            );
+          } finally {
+            previewInFlight = false;
           }
         })();
       };
+
+      mount.onFallback = () => {
+        // An update can arrive before a previous 404 settles; consume it once,
+        // without polling or starting a competing request.
+        if (latestInvalidationVersion !== attemptedInvalidationVersion) {
+          queueMicrotask(() => {
+            if (hasFailed()) startPreviewLoad();
+          });
+        }
+      };
+      mount.retryHandler = () => {
+        if (!isCurrent()) return;
+        if (ownerKey != null) {
+          invalidateWorkspaceFileResourceCache(ownerKey, fileUuid);
+        }
+        startPreviewLoad();
+      };
+      retryControl.addEventListener("click", mount.retryHandler);
+      if (ownerKey != null) {
+        mount.unsubscribeInvalidation = subscribeWorkspaceFileResourceInvalidation(
+          ownerKey,
+          fileUuid,
+          () => {
+            latestInvalidationVersion = readInvalidationVersion();
+            if (hasFailed()) startPreviewLoad();
+          },
+        );
+      }
 
       if (typeof IntersectionObserver === "undefined") {
         startPreviewLoad();
@@ -708,6 +783,8 @@ export function useWorkspaceMessageFilePreviews({
     onLoadWorkspaceFilePreview,
     openVideoViewerLabel,
     renderedHtml,
+    retryLabel,
+    runtimeGeneration,
     videoLoadFailedLabel,
     videoDisplayFailedLabel,
     videoLoadingLabel,

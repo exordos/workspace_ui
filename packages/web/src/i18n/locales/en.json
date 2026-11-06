@@ -1,4 +1,28 @@
 {
+  "datePicker": {
+    "label": "Date",
+    "today": "Today",
+    "previousMonth": "Previous month",
+    "nextMonth": "Next month"
+  },
+  "timePicker": {
+    "label": "Time",
+    "hours": "Hours",
+    "minutes": "Minutes",
+    "seconds": "Seconds",
+    "hoursShort": "h.",
+    "minutesShort": "m.",
+    "secondsShort": "s.",
+    "increase": "Increase {{unit}}",
+    "decrease": "Decrease {{unit}}"
+  },
+  "dateTimePicker": {
+    "label": "Date and time"
+  },
+  "pickerExamples": {
+    "empty": "No value selected",
+    "selected": "Selected: {{value}}"
+  },
   "app": {
     "name": "Exordos Workspace",
     "loading": "Loading…",
@@ -631,6 +655,7 @@
     "loadError": "Could not refresh drafts"
   },
   "message": {
+    "globalTimeHint": "Everyone sees this in their own time zone. Your time zone for this date: {{zone}}.",
     "sendRequiresStreamOrTo": "Stream or recipients (to) required for sending",
     "fileUploadUnsupported": "File uploads are no longer available in this legacy chat path.",
     "views": "Views",
@@ -675,6 +700,9 @@
     "unpin": "Unpin",
     "copy": "Copy text",
     "copyImage": "Copy image",
+    "copyMessageLink": "Copy message link",
+    "messageLinkCopied": "Message link copied",
+    "messageLinkUnavailable": "Message link unavailable",
     "copyLink": "Copy link",
     "openInChat": "Open in chat",
     "joinCall": "Join call",
@@ -960,10 +988,95 @@
     "daysAgo_other": "{{count}} days ago",
     "lastSeen": "last seen {{time}}"
   },
+  "hotkeys": {
+    "title": "Keyboard shortcuts",
+    "search": "Search shortcuts",
+    "resetAll": "Reset all",
+    "edit": "Edit",
+    "disable": "Disable",
+    "reset": "Reset",
+    "disabled": "Disabled",
+    "record": "Press a key combination. Escape cancels.",
+    "empty": "No shortcuts found",
+    "enabled": "Enable keyboard shortcuts",
+    "invalid": "Invalid shortcut",
+    "reserved": "This shortcut is reserved",
+    "conflict": "This shortcut is already in use",
+    "storageError": "Could not save settings",
+    "navigation": "Navigation",
+    "interface": "Interface",
+    "composer": "Composer",
+    "back": "Back",
+    "forward": "Forward",
+    "messenger": "Messenger",
+    "calendar": "Calendar",
+    "mail": "Mail",
+    "calls": "Calls",
+    "activity": "Activity",
+    "previousChat": "Previous chat",
+    "nextChat": "Next chat",
+    "folderList": "Folder list",
+    "theme": "Change theme",
+    "help": "Help",
+    "sidebar": "Toggle sidebar",
+    "infoPanel": "Chat information",
+    "editLastMessage": "Edit last message",
+    "bold": "Bold",
+    "italic": "Italic",
+    "strike": "Strikethrough",
+    "code": "Code",
+    "actions": {
+      "navigation": {
+        "back": "Back",
+        "forward": "Forward",
+        "messenger": "Messenger",
+        "calendar": "Calendar",
+        "mail": "Mail",
+        "calls": "Calls",
+        "activity": "Activity",
+        "folderList": "Folder list"
+      },
+      "interface": {
+        "theme": "Change theme",
+        "help": "Help",
+        "sidebar": "Toggle sidebar",
+        "infoPanel": "Chat information",
+        "quoteMessage": "Quote message"
+      },
+      "composer": {
+        "editLastMessage": "Edit last message",
+        "bold": "Bold",
+        "italic": "Italic",
+        "strike": "Strikethrough",
+        "code": "Code"
+      }
+    },
+    "fixedHelp": "Escape: close or cancel · Tab: move focus · Enter: send or insert a line · Arrow keys: navigate menus · Copy, paste, undo and redo use system shortcuts",
+    "fixedTitle": "Fixed shortcuts",
+    "fixed": {
+      "cancel": "Close or cancel",
+      "focus": "Move focus (Shift+Tab moves backward)",
+      "send": "Send or insert a line, depending on send settings",
+      "editing": "Standard editing shortcuts, such as copy",
+      "focusZones": "Move between focus areas"
+    },
+    "save": "Save",
+    "cancel": "Cancel",
+    "recordInput": "Press a shortcut",
+    "quoteHint": "Select text, focus a message with Tab, or point to it.",
+    "localDescription": "Settings are stored on this device. Composer shortcuts apply while editing a message.",
+    "editLastMessageHint": "When the composer is empty and not editing a message"
+  },
   "settings": {
     "personalInfo": "Personal info",
     "appVersion": "App version",
     "notificationSound": "Notification sound",
+    "chatClickAction": "Chat click",
+    "chatClickActionGeneral": "General chat and topics",
+    "chatClickActionLatestTopic": "Latest topic",
+    "chatClickActionHint": "What to open when clicking a chat",
+    "chatClickActionAvatarHint": "Click the avatar to open the general chat",
+    "dockBounce": "Bounce Dock icon",
     "language": "Language",
     "authIdleTimeout": "Auto sign-out",
     "authIdleTimeoutHint": "After inactivity",
@@ -1140,6 +1253,7 @@
     "messengerSidebarSortMode": "Stream and topic order",
     "messengerSidebarSortModeLastMessage": "Last message",
     "messengerSidebarSortModeUnreadFirst": "Unread first",
+    "messengerSidebarSortModeAlphabetical": "By name",
     "folderLayout": "Folder layout",
     "folderLayoutVertical": "Vertical rail",
     "folderLayoutHorizontal": "Horizontal tabs",
@@ -1385,6 +1499,8 @@
     "retryLoad": "Try again"
   },
   "composer": {
+    "insertTime": "Insert date and time",
+    "insertTimeConfirm": "Insert",
     "bold": "Bold",
     "italic": "Italic",
     "strikethrough": "Strikethrough",
@@ -1427,7 +1543,12 @@
     "paste": "Paste",
     "selectAll": "Select All",
     "messageTooLong": "The message is too long (maximum 40,000 characters).",
-    "mentionOutsideChannel": "not in channel"
+    "mentionOutsideChannel": "not in channel",
+    "secretSpoiler": "Encrypted spoiler",
+    "secretSpoilerHint": "Enable before entering secret text — otherwise the text may be saved in a server draft.",
+    "createSecretKey": "Create a new key",
+    "secretDraftMemoryOnly": "This draft stays in memory until sent.",
+    "invalidSecret": "Finish or remove the encrypted spoiler before sending."
   },
   "attachmentCard": {
     "unnamedFile": "File",
@@ -1459,6 +1580,7 @@
     "hideTopBanner": "Hide banner",
     "addFolder": "Add folder",
     "scrollToBottom": "Scroll to bottom",
+    "scrollToBottomWithManyUnread": "Scroll to bottom, {{countLabel}} unread messages",
     "scrollToBottomWithUnread_one": "Scroll to bottom, {{count}} unread message",
     "scrollToBottomWithUnread_other": "Scroll to bottom, {{count}} unread messages",
     "messageMenu": "Message menu",
@@ -1616,11 +1738,40 @@
     "loadedHistoryHint": "Showing loaded history.",
     "incomingTitle": "Incoming requests ({{count}})",
     "grantedTitle": "Granted keys ({{count}})",
-    "rejectedTitle": "Rejected requests ({{count}})"
+    "rejectedTitle": "Rejected requests ({{count}})",
+    "secretFragment": "Encrypted fragment",
+    "requestSecretKey": "Request key",
+    "showSecretFragment": "Show spoiler",
+    "hideSecretFragment": "Hide spoiler",
+    "spoilerVariants": {
+      "title": "Encrypted spoiler · visual options",
+      "description": "The regular spoiler background, with an encryption indicator. Click any fragment to reveal or hide it. All text is synthetic.",
+      "reset": "Hide all",
+      "encrypted": "Encrypted",
+      "sampleSecret": "meeting code 4821",
+      "samplePublic": "Here is the code:",
+      "you": "You",
+      "inside": "Lock inside",
+      "insideHint": "One compact shape; the lock stays visible.",
+      "outside": "Lock beside",
+      "outsideHint": "The regular spoiler, with a separate small lock.",
+      "overlay": "Lock in the center",
+      "overlayHint": "A lock over the blurred text; moves left when revealed.",
+      "label": "Lock and label",
+      "labelHint": "An explicit encryption label beside the spoiler."
+    }
   },
   "selector": {
     "placeholder": "Select an option",
     "noOptions": "No options available",
     "showOptions": "Show options"
+  },
+  "messageLinkEntry": {
+    "wrongAccount": "Sign in to an account for the organization and project in this link.",
+    "title": "Open this message in Workspace",
+    "openApp": "Open in app",
+    "alwaysApp": "Always open in app (30 days)",
+    "continueWeb": "Continue in browser",
+    "alwaysWeb": "Always open in browser"
   }
 }

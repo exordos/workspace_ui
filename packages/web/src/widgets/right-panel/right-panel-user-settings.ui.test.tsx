@@ -1,4 +1,4 @@
-import { fireEvent, screen } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useThemeStore } from "~/entities/theme/theme.model";
 import { useSettingsStore } from "~/features/settings/settings.model";
@@ -10,11 +10,80 @@ vi.mock("~/shared/lib/notification-sound", () => ({
   playNotificationSound: vi.fn(),
 }));
 
+const isElectronDarwinMock = vi.hoisted(() => vi.fn(() => false));
+vi.mock("~/shared/lib/electron", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  isElectronDarwin: isElectronDarwinMock,
+}));
+
 describe("RightPanelUserSettings", () => {
   afterEach(() => {
+    isElectronDarwinMock.mockReturnValue(false);
     useSettingsStore.getState().resetToDefaults();
     useThemeStore.setState({ mode: "system", paletteId: "blue-cold" });
     setLocale("en");
+  });
+
+  it("opens shortcuts over settings and restores focus without closing the drawer", async () => {
+    const closeDrawer = vi.fn();
+    renderWithProviders(<RightPanelUserSettings onBack={vi.fn()} onClose={closeDrawer} />);
+    const trigger = screen.getByRole("button", { name: "Keyboard shortcuts" });
+    fireEvent.click(trigger);
+    const dialog = await screen.findByRole("dialog", { name: "Keyboard shortcuts" });
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    await waitFor(() => expect(trigger).toHaveFocus());
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(closeDrawer).not.toHaveBeenCalled();
+  });
+
+  it("lets macOS desktop users disable and re-enable Dock bouncing", () => {
+    isElectronDarwinMock.mockReturnValue(true);
+    const { unmount } = renderWithProviders(
+      <RightPanelUserSettings onBack={vi.fn()} onClose={vi.fn()} />,
+    );
+    const toggle = screen.getByRole("switch", { name: "Bounce Dock icon" });
+    expect(toggle).toBeChecked();
+
+    fireEvent.click(toggle);
+    expect(toggle).not.toBeChecked();
+    expect(useSettingsStore.getState().dockBounceEnabled).toBe(false);
+    expect(useSettingsStore.getState().notificationSound).toBe("default");
+
+    unmount();
+    renderWithProviders(<RightPanelUserSettings onBack={vi.fn()} onClose={vi.fn()} />);
+    const restoredToggle = screen.getByRole("switch", { name: "Bounce Dock icon" });
+    expect(restoredToggle).not.toBeChecked();
+    fireEvent.click(restoredToggle);
+    expect(restoredToggle).toBeChecked();
+  });
+
+  it("hides the Dock bounce preference outside the macOS desktop app", () => {
+    renderWithProviders(<RightPanelUserSettings onBack={vi.fn()} onClose={vi.fn()} />);
+    expect(screen.queryByRole("switch", { name: "Bounce Dock icon" })).not.toBeInTheDocument();
+  });
+
+  it("keeps the latest topic hint inside its option before and after selecting either mode", () => {
+    renderWithProviders(<RightPanelUserSettings onBack={vi.fn()} onClose={vi.fn()} />);
+    expect(screen.getByText("What to open when clicking a chat")).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("right-panel-settings-chat-click-trigger"));
+    const general = screen.getByRole("button", { name: "General chat and topics" });
+    const latest = screen.getByRole("button", { name: "Latest topic" });
+    const panel = screen.getByTestId("right-panel-settings-chat-click-options");
+    const hintText = "Click the avatar to open the general chat";
+    const hint = within(latest).getByText(hintText);
+    expect(within(panel).getAllByRole("listitem")).toHaveLength(2);
+    expect(latest).toHaveAccessibleDescription(hintText);
+    expect(hint).toBeVisible();
+    expect(general).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(hint);
+    expect(useSettingsStore.getState().chatClickAction).toBe("latestTopic");
+    expect(latest).toHaveAttribute("aria-pressed", "true");
+    expect(general).toHaveAttribute("aria-pressed", "false");
+    expect(hint).toBeVisible();
+    fireEvent.click(general);
+    expect(useSettingsStore.getState().chatClickAction).toBe("general");
+    expect(hint).toBeVisible();
+    expect(within(panel).getAllByRole("listitem")).toHaveLength(2);
   });
 
   it("navigates back and closes from the nested header", () => {
@@ -149,6 +218,8 @@ describe("RightPanelUserAppearance", () => {
     fireEvent.click(screen.getByRole("button", { name: /stream and topic order/i }));
     fireEvent.click(screen.getByRole("button", { name: "Unread first" }));
     expect(useSettingsStore.getState().messengerSidebarSortMode).toBe("unread_first");
+    fireEvent.click(screen.getByRole("button", { name: "By name" }));
+    expect(useSettingsStore.getState().messengerSidebarSortMode).toBe("alphabetical");
 
     fireEvent.click(screen.getByRole("button", { name: /folder layout/i }));
     fireEvent.click(screen.getByRole("button", { name: "Horizontal tabs" }));

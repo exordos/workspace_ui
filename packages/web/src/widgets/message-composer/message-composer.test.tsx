@@ -12,8 +12,9 @@ import { useUsersStore } from "~/entities/user/user.model";
 import type { User } from "~/entities/user/user.types";
 import { useMentionSuggestStore } from "~/features/mention-suggest/mention-suggest.model";
 import { useSettingsStore } from "~/features/settings/settings.model";
+import { computeFloatingPickerPosition } from "~/shared/lib/floating-panel-position.lib";
+import { HotkeysProvider, type HotkeyOverrides } from "~/shared/lib/hotkeys";
 import { renderWithProviders } from "~/test/render";
-import { computeFloatingPickerPosition } from "./message-composer-picker-position.lib";
 import { resetComposerSavedSnippetsModelForTests } from "./message-composer-saved-snippets.model";
 import { MessageComposer } from "./message-composer.ui";
 
@@ -28,11 +29,6 @@ function installElectronTextEditingApi(): void {
     textEditing: { execute: textEditingExecuteMock },
   };
 }
-
-vi.mock("~/shared/config/constants", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("~/shared/config/constants")>();
-  return { ...actual, KEYBOARD_SHORTCUTS_ENABLED: true };
-});
 
 vi.mock("~/shared/lib/webview", async () => {
   const actual = await vi.importActual("~/shared/lib/webview");
@@ -174,7 +170,6 @@ function createComposerStream(): MessengerStream {
     description: "",
     unreadCount: 0,
     sourceName: "native",
-    source: { kind: "native" },
     audience: "channel",
     isPrivate: false,
     inviteOnly: false,
@@ -314,6 +309,86 @@ describe("MessageComposer async send behavior", () => {
     fireEvent.click(screen.getByRole("button", { name: /write a message/i }));
 
     expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it("does not clear or focus another draft with identical text after a late send completes", async () => {
+    let accept: () => void = () => {};
+    const accepted = new Promise<void>((resolve) => {
+      accept = resolve;
+    });
+    const onSend = vi.fn().mockReturnValue(accepted);
+    const draft = "Identical content";
+    const { rerender } = renderWithProviders(
+      <MessageComposer draftSessionKey="a" initialValue={draft} onSend={onSend} />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /write a message/i }));
+    rerender(<MessageComposer draftSessionKey="b" initialValue={draft} onSend={onSend} />);
+    const otherControl = document.createElement("button");
+    document.body.append(otherControl);
+    otherControl.focus();
+    await act(async () => {
+      accept();
+      await accepted;
+    });
+    expect(screen.getByRole("textbox")).toHaveValue(draft);
+    expect(otherControl).toHaveFocus();
+    otherControl.remove();
+  });
+
+  it("resets the new-key choice when protected text is removed or its draft session changes", async () => {
+    const draft = "Public :::private::: suffix";
+    const { rerender } = renderWithProviders(
+      <MessageComposer
+        draftSessionKey="a"
+        initialValue={draft}
+        secretFragments={{ canRotate: true }}
+      />,
+    );
+    const checkbox = () => screen.getByRole("checkbox", { name: "Create a new key" });
+    fireEvent.click(checkbox());
+    expect(checkbox()).toBeChecked();
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "Public only" } });
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: draft } });
+    expect(checkbox()).not.toBeChecked();
+    fireEvent.click(checkbox());
+    rerender(
+      <MessageComposer
+        draftSessionKey="b"
+        initialValue={draft}
+        secretFragments={{ canRotate: true }}
+      />,
+    );
+    await waitFor(() => expect(checkbox()).not.toBeChecked());
+  });
+
+  it("waits for secret key preparation, then clears and restores focus after local acceptance", async () => {
+    let accept: () => void = () => {};
+    const accepted = new Promise<void>((resolve) => {
+      accept = resolve;
+    });
+    const onSend = vi.fn().mockReturnValue(accepted);
+    renderWithProviders(
+      <MessageComposer
+        onSend={onSend}
+        optimisticClearOnSend
+        secretFragments={{ canRotate: true }}
+      />,
+    );
+    const textbox = screen.getByRole("textbox");
+    const draft = "Public :::private::: suffix";
+    fireEvent.change(textbox, { target: { value: draft } });
+    fireEvent.click(screen.getByRole("checkbox", { name: /Create a new key/ }));
+    fireEvent.click(screen.getByRole("button", { name: /write a message/i }));
+    expect(onSend).toHaveBeenCalledWith(draft, "", undefined, { createNewKey: true });
+    expect(textbox).toHaveValue(draft);
+    await act(async () => {
+      accept();
+      await accepted;
+    });
+    await waitFor(() => expect(textbox).toHaveValue(""));
+    expect(textbox).toBeEnabled();
+    expect(textbox).toHaveFocus();
   });
 
   it("keeps the composer draft until onSend resolves successfully", async () => {
@@ -1721,7 +1796,7 @@ describe("MessageComposer mention suggestions", () => {
 });
 
 describe("MessageComposer formatting shortcuts", () => {
-  it("applies bold wrapper on mod+b", async () => {
+  it.each(["b", "и"])("applies bold wrapper on mod+b when the layout types %s", async (key) => {
     renderWithProviders(<MessageComposer onSend={vi.fn()} />);
 
     const textbox = screen.getByRole("textbox");
@@ -1731,7 +1806,7 @@ describe("MessageComposer formatting shortcuts", () => {
     fireEvent.change(textbox, { target: { value: "hello" } });
     textbox.setSelectionRange(0, 5);
 
-    fireEvent.keyDown(textbox, { key: "b", ctrlKey: true });
+    fireEvent.keyDown(textbox, { key, code: "KeyB", ctrlKey: true });
 
     await waitFor(() => {
       expect(textbox).toHaveValue("**hello**");
@@ -1747,14 +1822,14 @@ describe("MessageComposer formatting shortcuts", () => {
     }
     fireEvent.change(textbox, { target: { value: "sample" } });
     textbox.setSelectionRange(0, 6);
-    fireEvent.keyDown(textbox, { key: "x", ctrlKey: true, shiftKey: true });
+    fireEvent.keyDown(textbox, { key: "x", code: "KeyX", ctrlKey: true, shiftKey: true });
 
     await waitFor(() => {
       expect(textbox).toHaveValue("~~sample~~");
     });
 
     textbox.setSelectionRange(2, 8);
-    fireEvent.keyDown(textbox, { key: "e", ctrlKey: true });
+    fireEvent.keyDown(textbox, { key: "e", code: "KeyE", ctrlKey: true });
 
     await waitFor(() => {
       expect(textbox).toHaveValue("~~`sample`~~");
@@ -1795,6 +1870,48 @@ describe("MessageComposer formatting shortcuts", () => {
     await waitFor(() => {
       expect(textbox).toHaveValue("> line one\n> line two");
     });
+  });
+
+  it("inserts a UTC time at the selection, previews locally and sends the same Markdown", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-13T13:02:00+03:00"));
+    try {
+      const onSend = vi.fn();
+      renderWithProviders(<MessageComposer initialValue="Meet old date here" onSend={onSend} />);
+      const textbox = screen.getByRole<HTMLTextAreaElement>("textbox");
+      textbox.setSelectionRange(5, 13);
+      expandComposerToolbar();
+      fireEvent.click(screen.getByRole("button", { name: "Insert date and time" }));
+      const dialog = screen.getByRole("dialog", { name: "Insert date and time" });
+      const minutes = within(dialog).getByRole("spinbutton", { name: "Minutes" });
+      fireEvent.change(minutes, { target: { value: "15" } });
+      fireEvent.keyDown(minutes, { key: "Enter" });
+      fireEvent.click(within(dialog).getByRole("button", { name: "Insert" }));
+      const expected = "Meet urn:time:2026-10-13T10:15:00Z here";
+      await waitFor(() => expect(textbox).toHaveValue(expected));
+      await waitFor(() => expect(textbox).toHaveFocus());
+      expect(textbox.selectionStart).toBe(expected.indexOf(" here"));
+      fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+      const preview = screen.getByRole("region", { name: "Preview" });
+      expect(preview.querySelector("time")).toHaveAttribute("datetime", "2026-10-13T10:15:00Z");
+      fireEvent.click(screen.getByRole("button", { name: "Write a message..." }));
+      await waitFor(() => expect(onSend).toHaveBeenCalled());
+      expect(onSend.mock.calls[0]?.[0]).toBe(expected);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("cancels time insertion on Escape and returns focus without changing the draft", () => {
+    renderWithProviders(<MessageComposer initialValue="Keep this draft" onSend={vi.fn()} />);
+    expandComposerToolbar();
+    const trigger = screen.getByRole("button", { name: "Insert date and time" });
+    fireEvent.click(trigger);
+    expect(screen.getByRole("dialog", { name: "Insert date and time" })).toBeInTheDocument();
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+    expect(screen.getByRole("textbox")).toHaveValue("Keep this draft");
   });
 
   it("inserts markdown link template from toolbar", async () => {
@@ -2254,7 +2371,7 @@ describe("MessageComposer mode tabs", () => {
     fireEvent.click(screen.getByRole("button", { name: /show formatting tools/i }));
 
     const toolbarRow = screen.getByTestId("composer-toolbar-row");
-    expect(toolbarRow).toHaveClass("h-8", "overflow-x-auto");
+    expect(toolbarRow).toHaveClass("h-8", "overflow-x-auto", "scrollbar-none");
     expect(toolbarRow).not.toHaveClass("px-3", "pb-2");
     expect(toolbarRow.firstElementChild).toHaveClass("gap-2", "pl-2");
     expect(toolbarRow.firstElementChild).not.toHaveClass("pl-3", "pl-5");
@@ -3110,6 +3227,37 @@ describe("MessageComposer upload progress", () => {
 });
 
 describe("MessageComposer edit-last shortcut", () => {
+  it("applies changed bindings immediately and keeps the empty-input condition", () => {
+    const onEditLastMessage = vi.fn();
+    const view = (overrides: HotkeyOverrides, enabled = true) => (
+      <HotkeysProvider
+        overrides={overrides}
+        enabled={enabled}
+        onOverridesChange={() => true}
+        onEnabledChange={() => true}
+      >
+        <MessageComposer onSend={vi.fn()} onEditLastMessage={onEditLastMessage} />
+      </HotkeysProvider>
+    );
+    const { rerender } = renderWithProviders(view({}));
+    const textbox = screen.getByRole("textbox");
+    fireEvent.keyDown(textbox, { key: "ArrowUp" });
+    expect(onEditLastMessage).toHaveBeenCalledTimes(1);
+    const overrides = { "composer.editLastMessage": "Alt+U" } as const;
+    rerender(view(overrides));
+    fireEvent.keyDown(textbox, { key: "ArrowUp" });
+    expect(onEditLastMessage).toHaveBeenCalledTimes(1);
+    fireEvent.keyDown(textbox, { key: "u", code: "KeyU", altKey: true });
+    expect(onEditLastMessage).toHaveBeenCalledTimes(2);
+    fireEvent.change(textbox, { target: { value: "draft" } });
+    fireEvent.keyDown(textbox, { key: "u", code: "KeyU", altKey: true });
+    expect(onEditLastMessage).toHaveBeenCalledTimes(2);
+    fireEvent.change(textbox, { target: { value: "" } });
+    rerender(view(overrides, false));
+    fireEvent.keyDown(textbox, { key: "u", code: "KeyU", altKey: true });
+    expect(onEditLastMessage).toHaveBeenCalledTimes(2);
+  });
+
   it("calls edit callback on ArrowUp when input is empty", () => {
     const onEditLastMessage = vi.fn();
     renderWithProviders(<MessageComposer onSend={vi.fn()} onEditLastMessage={onEditLastMessage} />);
@@ -4020,6 +4168,7 @@ describe("MessageComposer AI context wiring", () => {
     expect(labels).toEqual([
       "Attach file",
       "Emoji",
+      "Insert date and time",
       "Saved snippets",
       "AI",
       "Link",

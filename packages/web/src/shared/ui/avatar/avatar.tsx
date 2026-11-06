@@ -12,12 +12,9 @@ const SIZE_CLASS: Record<AvatarSize, string> = {
   xl: "w-16 h-16 text-xl",
 };
 
-/**
- * Кликабельный аватар: кольцо на hover родителя `group` + курсор-«пальчик».
- * Presence-бейдж рядом тоже попадает в group-hover.
- */
+// Scope feedback to the avatar trigger, including its presence badge.
 const INTERACTIVE_CLASS =
-  "cursor-pointer transition-shadow duration-150 group-hover:ring-2 group-hover:ring-accent-soft group-hover:ring-offset-1 group-hover:ring-offset-bg";
+  "cursor-pointer outline-2 outline-offset-0 outline-transparent transition-[outline-color] duration-150 group-hover/avatar:outline-accent group-focus-visible/avatar:outline-accent";
 
 // The 14.65% inset places the badge center on the circle at 45 degrees.
 const PRESENCE_POSITION_CLASS =

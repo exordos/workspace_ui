@@ -37,6 +37,9 @@ export interface WorkspaceComposerDraft {
   conflictServerContent?: WorkspaceComposerDraftContent;
   conflictServerEtag?: string;
   pendingCreatePayload?: string | null;
+  /** Metadata-only tombstone for a draft promoted to a private in-memory composer. */
+  privateDeletion?: boolean;
+  privateCreateUncertain?: boolean;
   updatedAt: number;
 }
 

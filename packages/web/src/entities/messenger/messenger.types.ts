@@ -2,7 +2,6 @@ import type {
   WorkspaceMessengerDeliveryDto,
   WorkspaceMessengerFolderItemChatType,
   WorkspaceMessengerProviderDto,
-  WorkspaceMessengerSourceDto,
   WorkspaceMessengerSourceName,
   WorkspaceMessengerStreamNotificationMode,
   WorkspaceMessengerTopicNotificationMode,
@@ -109,7 +108,8 @@ export interface MessengerStream {
   activeUnreadCount?: number;
   passiveUnreadCount?: number;
   sourceName: WorkspaceMessengerSourceName;
-  source: WorkspaceMessengerSourceDto;
+  providerUuid?: MessengerUuid | null;
+  providerIdentity?: string | null;
   audience: MessengerAudience;
   isPrivate: boolean;
   encryption?: boolean;
@@ -197,7 +197,8 @@ export interface MessengerMessage {
   // The fields below stay optional because durable cache rows can predate provenance.
   mentioned?: boolean;
   sourceName?: WorkspaceMessengerSourceName;
-  source?: WorkspaceMessengerSourceDto;
+  providerUuid?: MessengerUuid | null;
+  providerIdentity?: string | null;
   provider?: WorkspaceMessengerProviderDto | null;
   delivery?: WorkspaceMessengerDeliveryDto | null;
   reactions: MessengerReactionCountsByName;

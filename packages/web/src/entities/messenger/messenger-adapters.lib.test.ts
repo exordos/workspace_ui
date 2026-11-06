@@ -45,7 +45,6 @@ const streamDto: WorkspaceMessengerStreamDto = {
   active_unread_count: 3,
   passive_unread_count: 0,
   source_name: "native",
-  source: { kind: "native" },
   invite_only: false,
   announce: false,
   private: false,
@@ -125,7 +124,8 @@ describe("messenger adapters", () => {
       passiveUnreadCount: 0,
       notificationMode: "all_messages",
       sourceName: "native",
-      source: { kind: "native" },
+      providerUuid: null,
+      providerIdentity: null,
       isArchived: false,
       color: 0x2563eb,
       directUserUuid: null,
@@ -253,6 +253,21 @@ describe("messenger adapters", () => {
     ).toEqual(expect.objectContaining({ lastMessageUuid: MESSAGE_UUID }));
   });
 
+  it("keeps the flattened provider identity on Zulip streams", () => {
+    const stream = adaptMessengerStream({
+      ...streamDto,
+      source_name: "zulip",
+      provider_uuid: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      provider_identity: "7",
+    });
+    expect(stream).toMatchObject({
+      sourceName: "zulip",
+      providerUuid: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      providerIdentity: "7",
+    });
+    expect(stream).not.toHaveProperty("source");
+  });
+
   it("maps messages to topic conversations and markdown content", () => {
     expect(adaptMessengerMessage(messageDto)).toEqual({
       uuid: MESSAGE_UUID,
@@ -269,7 +284,8 @@ describe("messenger adapters", () => {
       isOwn: true,
       mentioned: undefined,
       sourceName: "native",
-      source: { kind: "native" },
+      providerUuid: null,
+      providerIdentity: null,
       provider: null,
       delivery: null,
       reactions: {
@@ -291,11 +307,8 @@ describe("messenger adapters", () => {
         ...messageDto,
         mentioned: true,
         source_name: "zulip",
-        source: {
-          kind: "zulip",
-          stream_id: 7,
-          message_id: 42,
-        },
+        provider_uuid: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        provider_identity: "42",
         provider: {
           kind: "zulip",
           account_uuid: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
@@ -313,11 +326,8 @@ describe("messenger adapters", () => {
       expect.objectContaining({
         mentioned: true,
         sourceName: "zulip",
-        source: {
-          kind: "zulip",
-          stream_id: 7,
-          message_id: 42,
-        },
+        providerUuid: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        providerIdentity: "42",
         provider: expect.objectContaining({
           delivery_class: "backfill",
           notification_eligible: false,

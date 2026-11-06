@@ -567,7 +567,7 @@ export const RightPanelUserProfile: React.FC<RightPanelUserProfileProps> = ({
                 type="button"
                 onClick={handleOpenAvatarDialog}
                 disabled={profileBusy}
-                className="group relative shrink-0 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                className="group/avatar relative shrink-0 rounded-full focus-visible:outline-none"
                 aria-label={t("settings.editAvatarAria")}
                 data-testid="right-panel-profile-edit-avatar"
               >

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { createRef } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { FormattingToolbar } from "./message-composer-toolbar.ui";
@@ -23,7 +23,7 @@ describe("FormattingToolbar", () => {
     const textStyleGroup = screen.getByTestId("composer-text-style-group");
     expect(textStyleGroup).toHaveClass("gap-0");
     expect(textStyleGroup.querySelectorAll("button.composer-toolbar-btn")).toHaveLength(4);
-    expect(toolbar.querySelectorAll("button.composer-toolbar-btn")).toHaveLength(10);
+    expect(toolbar.querySelectorAll("button.composer-toolbar-btn")).toHaveLength(11);
     for (const button of toolbar.querySelectorAll("button.composer-toolbar-btn")) {
       expect(button).toHaveClass("h-8", "w-8");
     }
@@ -31,6 +31,7 @@ describe("FormattingToolbar", () => {
     expect(separators).toHaveLength(4);
 
     const expectedDimensions = {
+      "insert-time": ["24", "24", "0 0 24 24"],
       "add-link": ["24", "14.769", "0 0 24 14.769"],
       bold: ["10.93", "16.667", "0 0 10.93 16.667"],
       italic: ["15.448", "16.747", "0 0 15.448 16.747"],
@@ -110,5 +111,72 @@ describe("FormattingToolbar", () => {
     fireEvent.click(screen.getByRole("button", { name: "Code" }));
 
     expect(onValueChange).toHaveBeenCalledWith("`message`");
+  });
+  it("marks only the selected text and refuses delimiter collisions", () => {
+    const textarea = document.createElement("textarea");
+    textarea.value = "Public private suffix";
+    textarea.setSelectionRange(7, 14);
+    const onValueChange = vi.fn();
+    render(
+      <FormattingToolbar
+        textareaRef={{ current: textarea }}
+        onValueChange={onValueChange}
+        secretFragmentsEnabled
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Encrypted spoiler" }));
+    expect(onValueChange).toHaveBeenLastCalledWith("Public :::private::: suffix");
+    textarea.value = "private::: suffix";
+    textarea.setSelectionRange(0, textarea.value.length);
+    fireEvent.click(screen.getByRole("button", { name: "Encrypted spoiler" }));
+    expect(onValueChange).toHaveBeenLastCalledWith("private::: suffix");
+  });
+
+  it.each([
+    { value: "", cursor: 0 },
+    { value: "Public suffix", cursor: 7 },
+  ])(
+    "inserts an empty encrypted block at cursor $cursor in '$value'",
+    async ({ value, cursor }) => {
+      const textareaRef = createRef<HTMLTextAreaElement>();
+      const onValueChange = vi.fn((next: string) => {
+        if (textareaRef.current) textareaRef.current.value = next;
+      });
+      render(
+        <>
+          <textarea ref={textareaRef} defaultValue={value} />
+          <FormattingToolbar
+            textareaRef={textareaRef}
+            onValueChange={onValueChange}
+            secretFragmentsEnabled
+          />
+        </>,
+      );
+      const textarea = textareaRef.current!;
+      textarea.setSelectionRange(cursor, cursor);
+      fireEvent.click(screen.getByRole("button", { name: "Encrypted spoiler" }));
+      expect(onValueChange).toHaveBeenCalledWith(
+        `${value.slice(0, cursor)}::::::${value.slice(cursor)}`,
+      );
+      await waitFor(() => {
+        expect(textarea).toHaveFocus();
+        expect(textarea.selectionStart).toBe(cursor + ":::".length);
+        expect(textarea.selectionEnd).toBe(textarea.selectionStart);
+      });
+    },
+  );
+
+  it("explains the server draft risk when the encrypted spoiler button receives focus", () => {
+    render(
+      <FormattingToolbar
+        textareaRef={createRef<HTMLTextAreaElement>()}
+        onValueChange={vi.fn()}
+        secretFragmentsEnabled
+      />,
+    );
+    fireEvent.focus(screen.getByRole("button", { name: "Encrypted spoiler" }));
+    expect(screen.getByRole("tooltip")).toHaveTextContent(
+      "Enable before entering secret text — otherwise the text may be saved in a server draft.",
+    );
   });
 });

@@ -1819,3 +1819,18 @@ describe("workspace message intentional vertical gaps", () => {
     expect(result.segments.some((segment) => segment.kind === "html")).toBe(false);
   });
 });
+
+describe("message permalink rendering", () => {
+  it.each(["https://workspace.example", "https://untrusted.example"])(
+    "preserves the origin of pasted URLs from %s",
+    (origin) => {
+      const href = `${origin}/org/org-a/project/project-a/message/11111111-1111-4111-8111-111111111111`;
+      for (const markdown of [href, `[message](${href})`]) {
+        const result = renderWorkspaceMessageBody(parseWorkspaceMessageBody(markdown));
+        expect(result.html).toContain(`href="${href}"`);
+        expect(result.html).toContain('target="_blank"');
+        expect(result.html).not.toContain('data-workspace-message-link="true"');
+      }
+    },
+  );
+});

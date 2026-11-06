@@ -166,7 +166,7 @@ describe("LayoutMainWorkspace", () => {
     expect(screen.getByRole("heading", { name: "App version" })).toBeInTheDocument();
   });
 
-  it("uses flush rows for encrypted chat screens and restores ordinary panel padding", () => {
+  it("uses flush rows for encrypted screens and ordinary channel info", () => {
     const streamUuid = "11111111-1111-4111-8111-111111111111";
     const stream: MessengerStream = {
       uuid: streamUuid,
@@ -179,7 +179,6 @@ describe("LayoutMainWorkspace", () => {
       description: "",
       unreadCount: 0,
       sourceName: "native",
-      source: { kind: "native" },
       audience: "channel",
       isPrivate: true,
       encryption: true,
@@ -229,6 +228,9 @@ describe("LayoutMainWorkspace", () => {
       }),
     );
     expect(screen.getByTestId("right-drawer")).toHaveAttribute("data-content-flush", "false");
+
+    rerender(<LayoutMainWorkspace {...props} />);
+    expect(screen.getByTestId("right-drawer")).toHaveAttribute("data-content-flush", "true");
 
     act(() => useMessengerStore.setState({ streamsById: { [streamUuid]: stream } }));
     rerender(

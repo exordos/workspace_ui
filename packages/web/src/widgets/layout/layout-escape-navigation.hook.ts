@@ -1,11 +1,11 @@
 import { useEffect } from "react";
+import { isHotkeyBlockedByModal } from "~/shared/lib/hotkeys";
 import {
   parseWorkspaceMessengerRoute,
   workspaceInboxRoute,
 } from "~/shared/lib/workspace-messenger-route.lib";
 import {
   isInteractiveElementFocused,
-  isModalShortcutContextOpen,
   resolveLayoutEscapeKeyDown,
 } from "./layout-escape-navigation.lib";
 import type { NavigateFunction } from "react-router-dom";
@@ -21,12 +21,14 @@ export function useLayoutEscapeNavigation(options: {
     if (!enabled) return;
 
     const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      // Let an open dialog handle Escape before navigating away from the chat.
       const action = resolveLayoutEscapeKeyDown({
         key: event.key,
         defaultPrevented: event.defaultPrevented,
         pathname,
         interactiveElementFocused: isInteractiveElementFocused(),
-        modalOpen: isModalShortcutContextOpen(),
+        modalOpen: isHotkeyBlockedByModal(),
       });
       if (action !== "navigate-inbox") return;
 

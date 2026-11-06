@@ -23,6 +23,8 @@ export const PanelMenuRow: React.FC<PanelMenuRowProps> = ({
   id,
   testId,
   ariaLabel,
+  role,
+  "aria-checked": ariaChecked,
   "aria-controls": ariaControls,
   "aria-expanded": ariaExpanded,
 }) => {
@@ -35,6 +37,8 @@ export const PanelMenuRow: React.FC<PanelMenuRowProps> = ({
       id={id}
       data-testid={testId}
       aria-label={ariaLabel}
+      role={role}
+      aria-checked={ariaChecked}
       aria-controls={ariaControls}
       aria-expanded={ariaExpanded}
       className={`flex items-center justify-between gap-2 text-left transition-colors hover:bg-sidebar-hover disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-transparent ${

@@ -63,7 +63,6 @@ function createStreamDto(
     active_unread_count: 2,
     passive_unread_count: 0,
     source_name: "native",
-    source: { kind: "native" },
     invite_only: false,
     announce: false,
     private: false,

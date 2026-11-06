@@ -7,8 +7,8 @@ import {
 } from "~/features/manage-folders/folder-colors";
 import { useSettingsStore } from "~/features/settings/settings.model";
 import * as messengerFolders from "~/shared/api/messenger-folders.api";
+import { HotkeysProvider } from "~/shared/lib/hotkeys";
 import { applyTheme } from "~/shared/lib/themes/engine";
-import { FOLDER_QUICK_LIST_SHORTCUT } from "./folder-rail.lib";
 import { FolderRail } from "./folder-rail.ui";
 
 const toastErrorMock = vi.hoisted(() => vi.fn());
@@ -32,26 +32,6 @@ vi.mock("~/shared/lib/toast/toast", () => ({
     dismiss: vi.fn(),
   },
 }));
-
-vi.mock("~/shared/config/constants", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("~/shared/config/constants")>();
-  return { ...actual, KEYBOARD_SHORTCUTS_ENABLED: true };
-});
-
-function dispatchShortcut(combo: string): void {
-  const isMac = /Mac|iPhone|iPad|iPod/.test(navigator.userAgent);
-  const parts = combo.toLowerCase().split("+");
-  window.dispatchEvent(
-    new KeyboardEvent("keydown", {
-      key: parts.find((part) => !["mod", "alt", "shift"].includes(part)) ?? "",
-      ...(parts.includes("mod") ? (isMac ? { metaKey: true } : { ctrlKey: true }) : {}),
-      shiftKey: parts.includes("shift"),
-      altKey: parts.includes("alt"),
-      bubbles: true,
-      cancelable: true,
-    }),
-  );
-}
 
 describe("FolderRail visual parity", () => {
   const originalResizeObserver = globalThis.ResizeObserver;
@@ -887,7 +867,14 @@ describe("FolderRail visual parity", () => {
     ];
 
     render(
-      <FolderRail folders={manyFolders} selectedFolderId="all" onSelectFolder={onSelectFolder} />,
+      <HotkeysProvider
+        overrides={{ "navigation.folderList": "Alt+Shift+F" }}
+        enabled
+        onOverridesChange={() => true}
+        onEnabledChange={() => true}
+      >
+        <FolderRail folders={manyFolders} selectedFolderId="all" onSelectFolder={onSelectFolder} />
+      </HotkeysProvider>,
     );
 
     await emitFolderRailResize({
@@ -895,7 +882,7 @@ describe("FolderRail visual parity", () => {
       contentScrollHeight: 240,
     });
 
-    dispatchShortcut(FOLDER_QUICK_LIST_SHORTCUT);
+    fireEvent.keyDown(window, { key: "А", code: "KeyF", altKey: true, shiftKey: true });
 
     const searchInput = await screen.findByPlaceholderText("Search folders");
     await waitFor(() => {

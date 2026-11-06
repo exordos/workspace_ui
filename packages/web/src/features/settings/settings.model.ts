@@ -15,13 +15,16 @@ import {
   getWorkspaceSessionStorageScopeFromAuthState,
   type WorkspaceSessionStorageScope,
 } from "~/entities/workspace-auth/workspace-session-storage-scope.lib";
+import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { setLocale } from "~/i18n/i18n";
+import { normalizeHotkeyOverrides, type HotkeyOverrides } from "~/shared/lib/hotkeys";
 import { logStoreAction } from "~/shared/lib/logger";
 import { resolveAuthIdleTimeout } from "./auth-idle-timeout.lib";
 import type {
   AppLanguage,
   AppSettings,
   AuthIdleTimeout,
+  ChatClickAction,
   ChatListDensity,
   FolderRailLayout,
   NotificationSound,
@@ -62,12 +65,16 @@ function createDefaultSettings(): AppSettings {
     prioritizeUnmutedUnreadChannels: false,
     messengerSidebarSortMode: "last_message",
     notificationSound: "default",
+    dockBounceEnabled: true,
     language: resolveBrowserLanguage(),
     folderRailLayout: "vertical",
     showSystemFolders: true,
     chatListDensity: "standard",
+    chatClickAction: "general",
     composerToolbarExpanded: false,
     authIdleTimeout: "3d",
+    hotkeysEnabled: true,
+    hotkeyOverrides: {},
   };
 }
 
@@ -78,11 +85,15 @@ const FALLBACK_SETTINGS: Omit<AppSettings, "language"> = {
   prioritizeUnmutedUnreadChannels: false,
   messengerSidebarSortMode: "last_message",
   notificationSound: "default",
+  dockBounceEnabled: true,
   folderRailLayout: "horizontal",
   showSystemFolders: true,
   chatListDensity: "standard",
+  chatClickAction: "general",
   composerToolbarExpanded: false,
   authIdleTimeout: "3d",
+  hotkeysEnabled: true,
+  hotkeyOverrides: {},
 };
 
 function resolveFolderRailLayout(value: unknown): FolderRailLayout {
@@ -114,7 +125,7 @@ function resolveChatListDensity(value: unknown): ChatListDensity {
 }
 
 function resolveMessengerSidebarSortMode(value: unknown): MessengerSidebarSortMode {
-  return value === "unread_first" ? "unread_first" : "last_message";
+  return value === "unread_first" || value === "alphabetical" ? value : "last_message";
 }
 
 function readSettingsRaw(key: string, legacyKey: string | null): string | null {
@@ -145,14 +156,21 @@ function loadSettings(
         ? parsed.language
         : resolveBrowserLanguage();
     return {
+      hotkeysEnabled: typeof parsed.hotkeysEnabled === "boolean" ? parsed.hotkeysEnabled : true,
+      hotkeyOverrides: normalizeHotkeyOverrides(parsed.hotkeyOverrides),
       prioritizePersonalUnread,
       prioritizeUnmutedUnreadChannels,
       messengerSidebarSortMode: resolveMessengerSidebarSortMode(parsed.messengerSidebarSortMode),
       notificationSound: resolveNotificationSound(parsed.notificationSound),
+      dockBounceEnabled:
+        typeof parsed.dockBounceEnabled === "boolean"
+          ? parsed.dockBounceEnabled
+          : DEFAULT_SETTINGS.dockBounceEnabled,
       language,
       folderRailLayout: resolveFolderRailLayout(parsed.folderRailLayout),
       showSystemFolders: resolveShowSystemFolders(parsed.showSystemFolders),
       chatListDensity: resolveChatListDensity(parsed.chatListDensity),
+      chatClickAction: parsed.chatClickAction === "latestTopic" ? "latestTopic" : "general",
       composerToolbarExpanded: parsed.composerToolbarExpanded === true,
       authIdleTimeout: resolveAuthIdleTimeout(
         parsed.authIdleTimeout,
@@ -167,13 +185,14 @@ function loadSettings(
 function persistSettings(
   settings: AppSettings,
   scope: WorkspaceSessionStorageScope = getCurrentWorkspaceSessionStorageScope(),
-): void {
-  if (typeof window === "undefined") return;
+): boolean {
+  if (typeof window === "undefined") return false;
   try {
     const { key } = getStorageKeysForScope(scope);
     localStorage.setItem(key, JSON.stringify(settings));
+    return true;
   } catch {
-    /* quota exceeded */
+    return false;
   }
 }
 
@@ -182,12 +201,16 @@ interface SettingsState extends AppSettings {
   setPrioritizeUnmutedUnreadChannels: (enabled: boolean) => void;
   setMessengerSidebarSortMode: (sortMode: MessengerSidebarSortMode) => void;
   setNotificationSound: (sound: NotificationSound) => void;
+  setDockBounceEnabled: (enabled: boolean) => void;
   setLanguage: (language: AppLanguage) => void;
   setFolderRailLayout: (layout: FolderRailLayout) => void;
   setShowSystemFolders: (enabled: boolean) => void;
   setChatListDensity: (density: ChatListDensity) => void;
+  setChatClickAction: (action: ChatClickAction) => void;
   setComposerToolbarExpanded: (expanded: boolean) => void;
   setAuthIdleTimeout: (timeout: AuthIdleTimeout) => void;
+  setHotkeysEnabled: (enabled: boolean) => boolean;
+  setHotkeyOverrides: (overrides: HotkeyOverrides) => boolean;
   resetToDefaults: () => void;
 }
 
@@ -218,6 +241,12 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     logStoreAction("settings", "setNotificationSound", { sound });
     set({ notificationSound: sound });
     persistSettings({ ...get(), notificationSound: sound });
+  },
+
+  setDockBounceEnabled(dockBounceEnabled) {
+    logStoreAction("settings", "setDockBounceEnabled", { dockBounceEnabled });
+    set({ dockBounceEnabled });
+    persistSettings({ ...get(), dockBounceEnabled });
   },
 
   setLanguage(language) {
@@ -251,10 +280,38 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     persistSettings({ ...get(), composerToolbarExpanded });
   },
 
+  setChatClickAction(chatClickAction) {
+    logStoreAction("settings", "setChatClickAction", { chatClickAction });
+    set({ chatClickAction });
+    persistSettings({ ...get(), chatClickAction });
+  },
+
   setAuthIdleTimeout(authIdleTimeout) {
     logStoreAction("settings", "setAuthIdleTimeout", { authIdleTimeout });
     set({ authIdleTimeout });
     persistSettings({ ...get(), authIdleTimeout });
+  },
+
+  setHotkeysEnabled(hotkeysEnabled) {
+    // Save first so the screen does not show a change that was not stored.
+    if (!persistSettings({ ...get(), hotkeysEnabled })) return false;
+    set({ hotkeysEnabled });
+    return true;
+  },
+
+  setHotkeyOverrides(value) {
+    const hotkeyOverrides = normalizeHotkeyOverrides(value);
+    // Reject the whole change if any entry was removed or changed by validation.
+    const entries = Object.entries(value);
+    if (
+      entries.length !== Object.keys(hotkeyOverrides).length ||
+      entries.some(([key, binding]) => hotkeyOverrides[key as keyof HotkeyOverrides] !== binding)
+    ) {
+      return false;
+    }
+    if (!persistSettings({ ...get(), hotkeyOverrides })) return false;
+    set({ hotkeyOverrides });
+    return true;
   },
 
   resetToDefaults() {
@@ -265,6 +322,18 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     setLocale(defaults.language);
   },
 }));
+
+export function getDockBounceEnabledForOwner(ownerKey: string): boolean {
+  if (getCurrentWorkspaceSessionStorageScope().ownerKey === ownerKey) {
+    return useSettingsStore.getState().dockBounceEnabled;
+  }
+
+  const session = useWorkspaceAuthStore
+    .getState()
+    .sessions.find((candidate) => workspaceRuntimeOwnerKey(candidate) === ownerKey);
+  return loadSettings({ ownerKey, legacyInstanceId: session?.instanceId ?? null })
+    .dockBounceEnabled;
+}
 
 if (typeof window !== "undefined") {
   let previousOwnerKey = getCurrentWorkspaceSessionStorageScope().ownerKey;

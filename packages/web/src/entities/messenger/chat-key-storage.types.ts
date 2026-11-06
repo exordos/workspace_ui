@@ -61,7 +61,7 @@ export interface StagedChatCreation extends StoredChatKey {
   // Rotation retries reuse both announcement UUIDs and never overwrite an old secret.
   readonly rotation?: {
     readonly streamUuid: string;
-    readonly previousKeyUuid: string;
+    readonly previousKeyUuid: string | null;
     readonly topicUuid: string;
   };
 }
@@ -90,6 +90,12 @@ export interface ChatKeyStorage {
     options?: ChatKeyStorageWriteOptions,
   ): Promise<boolean>;
   readChatKey(address: ChatKeyStorageAddress): Promise<StoredChatKey | null>;
+  readChatKeySnapshots(addresses: readonly ChatKeyStorageAddress[]): Promise<
+    readonly {
+      readonly key: StoredChatKey | null;
+      readonly deletionRevision: number;
+    }[]
+  >;
   readChatKeyDeletionRevision(address: ChatKeyStorageAddress): Promise<number>;
   listChatKeys(
     address: Omit<ChatKeyStorageAddress, "keyUuid">,

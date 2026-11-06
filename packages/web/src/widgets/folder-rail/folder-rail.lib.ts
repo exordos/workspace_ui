@@ -2,9 +2,6 @@ import { buildFolderItemVisualState } from "./folder-rail-visual.lib";
 import type { FolderRailFolder } from "./folder-rail.types";
 import type { CSSProperties, KeyboardEvent } from "react";
 
-/** Global shortcut to open the folder quick-list. */
-export const FOLDER_QUICK_LIST_SHORTCUT = "mod+shift+f";
-
 /** Folder plus index — preserves order in derived computations. */
 export interface IndexedFolderEntry {
   folder: FolderRailFolder;

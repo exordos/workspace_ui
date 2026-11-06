@@ -39,6 +39,8 @@ User references use `[Name](urn:user:UUID)`. The exact Markdown title `"silent"`
 
 Quote and forward content enable the same user profile links when the enclosing message exposes its UUID profile callback, including nested snapshots. Without that callback they remain text. Opening a user profile does not activate the quote's message navigation.
 
+Global message times use the bare URN `urn:time:2026-10-13T10:02:00Z` as an explicit Markdown extension; like every other Workspace URN, it carries no surrounding delimiters. The composer clock action opens the shared DateTimePicker and inserts UTC ISO 8601 (`Z`) at the current selection. Reading also accepts ISO values with an explicit numeric offset; zone-less dates and invalid calendar values stay literal. Rendering, previews and compact summaries display the instant in the reader's local time zone and application locale. Code literals and escaped syntax stay literal. The original Markdown retains the instant through editing, quoting and forwarding. The time chip's tooltip describes the reader's zone for that date, including its daylight-saving offset. [Interactive example](../packages/web/src/widgets/message-composer/message-composer-time.stories.tsx).
+
 ## Backend contracts
 
 A topic lookup can return a different canonical UUID and stream after a rename,
@@ -66,6 +68,16 @@ GitHub fallback (requires repository access):
 - [Realtime integration](https://github.com/exordos/workspace_backend/blob/master/docs/en/workspace_ui_realtime_integration.md)
 
 These branch links can move. For a release or a cross-repository change, record the backend revision actually inspected. A missing local file or failed network request is not evidence that a backend capability is absent.
+
+## Unread counter presentation
+
+Unread counts above 1000 display as whole thousands rounded down with a plus sign: 1001–1999 as `1k+`, 2000–2999 as `2k+`, and so on in count badges, Inbox rows and stream totals, the unread message divider, and the browser window title. The scroll-to-bottom button uses the same formatted bucket in its localized accessible name. Values of 1000 or less display as received. Backend-bounded category counts can be approximate even below this display threshold. The shared formatter changes presentation only: API adapters, numeric store/cache values, aggregate calculations, badge visibility and notification/read behavior retain their existing contracts. Non-unread activity counts, including drafts and starred messages, stay exact. Topic and stream badge selection still prefers active unread and otherwise shows passive unread in gray.
+
+See the [badge threshold story](../packages/web/src/shared/ui/badge/badge.stories.tsx) for 999, 1000, 1001, 1999, 2000 and larger aggregates in the application themes and locales.
+
+## Keyboard shortcuts
+
+`shared/lib/hotkeys` owns shortcut policy, recording and app registration through TanStack Hotkeys. Main-keyboard letter, digit and punctuation bindings are stored and displayed using US QWERTY labels. Recording derives these labels from `KeyboardEvent.code`; `useAppHotkey` converts them to TanStack physical bindings (for example `Mod+B` becomes `Mod+[KeyB]`). Keypad and international positions retain explicit physical codes so recording preserves their identity. Matching therefore follows key positions across keyboard layouts. Conflict checks compare the same physical bindings on Windows and macOS, including aliases written as shifted symbols. Existing input, modal, composition, repeat and AltGraph guards still apply.
 
 ## Verification
 

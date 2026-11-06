@@ -2,6 +2,7 @@ import DOMPurify from "dompurify";
 
 export const WORKSPACE_MESSAGE_ALLOWED_TAGS = [
   "p",
+  "time",
   "div",
   "span",
   "br",
@@ -34,12 +35,15 @@ export const WORKSPACE_MESSAGE_ALLOWED_TAGS = [
 
 export const WORKSPACE_MESSAGE_ALLOWED_ATTR = [
   "href",
+  "datetime",
   "title",
   "target",
   "rel",
   "start",
   "class",
   "type",
+  "data-workspace-secret-urn",
+  "data-workspace-secret-fallback",
   "data-workspace-mention",
   "data-workspace-user-uuid",
   "data-workspace-message-link",

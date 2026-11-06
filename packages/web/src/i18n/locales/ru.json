@@ -1,4 +1,28 @@
 {
+  "datePicker": {
+    "label": "Дата",
+    "today": "Сегодня",
+    "previousMonth": "Предыдущий месяц",
+    "nextMonth": "Следующий месяц"
+  },
+  "timePicker": {
+    "label": "Время",
+    "hours": "Часы",
+    "minutes": "Минуты",
+    "seconds": "Секунды",
+    "hoursShort": "ч.",
+    "minutesShort": "м.",
+    "secondsShort": "с.",
+    "increase": "Увеличить: {{unit}}",
+    "decrease": "Уменьшить: {{unit}}"
+  },
+  "dateTimePicker": {
+    "label": "Дата и время"
+  },
+  "pickerExamples": {
+    "empty": "Значение не выбрано",
+    "selected": "Выбрано: {{value}}"
+  },
   "app": {
     "noInstance": "Нет выбранного инстанса Workspace",
     "networkError": "Сетевая ошибка",
@@ -633,6 +657,7 @@
     "loadError": "Не удалось обновить черновики"
   },
   "message": {
+    "globalTimeHint": "Каждый видит это в своём часовом поясе. Ваш часовой пояс для этой даты: {{zone}}.",
     "sendRequiresStreamOrTo": "Нужен канал (stream) или получатели (to) для отправки",
     "fileUploadUnsupported": "Загрузка файлов в старом пути чата больше недоступна.",
     "views": "Просмотры",
@@ -677,6 +702,9 @@
     "unpin": "Открепить",
     "copy": "Копировать текст",
     "copyImage": "Копировать изображение",
+    "copyMessageLink": "Скопировать ссылку",
+    "messageLinkCopied": "Ссылка на сообщение скопирована",
+    "messageLinkUnavailable": "Ссылка на сообщение недоступна",
     "copyLink": "Копировать ссылку",
     "openInChat": "Открыть в чате",
     "joinCall": "Присоединиться к звонку",
@@ -972,10 +1000,95 @@
     "daysAgo_many": "{{count}} дней назад",
     "lastSeen": "был(а) {{time}}"
   },
+  "hotkeys": {
+    "title": "Горячие клавиши",
+    "search": "Поиск сочетаний",
+    "resetAll": "Сбросить все",
+    "edit": "Изменить",
+    "disable": "Отключить",
+    "reset": "Сбросить",
+    "disabled": "Отключено",
+    "record": "Нажмите сочетание клавиш. Escape отменяет запись.",
+    "empty": "Сочетания не найдены",
+    "enabled": "Включить горячие клавиши",
+    "invalid": "Недопустимое сочетание",
+    "reserved": "Это сочетание зарезервировано",
+    "conflict": "Это сочетание уже используется",
+    "storageError": "Не удалось сохранить настройки",
+    "navigation": "Навигация",
+    "interface": "Интерфейс",
+    "composer": "Редактор",
+    "back": "Назад",
+    "forward": "Вперёд",
+    "messenger": "Мессенджер",
+    "calendar": "Календарь",
+    "mail": "Почта",
+    "calls": "Звонки",
+    "activity": "Активность",
+    "previousChat": "Предыдущий чат",
+    "nextChat": "Следующий чат",
+    "folderList": "Список папок",
+    "theme": "Сменить тему",
+    "help": "Справка",
+    "sidebar": "Боковая панель",
+    "infoPanel": "Информация о чате",
+    "editLastMessage": "Редактировать последнее сообщение",
+    "bold": "Жирный",
+    "italic": "Курсив",
+    "strike": "Зачёркнутый",
+    "code": "Код",
+    "actions": {
+      "navigation": {
+        "back": "Назад",
+        "forward": "Вперёд",
+        "messenger": "Мессенджер",
+        "calendar": "Календарь",
+        "mail": "Почта",
+        "calls": "Звонки",
+        "activity": "Активность",
+        "folderList": "Список папок"
+      },
+      "interface": {
+        "theme": "Сменить тему",
+        "help": "Справка",
+        "sidebar": "Боковая панель",
+        "infoPanel": "Информация о чате",
+        "quoteMessage": "Цитировать сообщение"
+      },
+      "composer": {
+        "editLastMessage": "Редактировать последнее сообщение",
+        "bold": "Жирный",
+        "italic": "Курсив",
+        "strike": "Зачёркнутый",
+        "code": "Код"
+      }
+    },
+    "fixedHelp": "Escape: закрыть или отменить · Tab: переход по элементам · Enter: отправить или перенести строку · Стрелки: навигация по меню · Копирование, вставка и отмена используют системные сочетания",
+    "fixedTitle": "Фиксированные сочетания",
+    "fixed": {
+      "cancel": "Закрыть или отменить",
+      "focus": "Переход по элементам (Shift+Tab — назад)",
+      "send": "Отправка или перенос строки согласно настройке отправки",
+      "editing": "Стандартные операции редактирования, например копирование",
+      "focusZones": "Переход между областями фокуса"
+    },
+    "save": "Сохранить",
+    "cancel": "Отмена",
+    "recordInput": "Нажмите сочетание",
+    "quoteHint": "Выделите текст, перейдите к сообщению клавишей Tab или наведите на него курсор.",
+    "localDescription": "Настройки сохраняются на этом устройстве. Сочетания редактора действуют при вводе сообщения.",
+    "editLastMessageHint": "Когда поле пустое и редактирование сообщения не активно"
+  },
   "settings": {
     "personalInfo": "Личная информация",
     "appVersion": "Версия приложения",
     "notificationSound": "Звуки уведомлений",
+    "chatClickAction": "Клик по чату",
+    "chatClickActionGeneral": "Общий чат и топики",
+    "chatClickActionLatestTopic": "Последний топик",
+    "chatClickActionHint": "Что открывать при клике на чат",
+    "chatClickActionAvatarHint": "Клик по аватару откроет общий чат",
+    "dockBounce": "Прыжок значка в Dock",
     "language": "Язык",
     "authIdleTimeout": "Автовыход",
     "authIdleTimeoutHint": "После неактивности",
@@ -1152,6 +1265,7 @@
     "messengerSidebarSortMode": "Порядок стримов и топиков",
     "messengerSidebarSortModeLastMessage": "По последнему сообщению",
     "messengerSidebarSortModeUnreadFirst": "Сначала непрочитанные",
+    "messengerSidebarSortModeAlphabetical": "По имени",
     "folderLayout": "Отображение папок",
     "folderLayoutVertical": "Вертикальная панель",
     "folderLayoutHorizontal": "Горизонтальные вкладки",
@@ -1396,6 +1510,8 @@
     "retryLoad": "Повторить"
   },
   "composer": {
+    "insertTime": "Вставить дату и время",
+    "insertTimeConfirm": "Вставить",
     "bold": "Жирный",
     "italic": "Курсив",
     "strikethrough": "Зачёркнутый",
@@ -1439,7 +1555,12 @@
     "paste": "Вставить",
     "selectAll": "Выбрать всё",
     "messageTooLong": "Сообщение слишком длинное (не более 40 000 символов).",
-    "mentionOutsideChannel": "не в канале"
+    "mentionOutsideChannel": "не в канале",
+    "secretSpoiler": "Шифрованный спойлер",
+    "secretSpoilerHint": "Включите до ввода секретного текста — иначе текст может сохраниться в серверном черновике.",
+    "createSecretKey": "Создать новый ключ",
+    "secretDraftMemoryOnly": "Этот черновик хранится только в памяти до отправки.",
+    "invalidSecret": "Завершите или удалите шифрованный спойлер перед отправкой."
   },
   "attachmentCard": {
     "unnamedFile": "Файл",
@@ -1471,6 +1592,7 @@
     "hideTopBanner": "Скрыть плашку",
     "addFolder": "Добавить папку",
     "scrollToBottom": "Прокрутить вниз",
+    "scrollToBottomWithManyUnread": "Прокрутить вниз, {{countLabel}} непрочитанных сообщений",
     "scrollToBottomWithUnread_one": "Прокрутить вниз, {{count}} непрочитанное сообщение",
     "scrollToBottomWithUnread_few": "Прокрутить вниз, {{count}} непрочитанных сообщения",
     "scrollToBottomWithUnread_many": "Прокрутить вниз, {{count}} непрочитанных сообщений",
@@ -1629,11 +1751,40 @@
     "loadedHistoryHint": "Показаны данные из загруженной истории.",
     "incomingTitle": "Входящие запросы ({{count}})",
     "grantedTitle": "Выданные ключи ({{count}})",
-    "rejectedTitle": "Отклонённые запросы ({{count}})"
+    "rejectedTitle": "Отклонённые запросы ({{count}})",
+    "secretFragment": "Зашифрованный фрагмент",
+    "requestSecretKey": "Запросить ключ",
+    "showSecretFragment": "Показать спойлер",
+    "hideSecretFragment": "Скрыть спойлер",
+    "spoilerVariants": {
+      "title": "Шифрованный спойлер · варианты",
+      "description": "Фон обычного спойлера и индикатор шифрования. Нажмите на фрагмент, чтобы раскрыть или скрыть его. Все тексты вымышленные.",
+      "reset": "Скрыть все",
+      "encrypted": "Зашифровано",
+      "sampleSecret": "код встречи 4821",
+      "samplePublic": "Вот код:",
+      "you": "Вы",
+      "inside": "Замок внутри",
+      "insideHint": "Одна компактная плашка, замок всегда виден.",
+      "outside": "Замок рядом",
+      "outsideHint": "Обычный спойлер и небольшой замок сбоку.",
+      "overlay": "Замок по центру",
+      "overlayHint": "Замок поверх размытого текста; после раскрытия — слева.",
+      "label": "Замок и подпись",
+      "labelHint": "Рядом со спойлером явно указано шифрование."
+    }
   },
   "selector": {
     "placeholder": "Выберите значение",
     "noOptions": "Нет доступных вариантов",
     "showOptions": "Показать варианты"
+  },
+  "messageLinkEntry": {
+    "wrongAccount": "Войдите в аккаунт организации и проекта, указанных в ссылке.",
+    "title": "Открыть сообщение в Workspace",
+    "openApp": "Открыть в приложении",
+    "alwaysApp": "Всегда открывать в приложении (30 дней)",
+    "continueWeb": "Продолжить в браузере",
+    "alwaysWeb": "Всегда открывать в браузере"
   }
 }

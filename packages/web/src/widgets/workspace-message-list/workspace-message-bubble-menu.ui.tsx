@@ -1,10 +1,13 @@
 import EmojiPicker, { EmojiStyle, Theme, type EmojiClickData } from "emoji-picker-react";
 import React, { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { isMessengerUuid } from "~/entities/messenger/messenger-ids.lib";
 import { t } from "~/i18n/i18n";
 import { writeImage, writeText } from "~/shared/lib/clipboard";
+import { formatWorkspaceMessageTimesForCopy } from "~/shared/lib/workspace-message-render/workspace-message-marked.lib";
 import { DropdownMenu, type DropdownMenuItem } from "~/shared/ui/dropdown-menu";
 import { Icon } from "~/shared/ui/icon";
+import { ScrollArea } from "~/shared/ui/scroll-area";
 import { subscribeWorkspaceMessageQuickReactionUsage } from "./workspace-message-quick-reaction-history.lib";
 import {
   getWorkspaceMessageQuickReactions,
@@ -168,6 +171,7 @@ export const WorkspaceMessageBubbleMenu = React.memo(function WorkspaceMessageBu
   onEditMessage,
   onRequestDeleteMessage,
   onCopyMessageText,
+  onCopyMessageLink,
   onToggleMessageReaction,
   onLoadWorkspaceFilePreview,
   getSelectedText,
@@ -203,6 +207,19 @@ export const WorkspaceMessageBubbleMenu = React.memo(function WorkspaceMessageBu
 
   const menuItems = useMemo<DropdownMenuItem[]>(() => {
     const items: DropdownMenuItem[] = [];
+    const appendCopyMessageLink = (section: DropdownMenuItem[]) => {
+      if (onCopyMessageLink == null || !isMessengerUuid(message.uuid)) return;
+      section.push({
+        type: "action",
+        key: "copy-message-link",
+        icon: "links_compact",
+        label: t("message.copyMessageLink"),
+        onSelect: () => {
+          void onCopyMessageLink(message.uuid);
+          closeMenu();
+        },
+      });
+    };
     let markdown: string | undefined;
     if (message.payload.kind === "markdown") {
       markdown = message.payload.content;
@@ -219,9 +236,11 @@ export const WorkspaceMessageBubbleMenu = React.memo(function WorkspaceMessageBu
             closeMenu();
           },
         });
+        appendCopyMessageLink(items);
         return items;
       }
     } else {
+      appendCopyMessageLink(items);
       return items;
     }
 
@@ -231,7 +250,7 @@ export const WorkspaceMessageBubbleMenu = React.memo(function WorkspaceMessageBu
         key: "quick-reactions",
         render: () => (
           <div className="flex w-60 max-w-[calc(100vw-2rem)] items-center gap-0.5 border-b border-border-subtle px-3 py-2">
-            <div className="min-w-0 flex-1 overflow-x-auto">
+            <ScrollArea axis="x" scrollbar="hidden" className="flex-1">
               <div className="flex w-max items-center gap-0.5">
                 {quickReactions.map((reaction) => (
                   <button
@@ -249,7 +268,7 @@ export const WorkspaceMessageBubbleMenu = React.memo(function WorkspaceMessageBu
                   </button>
                 ))}
               </div>
-            </div>
+            </ScrollArea>
             <WorkspaceReactionEmojiPicker
               open={emojiPickerOpen}
               onOpenChange={setEmojiPickerOpen}
@@ -352,12 +371,13 @@ export const WorkspaceMessageBubbleMenu = React.memo(function WorkspaceMessageBu
           } else if (selectedText != null) {
             void writeText(selectedText);
           } else if (markdown != null) {
-            void writeText(markdown);
+            void writeText(formatWorkspaceMessageTimesForCopy(markdown));
           }
           closeMenu();
         },
       });
     }
+    appendCopyMessageLink(secondaryActionItems);
     if (onToggleMessageSelection != null) {
       secondaryActionItems.push({
         type: "action",
@@ -413,6 +433,7 @@ export const WorkspaceMessageBubbleMenu = React.memo(function WorkspaceMessageBu
     message.uuid,
     onAddReplyMessage,
     onCopyMessageText,
+    onCopyMessageLink,
     onEditMessage,
     onForwardMessage,
     onLoadWorkspaceFilePreview,

@@ -6,6 +6,7 @@ import {
 } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import { t } from "~/i18n/i18n";
+import { parseWorkspaceSecretDraft } from "~/shared/lib/workspace-secret-draft.lib";
 import { acquireChatCryptoSession } from "./chat-crypto-session.lib";
 import { sendMessengerMessage } from "./messenger-message-actions.lib";
 import {
@@ -14,6 +15,8 @@ import {
   useMessengerOutboxStore,
 } from "./messenger-outbox.model";
 import { runMessengerRuntimeMutation } from "./messenger-runtime-mutation.lib";
+import { buildMessengerSecretMarkdown } from "./messenger-secret-message.lib";
+import type { ChatEncryptedPayload } from "./chat-e2ee.types";
 
 const deliveries = new Map<string, Promise<boolean>>();
 const getRuntimeContext = () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
@@ -64,7 +67,31 @@ export function deliverMessengerOutgoingMessage(
           throw new Error("stale");
         const result = await session.send({
           ...routing,
-          text: outgoing.markdown,
+          text: outgoingEncryption.mode === "fragments" ? "" : outgoing.markdown,
+          ...(outgoingEncryption.mode === "fragments"
+            ? {
+                secretFragments: parseWorkspaceSecretDraft(outgoing.markdown).map(
+                  (fragment, index) => ({
+                    text: fragment.text,
+                    preparedPayload: outgoingEncryption.fragments?.[index],
+                  }),
+                ),
+                buildMarkdown: (payloads: readonly ChatEncryptedPayload[]) => {
+                  const markdown =
+                    outgoingEncryption.preparedMarkdown ??
+                    buildMessengerSecretMarkdown(outgoing.streamUuid, outgoing.markdown, payloads);
+                  useMessengerOutboxStore
+                    .getState()
+                    .retainEncryptedFragments(placementUuid, payloads, markdown);
+                  encryption = {
+                    ...outgoingEncryption,
+                    fragments: payloads,
+                    preparedMarkdown: markdown,
+                  };
+                  return markdown;
+                },
+              }
+            : {}),
           expectedKeyUuid: outgoingEncryption.keyUuid,
           expectedDeviceId: outgoingEncryption.deviceId,
           preparedPayload: outgoingEncryption.payload,

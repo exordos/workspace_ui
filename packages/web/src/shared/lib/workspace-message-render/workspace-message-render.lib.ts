@@ -1,12 +1,22 @@
 import { Marked, type RendererExtension, type RendererThis, type Token, type Tokens } from "marked";
+import { t } from "~/i18n/i18n";
 import { createLogger } from "~/shared/lib/logger";
 import { AUTH_IMAGE_PLACEHOLDER_SRC } from "~/shared/lib/media-display-url.lib";
+import { formatLocalMessageTime, formatMessageTimeZone } from "../workspace-message-time.lib";
+import {
+  buildWorkspaceSecretUrn,
+  isWorkspaceSecretUrn,
+  parseWorkspaceSecretUrn,
+  type WorkspaceSecretUrnReference,
+} from "../workspace-reference-urn.lib";
 import { parseWorkspaceReferenceUrn, parseWorkspaceUrlUrn } from "../workspace-reference-urn.lib";
 import {
   deriveWorkspaceImagePlaceholderLayout,
   deriveWorkspaceMediaPlaceholderLayout,
 } from "./workspace-media-placeholder-layout.lib";
 import {
+  WORKSPACE_TIME_TOKEN_TYPE,
+  type WorkspaceTimeMarkedToken,
   WORKSPACE_BLOCK_SPOILER_TOKEN_TYPE,
   WORKSPACE_EMOJI_TOKEN_TYPE,
   WORKSPACE_FILE_TOKEN_TYPE,
@@ -25,6 +35,7 @@ import {
   type WorkspaceMentionMarkedToken,
   type WorkspaceUnsupportedMediaMarkedToken,
 } from "./workspace-message-marked.lib";
+import { parseWorkspaceMessageBody } from "./workspace-message-parse.lib";
 import { DEFAULT_WORKSPACE_MESSAGE_RENDER_OPTIONS } from "./workspace-message-render-options.lib";
 import { sanitizeWorkspaceMessageHtml } from "./workspace-message-sanitize.lib";
 import type {
@@ -157,7 +168,7 @@ function parseSafeUrlForRoute(href: string): URL | null {
 }
 
 function resolveWorkspaceMessageRouteUuid(href: string): string | null {
-  const url = parseSafeUrlForRoute(href);
+  const url = href.startsWith("/") && !href.startsWith("//") ? parseSafeUrlForRoute(href) : null;
   if (url == null) {
     return null;
   }
@@ -381,6 +392,12 @@ function renderLinkToken(
   labelHtml: string,
   options: WorkspaceMessageRenderOptions,
 ): string {
+  if (isWorkspaceSecretUrn(token.href)) {
+    const label = escapeHtmlText(t("e2ee.secretFragment"));
+    return parseWorkspaceSecretUrn(token.href) == null
+      ? `<span class="text-text-muted">${label}</span>`
+      : `<span class="workspace-message-secret-host" data-workspace-secret-urn="${escapeHtmlText(token.href)}"><span data-workspace-secret-fallback="true">🔒 ${label}</span></span>`;
+  }
   const titleAttribute =
     token.title != null && token.title.trim().length > 0
       ? ` title="${escapeHtmlText(token.title)}"`
@@ -427,6 +444,17 @@ function createWorkspaceRendererExtensions(
   options: WorkspaceMessageRenderOptions,
 ): RendererExtension[] {
   return [
+    {
+      name: WORKSPACE_TIME_TOKEN_TYPE,
+      renderer(token) {
+        const { utc } = token as WorkspaceTimeMarkedToken;
+        if (utc == null) return escapeHtmlText((token as WorkspaceTimeMarkedToken).text);
+        const label = formatLocalMessageTime(utc);
+        const hint = t("message.globalTimeHint", { zone: formatMessageTimeZone(new Date(utc)) });
+        const accessibleLabel = escapeHtmlText(label + ". " + hint);
+        return `<time class="workspace-message-time" datetime="${escapeHtmlText(utc)}" role="button" tabindex="0" aria-haspopup="dialog" title="${escapeHtmlText(hint)}" aria-label="${accessibleLabel}"><span class="workspace-message-time__icon" aria-hidden="true"></span>${escapeHtmlText(label)}</time>`;
+      },
+    },
     {
       name: WORKSPACE_MENTION_TOKEN_TYPE,
       renderer(token) {
@@ -658,4 +686,71 @@ export function renderWorkspaceMessageBody(
     )
     .join("");
   return { html, metadata: segmented.metadata };
+}
+
+/** Collect only actual Markdown links, never code or arbitrary URN-shaped text. */
+export function collectWorkspaceMessageSecretReferences(
+  document: WorkspaceMessageDocument,
+): readonly WorkspaceSecretUrnReference[] {
+  const references: WorkspaceSecretUrnReference[] = [];
+  void new Marked().walkTokens(document.markdownTokens, (token) => {
+    if (token.type !== "link") return;
+    const reference = parseWorkspaceSecretUrn(token.href);
+    if (reference != null) references.push(reference);
+  });
+  return references;
+}
+
+/** Snapshot selection must not serialize text revealed by a nested secret presentation. */
+export function hasWorkspaceMessageSecretContent(
+  document: WorkspaceMessageDocument,
+  depth = 0,
+): boolean {
+  let found = false;
+  void new Marked().walkTokens(document.markdownTokens, (token) => {
+    if (found || token.type !== "link") return;
+    if (isWorkspaceSecretUrn(token.href)) {
+      found = true;
+      return;
+    }
+    const reference = parseWorkspaceReferenceUrn(token.href);
+    if (reference?.kind === "quote") {
+      // A live quote can reveal secrets from another message; keep its source reference.
+      found = true;
+    } else if (reference?.kind === "forward") {
+      found =
+        depth >= 12 ||
+        hasWorkspaceMessageSecretContent(
+          parseWorkspaceMessageBody(reference.snapshotMarkdown),
+          depth + 1,
+        );
+    }
+  });
+  return found;
+}
+
+/** Match only canonical fragment links belonging to the message or its immutable snapshots. */
+export function containsWorkspaceMessageSecretReference(
+  document: WorkspaceMessageDocument,
+  secret: WorkspaceSecretUrnReference,
+  depth = 0,
+): boolean {
+  const expected = buildWorkspaceSecretUrn(secret.streamUuid, secret.keyUuid, secret.envelope);
+  if (expected == null || depth > 12) return false;
+  let found = false;
+  void new Marked().walkTokens(document.markdownTokens, (token) => {
+    if (found || token.type !== "link") return;
+    if (token.href === expected) {
+      found = true;
+      return;
+    }
+    const reference = parseWorkspaceReferenceUrn(token.href);
+    if (reference?.kind === "forward")
+      found = containsWorkspaceMessageSecretReference(
+        parseWorkspaceMessageBody(reference.snapshotMarkdown),
+        secret,
+        depth + 1,
+      );
+  });
+  return found;
 }

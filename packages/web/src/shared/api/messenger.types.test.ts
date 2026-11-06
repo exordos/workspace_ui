@@ -48,7 +48,6 @@ const streamDto = {
   active_unread_count: 3,
   passive_unread_count: 0,
   source_name: "native",
-  source: { kind: "native" },
   invite_only: false,
   announce: false,
   private: false,
@@ -130,7 +129,6 @@ const reactionEventPayloadDto = {
   user_uuid: USER_UUID,
   emoji_name: "thumbs_up",
   source_name: "native",
-  source: { kind: "native" },
 };
 
 const userDto = {
@@ -344,13 +342,8 @@ describe("Workspace messenger DTO guards", () => {
         ...messageDto,
         mentioned: false,
         source_name: "zulip",
-        source: {
-          kind: "zulip",
-          stream_id: 7,
-          server_url: "https://zulip.example.test",
-          topic_name: "Release",
-          message_id: 42,
-        },
+        provider_uuid: USER_UUID,
+        provider_identity: "42",
         provider: {
           ...provider,
           delivery_class: "backfill",
@@ -643,7 +636,7 @@ describe("Workspace messenger DTO guards", () => {
     ).toBe(true);
   });
 
-  it("requires stream notification mode, archive flag, and source shape", () => {
+  it("requires stream notification mode, archive flag, and flat provider fields", () => {
     expect(isWorkspaceMessengerStreamDto({ ...streamDto, notification_mode: undefined })).toBe(
       false,
     );
@@ -663,23 +656,13 @@ describe("Workspace messenger DTO guards", () => {
       isWorkspaceMessengerStreamDto({
         ...streamDto,
         source_name: "zulip",
-        source: { kind: "zulip" },
+        provider_uuid: USER_UUID,
+        provider_identity: "123",
       }),
     ).toBe(true);
-    expect(
-      isWorkspaceMessengerStreamDto({
-        ...streamDto,
-        source_name: "zulip",
-        source: { kind: "zulip", stream_id: 123 },
-      }),
-    ).toBe(true);
-    expect(
-      isWorkspaceMessengerStreamDto({
-        ...streamDto,
-        source_name: "zulip",
-        source: { kind: "zulip", stream_id: "123" },
-      }),
-    ).toBe(false);
+    expect(isWorkspaceMessengerStreamDto({ ...streamDto, source_name: "invalid" })).toBe(false);
+    expect(isWorkspaceMessengerStreamDto({ ...streamDto, provider_uuid: "invalid" })).toBe(false);
+    expect(isWorkspaceMessengerStreamDto({ ...streamDto, provider_identity: 123 })).toBe(false);
   });
 
   it("validates the flat current encryption key UUID returned by the backend", () => {
@@ -781,7 +764,6 @@ describe("Workspace messenger DTO guards", () => {
           old_message_uuid: MESSAGE_UUID,
           old_emoji_name: "eyes",
           old_source_name: "native",
-          old_source: { kind: "native" },
         }),
       ),
     ).toBe(true);

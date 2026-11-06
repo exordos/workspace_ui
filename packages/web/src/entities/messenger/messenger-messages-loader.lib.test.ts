@@ -6,6 +6,7 @@ import {
 } from "~/entities/message/message.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
+import { MessengerApiError } from "~/shared/api/messenger-client";
 import type {
   MessengerCollectionPage,
   MessengerClientOptions,
@@ -738,6 +739,45 @@ describe("messenger conversation messages loader", () => {
       useMessengerOutboxStore.getState().outgoingMessagesByPlacementUuid[outgoing.placementUuid],
     ).toBeUndefined();
   });
+
+  it.each([403, 404])(
+    "returns unavailable without backend response details for HTTP %s",
+    async (status) => {
+      const runtimeContext = createRuntimeContext();
+      prepareStoreOwner(runtimeContext);
+      const failure = new MessengerApiError("private backend response", status, {
+        content: "private",
+      });
+      const result = await resolveMessengerMessageAnchor({
+        runtimeContext,
+        messageUuid: MESSAGE_A,
+        client: { getMessage: () => Promise.reject(failure) },
+      });
+      expect(result).toMatchObject({
+        status: "failed",
+        error: "Message unavailable",
+        reason: status === 403 ? "access-denied" : "not-found",
+      });
+      const anchor = await resolveMessengerMessageAnchor({
+        runtimeContext,
+        messageUuid: MESSAGE_A,
+        client: { getMessage: () => Promise.resolve(createMessageDto()) },
+      });
+      if (anchor.status !== "resolved") throw new Error("Expected resolved anchor");
+      await expect(
+        fetchMessengerMessageWindow({
+          runtimeContext,
+          anchor,
+          targetConversationId: anchor.conversationId,
+          client: { getMessagePagesAroundResolvedMessage: () => Promise.reject(failure) },
+        }),
+      ).resolves.toMatchObject({
+        status: "failed",
+        error: "Message unavailable",
+        reason: status === 403 ? "access-denied" : "not-found",
+      });
+    },
+  );
 
   it("resolves an anchor body without changing its visible window", async () => {
     const runtimeContext = createRuntimeContext();
@@ -1683,6 +1723,63 @@ describe("messenger conversation messages loader", () => {
     expect(
       useWorkspaceMessageStore.getState().conversationWindowsById[conversationId]?.afterPageMarker,
     ).toBe("newer-next");
+  });
+
+  it("includes realtime received while the final newer page is pending", async () => {
+    const runtimeContext = createRuntimeContext();
+    const ownerKey = prepareStoreOwner(runtimeContext);
+    const conversationId = `topic:${STREAM_A}:${TOPIC_A}` as const;
+    replaceConversationWindow({
+      conversationId,
+      messages: [adaptMessengerMessage(createMessageDto())],
+      afterPageMarker: "newer-cursor",
+      mode: "around-anchor",
+      anchorMessageUuid: MESSAGE_A,
+    });
+    const pageRequest = createDeferred<MessengerCollectionPage<WorkspaceMessengerMessageDto>>();
+    const syncReactions = () =>
+      Promise.resolve({
+        status: "applied" as const,
+        ownerKey,
+        messageUuids: [MESSAGE_B],
+        reactions: 0,
+      });
+    const loading = loadMessengerMessageWindowPage({
+      runtimeContext,
+      conversationId,
+      direction: "after",
+      pageMarker: "newer-cursor",
+      expectedRevision:
+        useWorkspaceMessageStore.getState().conversationWindowsById[conversationId]!.revision,
+      client: { getMessagesPage: () => pageRequest.promise },
+      boundaryCache: { readReadBoundaries: () => Promise.resolve([]) },
+      ownReactionSync: { hydrateFromCache: syncReactions, syncOwner: syncReactions },
+    });
+    useWorkspaceMessageStore
+      .getState()
+      .applyLiveCreatedMessage(
+        adaptMessengerMessage(createMessageDto({ uuid: MESSAGE_C, created_at: DATE_LATEST })),
+      );
+    expect(
+      selectWorkspaceMessagesForConversation(
+        useWorkspaceMessageStore.getState(),
+        conversationId,
+      ).map((message) => message.uuid),
+    ).toEqual([MESSAGE_A]);
+
+    pageRequest.resolve({
+      items: [createMessageDto({ uuid: MESSAGE_B, created_at: DATE_LATER })],
+      nextPageMarker: null,
+      pageLimit: 50,
+    });
+
+    await expect(loading).resolves.toMatchObject({ status: "applied", nextPageMarker: null });
+    expect(
+      selectWorkspaceMessagesForConversation(
+        useWorkspaceMessageStore.getState(),
+        conversationId,
+      ).map((message) => message.uuid),
+    ).toEqual([MESSAGE_A, MESSAGE_B, MESSAGE_C]);
   });
 
   it("returns a failed page result when post-fetch reaction sync throws", async () => {

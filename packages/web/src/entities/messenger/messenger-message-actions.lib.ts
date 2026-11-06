@@ -25,6 +25,7 @@ import type {
   WorkspaceMessengerMessageDto,
   WorkspaceMessengerUpdateMessageRequestBody,
 } from "~/shared/api/messenger.types";
+import { hasWorkspaceSecretDraft } from "~/shared/lib/workspace-secret-draft.lib";
 import { decodeChatE2eePayload, encodeChatE2eePayload } from "./chat-e2ee-payload-adapters.lib";
 import { adaptMessengerMessage } from "./messenger-adapters.lib";
 import {
@@ -162,7 +163,12 @@ export type EditMessengerMessageOptions = MessengerMessageActionBaseOptions & {
   messageUuid: MessengerUuid;
   messengerStore?: Pick<typeof useMessengerStore, "getState">;
 } & (
-    | { markdown: string; encryptedPayload?: never; sourceMessage?: never; isCurrent?: never }
+    | {
+        markdown: string;
+        encryptedPayload?: never;
+        sourceMessage?: MessengerMessage;
+        isCurrent?: () => boolean;
+      }
     | {
         markdown?: never;
         encryptedPayload: ChatEncryptedPayload;
@@ -271,6 +277,7 @@ export async function sendMessengerMessage({
   canonicalMessageUuid = crypto.randomUUID(),
   includeStreamConversation = false,
 }: SendMessengerMessageOptions): Promise<MessengerMessageActionResult> {
+  if (hasWorkspaceSecretDraft(markdown)) throw new Error("invalid-secret");
   // Sending creates a markdown payload in the Workspace API and applies it to an active tail window.
   const action = captureMessageAction(runtimeContext, getRuntimeContext, signal);
   if (action.ownerKey == null)
@@ -324,7 +331,8 @@ export interface SendMessengerE2eePayloadOptions extends MessengerMessageActionB
   readonly topicUuid: string;
   readonly payload: ChatE2eePayload;
   // Historical key service messages retain the current stream-generation dispatch guard.
-  readonly expectedCurrentKey?: { readonly keyUuid: string };
+  readonly expectedCurrentKey?: { readonly keyUuid: string | null };
+  readonly markdownContent?: string;
   // A session may explicitly send with its last locally available generation.
   readonly allowHistoricalKey?: boolean;
   // Only rotation may announce a new generation under the captured previous-key guard.
@@ -348,6 +356,7 @@ export async function sendMessengerE2eePayload({
   topicUuid,
   payload,
   expectedCurrentKey,
+  markdownContent,
   allowHistoricalKey = false,
   rotateKey = false,
   isCurrent,
@@ -367,16 +376,17 @@ export async function sendMessengerE2eePayload({
     return stream?.uuid === streamUuid &&
       stream.projectId === runtimeContext.projectId &&
       stream.userUuid === runtimeContext.userUuid &&
-      stream.encryption === true &&
-      !!stream.currentEncryptionKey?.keyUuid
+      (stream.encryption === true || stream.sourceName === "native")
       ? stream
       : undefined;
   };
   const stream = ownedStream();
-  const dispatchKeyUuid = expectedCurrentKey?.keyUuid ?? payload.keyUuid;
+  const dispatchKeyUuid = expectedCurrentKey ? expectedCurrentKey.keyUuid : payload.keyUuid;
+  const streamKeyUuid = () => ownedStream()?.currentEncryptionKey?.keyUuid ?? null;
   if (
     !stream ||
-    stream.currentEncryptionKey?.keyUuid !== dispatchKeyUuid ||
+    (payload.kind === "e2ee" && stream.encryption !== true && markdownContent === undefined) ||
+    streamKeyUuid() !== dispatchKeyUuid ||
     (rotateKey &&
       (payload.kind !== "key_announced" || stream.ownerUuid !== runtimeContext.userUuid)) ||
     (((payload.kind === "e2ee" && !allowHistoricalKey) ||
@@ -391,7 +401,7 @@ export async function sendMessengerE2eePayload({
     if (!stream) return false;
     if (rotateKey && stream.ownerUuid !== runtimeContext.userUuid) return false;
     return (
-      stream.currentEncryptionKey?.keyUuid === dispatchKeyUuid ||
+      streamKeyUuid() === dispatchKeyUuid ||
       (dispatched &&
         rotateKey &&
         payload.kind === "key_announced" &&
@@ -401,10 +411,17 @@ export async function sendMessengerE2eePayload({
   const requestOptions = buildMessengerRequestOptions(runtimeContext, clientOptions, signal);
   const fetchImpl = requestOptions.fetchImpl ?? fetch;
   requestOptions.fetchImpl = (request, init) =>
-    current() && ownedStream()?.currentEncryptionKey?.keyUuid === dispatchKeyUuid
+    current() && streamKeyUuid() === dispatchKeyUuid
       ? fetchImpl(request, init)
       : Promise.reject(new Error("stale"));
-  const wire = encodeChatE2eePayload(payload);
+  if (markdownContent !== undefined && hasWorkspaceSecretDraft(markdownContent))
+    throw new Error("invalid-secret");
+  if (markdownContent !== undefined && (payload.kind !== "e2ee" || stream.encryption === true))
+    throw new Error("invalid-message");
+  const wire =
+    markdownContent === undefined
+      ? encodeChatE2eePayload(payload)
+      : { kind: "markdown" as const, content: markdownContent };
   if (!current()) return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
   // Realtime may report this exact own announcement before its POST response arrives.
   dispatched = true;
@@ -424,8 +441,10 @@ export async function sendMessengerE2eePayload({
     dto.author_uuid !== runtimeContext.userUuid ||
     dto.stream_uuid !== streamUuid ||
     dto.topic_uuid !== topicUuid ||
-    !decodedResponse?.ok ||
-    JSON.stringify(encodeChatE2eePayload(decodedResponse.value)) !== JSON.stringify(wire)
+    (wire.kind === "markdown"
+      ? dto.payload.kind !== "markdown" || dto.payload.content !== wire.content
+      : !decodedResponse?.ok ||
+        JSON.stringify(encodeChatE2eePayload(decodedResponse.value)) !== JSON.stringify(wire))
   )
     throw new Error("invalid-message");
   const message = adaptMessengerMessage(dto);
@@ -461,6 +480,7 @@ export async function editMessengerMessage({
   messengerStore = useMessengerStore,
   isCurrent,
 }: EditMessengerMessageOptions): Promise<MessengerMessageActionResult> {
+  if (markdown != null && hasWorkspaceSecretDraft(markdown)) throw new Error("invalid-secret");
   // Editing refreshes a known message body without changing the active window membership.
   const action = captureMessageAction(runtimeContext, getRuntimeContext, signal);
   if (action.ownerKey == null)
@@ -487,6 +507,20 @@ export async function editMessengerMessage({
   ) {
     throw new Error("A loaded editable message is required");
   }
+  if (
+    isCurrent &&
+    encryptedPayload == null &&
+    (sourceMessage?.payload.kind !== "markdown" ||
+      originalMessage.payload.kind !== "markdown" ||
+      sourceMessage.payload.content !== originalMessage.payload.content ||
+      sourceMessage.uuid !== originalMessage.uuid ||
+      sourceMessage.streamUuid !== originalMessage.streamUuid ||
+      sourceMessage.topicUuid !== originalMessage.topicUuid ||
+      !originalMessage.isOwn ||
+      originalMessage.authorUuid !== runtimeContext.userUuid ||
+      originalMessage.projectId !== runtimeContext.projectId)
+  )
+    throw new Error("invalid-message");
   const current = () => {
     if (action.isStale() || !(isCurrent?.() ?? true)) return false;
     if (encryptedPayload == null) return true;
@@ -499,7 +533,7 @@ export async function editMessengerMessage({
   };
   const sourceCurrent = () => {
     const latest = store.getState().messagesById[messageUuid];
-    return current() && (encryptedPayload == null || latest === originalMessage);
+    return current() && ((encryptedPayload == null && !isCurrent) || latest === originalMessage);
   };
   const catalog = messengerStore.getState();
   const knownStream =
@@ -526,7 +560,7 @@ export async function editMessengerMessage({
       ? { kind: "markdown" as const, content: markdown }
       : encodeChatE2eePayload(encryptedPayload);
   const requestOptions = buildMessengerRequestOptions(runtimeContext, clientOptions, signal);
-  if (encryptedPayload != null) {
+  if (encryptedPayload != null || isCurrent) {
     const fetchImpl = requestOptions.fetchImpl ?? fetch;
     requestOptions.fetchImpl = (request, init) =>
       sourceCurrent() ? fetchImpl(request, init) : Promise.reject(new Error("stale"));
@@ -535,7 +569,7 @@ export async function editMessengerMessage({
     payload,
   });
   if (!current()) return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
-  if (encryptedPayload != null) {
+  if (encryptedPayload != null || isCurrent) {
     const decoded = dto.payload.kind === "e2ee" ? decodeChatE2eePayload(dto.payload) : null;
     if (
       dto.uuid !== messageUuid ||
@@ -544,14 +578,17 @@ export async function editMessengerMessage({
       dto.user_uuid !== runtimeContext.userUuid ||
       dto.stream_uuid !== originalMessage.streamUuid ||
       dto.topic_uuid !== originalMessage.topicUuid ||
-      !decoded?.ok ||
-      JSON.stringify(encodeChatE2eePayload(decoded.value)) !== JSON.stringify(payload)
+      (payload.kind === "markdown"
+        ? dto.payload.kind !== "markdown" || dto.payload.content !== payload.content
+        : !decoded?.ok ||
+          JSON.stringify(encodeChatE2eePayload(decoded.value)) !== JSON.stringify(payload))
     )
       throw new Error("invalid-message");
   }
 
   const message = adaptMessengerMessage(dto);
   store.getState().applyLiveKnownBodyMutation(message, capturedMutationRevision);
+  if (!current()) return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
   const effectiveMessage = store.getState().messagesById[message.uuid] ?? null;
   if (effectiveMessage != null) {
     messengerStore

@@ -97,7 +97,6 @@ function createStream(overrides: Partial<MessengerStream> = {}): MessengerStream
     description: "",
     unreadCount: 4,
     sourceName: "native",
-    source: { kind: "native" },
     audience: "channel",
     isPrivate: false,
     inviteOnly: false,
@@ -346,7 +345,7 @@ describe("SidebarShell", () => {
     expect(useSidebarConfigStore.getState().selectedFolderId).toBe(TEAM_FOLDER_UUID);
   });
 
-  it("keeps the query while switching folders and always passes the All projection", async () => {
+  it("clears the query when switching folders while retaining search across folders", async () => {
     const engineeringItem = createFolder().items[0]!;
     const productItem = {
       ...engineeringItem,
@@ -388,13 +387,22 @@ describe("SidebarShell", () => {
     );
 
     act(() => {
+      folderRailPropsMock.mock.lastCall?.[0]?.onSelectFolder(TEAM_FOLDER_UUID);
+    });
+    expect(useSidebarConfigStore.getState().searchQuery).toBe("product");
+
+    act(() => {
       folderRailPropsMock.mock.lastCall?.[0]?.onSelectFolder(ALL_FOLDER_UUID);
     });
 
     await waitFor(() =>
       expect(workspaceSidebarPropsMock.mock.lastCall?.[0]?.streams).toHaveLength(2),
     );
-    expect(useSidebarConfigStore.getState().searchQuery).toBe("product");
+    expect(useSidebarConfigStore.getState().searchQuery).toBe("");
+    act(() => {
+      folderRailPropsMock.mock.lastCall?.[0]?.onSelectFolder(TEAM_FOLDER_UUID);
+    });
+    expect(useSidebarConfigStore.getState().searchQuery).toBe("");
   });
 
   it("does not build the All projection outside search mode", () => {

@@ -925,7 +925,6 @@ describe("useLayoutWorkspaceRealtime", () => {
           active_unread_count: 1,
           passive_unread_count: 0,
           source_name: "native",
-          source: { kind: "native" },
           invite_only: true,
           announce: false,
           private: true,

@@ -1,5 +1,6 @@
 // @vitest-environment-options {"url":"https://workspace.example.com"}
 import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { Link } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type * as WorkspaceAuthLibModule from "~/entities/workspace-auth/workspace-auth.lib";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
@@ -7,7 +8,7 @@ import {
   readWorkspaceOrganizationHistory,
   recordSuccessfulWorkspaceOrganization,
 } from "~/entities/workspace-auth/workspace-organization-history.lib";
-import { WorkspaceIamAuthError } from "~/shared/api/workspace-iam-auth";
+import { DEFAULT_IAM_TOKEN_URL, WorkspaceIamAuthError } from "~/shared/api/workspace-iam-auth";
 import { renderWithProviders } from "~/test/render";
 import { LoginPage } from "./login-page.ui";
 
@@ -139,6 +140,7 @@ describe("LoginPage", () => {
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
     useWorkspaceAuthStore.setState({ sessions: [], currentAccountId: null, runtimeGeneration: 0 });
     localStorage.removeItem("workspace-auth-sessions");
     localStorage.removeItem("workspace-auth-current-account");
@@ -246,17 +248,90 @@ describe("LoginPage", () => {
     expect(screen.queryByLabelText(/workspace project/i)).not.toBeInTheDocument();
   });
 
-  it("advances from an explicit browser organization without showing the first step", async () => {
-    isElectron.mockReturnValue(false);
-    renderWithProviders(<LoginPage />, {
-      route: "/login?realm=https%3A%2F%2Fchat.example.com",
-    });
+  const messagePath =
+    "/org/chat.example.com/project/project-a/message/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const forgedRealm = "https://untrusted.example.com";
 
-    expect(await screen.findByLabelText(/email or login/i)).toBeInTheDocument();
+  it.each(["/login", messagePath, `/login?redirectTo=${encodeURIComponent(messagePath)}`])(
+    "keeps the discovery, password and OTP destinations trusted on %s with a forged realm",
+    async (path) => {
+      isElectron.mockReturnValue(false);
+      const trustedOrigin = "https://chat.example.com";
+      vi.stubEnv("VITE_DEFAULT_LOGIN_ORGANIZATION_URL", trustedOrigin);
+      const auth = await vi.importActual<typeof WorkspaceAuthLibModule>(
+        "~/entities/workspace-auth/workspace-auth.lib",
+      );
+      prepareWorkspaceProjectLogin.mockImplementation(auth.prepareWorkspaceProjectLogin);
+      const fetch = vi
+        .spyOn(globalThis, "fetch")
+        .mockImplementation(() =>
+          Promise.resolve(Response.json({ error: "invalid_client" }, { status: 401 })),
+        );
+      const route = new URL(path, window.location.origin);
+      route.searchParams.set("realm", forgedRealm);
+      const initialRoute = route.pathname + route.search;
+      route.searchParams.set("realm", "https://another-untrusted.example.com");
+      renderWithProviders(
+        <>
+          <LoginPage />
+          <Link to={route.pathname + route.search}>Change realm</Link>
+        </>,
+        { route: initialRoute },
+      );
+
+      const password = crypto.randomUUID();
+      fireEvent.change(await screen.findByLabelText(/email or login/i), {
+        target: { value: "user@example.com" },
+      });
+      fireEvent.change(screen.getByLabelText(/^password$/i), {
+        target: { value: password },
+      });
+      fireEvent.click(screen.getByRole("button", { name: /next/i }));
+      await screen.findByLabelText(/authentication code/i);
+      fireEvent.click(screen.getByRole("link", { name: "Change realm" }));
+      fireEvent.change(screen.getByLabelText(/authentication code/i), {
+        target: { value: "123456" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: /confirm code/i }));
+      await screen.findByText(/authentication code is invalid/i);
+
+      expect(fetch.mock.calls).toHaveLength(2);
+      for (const [index, [url, init]] of fetch.mock.calls.entries()) {
+        const request = new Request(url, init);
+        expect(request.url).toBe(trustedOrigin + DEFAULT_IAM_TOKEN_URL);
+        expect(request.method).toBe("POST");
+        expect(await request.json()).toMatchObject({
+          login: "user@example.com",
+          password,
+        });
+        expect(request.headers.get("X-OTP")).toBe(index === 0 ? null : "123456");
+      }
+      expect(fetchWorkspaceServerSettingsForOrganization.mock.calls).toEqual([[trustedOrigin]]);
+    },
+  );
+
+  it("requires manual organization selection before credentials for an unknown linked organization", async () => {
+    isElectron.mockReturnValue(false);
+    vi.stubEnv("VITE_DEFAULT_LOGIN_ORGANIZATION_URL", "https://chat.example.com");
+    renderWithProviders(<LoginPage />, {
+      route: `/org/unknown.example.com/project/project-a/message/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa?realm=${forgedRealm}&redirectTo=/inbox`,
+    });
+    const organization = screen.getByLabelText(/^server address$/i);
+    expect(organization).toHaveValue("");
+    expect(fetchWorkspaceServerSettingsForOrganization).not.toHaveBeenCalled();
+    fireEvent.change(organization, { target: { value: "https://chat.example.com" } });
+    fireEvent.click(screen.getByRole("button", { name: /next/i }));
+    expect(await screen.findByText(/organization and project/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/^password$/i)).not.toBeInTheDocument();
+    expect(fetchWorkspaceServerSettingsForOrganization).not.toHaveBeenCalled();
+    expect(prepareWorkspaceProjectLogin).not.toHaveBeenCalled();
+
+    fireEvent.change(organization, { target: { value: "https://unknown.example.com" } });
+    fireEvent.click(screen.getByRole("button", { name: /next/i }));
+    expect(await screen.findByLabelText(/^password$/i)).toBeInTheDocument();
     expect(fetchWorkspaceServerSettingsForOrganization).toHaveBeenCalledWith(
-      "https://chat.example.com",
+      "https://unknown.example.com",
     );
-    expect(screen.queryByLabelText(/^server address$/i)).not.toBeInTheDocument();
   });
 
   it("returns to organization selection from the compact top action", async () => {
@@ -269,10 +344,13 @@ describe("LoginPage", () => {
     expect(screen.queryByRole("button", { name: /^back$/i })).not.toBeInTheDocument();
   });
 
-  it("uses the shared link's server instead of a different default login server", async () => {
+  it.each([
+    "/?realm=https://untrusted.example.com#user/33333333-3333-4333-8333-333333333333",
+    "/login?realm=https://untrusted.example.com&redirectTo=%2F%23user%2F33333333-3333-4333-8333-333333333333",
+  ])("uses the shared profile's web origin on %s", async (route) => {
     isElectron.mockReturnValue(false);
     vi.stubEnv("VITE_DEFAULT_LOGIN_ORGANIZATION_URL", "https://other.example.com");
-    renderWithProviders(<LoginPage />, { route: "/#user/33333333-3333-4333-8333-333333333333" });
+    renderWithProviders(<LoginPage />, { route });
     await screen.findByLabelText(/email or login/i);
     expect(fetchWorkspaceServerSettingsForOrganization).toHaveBeenCalledWith(
       window.location.origin,
@@ -469,6 +547,35 @@ describe("LoginPage", () => {
       "Customer support — Example organization",
     );
     expect(completeWorkspaceProjectLogin).not.toHaveBeenCalled();
+  });
+
+  it("selects the linked project and returns to the message after login", async () => {
+    const target =
+      "/org/chat.example.com/project/project-b/message/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    completeWorkspaceProjectLogin.mockResolvedValue({
+      session: { ...COMPLETED_SESSION, projectId: "project-b" },
+      serverSettings: VALID_SERVER_SETTINGS,
+    });
+    renderWithProviders(<LoginPage />, { route: target });
+    await moveToProjectStep();
+    expect(screen.getByRole("combobox", { name: /^project$/i })).toHaveTextContent("Product");
+    fireEvent.click(screen.getByRole("button", { name: /login/i }));
+    await waitFor(() => expect(navigateSpy).toHaveBeenCalledWith(target, { replace: true }));
+    expect(completeWorkspaceProjectLogin).toHaveBeenCalledWith({
+      preparedLogin: PREPARED_LOGIN,
+      projectId: "project-b",
+    });
+  });
+
+  it("keeps the existing session when credentials do not grant access to the linked project", async () => {
+    renderWithProviders(<LoginPage />, {
+      route:
+        "/org/chat.example.com/project/unavailable/message/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    });
+    await moveToProjectStep();
+    expect(await screen.findByText(/organization and project/i)).toBeInTheDocument();
+    expect(completeWorkspaceProjectLogin).not.toHaveBeenCalled();
+    expect(navigateSpy).not.toHaveBeenCalled();
   });
 
   it("shows a blocking empty state when no projects are available", async () => {

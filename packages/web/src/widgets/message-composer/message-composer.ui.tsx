@@ -19,8 +19,10 @@ import ChatSvg from "~/shared/assets/icons/composer-chat.svg?react";
 import ScheduleSvg from "~/shared/assets/icons/composer-schedule.svg?react";
 import { useViewportKeyboard } from "~/shared/lib/touch";
 import { isWebView } from "~/shared/lib/webview";
+import { hasWorkspaceSecretDraft } from "~/shared/lib/workspace-secret-draft.lib";
 import { DropdownMenu, type DropdownMenuItem } from "~/shared/ui/dropdown-menu";
 import { WidgetErrorBoundary } from "~/shared/ui/error-boundary";
+import { ScrollArea } from "~/shared/ui/scroll-area";
 import {
   MessageComposerAiActionMenuLayer,
   MessageComposerSmartReplyStrip,
@@ -153,6 +155,7 @@ interface MessageComposerToolbarRowProps {
   mode: ComposerMode;
   onModeChange: (nextMode: ComposerMode) => void;
   showPreviewTab: boolean;
+  secretFragmentsEnabled?: boolean;
   isEditing: boolean;
   disabled: boolean;
   uploadSupported: boolean;
@@ -292,6 +295,7 @@ const MessageComposerToolbarRow = React.memo<MessageComposerToolbarRowProps>(
     mode,
     onModeChange,
     showPreviewTab,
+    secretFragmentsEnabled,
     isEditing,
     disabled,
     uploadSupported,
@@ -421,7 +425,12 @@ const MessageComposerToolbarRow = React.memo<MessageComposerToolbarRowProps>(
     if (!expanded) return null;
 
     return (
-      <div data-testid="composer-toolbar-row" className="h-8 flex-shrink-0 overflow-x-auto">
+      <ScrollArea
+        data-testid="composer-toolbar-row"
+        axis="x"
+        scrollbar="hidden"
+        className="h-8 flex-shrink-0"
+      >
         <div
           className={`flex w-max min-w-full items-center gap-2 ${COMPOSER_LEADING_CONTROLS_INSET}`}
         >
@@ -430,6 +439,8 @@ const MessageComposerToolbarRow = React.memo<MessageComposerToolbarRowProps>(
 
           {mode === "write" && (
             <FormattingToolbar
+              disabled={disabled}
+              secretFragmentsEnabled={secretFragmentsEnabled}
               textareaRef={textareaRef}
               onValueChange={onValueChange}
               fileTrigger={fileTrigger}
@@ -441,7 +452,7 @@ const MessageComposerToolbarRow = React.memo<MessageComposerToolbarRowProps>(
             />
           )}
         </div>
-      </div>
+      </ScrollArea>
     );
   },
 );
@@ -477,6 +488,7 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
   onEditLastMessage,
   editSession,
   capabilities,
+  secretFragments,
   resolveMention,
   onLoadWorkspaceFilePreview,
   aiMessagesContext,
@@ -505,6 +517,7 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
   const [savedSnippetContent, setSavedSnippetContent] = useState("");
   const [savedSnippetSaving, setSavedSnippetSaving] = useState(false);
   const [sendInFlight, setSendInFlight] = useState(false);
+  const [createNewSecretKey, setCreateNewSecretKey] = useState(false);
   const editSubmitInFlightRef = useRef(false);
   const [unsupportedActionText, setUnsupportedActionText] = useState<string | null>(null);
   const [aiMenuNotificationText, setAiMenuNotificationText] = useState<string | null>(null);
@@ -573,6 +586,11 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
     setMediaPickerOpen,
     setMode,
   });
+  const secretDraftActive = hasWorkspaceSecretDraft(value);
+  useEffect(() => {
+    setCreateNewSecretKey(false);
+  }, [draftSessionKey, editSession?.messageId, editSession?.sessionKey, secretDraftActive]);
+
   const inlineImageLocalIds = useMemo(
     () => getWorkspaceComposerImageAliasLocalIds(value, imageAliases),
     [imageAliases, value],
@@ -699,13 +717,21 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
   const [sendFocusRequest, setSendFocusRequest] = useState(0);
   const appliedSendFocusRequestRef = useRef(0);
   const prevDisabledRef = useRef(inputDisabled);
+  const suppressEnableFocusRef = useRef(false);
   const prevReplyQuoteIdRef = useRef<number | string | null>(null);
   const prevFocusKeyRef = useRef(focusKey);
   useLayoutEffect(() => {
     const wasDisabled = prevDisabledRef.current;
     prevDisabledRef.current = inputDisabled;
     const sendRequestedFocus = appliedSendFocusRequestRef.current !== sendFocusRequest;
-    if (!inputDisabled && mode === "write" && (wasDisabled || sendRequestedFocus)) {
+    const suppressFocus = suppressEnableFocusRef.current;
+    if (!inputDisabled) suppressEnableFocusRef.current = false;
+    if (
+      !inputDisabled &&
+      !suppressFocus &&
+      mode === "write" &&
+      (wasDisabled || sendRequestedFocus)
+    ) {
       // Focus only after React has committed the enabled textarea to the DOM.
       const textarea = textareaRef.current;
       textarea?.focus();
@@ -770,6 +796,18 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
     onAddFiles: controlledAttachmentsEnabled ? onAddAttachments : undefined,
     existingFileNames: controlledAttachmentFileNames,
   });
+  const activeSendScopeRef = useRef({
+    draftSessionKey,
+    editKey: editSession?.sessionKey,
+    editMessageId: editSession?.messageId,
+  });
+  useLayoutEffect(() => {
+    activeSendScopeRef.current = {
+      draftSessionKey,
+      editKey: editSession?.sessionKey,
+      editMessageId: editSession?.messageId,
+    };
+  }, [draftSessionKey, editSession?.sessionKey, editSession?.messageId]);
   const latestValueRef = useRef(value);
   const latestFilesRef = useRef(files);
   useEffect(() => {
@@ -1118,6 +1156,7 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
   }, [disabled, onSend, scheduledMessages]);
 
   const handleSend = async () => {
+    const sendScope = activeSendScopeRef.current;
     if (isEditing) {
       if (
         disabled ||
@@ -1143,6 +1182,7 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
         // The ref is the synchronous lock that prevents duplicate edit requests.
         // eslint-disable-next-line require-atomic-updates
         editSubmitInFlightRef.current = false;
+        if (activeSendScopeRef.current !== sendScope) suppressEnableFocusRef.current = true;
         setSendInFlight(false);
       }
       return;
@@ -1170,13 +1210,15 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
 
     let sendResult: MessageComposerSendResult | void | Promise<void | MessageComposerSendResult>;
     try {
-      sendResult = onSend?.(bodyToSend, subject, filesToSend);
+      sendResult = hasWorkspaceSecretDraft(bodyToSend)
+        ? onSend?.(bodyToSend, subject, filesToSend, { createNewKey: createNewSecretKey })
+        : onSend?.(bodyToSend, subject, filesToSend);
     } catch {
       setSendInFlight(false);
       return;
     }
 
-    if (optimisticClearOnSend) {
+    if (optimisticClearOnSend && !hasWorkspaceSecretDraft(bodyToSend)) {
       setSendInFlight(false);
       resetMentionState();
       resetWorkspaceReferenceState();
@@ -1201,12 +1243,15 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
     } catch {
       return;
     } finally {
+      if (activeSendScopeRef.current !== sendScope) suppressEnableFocusRef.current = true;
       setSendInFlight(false);
     }
+    if (activeSendScopeRef.current !== sendScope) return;
     resetMentionState();
     resetWorkspaceReferenceState();
     const shouldClearComposer = completedSendResult?.shouldClearComposer !== false;
     if (shouldClearComposer && latestValueRef.current === valueToSend) {
+      setCreateNewSecretKey(false);
       setValue("");
     }
     if (latestFilesRef.current === filesSnapshot) {
@@ -1706,6 +1751,7 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
   ]);
 
   const startCreateSavedSnippet = useCallback(() => {
+    if (hasWorkspaceSecretDraft(value)) return;
     setSavedSnippetCreateMode(true);
     setSavedSnippetTitle(savedSnippetsFilter.trim());
     setSavedSnippetContent(value.trim());
@@ -1718,7 +1764,7 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
   }, []);
 
   const submitCreateSavedSnippet = useCallback(async () => {
-    if (!canSaveSnippet) return;
+    if (!canSaveSnippet || hasWorkspaceSecretDraft(savedSnippetContent)) return;
     setSavedSnippetSaving(true);
     clearSavedSnippetsError();
     try {
@@ -1808,6 +1854,7 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
       mode={mode}
       onModeChange={handleModeChange}
       showPreviewTab={previewSupported}
+      secretFragmentsEnabled={secretFragments != null}
       isEditing={isEditing}
       disabled={disabled}
       uploadSupported={uploadSupported}
@@ -1942,6 +1989,22 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
       {isEditing && preservesWorkspaceReplyContext ? (
         <MessageComposerEditNotice onCancelEdit={onCancelEdit} joinedTop={joinedTop} />
       ) : null}
+      {secretFragments != null && hasWorkspaceSecretDraft(outgoingBody) ? (
+        <label className="flex items-center gap-2 px-4 pb-2 pt-6 text-sm text-text-secondary">
+          <input
+            type="checkbox"
+            aria-label={t("composer.createSecretKey")}
+            aria-describedby={`${textareaId}-secret-note`}
+            checked={createNewSecretKey}
+            disabled={!secretFragments.canRotate || sendInFlight || disabled || isEditing}
+            onChange={(event) => setCreateNewSecretKey(event.target.checked)}
+          />
+          {t("composer.createSecretKey")}
+          <span id={`${textareaId}-secret-note`} className="text-xs">
+            {t("composer.secretDraftMemoryOnly")}
+          </span>
+        </label>
+      ) : null}
       <MessageComposerPreface
         imageAliases={imageAliases}
         inlineImageLocalIds={inlineImageLocalIds}
@@ -1983,7 +2046,7 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
         {!isEditing && (
           <MessageComposerAiActionMenuLayer
             open={aiMenuOpen}
-            draft={value}
+            draft={hasWorkspaceSecretDraft(value) ? "" : value}
             onInsert={setValue}
             onOpenChange={setAiMenuOpen}
             notificationMessage={aiMenuNotificationText ?? undefined}

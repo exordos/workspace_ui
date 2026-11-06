@@ -60,9 +60,9 @@ function useLocalKeyInventory(
         },
       );
     };
-    let scope: RealChatSession["scope"];
+    let scope: RealChatSession["storageScope"];
     try {
-      scope = session.scope;
+      scope = session.storageScope;
     } catch {
       setInventory({ session, streamUuid, keys: [], loading: false, error: true });
       return;
@@ -251,8 +251,8 @@ export function EncryptedChatInfoConnected({
   readonly onCall?: () => void;
   readonly renderAvatar?: EncryptedChatInfoProps["renderAvatar"];
 }) {
-  const { projection, onCopyKey } = useEncryptedChatInfo(streamUuid);
   const crypto = useChatCryptoSession(streamUuid);
+  const { projection, onCopyKey } = useEncryptedChatInfo(streamUuid, crypto.sendKeyUuid ?? null);
   // Scope transient presentation to the exact session so navigation cannot carry a confirmation.
   const [confirmation, setConfirmation] = useState<{
     session: typeof crypto.session;
@@ -266,7 +266,9 @@ export function EncryptedChatInfoConnected({
   );
   const localKeys = localKeyViews(
     currentInventory?.keys ?? [],
-    projection?.stream.currentEncryptionKey?.keyUuid,
+    projection?.stream.encryption === true
+      ? projection.stream.currentEncryptionKey?.keyUuid
+      : (crypto.sendKeyUuid ?? undefined),
     projection?.keyAnnouncementDates ?? {},
   );
   const localActions = useLocalKeyActions(
@@ -284,14 +286,21 @@ export function EncryptedChatInfoConnected({
       </p>
     );
   const { stream, keyCreatedAt, requests: loadedRequests, members, onlineCount } = projection;
-  const currentKey = stream.currentEncryptionKey;
-  const rights = crypto.session?.getRights();
+  const currentKey =
+    stream.encryption === true
+      ? stream.currentEncryptionKey
+      : crypto.sendKeyUuid
+        ? { keyUuid: crypto.sendKeyUuid }
+        : null;
   const outcomes = crypto.session?.getKeyRequestOutcomes() ?? [];
   const requestsFor = (status: "pending" | "granted" | "rejected") => {
-    if (rights?.canGrant !== true && rights?.canReject !== true) return [];
     const ids = new Set(
       outcomes
-        .filter((outcome) => outcome.status === status)
+        .filter(
+          (outcome) =>
+            outcome.status === status &&
+            crypto.session?.canRespondToKeyRequest(outcome.request.uuid) === true,
+        )
         .map((outcome) => outcome.request.uuid),
     );
     return loadedRequests
@@ -334,7 +343,9 @@ export function EncryptedChatInfoConnected({
           !currentInventory.error &&
           !localKeys.some((key) => key.keyUuid === currentKey.keyUuid)
         }
-        canRequestKey={crypto.session?.getRights().canRequest === true}
+        canRequestKey={
+          stream.encryption === true && crypto.session?.getRights().canRequest === true
+        }
         requestedKeyUuid={localActions.requestedKeyUuid}
         onRequestKey={localActions.requestKey}
         onDeleteLocalKey={crypto.session == null ? undefined : localActions.confirmDelete}

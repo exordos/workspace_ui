@@ -262,7 +262,11 @@ export function useWorkspaceMessageAnchorNavigation({
           return;
         }
         if (resolved.status === "failed") {
-          failIntent(resolvingIntent, "network", resolved.error);
+          failIntent(
+            resolvingIntent,
+            resolved.reason ?? "network",
+            resolved.reason ? unavailableError : resolved.error,
+          );
           return;
         }
 
@@ -291,7 +295,12 @@ export function useWorkspaceMessageAnchorNavigation({
           return;
         }
         if (windowResult.status === "failed") {
-          failIntent(resolvingIntent, "network", windowResult.error);
+          const reason = "reason" in windowResult ? windowResult.reason : undefined;
+          failIntent(
+            resolvingIntent,
+            reason ?? "network",
+            reason ? unavailableError : windowResult.error,
+          );
           return;
         }
 
@@ -388,13 +397,17 @@ export function useWorkspaceMessageAnchorNavigation({
 
       const id = ++nextIntentIdRef.current;
       const resolvedConversationId = resolveKnownConversationId(messageUuid);
+      const requiresAccessCheck =
+        source === "retry" ||
+        ((source === "direct-route" || source === "browser-history") && conversationId == null);
+      const mayUseKnownConversation =
+        useKnownConversation ||
+        (resolvedConversationId != null && isMessageInWindow(resolvedConversationId, messageUuid));
       const knownConversationId =
         conversationId ??
-        (useKnownConversation ||
-        (resolvedConversationId != null && isMessageInWindow(resolvedConversationId, messageUuid))
-          ? resolvedConversationId
-          : null);
+        (!requiresAccessCheck && mayUseKnownConversation ? resolvedConversationId : null);
       const currentWindowReady =
+        !requiresAccessCheck &&
         knownConversationId != null &&
         resolvedConversationId === knownConversationId &&
         isMessageInWindow(knownConversationId, messageUuid) &&
@@ -759,7 +772,15 @@ export function useWorkspaceMessageAnchorNavigation({
     if (
       previewOwnerKey == null ||
       previewMessageUuid == null ||
-      state.ownerKey !== previewOwnerKey
+      state.ownerKey !== previewOwnerKey ||
+      visibleNavigationError?.kind === "access-denied" ||
+      visibleNavigationError?.kind === "not-found" ||
+      ((visibleIntent?.source === "direct-route" ||
+        visibleIntent?.source === "retry" ||
+        (visibleIntent?.source === "browser-history" && routeRequest?.conversationId == null)) &&
+        (visibleIntent?.phase === "requested" ||
+          visibleIntent?.phase === "resolving" ||
+          visibleIntent?.phase === "failed"))
     ) {
       return null;
     }

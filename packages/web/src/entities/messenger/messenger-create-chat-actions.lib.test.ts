@@ -69,7 +69,6 @@ function createStreamDto(
     active_unread_count: 0,
     passive_unread_count: 0,
     source_name: "native",
-    source: { kind: "native" },
     invite_only: false,
     announce: false,
     private: false,
@@ -353,7 +352,6 @@ describe("messenger create chat actions", () => {
         name: "Product",
         description: "Roadmap",
         source_name: "native",
-        source: { kind: "native" },
         invite_only: true,
         announce: false,
       },
@@ -393,7 +391,6 @@ describe("messenger create chat actions", () => {
       name: "Direct",
       description: "Private workspace",
       source_name: "native",
-      source: { kind: "native" },
       direct_user_uuid: USER_B,
     });
     expect(useMessengerStore.getState().streamsById[STREAM_A]).toEqual(

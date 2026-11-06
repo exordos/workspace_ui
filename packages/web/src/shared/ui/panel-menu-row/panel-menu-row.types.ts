@@ -17,6 +17,8 @@ export interface PanelMenuRowProps {
   id?: string;
   testId?: string;
   ariaLabel?: string;
+  role?: "switch";
+  "aria-checked"?: boolean;
   "aria-controls"?: string;
   "aria-expanded"?: boolean;
 }

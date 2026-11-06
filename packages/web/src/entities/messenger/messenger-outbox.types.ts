@@ -1,7 +1,16 @@
 import type { ChatEncryptedPayload } from "./chat-e2ee.types";
 import type { MessengerConversationId, MessengerUuid } from "./messenger.types";
 
+export interface MessengerSendOptions {
+  createNewKey?: boolean;
+  // Ownership transfers before network delivery finishes.
+  onAccepted?: () => void;
+}
+
 export interface MessengerOutgoingEncryption {
+  readonly mode?: "message" | "fragments";
+  readonly fragments?: readonly ChatEncryptedPayload[];
+  readonly preparedMarkdown?: string;
   readonly keyUuid: string;
   readonly deviceId: string;
   readonly payload?: ChatEncryptedPayload;

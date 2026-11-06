@@ -1,3 +1,4 @@
+import { hasWorkspaceSecretDraft } from "~/shared/lib/workspace-secret-draft.lib";
 import type {
   WorkspaceComposerDraftContent,
   WorkspaceComposerDraftReplySession,
@@ -129,4 +130,17 @@ export function createWorkspaceComposerDraftUuid(): string {
   const timestamp = Date.now().toString(16).padStart(12, "0").slice(-12);
   const suffix = ordinal.toString(16).padStart(3, "0").slice(-3);
   return `00000000-0000-4000-8000-${timestamp.slice(0, 9)}${suffix}`;
+}
+
+/** Protected editor plaintext must never enter durable or remote drafts. */
+export function hasWorkspaceComposerDraftSecret(content: WorkspaceComposerDraftContent): boolean {
+  return (
+    hasWorkspaceSecretDraft(content.text) ||
+    content.replySession.tabs.some(
+      (tab) =>
+        hasWorkspaceSecretDraft(tab.answer) ||
+        hasWorkspaceSecretDraft(tab.quotedContent) ||
+        (tab.selectedText != null && hasWorkspaceSecretDraft(tab.selectedText)),
+    )
+  );
 }

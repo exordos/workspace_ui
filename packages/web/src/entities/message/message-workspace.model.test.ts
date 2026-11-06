@@ -342,6 +342,63 @@ describe("workspace message store", () => {
     expect(useWorkspaceMessageStore.getState()).toBe(afterMerge);
   });
 
+  it.each([
+    {
+      name: "includes realtime inside the expanded bounds",
+      liveCreatedAt: DATE,
+      pageCreatedAt: DATE_LATER,
+      pageMarker: "newer-2",
+      expectedIds: [MESSAGE_A, MESSAGE_C, MESSAGE_B],
+    },
+    {
+      name: "keeps newer realtime outside a remaining gap",
+      liveCreatedAt: DATE_LATER,
+      pageCreatedAt: DATE,
+      pageMarker: "newer-2",
+      expectedIds: [MESSAGE_A, MESSAGE_B],
+    },
+    {
+      name: "includes newer realtime when the page reaches the tail",
+      liveCreatedAt: DATE_LATER,
+      pageCreatedAt: DATE,
+      pageMarker: null,
+      expectedIds: [MESSAGE_A, MESSAGE_B, MESSAGE_C],
+    },
+  ])("$name", ({ liveCreatedAt, pageCreatedAt, pageMarker, expectedIds }) => {
+    replaceWindow(
+      TOPIC_CONVERSATION_ID,
+      [createMessage({ uuid: MESSAGE_A, createdAt: DATE_EARLIER })],
+      { mode: "around-anchor", afterPageMarker: "newer-1" },
+    );
+    const beforeRequest = useWorkspaceMessageStore.getState();
+    const window = selectWorkspaceConversationWindow(beforeRequest, TOPIC_CONVERSATION_ID)!;
+    beforeRequest.applyLiveCreatedMessage(
+      createMessage({ uuid: MESSAGE_C, createdAt: liveCreatedAt }),
+    );
+    expect(selectMessages(TOPIC_CONVERSATION_ID).map((message) => message.uuid)).toEqual([
+      MESSAGE_A,
+    ]);
+
+    const revision = useWorkspaceMessageStore.getState().mergeConversationWindowPage({
+      conversationId: TOPIC_CONVERSATION_ID,
+      expectedRevision: window.revision,
+      expectedPageMarker: "newer-1",
+      capturedMutationRevision: beforeRequest.messageMutationRevision,
+      direction: "after",
+      messages: [createMessage({ uuid: MESSAGE_B, createdAt: pageCreatedAt })],
+      pageMarker,
+    });
+
+    expect(revision).toBe(2);
+    expect(selectMessages(TOPIC_CONVERSATION_ID).map((message) => message.uuid)).toEqual(
+      expectedIds,
+    );
+    expect(
+      selectWorkspaceConversationWindow(useWorkspaceMessageStore.getState(), TOPIC_CONVERSATION_ID)
+        ?.afterPageMarker,
+    ).toBe(pageMarker);
+  });
+
   it("does not let an older snapshot overwrite a newer live body", () => {
     const initialState = useWorkspaceMessageStore.getState();
     initialState.upsertMessageBodyFromSnapshot(

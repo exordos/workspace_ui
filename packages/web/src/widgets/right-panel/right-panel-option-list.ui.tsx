@@ -7,6 +7,7 @@ export const RIGHT_PANEL_OPTION_INTERACTION_CLASS =
 
 export interface RightPanelOptionButtonProps {
   label: React.ReactNode;
+  subtitle?: string;
   active: boolean;
   onClick: () => void;
   testId?: string;
@@ -15,22 +16,39 @@ export interface RightPanelOptionButtonProps {
 /** Selector option row shared by every nested Settings/Appearance list. */
 export const RightPanelOptionButton = React.memo(function RightPanelOptionButton({
   label,
+  subtitle,
   active,
   onClick,
   testId,
 }: RightPanelOptionButtonProps): React.ReactElement {
+  const textId = React.useId();
   return (
     <button
       type="button"
       onClick={onClick}
       aria-pressed={active}
+      aria-labelledby={subtitle ? `${textId}-label` : undefined}
+      aria-describedby={subtitle ? `${textId}-subtitle` : undefined}
       data-testid={testId}
       className={`flex w-full items-center justify-between gap-3 px-0 py-0 text-left text-sm leading-4 text-text-primary ${RIGHT_PANEL_OPTION_INTERACTION_CLASS} focus-visible:ring-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset`}
     >
-      <span className={active ? "font-medium text-text-primary" : "text-text-primary"}>
-        {label}
+      <span className="min-w-0 flex-1">
+        <span
+          id={`${textId}-label`}
+          className={`block text-text-primary ${active ? "font-medium" : ""}`}
+        >
+          {label}
+        </span>
+        {subtitle ? (
+          <span
+            id={`${textId}-subtitle`}
+            className="mt-1 block text-xs leading-5 text-text-secondary"
+          >
+            {subtitle}
+          </span>
+        ) : null}
       </span>
-      {active ? <Icon name="check" size={16} className="shrink-0 text-accent" /> : null}
+      {active ? <Icon name="check" size={16} className="shrink-0 self-start text-accent" /> : null}
     </button>
   );
 });

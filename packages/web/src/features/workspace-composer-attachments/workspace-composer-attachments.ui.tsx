@@ -1,4 +1,5 @@
 import React, { useCallback, useMemo } from "react";
+import type { MessengerSendOptions } from "~/entities/messenger/messenger-outbox.types";
 import { buildMessengerRequestOptions } from "~/entities/messenger/messenger-request-options.lib";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { isWorkspaceRuntimeRequestInvalidated } from "~/entities/workspace-runtime/workspace-runtime.lib";
@@ -51,6 +52,8 @@ export interface WorkspaceComposerControlledProps {
   onSend: (
     content: string,
     subjectOverride?: string,
+    files?: File[],
+    options?: MessengerSendOptions,
   ) => void | WorkspaceComposerSendResult | Promise<void | WorkspaceComposerSendResult>;
   attachments: readonly WorkspaceComposerControlledAttachmentView[];
   attachmentsBlockSend: boolean;
@@ -68,6 +71,8 @@ interface WorkspaceComposerAttachmentsProps {
   onSendFinalMarkdown: (
     markdown: string,
     subjectOverride?: string,
+    files?: File[],
+    options?: MessengerSendOptions,
   ) => void | WorkspaceComposerSendResult | Promise<void | WorkspaceComposerSendResult>;
   editAttachmentMarkdown?: readonly string[];
   onSubmitEditFinalMarkdown?: (messageId: number, markdown: string) => void | Promise<void>;
@@ -151,7 +156,7 @@ export const WorkspaceComposerAttachments = React.memo(function WorkspaceCompose
     }),
     [runtimeContext, target.streamUuid],
   );
-  const { attachments, attachmentsBlockSend, add, remove, retry, transferReady, commitReady } =
+  const { attachments, attachmentsBlockSend, add, remove, retry, commitReady } =
     useWorkspaceComposerAttachments({ scope, transport });
   const composerAttachments = useMemo<WorkspaceComposerControlledAttachmentView[]>(
     () =>
@@ -171,22 +176,47 @@ export const WorkspaceComposerAttachments = React.memo(function WorkspaceCompose
     [attachments],
   );
   const handleSend = useCallback(
-    (content: string, subjectOverride?: string) => {
-      if (attachments.length === 0) return onSendFinalMarkdown(content, subjectOverride);
-      const sendReady = (ready: readonly WorkspaceComposerReadyAttachmentTransfer[]) => {
+    (content: string, subjectOverride?: string, files?: File[], options?: MessengerSendOptions) => {
+      if (attachments.length === 0)
+        return options == null
+          ? onSendFinalMarkdown(content, subjectOverride)
+          : onSendFinalMarkdown(content, subjectOverride, files, options);
+      const sendReady = (
+        ready: readonly WorkspaceComposerReadyAttachmentTransfer[],
+        onAccepted: () => void,
+      ) => {
         const markdown = prependWorkspaceComposerAttachmentMarkdown(
           content,
           ready.map((attachment: WorkspaceComposerReadyAttachmentTransfer) =>
             buildWorkspaceComposerAttachmentMarkdown(attachment.serverMetadata),
           ),
         );
-        return onSendFinalMarkdown(markdown, subjectOverride);
+        return onSendFinalMarkdown(markdown, subjectOverride, files, {
+          ...options,
+          onAccepted: () => {
+            options?.onAccepted?.();
+            onAccepted();
+          },
+        });
       };
-      const result = transferReady(sendReady);
-      if (result == null) throw new Error(t("attachmentCard.uploadPending"));
-      return result;
+      return commitReady(async (ready) => {
+        let result: ReturnType<typeof onSendFinalMarkdown>;
+        await new Promise<void>((resolve, reject) => {
+          try {
+            result = sendReady(ready, resolve);
+            // Legacy consumers accept on normal completion; outbox consumers acknowledge earlier.
+            void Promise.resolve(result).then(() => resolve(), reject);
+          } catch (error) {
+            reject(error instanceof Error ? error : new Error(t("message.sendFailed")));
+          }
+        });
+        return { result: result! };
+      }).then((accepted) => {
+        if (accepted == null) throw new Error(t("attachmentCard.uploadPending"));
+        return accepted.result;
+      });
     },
-    [attachments.length, onSendFinalMarkdown, transferReady],
+    [attachments.length, onSendFinalMarkdown, commitReady],
   );
   const handleSubmitEdit = useCallback(
     async (messageId: number, content: string) => {

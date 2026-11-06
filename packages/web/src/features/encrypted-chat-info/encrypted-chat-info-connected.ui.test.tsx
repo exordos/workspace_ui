@@ -28,6 +28,9 @@ function fixture() {
     request("rejected", "Rejected"),
   ];
   const session = {
+    get storageScope() {
+      return this.scope;
+    },
     scope: {
       owner: {
         accountId: "account",
@@ -49,6 +52,8 @@ function fixture() {
       { request: { uuid: "done" }, status: "granted" },
       { request: { uuid: "rejected" }, status: "rejected" },
     ],
+    canRespondToKeyRequest: (_uuid: string): boolean =>
+      session.getRights().canGrant || session.getRights().canReject,
     canGrantKey: (uuid: string): boolean => uuid === "old",
     canRejectKey: (uuid: string): boolean => uuid === "old",
   };
@@ -69,6 +74,7 @@ function fixture() {
     projection: {
       stream: {
         name: "Protected",
+        encryption: true,
         currentEncryptionKey: { keyUuid: "current" },
       },
       keyAnnouncementDates: {} as Record<string, string>,
@@ -90,6 +96,24 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 describe("encrypted chat sidebar actions", () => {
+  it("shows only author-authorized requests to an ordinary member without channel management rights", () => {
+    const { crypto, info } = fixture();
+    info.projection.stream.encryption = false;
+    crypto.session.getRights = () => ({
+      canRotate: false,
+      canRequest: true,
+      canGrant: false,
+      canReject: false,
+    });
+    crypto.session.canRespondToKeyRequest = (uuid) => uuid === "old";
+    render(<EncryptedChatInfoConnected streamUuid="stream" screen="key" />);
+    fireEvent.click(screen.getByRole("button", { name: "Incoming requests (1)" }));
+    expect(screen.getByText("Old epoch")).toBeInTheDocument();
+    expect(screen.queryByText("Granted")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Grant access to Old epoch" }));
+    expect(crypto.grantKey).toHaveBeenCalledWith("old");
+  });
+
   it("uses the stream color for the protected chat avatar", () => {
     const { info } = fixture();
     mocks.info.mockReturnValue({
@@ -620,7 +644,7 @@ describe("local encrypted chat keys", () => {
       );
       const nextSession = { ...crypto.session, listLocalKeys: vi.fn().mockResolvedValue([]) };
       if (stale)
-        Object.defineProperty(nextSession, "scope", {
+        Object.defineProperty(nextSession, "storageScope", {
           get() {
             throw new Error("stale");
           },

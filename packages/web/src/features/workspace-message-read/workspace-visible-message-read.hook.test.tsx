@@ -113,6 +113,30 @@ afterEach(() => {
 });
 
 describe("useWorkspaceVisibleMessageRead", () => {
+  it.each([false, true])("does not resend a confirmed read anchor (own: %s)", async (isOwn) => {
+    const boundary = {
+      ...message(MESSAGE_A_UUID, TOPIC_A_UUID, "2026-08-07T10:00:00Z"),
+      ...(isOwn ? { authorUuid: runtimeContext.userUuid } : {}),
+      isOwn,
+    };
+    seedWorkspaceMessageBody(boundary);
+    const { result } = renderHook(() =>
+      useWorkspaceVisibleMessageRead({ runtimeContext, conversationId }),
+    );
+    act(() => {
+      result.current.scheduleReadBatch([boundary.uuid]);
+      vi.advanceTimersByTime(250);
+    });
+    await act(settlePromiseCallbacks);
+    seedWorkspaceMessageBody({ ...boundary, read: true });
+    act(() => {
+      result.current.scheduleReadBatch([boundary.uuid], { allowReadAnchor: true });
+      vi.advanceTimersByTime(250);
+    });
+    await act(settlePromiseCallbacks);
+    expect(captured.markReadUpTo).toHaveBeenCalledOnce();
+  });
+
   it("sends a visible boundary for an unread message authored by the current user", () => {
     const ownUnread = {
       ...message(MESSAGE_A_UUID, TOPIC_A_UUID, "2026-08-07T10:00:00Z"),

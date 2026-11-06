@@ -49,7 +49,6 @@ function stream(overrides: Partial<MessengerStream> = {}): MessengerStream {
     description: "",
     unreadCount: 3,
     sourceName: "native",
-    source: { kind: "native" },
     audience: "channel",
     isPrivate: false,
     inviteOnly: false,
@@ -194,6 +193,23 @@ describe("InboxPage workspace data", () => {
     expect(screen.getByText("Alice Reed · Planning")).toBeInTheDocument();
     expect(screen.getByText("Engineering")).toBeInTheDocument();
     expect(screen.getByText("Engineering · Releases")).toBeInTheDocument();
+  });
+
+  it("formats large stream and topic counts without changing stored values", () => {
+    seedWorkspaceInbox({
+      streams: [stream({ unreadCount: 3003, activeUnreadCount: 2002, passiveUnreadCount: 1001 })],
+      topics: [topic({ unreadCount: 2002, activeUnreadCount: 1001, passiveUnreadCount: 1001 })],
+    });
+
+    renderInbox();
+
+    expect(screen.getByText("1k+")).toBeInTheDocument();
+    expect(screen.getByText("2k+")).toBeInTheDocument();
+    expect(screen.queryByText("1001")).not.toBeInTheDocument();
+    expect(useMessengerStore.getState().streamsById[CHANNEL_STREAM_UUID]?.unreadCount).toBe(3003);
+    expect(useMessengerStore.getState().topicsById[CHANNEL_TOPIC_UUID]?.activeUnreadCount).toBe(
+      1001,
+    );
   });
 
   it("hides streams and topics without unread counters", () => {

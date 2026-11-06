@@ -63,6 +63,7 @@ function setup() {
         error: null,
       }),
       isIssuerAllowed: (uuid: string) => uuid === "admin",
+      canRespondToKeyRequest: vi.fn((_uuid: string) => true),
       canGrantKey: vi.fn((_uuid: string) => true),
       canRejectKey: vi.fn((_uuid: string) => true),
       getKeyRequestOutcome: vi.fn<RealChatSession["getKeyRequestOutcome"]>(() => null),
@@ -87,6 +88,7 @@ describe("encrypted service actions", () => {
         session: {
           ...opts.session,
           getRights: () => ({ ...opts.session.getRights(), canGrant: false, canReject: false }),
+          canRespondToKeyRequest: () => false,
           getGenerationState: () => null,
         },
       }),
@@ -143,6 +145,27 @@ describe("encrypted service actions", () => {
     opts.session.canGrantKey.mockReturnValue(false);
     opts.session.canRejectKey.mockReturnValue(false);
     expect(getEncryptedChatServiceActions(opts)).toHaveLength(0);
+  });
+  it("shows fragment response actions for a member with generation-specific eligibility", () => {
+    const opts = setup();
+    opts.currentUserUuid = "fragment-author-member";
+    const session = {
+      ...opts.session,
+      getRights: () => ({ ...opts.session.getRights(), canGrant: false, canReject: false }),
+    };
+    expect(getEncryptedChatServiceState({ ...opts, session })).toMatchObject({
+      canManageKeys: true,
+      hasKey: true,
+    });
+    const actions = getEncryptedChatServiceActions({ ...opts, session });
+    expect(actions).toHaveLength(2);
+    actions[0]?.onClick();
+    expect(opts.onGrantKey).toHaveBeenCalledWith("request");
+    session.canRespondToKeyRequest.mockReturnValue(false);
+    session.canGrantKey.mockReturnValue(false);
+    session.canRejectKey.mockReturnValue(false);
+    expect(getEncryptedChatServiceState({ ...opts, session })?.canManageKeys).toBe(false);
+    expect(getEncryptedChatServiceActions({ ...opts, session })).toEqual([]);
   });
   it("allows manual approval for the same account on another device", () => {
     const opts = setup();

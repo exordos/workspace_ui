@@ -389,3 +389,65 @@ export function parseWorkspaceUrlUrn(value: unknown): string | null {
 
   return urlValue;
 }
+
+/** A fragment uses the same stream/key context and encrypted bytes as a full E2EE message. */
+export interface WorkspaceSecretUrnReference {
+  readonly kind: "secret";
+  readonly streamUuid: string;
+  readonly keyUuid: string;
+  readonly envelope: { readonly bytes: Uint8Array };
+}
+
+function encodeSecretEnvelope(bytes: Uint8Array): string {
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
+  }
+  return btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
+}
+
+export function buildWorkspaceSecretUrn(
+  streamUuid: unknown,
+  keyUuid: unknown,
+  envelope: { readonly bytes: Uint8Array },
+): string | null {
+  const stream = normalizeWorkspaceUuid(streamUuid);
+  const key = normalizeWorkspaceUuid(keyUuid);
+  if (stream == null || key == null || envelope.bytes.length === 0) return null;
+  const encoded = encodeSecretEnvelope(envelope.bytes);
+  return encoded.length <= 40000 ? `urn:secret:v1:${stream}:${key}:${encoded}` : null;
+}
+
+export function isWorkspaceSecretUrn(value: unknown): value is string {
+  return typeof value === "string" && /^urn:secret:/i.test(value.trim());
+}
+
+export function parseWorkspaceSecretUrn(value: unknown): WorkspaceSecretUrnReference | null {
+  if (typeof value !== "string") return null;
+  const parts = value.trim().split(":");
+  const [urn, kind, version, streamUuid, keyUuid, encoded] = parts;
+  if (
+    parts.length !== 6 ||
+    urn !== "urn" ||
+    kind !== "secret" ||
+    version !== "v1" ||
+    !isWorkspaceUuid(streamUuid) ||
+    !isWorkspaceUuid(keyUuid) ||
+    encoded == null ||
+    encoded.length === 0 ||
+    encoded.length > 40000 ||
+    !/^[A-Za-z0-9_-]+$/.test(encoded) ||
+    encoded.length % 4 === 1
+  )
+    return null;
+  try {
+    const standard = encoded.replaceAll("-", "+").replaceAll("_", "/");
+    const binary = atob(standard.padEnd(standard.length + ((4 - (standard.length % 4)) % 4), "="));
+    const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+    if (encodeSecretEnvelope(bytes) !== encoded) return null;
+    return { kind: "secret", streamUuid, keyUuid, envelope: { bytes } };
+  } catch {
+    return null;
+  }
+}

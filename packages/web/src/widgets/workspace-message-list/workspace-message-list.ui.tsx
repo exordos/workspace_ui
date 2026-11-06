@@ -5,6 +5,7 @@ import {
   selectWorkspaceMessageById,
   useWorkspaceMessageStore,
 } from "~/entities/message/message.model";
+import { useResolvedMessengerQuoteMessage } from "~/entities/messenger/messenger-quote-resolver.hook";
 import type {
   MessengerConversationId,
   MessengerMessage,
@@ -16,8 +17,14 @@ import {
 } from "~/entities/user/user-selectors.lib";
 import { useUsersStore } from "~/entities/user/user.model";
 import type { UsersById } from "~/entities/user/user.types";
+import {
+  MessagePresentationContext,
+  useMessagePresentations,
+} from "~/features/message-presentation/message-presentation.hook";
 import { WorkspaceAvatar } from "~/features/workspace-avatar/workspace-avatar.ui";
 import { t, useTranslation } from "~/i18n/i18n";
+import { formatCount, UNREAD_COUNT_DISPLAY_LIMIT } from "~/shared/lib/count-format.lib";
+import { useAppHotkey } from "~/shared/lib/hotkeys";
 import type { WorkspaceMessageFileReference } from "~/shared/lib/workspace-message-render/workspace-message-document.types";
 import { workspaceMessengerMessageAnchor } from "~/shared/lib/workspace-messenger-route.lib";
 import { FloatingScrollToBottomButton } from "~/shared/ui/floating-scroll-to-bottom-button";
@@ -25,6 +32,7 @@ import { WorkspaceMessageBubble } from "./workspace-message-bubble.ui";
 import { formatWorkspaceMessageDayLabel } from "./workspace-message-day-label.lib";
 import { WorkspaceMessageDivider } from "./workspace-message-divider.ui";
 import {
+  compareMessagesByCreatedAtThenKey,
   createWorkspaceMessageListOutgoingItem,
   createWorkspaceMessageListServerItem,
   groupWorkspaceMessagesByDayAndAuthor,
@@ -35,7 +43,10 @@ import { useWorkspaceMessageListScroll } from "./workspace-message-list-scroll.h
 import { WorkspaceMessageSelectionControl } from "./workspace-message-selection-control.ui";
 import { WorkspaceMessageTopicLink } from "./workspace-message-topic-link.ui";
 import { useServiceMessageExpansion } from "./workspace-service-message-expansion.hook";
-import { getWorkspaceServiceGroupStatus } from "./workspace-service-message-group.lib";
+import {
+  getWorkspaceServiceGroupStatus,
+  isWorkspaceMessageRelevantToAccount,
+} from "./workspace-service-message-group.lib";
 import { WorkspaceServiceMessageGroup } from "./workspace-service-message-group.ui";
 import type {
   WorkspaceMessageAuthorGroup,
@@ -100,6 +111,13 @@ interface WorkspaceReadRequestBoundary {
 interface PendingLatestWindow {
   targetUuid: MessengerUuid;
   cancel?: (lastMessageUuid: MessengerUuid) => void;
+}
+
+function WorkspaceServiceRequestResolver({
+  messageUuid,
+}: Readonly<{ messageUuid: MessengerUuid }>) {
+  useResolvedMessengerQuoteMessage(messageUuid);
+  return null;
 }
 
 function authorGroupFallbackRenderKey(dateKey: string, group: WorkspaceMessageAuthorGroup): string {
@@ -666,17 +684,18 @@ const WorkspaceMessageAuthorGroupView = React.memo(function WorkspaceMessageAuth
       data-message-owner={groupOwner}
     >
       {groupOwner === "peer" && !serviceGroup ? (
+        // The rail must span the group so bottom-sticky can follow the viewport within it.
         <div
           className={
             selectionMode
-              ? "pointer-events-none absolute bottom-0 left-0 z-[1] flex w-12 flex-col justify-end pb-2"
+              ? "pointer-events-none absolute inset-y-0 left-0 z-[1] flex w-12 flex-col justify-end pb-2"
               : "flex w-12 flex-shrink-0 flex-col justify-end pb-2"
           }
         >
           <button
             type="button"
             onClick={handleAuthorClick}
-            className={`${selectionMode ? "pointer-events-auto" : ""} group relative z-[1] rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft`}
+            className={`${selectionMode ? "pointer-events-auto" : ""} group/avatar sticky bottom-2 z-[1] rounded-full focus-visible:outline-none`}
             aria-label={t("a11y.openUserProfile", { name: displayName })}
             data-workspace-peer-avatar="true"
           >
@@ -714,7 +733,70 @@ const WorkspaceMessageAuthorGroupView = React.memo(function WorkspaceMessageAuth
   );
 });
 
-export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
+export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = (props) => {
+  const prepared = useMessagePresentations(props.messages, props.conversationId, true);
+  const pendingUuids = prepared.pendingMessageUuids;
+  const preparing = pendingUuids.size > 0;
+  const messages = useMemo(
+    () =>
+      preparing ? props.messages.filter(({ uuid }) => !pendingUuids.has(uuid)) : props.messages,
+    [props.messages, pendingUuids, preparing],
+  );
+  const incomingOutgoing = props.outgoingMessages ?? EMPTY_OUTGOING_MESSAGES;
+  const [outgoingView, setOutgoingView] = useState({
+    scope: prepared.scope,
+    messages: incomingOutgoing,
+  });
+  const retainedOutgoing =
+    outgoingView.scope === prepared.scope
+      ? outgoingView.messages.filter(
+          (message) =>
+            pendingUuids.has(message.placementUuid) &&
+            !incomingOutgoing.some((current) => current.placementUuid === message.placementUuid),
+        )
+      : [];
+  const outgoingMessages =
+    retainedOutgoing.length === 0 ? incomingOutgoing : [...incomingOutgoing, ...retainedOutgoing];
+  if (
+    outgoingView.scope !== prepared.scope ||
+    outgoingView.messages.length !== outgoingMessages.length ||
+    outgoingView.messages.some((message, index) => message !== outgoingMessages[index])
+  ) {
+    // Keep a confirmed optimistic row until its ciphertext is ready to replace it.
+    setOutgoingView({ scope: prepared.scope, messages: outgoingMessages });
+  }
+  const [windowView, setWindowView] = useState({ scope: prepared.scope, opened: false });
+  const opened = windowView.scope === prepared.scope && windowView.opened;
+  const showWindow = !preparing || opened || outgoingMessages.length > 0;
+  const hasShownRows = showWindow && (messages.length > 0 || outgoingMessages.length > 0);
+  if (windowView.scope !== prepared.scope || (!opened && hasShownRows)) {
+    setWindowView({ scope: prepared.scope, opened: hasShownRows });
+  }
+  if (!showWindow) {
+    return (
+      <div className="min-h-0 flex-1" aria-busy="true" data-workspace-message-preparation="true" />
+    );
+  }
+  return (
+    <MessagePresentationContext.Provider value={prepared.presentations}>
+      <WorkspaceMessageListContent
+        {...props}
+        messages={messages}
+        outgoingMessages={outgoingMessages}
+        focusedMessagePending={
+          props.focusedMessageTarget != null &&
+          pendingUuids.has(props.focusedMessageTarget.messageUuid)
+        }
+        isLoadingOlder={preparing ? true : props.isLoadingOlder}
+        isLoadingNewer={preparing ? true : props.isLoadingNewer}
+      />
+    </MessagePresentationContext.Provider>
+  );
+};
+
+const WorkspaceMessageListContent: React.FC<
+  WorkspaceMessageListProps & { focusedMessagePending: boolean }
+> = ({
   messages,
   outgoingMessages = EMPTY_OUTGOING_MESSAGES,
   currentUserUuid,
@@ -727,10 +809,12 @@ export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
   firstUnreadUuid,
   unreadCount = 0,
   focusedMessageTarget = null,
+  focusedMessagePending,
   anchorHandoffPending = false,
   anchorNavigationActive = false,
   onFocusedMessageApplied,
   onFocusedMessageMissing,
+  onReplySelectedMessages,
   selectionMode = false,
   selectedMessageUuids = EMPTY_SELECTED_MESSAGE_UUIDS,
   readRequestBoundaryMessageUuids = EMPTY_READ_REQUEST_BOUNDARY_MESSAGE_UUIDS,
@@ -763,7 +847,7 @@ export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
   const sessionFirstUnreadUuid = unreadDividerSession.ready
     ? unreadDividerSession.anchor
     : undefined;
-  const stableFirstUnreadUuid =
+  const unreadDividerAnchorUuid =
     unreadCount === 0 && firstUnreadUuid == null ? undefined : sessionFirstUnreadUuid;
 
   const unreadDividerConversationRef = useRef(conversationId);
@@ -830,9 +914,6 @@ export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
     }
     return boundaries;
   }, [messages, readRequestBoundaryMessageUuids]);
-  const dayGroups = useMemo(() => {
-    return groupWorkspaceMessagesByDayAndAuthor(listItems);
-  }, [listItems]);
   const requestUuids = useMemo(
     () => [
       ...new Set(
@@ -859,6 +940,28 @@ export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
     (uuid: MessengerUuid) => requestsByUuid.get(uuid) ?? null,
     [requestsByUuid],
   );
+  const accountServiceMessages = presentation?.serviceMessages === "account";
+  const visibleListItems = useMemo(() => {
+    const serviceActions = { ...actions, resolveKeyRequestMessage };
+    return accountServiceMessages
+      ? listItems.filter(
+          (item) =>
+            item.kind !== "server" ||
+            isWorkspaceMessageRelevantToAccount(item.message, currentUserUuid, serviceActions),
+        )
+      : listItems;
+  }, [accountServiceMessages, actions, currentUserUuid, listItems, resolveKeyRequestMessage]);
+  // Responses can outlive their request's history window. Reuse the existing
+  // scoped resolver before deciding whether the recipient is this account.
+  const requestResolvers = accountServiceMessages
+    ? requestUuids
+        .filter((uuid) => !requestsByUuid.has(uuid))
+        .map((uuid) => <WorkspaceServiceRequestResolver key={uuid} messageUuid={uuid} />)
+    : null;
+  const dayGroups = useMemo(
+    () => groupWorkspaceMessagesByDayAndAuthor(visibleListItems),
+    [visibleListItems],
+  );
   const authorGroupRenderKeys = useWorkspaceAuthorGroupRenderKeys(dayGroups, conversationId);
   const dayLabelsByDateKey = useMemo(() => {
     return new Map(
@@ -873,6 +976,66 @@ export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
       dayGroup.authorGroups.flatMap((authorGroup) => authorGroup.messages),
     );
   }, [dayGroups]);
+  // Keep history boundaries for pagination even when a whole page is hidden.
+  const scrollItems = useMemo(
+    () =>
+      accountServiceMessages
+        ? [...listItems].sort(compareMessagesByCreatedAtThenKey)
+        : renderedMessages,
+    [accountServiceMessages, listItems, renderedMessages],
+  );
+  const resolveVisibleMessageKey = useCallback(
+    (key: MessengerUuid | undefined) => {
+      if (!accountServiceMessages || key == null) return key;
+      const anchor = listItems.find((item) => item.key === key);
+      if (anchor == null) return key;
+      return renderedMessages.find((item) => compareMessagesByCreatedAtThenKey(item, anchor) >= 0)
+        ?.key;
+    },
+    [accountServiceMessages, listItems, renderedMessages],
+  );
+  const stableFirstUnreadUuid = resolveVisibleMessageKey(unreadDividerAnchorUuid);
+  const hiddenPageLoadRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!accountServiceMessages || visibleListItems.length > 0) {
+      hiddenPageLoadRef.current = null;
+      return;
+    }
+    if (
+      scrollItems.length === 0 ||
+      !initialPositionReady ||
+      anchorHandoffPending ||
+      anchorNavigationActive ||
+      isLoadingOlder ||
+      isLoadingNewer
+    )
+      return;
+    const direction = hasNewerMessages ? "newer" : "older";
+    let load: (() => void) | undefined;
+    if (hasNewerMessages) load = onLoadNewer;
+    else if (hasOlderMessages) load = onLoadOlder;
+    if (load == null) return;
+    const key = `${currentUserUuid}:${conversationId}:${direction}:${scrollItems[0]?.key}:${scrollItems.at(-1)?.key}`;
+    if (hiddenPageLoadRef.current === key) return;
+    hiddenPageLoadRef.current = key;
+    // An invisible page has no scroll surface from which to request the next one.
+    load();
+  }, [
+    accountServiceMessages,
+    anchorHandoffPending,
+    anchorNavigationActive,
+    conversationId,
+    currentUserUuid,
+    hasNewerMessages,
+    hasOlderMessages,
+    initialPositionReady,
+    isLoadingNewer,
+    isLoadingOlder,
+    onLoadNewer,
+    onLoadOlder,
+    scrollItems,
+    visibleListItems.length,
+  ]);
   const workspaceMediaGallery = useMemo(() => {
     const displayMessages = renderedMessages.flatMap((message) => {
       if (message.kind === "server") {
@@ -952,7 +1115,7 @@ export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
     refreshMessageLayout,
     preserveMessageLayout,
   } = useWorkspaceMessageListScroll({
-    messages: renderedMessages,
+    messages: scrollItems,
     conversationId,
     getMessageKey,
     isUnreadCandidate,
@@ -960,9 +1123,10 @@ export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
     initialPositionCancelled,
     scrollToBottomKey: scrollRequestKey,
     scrollToBottomAfterSendNonce,
-    firstUnreadKey: firstUnreadUuid,
+    firstUnreadKey: resolveVisibleMessageKey(firstUnreadUuid),
     unreadCount,
     focusedMessageTarget,
+    focusedMessagePending,
     anchorHandoffPending,
     anchorNavigationActive,
     onFocusedMessageApplied,
@@ -1117,12 +1281,66 @@ export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
       cancelPendingLatestWindow();
     };
   }, [cancelPendingLatestWindow, conversationId]);
+  const quoteMessage = actions?.onAddReplyMessage ?? actions?.onReplyMessage;
+  const messageRowSelector = "article[data-server-message-uuid]";
+  useAppHotkey(
+    "interface.quoteMessage",
+    (event) => {
+      const container = scrollContainerRef.current;
+      if (selectionMode) {
+        if (selectedMessageUuids.size > 0 && onReplySelectedMessages != null) {
+          event.preventDefault();
+          onReplySelectedMessages();
+        }
+        return;
+      }
+      if (container == null || !quoteMessage) return;
+      const selection = window.getSelection();
+      let row: HTMLElement | null;
+      let selectedText: string | undefined;
+      if (selection && !selection.isCollapsed) {
+        if (selection.rangeCount !== 1) return;
+        // Both ends of the selection must be inside the same message body.
+        const common = selection.getRangeAt(0).commonAncestorContainer;
+        const element = common instanceof Element ? common : common.parentElement;
+        const body = element?.closest('[data-message-body="true"]');
+        row = body?.closest<HTMLElement>(messageRowSelector) ?? null;
+        selectedText = selection.toString();
+        if (!selectedText.trim()) return;
+      } else {
+        row =
+          document.activeElement?.closest<HTMLElement>(messageRowSelector) ??
+          container.querySelector<HTMLElement>(`${messageRowSelector}:hover`);
+      }
+      if (!row || !container.contains(row)) return;
+      const uuid = row.dataset.serverMessageUuid;
+      const bubble = row.querySelector<HTMLElement>('[data-hotkey-reply-eligible="true"]');
+      if (!uuid || !bubble) return;
+      event.preventDefault();
+      quoteMessage(uuid, bubble.dataset.messageHasSecrets === "true" ? undefined : selectedText);
+    },
+    {
+      enabled: selectionMode ? onReplySelectedMessages != null : quoteMessage != null,
+      allowInputTarget: (element) =>
+        // Adding a quote also works while typing an answer to the first one.
+        (!selectionMode &&
+          element instanceof HTMLTextAreaElement &&
+          (element.value === "" || actions?.onAddReplyMessage != null) &&
+          element.closest('[data-focus-zone="composer"]') != null) ||
+        (selectionMode &&
+          element.matches('[data-workspace-message-selection-control] input[type="checkbox"]') &&
+          scrollContainerRef.current?.contains(element) === true),
+      preventDefault: false,
+    },
+  );
   const unreadMessagesLabel =
     unreadCount > 0
-      ? t("chat.unreadMessagesWithCount", { count: unreadCount })
+      ? t("chat.unreadMessagesWithCount", {
+          count: formatCount(unreadCount, UNREAD_COUNT_DISPLAY_LIMIT),
+        })
       : t("chat.unreadMessages");
 
-  if (listItems.length === 0) {
+  if (visibleListItems.length === 0) {
     return (
       <div
         ref={scrollContainerRef}
@@ -1135,6 +1353,7 @@ export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
         data-scroll-at-bottom={isAtBottom ? "true" : "false"}
         data-workspace-scroll-controller="true"
       >
+        {requestResolvers}
         <div
           className="flex min-h-[160px] flex-1 items-center justify-center text-sm text-text-muted"
           data-empty-state="true"
@@ -1145,6 +1364,7 @@ export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
 
   return (
     <>
+      {requestResolvers}
       <div
         ref={scrollContainerRef}
         className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-3 py-4"

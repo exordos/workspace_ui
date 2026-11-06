@@ -10,7 +10,10 @@ import type {
   WorkspaceMessageFileReference,
   WorkspaceMessageMentionResolver,
 } from "~/shared/lib/workspace-message-render/workspace-message-document.types";
-import type { WorkspaceUrnReference } from "~/shared/lib/workspace-reference-urn.lib";
+import type {
+  WorkspaceSecretUrnReference,
+  WorkspaceUrnReference,
+} from "~/shared/lib/workspace-reference-urn.lib";
 import type { WorkspaceMessageBubbleQuickActionsConfig } from "./workspace-message-bubble-quick-actions.ui";
 import type { WorkspaceQuoteRenderMode } from "./workspace-message-quote.types";
 
@@ -38,10 +41,17 @@ export interface WorkspaceMessageListActions {
   getKeyServiceState?: (message: MessengerMessage) => EncryptedChatServiceState | null;
   resolveKeyRequestMessage?: (messageUuid: MessengerUuid) => MessengerMessage | null;
   onRequestMessageKey?: (messageUuid: MessengerUuid) => void | Promise<void>;
+  onRequestSecretKey?: (
+    messageUuid: MessengerUuid,
+    reference: WorkspaceSecretUrnReference,
+    allowUsableKey?: boolean,
+  ) => void | Promise<void>;
   requestMessageKeyPending?: boolean;
   onReplyMessage?: (messageUuid: MessengerUuid, selectedText?: string) => void;
   onAddReplyMessage?: (messageUuid: MessengerUuid, selectedText?: string) => void;
   onForwardMessage?: (messageUuid: MessengerUuid, selectedText?: string) => void;
+  messageWebOrigin?: string | null;
+  onOpenMessagePermalink?: (path: string) => void;
   onOpenMessageInChat?: (messageUuid: MessengerUuid) => void;
   onOpenWorkspaceReference?: (reference: WorkspaceMessageConversationReference) => void;
   onOpenAuthorProfile?: (userUuid: MessengerUuid) => void;
@@ -49,6 +59,7 @@ export interface WorkspaceMessageListActions {
   onToggleMessageSelection?: (messageUuid: MessengerUuid) => void;
   onEditMessage?: (messageUuid: MessengerUuid) => void;
   onRequestDeleteMessage?: (messageUuid: MessengerUuid) => void;
+  onCopyMessageLink?: (messageUuid: MessengerUuid) => void | Promise<void>;
   onCopyMessageText?: (messageUuid: MessengerUuid, selectedText?: string) => void | Promise<void>;
   onToggleMessageReaction?: (messageUuid: MessengerUuid, emojiName: string) => void | Promise<void>;
   onOpenMentionUser?: (userUuid: MessengerUuid) => void;
@@ -91,6 +102,7 @@ export type WorkspaceMessageListItem =
   | WorkspaceMessageListOutgoingItem;
 
 export interface WorkspaceMessageListPresentation {
+  serviceMessages?: "all" | "account";
   topicDividers?: boolean;
   topicLabels?: boolean;
   quoteRenderMode?: WorkspaceQuoteRenderMode;
@@ -114,6 +126,7 @@ export interface WorkspaceMessageListProps {
   anchorNavigationActive?: boolean;
   onFocusedMessageApplied?: (target: WorkspaceMessageAnchorFocusTarget) => void;
   onFocusedMessageMissing?: (target: WorkspaceMessageAnchorFocusTarget) => void;
+  onReplySelectedMessages?: () => void;
   selectionMode?: boolean;
   selectedMessageUuids?: ReadonlySet<MessengerUuid>;
   readRequestBoundaryMessageUuids?: ReadonlySet<MessengerUuid>;

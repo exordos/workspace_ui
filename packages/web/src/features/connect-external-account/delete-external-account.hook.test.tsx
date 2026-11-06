@@ -138,7 +138,6 @@ describe("useDeleteExternalAccount", () => {
       description: "",
       unreadCount: 0,
       sourceName: "zulip",
-      source: { kind: "zulip", server_url: "https://zulip.example.com", stream_id: 1 },
       audience: "channel",
       isPrivate: false,
       inviteOnly: false,

@@ -59,7 +59,6 @@ function stream(overrides: Partial<MessengerStream> = {}): MessengerStream {
     description: "",
     unreadCount: 3,
     sourceName: "native",
-    source: { kind: "native" },
     audience: "channel",
     isPrivate: false,
     inviteOnly: false,
@@ -286,6 +285,30 @@ function state(overrides: Partial<MessengerStoreState> = {}): MessengerStoreStat
 }
 
 describe("topic catalog indexing", () => {
+  it("keeps topic activity order when chats are sorted alphabetically", () => {
+    const catalog = state({
+      topicsById: {
+        [TOPIC_A]: topic({ name: "Alpha", updatedAt: DATE_A }),
+        [TOPIC_B]: topic({ uuid: TOPIC_B, name: "Zulu", updatedAt: DATE_B }),
+      },
+      topicIds: [TOPIC_A, TOPIC_B],
+    });
+    const select = (sortMode: "alphabetical" | "last_message") =>
+      selectMessengerTopicsForStream({
+        organizationId: ORGANIZATION_ID,
+        projectId: PROJECT_ID,
+        state: catalog,
+        streamUuid: STREAM_A,
+        streamNotificationMode: "all_messages",
+        messagesById: {},
+        usersById: {},
+        currentUserUuid: null,
+        sortMode,
+      }).map((item) => item.topicUuid);
+    expect(select("alphabetical")).toEqual([TOPIC_B, TOPIC_A]);
+    expect(select("alphabetical")).toEqual(select("last_message"));
+  });
+
   function selectTopics(
     state: Pick<MessengerStoreState, "topicIds" | "topicsById">,
     streamUuid: string,
@@ -451,6 +474,35 @@ describe("messenger preview text cache", () => {
 });
 
 describe("messenger sidebar selectors", () => {
+  it("sorts pinned chats first and all others by name regardless of activity or mute", () => {
+    const baseFolder = folder();
+    const catalog = state({
+      streamIds: [STREAM_A, STREAM_B, STREAM_C],
+      streamsById: {
+        [STREAM_A]: stream({ name: "Zulu" }),
+        [STREAM_B]: stream({ uuid: STREAM_B, name: "Beta", notificationMode: "muted" }),
+        [STREAM_C]: stream({ uuid: STREAM_C, name: "Alpha", updatedAt: DATE_B }),
+      },
+      foldersById: {
+        [FOLDER_A]: {
+          ...baseFolder,
+          items: [
+            { ...baseFolder.items[0]!, pinnedAt: DATE_A },
+            { ...baseFolder.items[1]!, pinnedAt: null },
+            { ...baseFolder.items[0]!, uuid: FOLDER_ITEM_C, streamUuid: STREAM_C, pinnedAt: null },
+          ],
+        },
+      },
+    });
+    const rows = selectMessengerSidebarStreams(catalog, {
+      organizationId: ORGANIZATION_ID,
+      projectId: PROJECT_ID,
+      selectedFolderUuid: FOLDER_A,
+      sortMode: "alphabetical",
+    });
+    expect(rows.map((row) => row.title)).toEqual(["Zulu", "Alpha", "Beta"]);
+  });
+
   afterEach(() => {
     useMessengerStore.getState().clear();
   });

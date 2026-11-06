@@ -1,4 +1,5 @@
 import React from "react";
+import { UNREAD_COUNT_DISPLAY_LIMIT } from "~/shared/lib/count-format.lib";
 import { Badge } from "~/shared/ui/badge";
 import type { MessengerSidebarTopicItem, MessengerUuid } from "./messenger.types";
 
@@ -21,7 +22,9 @@ export const WorkspaceTopicShortcutButton = React.memo(function WorkspaceTopicSh
       <span className={`truncate ${topic.isDone ? "line-through opacity-70" : ""}`}>
         # {topic.title}
       </span>
-      {topic.unreadCount > 0 ? <Badge count={topic.unreadCount} variant="unread" /> : null}
+      {topic.unreadCount > 0 ? (
+        <Badge maxCount={UNREAD_COUNT_DISPLAY_LIMIT} count={topic.unreadCount} variant="unread" />
+      ) : null}
     </button>
   );
 });

@@ -24,6 +24,7 @@ export interface WorkspaceMessageBubbleMenuProps {
   onToggleMessageSelection?: (messageUuid: MessengerUuid) => void;
   onEditMessage?: (messageUuid: MessengerUuid) => void;
   onRequestDeleteMessage?: (messageUuid: MessengerUuid) => void;
+  onCopyMessageLink?: (messageUuid: MessengerUuid) => void | Promise<void>;
   onCopyMessageText?: (messageUuid: MessengerUuid, selectedText?: string) => void | Promise<void>;
   onToggleMessageReaction?: (messageUuid: MessengerUuid, emojiName: string) => void | Promise<void>;
   onLoadWorkspaceFilePreview?: LoadWorkspaceFilePreview;

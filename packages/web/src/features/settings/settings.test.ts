@@ -75,6 +75,7 @@ describe("useSettingsStore", () => {
       expect(state.folderRailLayout).toBe("vertical");
       expect(state.showSystemFolders).toBe(true);
       expect(state.chatListDensity).toBe("standard");
+      expect(state.chatClickAction).toBe("general");
       expect(state.composerToolbarExpanded).toBe(false);
       expect(state.authIdleTimeout).toBe("3d");
     });
@@ -115,6 +116,19 @@ describe("useSettingsStore", () => {
     });
   });
 
+  it("persists the chat click mode per account and restores the default on reset", () => {
+    setWorkspaceSessionScope("account-a");
+    useSettingsStore.getState().setChatClickAction("latestTopic");
+
+    useWorkspaceAuthStore.getState().setCurrentAccountId("account-b");
+    expect(useSettingsStore.getState().chatClickAction).toBe("general");
+    useWorkspaceAuthStore.getState().setCurrentAccountId("account-a");
+    expect(useSettingsStore.getState().chatClickAction).toBe("latestTopic");
+
+    useSettingsStore.getState().resetToDefaults();
+    expect(useSettingsStore.getState().chatClickAction).toBe("general");
+  });
+
   describe("setNotificationSound", () => {
     it("updates notification sound", () => {
       useSettingsStore.getState().setNotificationSound("subtle");
@@ -125,6 +139,31 @@ describe("useSettingsStore", () => {
       useSettingsStore.getState().setNotificationSound("none");
       expect(useSettingsStore.getState().notificationSound).toBe("none");
     });
+  });
+
+  it("disables Dock bouncing, persists the choice, and restores it on reset", () => {
+    expect(useSettingsStore.getState().dockBounceEnabled).toBe(true);
+    useSettingsStore.getState().setDockBounceEnabled(false);
+
+    expect(useSettingsStore.getState().dockBounceEnabled).toBe(false);
+    expect(JSON.parse(localStorage.getItem("workspace-settings")!).dockBounceEnabled).toBe(false);
+
+    useSettingsStore.getState().setDockBounceEnabled(true);
+    expect(useSettingsStore.getState().dockBounceEnabled).toBe(true);
+    useSettingsStore.getState().setDockBounceEnabled(false);
+    useSettingsStore.getState().resetToDefaults();
+    expect(useSettingsStore.getState().dockBounceEnabled).toBe(true);
+  });
+
+  it("keeps Dock bounce preferences separate when switching accounts", () => {
+    setWorkspaceSessionScope("account-a");
+    useSettingsStore.getState().setDockBounceEnabled(false);
+
+    useWorkspaceAuthStore.setState({ currentAccountId: "account-b" });
+    expect(useSettingsStore.getState().dockBounceEnabled).toBe(true);
+
+    useWorkspaceAuthStore.setState({ currentAccountId: "account-a" });
+    expect(useSettingsStore.getState().dockBounceEnabled).toBe(false);
   });
 
   describe("setLanguage", () => {
@@ -287,6 +326,41 @@ describe("useSettingsStore", () => {
     });
   });
 
+  describe("hotkey settings", () => {
+    it("restores saved bindings per owner and sanitizes corrupt overrides", () => {
+      const { sessionB } = setWorkspaceSessionScope("account-a");
+      expect(useSettingsStore.getState().setHotkeysEnabled(false)).toBe(true);
+      const overrides = { "composer.editLastMessage": "Alt+U" } as const;
+      expect(useSettingsStore.getState().setHotkeyOverrides(overrides)).toBe(true);
+      localStorage.setItem(
+        `workspace-settings:${workspaceRuntimeOwnerKey(sessionB)}`,
+        JSON.stringify({
+          hotkeysEnabled: true,
+          hotkeyOverrides: { unknown: "Ctrl+X" },
+        }),
+      );
+      useWorkspaceAuthStore.getState().setCurrentAccountId("account-b");
+      expect(useSettingsStore.getState().hotkeysEnabled).toBe(true);
+      expect(useSettingsStore.getState().hotkeyOverrides).toEqual({});
+      useWorkspaceAuthStore.getState().setCurrentAccountId("account-a");
+      expect(useSettingsStore.getState().hotkeysEnabled).toBe(false);
+      expect(useSettingsStore.getState().hotkeyOverrides).toEqual(overrides);
+    });
+
+    it("reports storage failure without changing settings", () => {
+      const write = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+        throw new Error("quota exceeded");
+      });
+      expect(useSettingsStore.getState().setHotkeysEnabled(false)).toBe(false);
+      expect(useSettingsStore.getState().hotkeysEnabled).toBe(true);
+      expect(
+        useSettingsStore.getState().setHotkeyOverrides({ "composer.editLastMessage": "Alt+U" }),
+      ).toBe(false);
+      expect(useSettingsStore.getState().hotkeyOverrides).toEqual({});
+      write.mockRestore();
+    });
+  });
+
   describe("workspace owner scope", () => {
     it("persists settings under the active workspace owner key", () => {
       const { sessionA } = setWorkspaceSessionScope("account-a");
@@ -407,6 +481,34 @@ describe("loadSettings (module reload)", () => {
     vi.resetModules();
   });
 
+  it.each([
+    ["latestTopic", "latestTopic"],
+    [undefined, "general"],
+    ["unknown", "general"],
+  ])("loads chat click mode %s as %s", async (saved, expected) => {
+    localStorage.setItem("workspace-settings", JSON.stringify({ chatClickAction: saved }));
+    vi.resetModules();
+    const { useSettingsStore: freshStore } = await import("./settings.model");
+    expect(freshStore.getState().chatClickAction).toBe(expected);
+  });
+
+  it.each([false, true])("restores the saved Dock bounce preference %s", async (enabled) => {
+    localStorage.setItem("workspace-settings", JSON.stringify({ dockBounceEnabled: enabled }));
+    vi.resetModules();
+    const { useSettingsStore: freshStore } = await import("./settings.model");
+    expect(freshStore.getState().dockBounceEnabled).toBe(enabled);
+  });
+
+  it.each([undefined, "false", null])(
+    "preserves existing Dock behavior when the saved preference is %s",
+    async (dockBounceEnabled) => {
+      localStorage.setItem("workspace-settings", JSON.stringify({ dockBounceEnabled }));
+      vi.resetModules();
+      const { useSettingsStore: freshStore } = await import("./settings.model");
+      expect(freshStore.getState().dockBounceEnabled).toBe(true);
+    },
+  );
+
   it("uses defaults when localStorage has corrupt JSON", async () => {
     localStorage.setItem("workspace-settings", "not valid json {{{");
     vi.resetModules();
@@ -484,10 +586,20 @@ describe("loadSettings (module reload)", () => {
     expect(freshStore.getState().authIdleTimeout).toBe("3d");
   });
 
-  it("uses the default sidebar sort mode when the persisted value is invalid", async () => {
+  it("restores alphabetical sidebar sorting", async () => {
     localStorage.setItem(
       "workspace-settings",
       JSON.stringify({ messengerSidebarSortMode: "alphabetical" }),
+    );
+    vi.resetModules();
+    const { useSettingsStore: freshStore } = await import("./settings.model");
+    expect(freshStore.getState().messengerSidebarSortMode).toBe("alphabetical");
+  });
+
+  it("uses the default sidebar sort mode when the persisted value is invalid", async () => {
+    localStorage.setItem(
+      "workspace-settings",
+      JSON.stringify({ messengerSidebarSortMode: "invalid" }),
     );
     vi.resetModules();
     const { useSettingsStore: freshStore } = await import("./settings.model");

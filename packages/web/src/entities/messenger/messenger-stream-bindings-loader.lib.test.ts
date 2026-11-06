@@ -93,7 +93,6 @@ function createStream(role: MessengerStream["role"] = "member"): MessengerStream
     description: "",
     unreadCount: 0,
     sourceName: "native",
-    source: { kind: "native" },
     audience: "channel",
     isPrivate: false,
     encryption: false,

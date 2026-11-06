@@ -130,6 +130,7 @@ export const AppDialogShell: React.FC<AppDialogShellProps> = ({
   onOpenChange,
   contentClassName,
   children,
+  onOpenAutoFocus,
   onCloseAutoFocus,
   modal = true,
   ariaDescribedBy,
@@ -145,6 +146,7 @@ export const AppDialogShell: React.FC<AppDialogShellProps> = ({
       <Dialog.Content
         className={contentClassName}
         forceMount={forceMountContent ? true : undefined}
+        onOpenAutoFocus={onOpenAutoFocus}
         onCloseAutoFocus={onCloseAutoFocus ?? ((e) => e.preventDefault())}
         aria-describedby={ariaDescribedBy}
         onPointerDownOutside={onPointerDownOutside}
@@ -167,6 +169,7 @@ export const AppDialog: React.FC<AppDialogProps> = ({
   positionClassName = "top-[20%]",
   scrollBody = false,
   showCloseButton = true,
+  onOpenAutoFocus,
   onCloseAutoFocus,
 }) => {
   const contentClassName = `${
@@ -199,6 +202,7 @@ export const AppDialog: React.FC<AppDialogProps> = ({
       open={open}
       onOpenChange={onOpenChange}
       contentClassName={contentClassName}
+      onOpenAutoFocus={onOpenAutoFocus}
       onCloseAutoFocus={onCloseAutoFocus}
     >
       {scrollBody ? (

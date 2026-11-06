@@ -47,14 +47,15 @@ export const DEFAULT_WORKSPACE_FILE_CACHE_MAX_ENTRIES = 24;
 export const DEFAULT_WORKSPACE_FILE_CACHE_MAX_BYTES = 256 * 1024 * 1024;
 
 const pendingRequests = new Map<string, PendingRequest>();
-const invalidationVersionsByFileKey = new Map<string, number>();
+const invalidationsByFileKey = new Map<string, { version: number; refreshedVersion: number }>();
+const invalidationListenersByFileKey = new Map<string, Set<() => void>>();
 
 function fileCacheKey(ownerKey: string, fileUuid: string): string {
   return JSON.stringify([ownerKey, fileUuid]);
 }
 
 function currentInvalidationVersion(ownerKey: string, fileUuid: string): number {
-  return invalidationVersionsByFileKey.get(fileCacheKey(ownerKey, fileUuid)) ?? 0;
+  return invalidationsByFileKey.get(fileCacheKey(ownerKey, fileUuid))?.version ?? 0;
 }
 
 export function getWorkspaceFileResourceInvalidationVersion(
@@ -66,9 +67,35 @@ export function getWorkspaceFileResourceInvalidationVersion(
 
 // Realtime file mutations do not have a metadata store. Bump this version so the
 // next preview/download cannot reuse bytes fetched before the mutation.
-export function invalidateWorkspaceFileResourceCache(ownerKey: string, fileUuid: string): void {
+export function invalidateWorkspaceFileResourceCache(
+  ownerKey: string,
+  fileUuid: string,
+  options: { notify?: boolean } = {},
+): void {
   const key = fileCacheKey(ownerKey, fileUuid);
-  invalidationVersionsByFileKey.set(key, (invalidationVersionsByFileKey.get(key) ?? 0) + 1);
+  const invalidation = invalidationsByFileKey.get(key) ?? { version: 0, refreshedVersion: 0 };
+  invalidation.version += 1;
+  invalidationsByFileKey.set(key, invalidation);
+  if (options.notify !== false) {
+    invalidationListenersByFileKey.get(key)?.forEach((listener) => listener());
+  }
+}
+
+export function subscribeWorkspaceFileResourceInvalidation(
+  ownerKey: string,
+  fileUuid: string,
+  listener: () => void,
+): () => void {
+  const key = fileCacheKey(ownerKey, fileUuid);
+  const listeners = invalidationListenersByFileKey.get(key) ?? new Set<() => void>();
+  listeners.add(listener);
+  invalidationListenersByFileKey.set(key, listeners);
+  return () => {
+    listeners.delete(listener);
+    if (listeners.size === 0 && invalidationListenersByFileKey.get(key) === listeners) {
+      invalidationListenersByFileKey.delete(key);
+    }
+  };
 }
 
 function requestKey(options: WorkspaceFileLoaderOptions): string {
@@ -96,8 +123,16 @@ function removeConsumer(request: PendingRequest, consumer: Consumer): void {
 function createPendingRequest(options: WorkspaceFileLoaderOptions): PendingRequest {
   const key = requestKey(options);
   const controller = new AbortController();
+  const invalidation = invalidationsByFileKey.get(fileCacheKey(options.ownerKey, options.fileUuid));
+  const invalidationVersion = invalidation?.version ?? 0;
+  const needsFreshBytes =
+    invalidation != null && invalidation.refreshedVersion < invalidationVersion;
   const promise = downloadWorkspaceFile(
-    { ...options.requestOptions, signal: controller.signal },
+    {
+      ...options.requestOptions,
+      ...(needsFreshBytes ? { binaryCache: "reload" as const } : {}),
+      signal: controller.signal,
+    },
     options.fileUuid,
   );
 
@@ -110,6 +145,11 @@ function createPendingRequest(options: WorkspaceFileLoaderOptions): PendingReque
 
   void promise.then(
     () => {
+      // A scoped retry must bypass HTTP-cached errors too. Resume browser cache
+      // reuse only after a successful refresh of the latest file version.
+      if (!controller.signal.aborted && invalidation?.version === invalidationVersion) {
+        invalidation.refreshedVersion = invalidationVersion;
+      }
       if (pendingRequests.get(key) === request) {
         pendingRequests.delete(key);
       }

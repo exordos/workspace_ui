@@ -1,4 +1,5 @@
 import { t } from "~/i18n/i18n";
+import { formatLocalMessageTime } from "../workspace-message-time.lib";
 import { parseWorkspaceMessageBody } from "./workspace-message-parse.lib";
 import { DEFAULT_WORKSPACE_MESSAGE_SUMMARY_OPTIONS } from "./workspace-message-render-options.lib";
 import type {
@@ -113,6 +114,8 @@ function summarizeInline(
   options: WorkspaceMessageSummaryOptions,
 ): SummaryBuildResult {
   switch (inline.kind) {
+    case "time":
+      return { text: formatLocalMessageTime(inline.utc), leadingKind: "text" };
     case "text":
     case "code":
       return { text: inline.text, leadingKind: "text" };

@@ -18,6 +18,7 @@ import {
 } from "~/entities/workspace-auth/workspace-auth.model";
 import { t } from "~/i18n/i18n";
 import { useOpenSearch } from "~/shared/contexts/open-search";
+import { formatCount, UNREAD_COUNT_DISPLAY_LIMIT } from "~/shared/lib/count-format.lib";
 import { formatMessageTimeShort } from "~/shared/lib/datetime.lib";
 import { parseWorkspaceMessengerRoute } from "~/shared/lib/workspace-messenger-route.lib";
 import { Icon } from "~/shared/ui/icon";
@@ -117,7 +118,7 @@ const InboxRow = React.memo<{
           )}
         </div>
         <span className="flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full border border-border-subtle bg-badge-bg px-1 text-[11px] font-medium text-badge-text">
-          {row.unreadCount}
+          {formatCount(row.unreadCount, UNREAD_COUNT_DISPLAY_LIMIT)}
         </span>
       </button>
     </li>
@@ -143,7 +144,7 @@ const InboxStreamCard = React.memo<{
           <span className="truncate text-sm font-semibold text-text-primary">{title}</span>
         </div>
         <span className="flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full border border-border-subtle bg-badge-bg px-1 text-[11px] font-medium text-badge-text">
-          {resolveWorkspaceActiveUnreadCount(stream)}
+          {formatCount(resolveWorkspaceActiveUnreadCount(stream), UNREAD_COUNT_DISPLAY_LIMIT)}
         </span>
       </div>
       <ul className="space-y-1.5">

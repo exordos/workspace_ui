@@ -13,6 +13,7 @@ import type {
   WorkspaceMessengerTopicDto,
   WorkspaceRealtimeEvent,
 } from "~/shared/api/messenger.types";
+import { subscribeWorkspaceFileResourceInvalidation } from "~/shared/lib/workspace-file-loader.lib";
 import type {
   WorkspaceRealtimeEventContext,
   WorkspaceRealtimeRuntimeOwner,
@@ -105,7 +106,6 @@ function createStreamDto(
     active_unread_count: 3,
     passive_unread_count: 0,
     source_name: "native",
-    source: { kind: "native" },
     invite_only: false,
     announce: false,
     private: false,
@@ -2738,6 +2738,13 @@ describe("messenger realtime active applier", () => {
       updated_at: DATE,
     };
 
+    const onResourceInvalidated = vi.fn();
+    const unsubscribe = subscribeWorkspaceFileResourceInvalidation(
+      context.ownerKey,
+      file.uuid,
+      onResourceInvalidated,
+    );
+
     applier.applyEvent({ epoch_version: 105, type: "file", kind: "file.created", file }, context);
     applier.applyEvent(
       {
@@ -2759,6 +2766,8 @@ describe("messenger realtime active applier", () => {
     );
 
     expect(onFileChanged).toHaveBeenCalledTimes(3);
+    expect(onResourceInvalidated).toHaveBeenCalledTimes(2);
+    unsubscribe();
     expect(onFileChanged).toHaveBeenNthCalledWith(
       3,
       context.ownerKey,

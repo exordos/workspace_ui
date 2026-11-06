@@ -56,6 +56,7 @@ import {
 } from "~/shared/ui/app-dialog";
 import { Avatar } from "~/shared/ui/avatar";
 import { Icon } from "~/shared/ui/icon";
+import { PanelMenuRow } from "~/shared/ui/panel-menu-row";
 import { ScrollArea } from "~/shared/ui/scroll-area";
 import { UserPickerList } from "~/shared/ui/user-picker-list";
 import { WorkspaceMemberCard } from "~/shared/ui/workspace-member-card";
@@ -322,8 +323,9 @@ function isCurrentWorkspaceStreamOwner(
 
 const RightPanelWorkspaceChannelInfo: React.FC<{
   info: WorkspaceRightPanelChannelInfoView;
+  encryptionKeysRow?: React.ReactNode;
   renderContent?: (actions: WorkspaceChannelMemberActions) => React.ReactNode;
-}> = ({ info, renderContent }) => {
+}> = ({ info, encryptionKeysRow, renderContent }) => {
   const navigate = useNavigate();
   const [notificationActionState, setNotificationActionState] = useState<NotificationActionState>(
     () => createNotificationActionState(info.streamUuid),
@@ -667,8 +669,7 @@ const RightPanelWorkspaceChannelInfo: React.FC<{
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden text-text-primary">
-      {/* Drawer already has px-2 (8px); header adds another 8px to match Figma title/avatar inset. */}
-      <header className="flex-shrink-0 border-b border-border-subtle px-2 pb-3 pt-1">
+      <header className="mx-2 flex-shrink-0 border-b border-border-subtle px-2 pb-3 pt-1">
         <div className="flex items-center gap-4">
           <Avatar size="lg" style={{ backgroundColor: resolveAvatarBackgroundColor(info.color) }}>
             {info.title.slice(0, 1)}
@@ -683,8 +684,7 @@ const RightPanelWorkspaceChannelInfo: React.FC<{
         </div>
       </header>
 
-      {/* No extra horizontal pad — aside px-2 is the Figma 8px inset; sections gap 20. */}
-      <ScrollArea className="flex-1 space-y-5 py-2">
+      <ScrollArea className="flex-1 space-y-5 p-2">
         <div>
           <h3 className="mb-3 px-2 text-sm font-medium normal-case text-text-primary">
             {t("channel.notifications")}
@@ -724,6 +724,8 @@ const RightPanelWorkspaceChannelInfo: React.FC<{
             permissions={summaryPermissions}
           />
         ) : null}
+
+        {encryptionKeysRow && <div className="-mx-2 [&>button]:px-6">{encryptionKeysRow}</div>}
 
         {info.description && (
           <div>
@@ -826,6 +828,9 @@ export const RightPanelWorkspaceInfo: React.FC<RightPanelWorkspaceInfoProps> = (
   const encrypted = useMessengerStore(
     (state) => streamUuid != null && state.streamsById[streamUuid]?.encryption === true,
   );
+  const native = useMessengerStore(
+    (state) => streamUuid != null && state.streamsById[streamUuid]?.sourceName === "native",
+  );
   const ownerKey = useWorkspaceAuthStore((state) => {
     const runtime = selectCurrentWorkspaceRuntimeContext(state);
     return runtime == null ? null : workspaceRuntimeOwnerKey(runtime);
@@ -842,7 +847,10 @@ export const RightPanelWorkspaceInfo: React.FC<RightPanelWorkspaceInfoProps> = (
       ? call.invoke
       : undefined;
   });
-  if (encrypted && streamUuid != null) {
+  if (
+    streamUuid != null &&
+    (encrypted || (native && (chatScreen === "key" || chatScreen === "local-key")))
+  ) {
     const renderEncryptedInfo = (actions?: WorkspaceChannelMemberActions) => (
       <EncryptedChatInfoConnected
         streamUuid={streamUuid}
@@ -879,9 +887,25 @@ export const RightPanelWorkspaceInfo: React.FC<RightPanelWorkspaceInfoProps> = (
       renderEncryptedInfo()
     );
   }
-  if (info.kind === "directPrivate" || info.kind === "userProfile") {
-    return <RightPanelWorkspaceDirectPrivateInfo info={info} />;
+  const encryptionKeysRow =
+    native && onChatScreenChange != null ? (
+      <PanelMenuRow
+        label={t("e2ee.keyTitle")}
+        icon="chatLock"
+        density="compact"
+        onClick={() => onChatScreenChange("key")}
+      />
+    ) : null;
+  if (info.kind === "channel") {
+    return <RightPanelWorkspaceChannelInfo info={info} encryptionKeysRow={encryptionKeysRow} />;
   }
-
-  return <RightPanelWorkspaceChannelInfo info={info} />;
+  const directInfo = <RightPanelWorkspaceDirectPrivateInfo info={info} />;
+  return encryptionKeysRow != null ? (
+    <div className="flex min-h-0 flex-1 flex-col">
+      {encryptionKeysRow}
+      {directInfo}
+    </div>
+  ) : (
+    directInfo
+  );
 };

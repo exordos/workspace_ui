@@ -39,6 +39,7 @@ export const SidebarShell: React.FC<SidebarShellProps> = ({
   const folderRailLayout = useSettingsStore((s) => s.folderRailLayout);
   const messengerSidebarSortMode = useSettingsStore((s) => s.messengerSidebarSortMode);
   const setSelectedFolderId = useSidebarConfigStore((s) => s.setSelectedFolderId);
+  const setSearchQuery = useSidebarConfigStore((s) => s.setSearchQuery);
   const workspaceSelectedFolderId = useSidebarConfigStore((s) => s.selectedFolderId);
   const workspaceSearchQuery = useSidebarConfigStore((s) => s.searchQuery);
   const workspaceRoute = useMemo(() => parseWorkspaceMessengerRoute(pathname), [pathname]);
@@ -239,9 +240,10 @@ export const SidebarShell: React.FC<SidebarShellProps> = ({
 
   const handleSelectWorkspaceFolder = useCallback(
     (folderId: string) => {
+      if (folderId !== workspaceEffectiveFolderId) setSearchQuery("");
       setSelectedFolderId(folderId);
     },
-    [setSelectedFolderId],
+    [setSearchQuery, setSelectedFolderId, workspaceEffectiveFolderId],
   );
 
   const workspaceFolderRail = (

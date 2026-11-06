@@ -1,4 +1,5 @@
 import React from "react";
+import { formatCount } from "~/shared/lib/count-format.lib";
 import type { BadgeProps, BadgeSize, BadgeTextTone, BadgeVariant } from "./badge.types";
 
 const VARIANT_BG_CLASS: Record<BadgeVariant, string> = {
@@ -24,6 +25,7 @@ const SIZE_CLASS: Record<BadgeSize, string> = {
 export const Badge = React.memo<BadgeProps>(
   ({
     count,
+    maxCount,
     variant = "unread",
     size = "default",
     textTone = "default",
@@ -36,7 +38,7 @@ export const Badge = React.memo<BadgeProps>(
       <span
         className={`flex items-center justify-center font-medium leading-none ${roundedClass} ${SIZE_CLASS[size]} ${VARIANT_BG_CLASS[variant]} ${textClass} ${className}`.trim()}
       >
-        {count}
+        {formatCount(count, maxCount)}
       </span>
     );
   },

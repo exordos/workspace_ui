@@ -1,5 +1,6 @@
 import React, { useCallback } from "react";
 import { t } from "~/i18n/i18n";
+import { Copyable } from "~/shared/ui/copyable";
 import { Icon } from "~/shared/ui/icon";
 import type { MediaViewerToolbarProps } from "./media-viewer-toolbar.types";
 
@@ -8,9 +9,12 @@ const TOOLBAR_BUTTON_CLASS =
 
 export const MediaViewerToolbar: React.FC<MediaViewerToolbarProps> = ({
   actionsEnabled,
+  showCopy,
+  copyKey,
   showOpenInNewTab,
   onOpenInNewTab,
   onDownload,
+  onCopy,
   onClose,
 }) => {
   const stopPropagation = useCallback((event: React.MouseEvent) => {
@@ -60,6 +64,17 @@ export const MediaViewerToolbar: React.FC<MediaViewerToolbarProps> = ({
         >
           <Icon name="newWindow" size={20} />
         </button>
+      ) : null}
+      {showCopy ? (
+        <Copyable
+          key={copyKey}
+          showOnHover={false}
+          buttonClassName={`${TOOLBAR_BUTTON_CLASS} !h-10 !w-10 !rounded-lg`}
+          iconSize={20}
+          onCopy={onCopy}
+          disabled={!actionsEnabled}
+          copyAriaLabel={t("message.copyImage")}
+        />
       ) : null}
       <button
         type="button"

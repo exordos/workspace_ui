@@ -114,6 +114,25 @@ describe("messenger transport helper", () => {
     });
   });
 
+  it("bypasses a cached failure when a binary download explicitly reloads", async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockImplementation((_url, init) =>
+        Promise.resolve(
+          init?.cache === "reload"
+            ? new Response("fresh file")
+            : new Response("cached 404", { status: 404 }),
+        ),
+      );
+    const result = await getBinaryResult("/files/file-uuid/actions/download", {
+      accessToken: "token",
+      fetchImpl: fetchMock,
+      binaryCache: "reload",
+    });
+    expect(await result.blob.text()).toBe("fresh file");
+    expect(firstFetchCall(fetchMock)[1]?.cache).toBe("reload");
+  });
+
   it("adds the dev target origin header for same-origin proxied requests", async () => {
     const fetchMock = createFetchMock([{ uuid: "stream" }]);
 

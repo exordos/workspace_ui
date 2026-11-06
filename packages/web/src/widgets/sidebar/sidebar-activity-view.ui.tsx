@@ -1,6 +1,7 @@
 import React from "react";
 import { Link, useLocation } from "react-router-dom";
 import { t } from "~/i18n/i18n";
+import { UNREAD_COUNT_DISPLAY_LIMIT } from "~/shared/lib/count-format.lib";
 import {
   parseWorkspaceMessengerRoute,
   workspaceActivityRoute,
@@ -152,6 +153,9 @@ const CompactActivityItem = React.memo<CompactActivityItemProps>(function Compac
       <span className={compactBadgeClass}>
         <Badge
           count={count}
+          maxCount={
+            item.key === "inbox" || item.key === "mentions" ? UNREAD_COUNT_DISPLAY_LIMIT : undefined
+          }
           variant={badgeVariantForActivityKey(item.key)}
           size="sm"
           textTone="primary"
@@ -331,7 +335,15 @@ export const SidebarActivityView: React.FC<SidebarActivityViewProps> = ({
                 <span className={expandedLabel}>{t(item.labelKey)}</span>
                 {canShowCount && count != null && (
                   <span className="shrink-0">
-                    <Badge count={count} variant={badgeVariantForActivityKey(item.key)} />
+                    <Badge
+                      count={count}
+                      maxCount={
+                        item.key === "inbox" || item.key === "mentions"
+                          ? UNREAD_COUNT_DISPLAY_LIMIT
+                          : undefined
+                      }
+                      variant={badgeVariantForActivityKey(item.key)}
+                    />
                   </span>
                 )}
               </>

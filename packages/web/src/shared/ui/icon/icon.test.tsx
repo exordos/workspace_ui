@@ -225,6 +225,7 @@ describe("Icon", () => {
       .filter((file) => file.endsWith(".svg"))
       .sort();
     const fixedColorAssets: Record<string, string> = {
+      "calendar-next.svg": "white",
       "bedtime.svg": "#F7FDFF",
       "desktop_windows.svg": "#707070",
       "list_arrow.svg": "#707070",

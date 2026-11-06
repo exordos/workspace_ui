@@ -55,7 +55,12 @@ export function selectEncryptedChatInfo(
 ): EncryptedChatInfoProjection | null {
   if (snapshot.ownerKey == null || snapshot.catalogOwnerKey !== snapshot.ownerKey) return null;
   const stream = snapshot.streamsById[snapshot.streamUuid];
-  if (stream?.encryption !== true || stream.projectId !== snapshot.projectId) return null;
+  if (
+    !stream ||
+    (stream.encryption !== true && stream.sourceName !== "native") ||
+    stream.projectId !== snapshot.projectId
+  )
+    return null;
   const users = snapshot.usersOwnerKey === snapshot.ownerKey ? snapshot.usersById : {};
   const streamMembers = selectWorkspaceStreamMembers(
     Object.values(snapshot.bindingsById).filter(

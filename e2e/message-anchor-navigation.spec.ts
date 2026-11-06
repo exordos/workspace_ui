@@ -1,5 +1,6 @@
 import { expect, test } from "./fixtures";
 import { seedAuthStorage } from "./helpers/seed-auth";
+import { WorkspaceApiMock } from "./helpers/workspace-api-mock";
 import { e2eOrgBasePath, E2E_STREAM_UUID, E2E_TOPIC_UUID } from "./helpers/navigate-messenger";
 import {
   E2E_ACCOUNT_ID,
@@ -386,6 +387,44 @@ function expectNoVisibleAnchorJump(result: AnchorVisualSamplerResult, messageUui
 }
 
 test.describe("Message anchor navigation @mock", () => {
+  test("a copied message link opens the original in a fresh browser context", async ({
+    authenticated,
+    browser,
+    baseURL,
+    browserName,
+  }) => {
+    test.skip(browserName !== "chromium", "This scenario reads the Chromium clipboard.");
+    const anchor = messageDto(FIRST_ANCHOR_UUID, "Shared decision", "2026-07-16T10:00:00.000Z");
+    const messages = new Map([[anchor.uuid, anchor]]);
+    await installMessageRoute(authenticated, { messages, tailMessages: [anchor] });
+    await authenticated.goto(topicRoute());
+    await authenticated.context().grantPermissions(["clipboard-read", "clipboard-write"], {
+      origin: new URL(authenticated.url()).origin,
+    });
+    await authenticated.getByText("Shared decision", { exact: true }).click({ button: "right" });
+    await authenticated
+      .getByRole("menuitem", { name: /^(Скопировать ссылку|Copy message link)$/i })
+      .click();
+    const expectedUrl = new URL(directMessageRoute(anchor.uuid), authenticated.url()).href;
+    await expect
+      .poll(() => authenticated.evaluate(() => navigator.clipboard.readText()))
+      .toBe(expectedUrl);
+    const link = await authenticated.evaluate(() => navigator.clipboard.readText());
+
+    const recipient = await browser.newContext({ baseURL });
+    try {
+      const page = await recipient.newPage();
+      await new WorkspaceApiMock(page).install();
+      await seedAuthStorage(page);
+      await installMessageRoute(page, { messages });
+      await page.goto(link);
+      await page.waitForURL(topicAnchorRoute(anchor.uuid));
+      await expectFocusedAnchor(page, anchor.uuid);
+    } finally {
+      await recipient.close();
+    }
+  });
+
   test("a quote to a message in the current window focuses the existing canonical node", async ({
     authenticated,
   }) => {

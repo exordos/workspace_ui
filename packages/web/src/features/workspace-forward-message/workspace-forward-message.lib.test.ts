@@ -238,3 +238,20 @@ describe("workspace forward message lib contract", () => {
     );
   });
 });
+
+it("forwards the encrypted canonical source when selected DOM text contains a revealed secret", async () => {
+  const { buildWorkspaceForwardMarkdown } = await import(LIB_MODULE);
+  const encrypted =
+    "Public [Encrypted fragment](urn:secret:v1:original-stream:key:ciphertext) after";
+  const markdown = buildWorkspaceForwardMarkdown({
+    messages: [createForwardMessage({ payload: { kind: "markdown", content: encrypted } })],
+    selectedText: "revealed password",
+    resolveAuthorLabel: () => "Alice",
+    resolveSourceLabel: () => SOURCE_LABEL,
+  });
+  const match = /^\[Alice\]\((.+)\)$/.exec(markdown ?? "");
+  const reference = parseWorkspaceReferenceUrn(match?.[1]);
+  expect(reference).toMatchObject({ kind: "forward", snapshotMarkdown: encrypted });
+  expect(reference).not.toHaveProperty("snapshotFormat");
+  expect(JSON.stringify(reference)).not.toContain("revealed password");
+});

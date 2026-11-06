@@ -1,3 +1,4 @@
+import { buildOrgRouteIdFromOrigin } from "~/shared/lib/org-route";
 import { isValidRealmUrl } from "~/shared/lib/validation";
 
 export interface InitialLoginOrganization {
@@ -6,36 +7,37 @@ export interface InitialLoginOrganization {
 }
 
 export function resolveInitialLoginOrganization(input: {
-  realmPrefill: string | null;
   browserOrigin: string | null;
   defaultOrganizationUrl: string;
+  messageOrgId?: string;
+  sessionOrigins?: readonly string[];
+  profileShare?: boolean;
 }): InitialLoginOrganization {
-  const prefilledOrganization = input.realmPrefill?.trim() ?? "";
-  if (prefilledOrganization.length > 0) {
-    return {
-      organizationUrl: prefilledOrganization,
-      autoAdvance: input.browserOrigin != null && isValidRealmUrl(prefilledOrganization),
-    };
-  }
-
-  const defaultOrganization = input.defaultOrganizationUrl.trim();
-  if (
-    input.browserOrigin != null &&
-    defaultOrganization.length > 0 &&
-    isValidRealmUrl(defaultOrganization)
-  ) {
-    return { organizationUrl: defaultOrganization, autoAdvance: true };
-  }
-
-  const browserOrigin = input.browserOrigin?.trim() ?? "";
+  const browser = input.browserOrigin;
+  const configured = input.defaultOrganizationUrl.trim();
   // A local Vite origin is a frontend, not an implicit organization backend.
-  if (
-    browserOrigin.length > 0 &&
-    isValidRealmUrl(browserOrigin) &&
-    new URL(browserOrigin).protocol === "https:"
-  ) {
-    return { organizationUrl: browserOrigin, autoAdvance: true };
+  const browserBackend =
+    browser &&
+    isValidRealmUrl(browser) &&
+    (input.profileShare || new URL(browser).protocol === "https:")
+      ? browser
+      : "";
+  let organizationUrl = "";
+  if (input.messageOrgId !== undefined) {
+    // A route ID can match multiple origins (e.g. a port and a hyphenated hostname).
+    const origins = new Set(
+      [...(input.sessionOrigins ?? []), configured, browserBackend]
+        .filter(isValidRealmUrl)
+        .map((value) => new URL(value).origin)
+        .filter((origin) => buildOrgRouteIdFromOrigin(origin) === input.messageOrgId),
+    );
+    if (origins.size === 1) organizationUrl = [...origins][0] ?? "";
+  } else if (browser != null) {
+    organizationUrl =
+      !input.profileShare && isValidRealmUrl(configured)
+        ? new URL(configured).origin
+        : browserBackend;
   }
 
-  return { organizationUrl: "", autoAdvance: false };
+  return { organizationUrl, autoAdvance: organizationUrl.length > 0 };
 }

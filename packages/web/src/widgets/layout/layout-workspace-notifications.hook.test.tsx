@@ -33,6 +33,7 @@ const closeNotificationMock = vi.hoisted(() =>
 );
 const playNotificationSoundMock = vi.hoisted(() => vi.fn());
 const requestAttentionMock = vi.hoisted(() => vi.fn());
+const isElectronDarwinMock = vi.hoisted(() => vi.fn(() => false));
 const resolveCachedWorkspaceUserMock = vi.hoisted(() =>
   vi.fn(() => Promise.resolve({ displayName: "Alice" })),
 );
@@ -71,6 +72,11 @@ vi.mock("~/shared/lib/os-integration", () => ({
     requestAttention: (...args: Parameters<typeof requestAttentionMock>) =>
       requestAttentionMock(...args),
   },
+}));
+
+vi.mock("~/shared/lib/electron", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  isElectronDarwin: isElectronDarwinMock,
 }));
 
 vi.mock("~/entities/messenger/messenger-conversation-metadata.lib", () => ({
@@ -215,6 +221,7 @@ function createProjection(
 describe("useLayoutWorkspaceNotifications", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    isElectronDarwinMock.mockReturnValue(false);
     resolveConversationMetadataMock.mockResolvedValue({ stream: null, topic: null });
     clearNotifiedMessageIds();
     clearNotificationAggregateRegistry();
@@ -223,7 +230,7 @@ describe("useLayoutWorkspaceNotifications", () => {
       currentAccountId: null,
       runtimeGeneration: 0,
     });
-    useSettingsStore.setState({ notificationSound: "none" });
+    useSettingsStore.setState({ notificationSound: "none", dockBounceEnabled: true });
     useMessengerBackgroundProjectionStore.getState().clear();
     useMessengerStore.getState().clear();
   });
@@ -545,6 +552,108 @@ describe("useLayoutWorkspaceNotifications", () => {
       }),
     );
   });
+
+  it.each([
+    { macOS: true, enabled: false, attentionExpected: false },
+    { macOS: true, enabled: true, attentionExpected: true },
+    { macOS: false, enabled: false, attentionExpected: true },
+  ])(
+    "keeps banners and sound with Dock bounce enabled=$enabled on macOS=$macOS",
+    async ({ macOS, enabled, attentionExpected }) => {
+      const session = createSession("dock-bounce");
+      const ownerKey = workspaceRuntimeOwnerKey(session);
+      const messageUuid = "dock-bounce-message";
+      useWorkspaceAuthStore.setState({
+        sessions: [session],
+        currentAccountId: session.accountId,
+        runtimeGeneration: 1,
+      });
+      isElectronDarwinMock.mockReturnValue(macOS);
+      useSettingsStore.setState({ notificationSound: "glass", dockBounceEnabled: enabled });
+      useMessengerBackgroundProjectionStore.setState({
+        projectionsByOwnerKey: {
+          [ownerKey]: createProjection(ownerKey, {
+            notificationCandidates: [createCandidate(ownerKey, messageUuid)],
+            messageIdSnapshotsById: {
+              [messageUuid]: createMessageSnapshot(ownerKey, messageUuid),
+            },
+          }),
+        },
+      });
+      renderHook(() =>
+        useLayoutWorkspaceNotifications({
+          enabled: true,
+          navigate: vi.fn(),
+          pathname: OTHER_CONVERSATION_PATHNAME,
+        }),
+      );
+      await waitFor(() => expect(playNotificationSoundMock).toHaveBeenCalledWith("glass"));
+      expect(showNotificationMock).toHaveBeenCalledTimes(1);
+      expect(requestAttentionMock).toHaveBeenCalledTimes(attentionExpected ? 1 : 0);
+    },
+  );
+
+  it.each([
+    { ownerEnabled: false, switchWhilePending: false },
+    { ownerEnabled: true, switchWhilePending: false },
+    { ownerEnabled: false, switchWhilePending: true },
+    { ownerEnabled: true, switchWhilePending: true },
+  ])(
+    "uses the notification owner's Dock setting (enabled=$ownerEnabled, pending switch=$switchWhilePending)",
+    async ({ ownerEnabled, switchWhilePending }) => {
+      const sessionA = createSession("dock-owner-a");
+      const sessionB = createSession("dock-owner-b");
+      const ownerKey = workspaceRuntimeOwnerKey(sessionA);
+      const messageUuid = "owner-dock-message";
+      useWorkspaceAuthStore.setState({
+        sessions: [sessionA, sessionB],
+        currentAccountId: sessionA.accountId,
+        runtimeGeneration: 1,
+      });
+      useSettingsStore.getState().setDockBounceEnabled(ownerEnabled);
+      useWorkspaceAuthStore.setState({ currentAccountId: sessionB.accountId });
+      useSettingsStore.getState().setDockBounceEnabled(!ownerEnabled);
+      isElectronDarwinMock.mockReturnValue(true);
+
+      let finishAuthorLookup: ((author: { displayName: string }) => void) | undefined;
+      if (switchWhilePending) {
+        useWorkspaceAuthStore.setState({ currentAccountId: sessionA.accountId });
+        resolveCachedWorkspaceUserMock.mockImplementationOnce(
+          () =>
+            new Promise((resolve) => {
+              finishAuthorLookup = resolve;
+            }),
+        );
+      }
+      useMessengerBackgroundProjectionStore.setState({
+        projectionsByOwnerKey: {
+          [ownerKey]: createProjection(ownerKey, {
+            notificationCandidates: [createCandidate(ownerKey, messageUuid)],
+            messageIdSnapshotsById: {
+              [messageUuid]: createMessageSnapshot(ownerKey, messageUuid),
+            },
+          }),
+        },
+      });
+      renderHook(() =>
+        useLayoutWorkspaceNotifications({
+          enabled: true,
+          navigate: vi.fn(),
+          pathname: OTHER_CONVERSATION_PATHNAME,
+        }),
+      );
+      if (switchWhilePending) {
+        await waitFor(() => expect(finishAuthorLookup).toBeDefined());
+        await act(async () => {
+          useWorkspaceAuthStore.setState({ currentAccountId: sessionB.accountId });
+          finishAuthorLookup?.({ displayName: "Alice" });
+          await Promise.resolve();
+        });
+      }
+      await waitFor(() => expect(showNotificationMock).toHaveBeenCalledTimes(1));
+      expect(requestAttentionMock).toHaveBeenCalledTimes(ownerEnabled ? 1 : 0);
+    },
+  );
 
   it('keeps the desktop notification silent and skips app sound when notificationSound is "none"', async () => {
     const session = createSession("silent");

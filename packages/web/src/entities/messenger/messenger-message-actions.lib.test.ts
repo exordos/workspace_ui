@@ -115,7 +115,6 @@ function createStreamDto(
     active_unread_count: 0,
     passive_unread_count: 0,
     source_name: "native",
-    source: { kind: "native" },
     invite_only: false,
     announce: false,
     private: false,
@@ -1696,4 +1695,30 @@ describe("encrypted payload local dispatch guards", () => {
     ).resolves.toMatchObject({ status: "applied" });
     expect(f.cache.writeConversationMessagePage).toHaveBeenCalledOnce();
   });
+});
+
+it("rejects editor-only secret fences before ordinary send or edit transport", async () => {
+  const runtimeContext = createRuntimeContext();
+  const createMessage = vi.fn();
+  const editMessage = vi.fn();
+  const markdown = "Public :::private:::";
+  await expect(
+    sendMessengerMessage({
+      runtimeContext,
+      streamUuid: STREAM_A,
+      topicUuid: TOPIC_A,
+      markdown,
+      client: { createMessage },
+    }),
+  ).rejects.toThrow("invalid-secret");
+  await expect(
+    editMessengerMessage({
+      runtimeContext,
+      messageUuid: MESSAGE_A,
+      markdown,
+      client: { editMessage },
+    }),
+  ).rejects.toThrow("invalid-secret");
+  expect(createMessage).not.toHaveBeenCalled();
+  expect(editMessage).not.toHaveBeenCalled();
 });

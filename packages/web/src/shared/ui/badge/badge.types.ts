@@ -4,6 +4,8 @@ export type BadgeTextTone = "default" | "primary";
 
 export interface BadgeProps {
   count: number;
+  /** Compact values above this threshold into whole-thousand labels without changing the count. */
+  maxCount?: number;
   variant?: BadgeVariant;
   size?: BadgeSize;
   /** Override variant text color — `primary` matches sidebar hover label tone. */

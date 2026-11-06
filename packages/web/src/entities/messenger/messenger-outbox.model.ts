@@ -25,6 +25,11 @@ export interface MessengerOutboxStoreState {
     patch?: { markdown?: string; sourceMarkdown?: string },
   ) => void;
   markOutgoingMessageFailed: (placementUuid: MessengerUuid, error: string) => void;
+  retainEncryptedFragments: (
+    placementUuid: MessengerUuid,
+    fragments: readonly ChatEncryptedPayload[],
+    markdown: string,
+  ) => void;
   retainEncryptedPayload: (placementUuid: MessengerUuid, payload: ChatEncryptedPayload) => void;
   removeOutgoingMessage: (placementUuid: MessengerUuid) => void;
   clearOwner: (ownerKey: string) => void;
@@ -191,6 +196,27 @@ export const useMessengerOutboxStore = create<MessengerOutboxStoreState>((set, g
     }));
   },
 
+  retainEncryptedFragments(placementUuid, fragments, markdown) {
+    const message = get().outgoingMessagesByPlacementUuid[placementUuid];
+    const encryption = message?.encryption;
+    if (
+      message == null ||
+      encryption?.mode !== "fragments" ||
+      fragments.some((payload) => payload.keyUuid !== encryption.keyUuid)
+    )
+      throw new Error("stale");
+    if (encryption.preparedMarkdown != null) return;
+    set((state) => ({
+      outgoingMessagesByPlacementUuid: {
+        ...state.outgoingMessagesByPlacementUuid,
+        [placementUuid]: {
+          ...message,
+          encryption: { ...encryption, fragments, preparedMarkdown: markdown },
+        },
+      },
+    }));
+  },
+
   markOutgoingMessageFailed(placementUuid, error) {
     logStoreAction("messengerOutbox", "markOutgoingMessageFailed", { placementUuid });
     set((state) => {
@@ -281,10 +307,14 @@ export function isMessengerOutgoingMessageReceipt(
     outgoing.topicUuid === message.topicUuid &&
     outgoing.authorUuid === message.authorUuid &&
     (encryption == null ||
-      (message.payload.kind === "e2ee" &&
-        message.payload.keyUuid === encryption.keyUuid &&
-        preparedPayload?.kind === "e2ee" &&
-        message.payload.content === preparedPayload.content))
+      (encryption.mode === "fragments"
+        ? message.payload.kind === "markdown" &&
+          encryption.preparedMarkdown != null &&
+          message.payload.content === encryption.preparedMarkdown
+        : message.payload.kind === "e2ee" &&
+          message.payload.keyUuid === encryption.keyUuid &&
+          preparedPayload?.kind === "e2ee" &&
+          message.payload.content === preparedPayload.content))
   );
 }
 

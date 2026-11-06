@@ -11,6 +11,7 @@ import type {
   MessengerSidebarStreamItem,
   MessengerSidebarTopicItem,
 } from "~/entities/messenger/messenger.types";
+import { useSettingsStore } from "~/features/settings/settings.model";
 import { getLocale, setLocale, t } from "~/i18n/i18n";
 import * as datetime from "~/shared/lib/datetime.lib";
 import { initVisibilityTracking } from "~/shared/lib/visibility";
@@ -319,6 +320,41 @@ describe("WorkspaceSidebar search mode", () => {
 
     expect(screen.getAllByText(t("sidebar.emptySearch"))).toHaveLength(1);
     expect(screen.queryByText(t("sidebar.noMatchesInFolder"))).not.toBeInTheDocument();
+  });
+});
+
+describe("sidebar chat click mode", () => {
+  afterEach(() => {
+    useSettingsStore.getState().resetToDefaults();
+    useSidebarConfigStore.getState().setConfig({ expandedStreamUuids: [] });
+  });
+
+  it("switches card navigation without changing the avatar action", () => {
+    const release = topic("stream-a", "release", "Release");
+    const engineering = {
+      ...stream("stream-a", "Engineering", [release]),
+      preview: { messageUuid: "last-message", text: "Latest message", route: release.route },
+    };
+    renderSidebar({ streams: [engineering] });
+    const title = screen.getByRole("link", { name: "Engineering" });
+    expect(title).toHaveAttribute("href", engineering.route);
+    expect(screen.getByText("Latest message").closest("a")).toHaveAttribute("href", release.route);
+
+    act(() => useSettingsStore.getState().setChatClickAction("latestTopic"));
+    const avatar = screen.getByRole("link", { name: `${t("chat.generalChat")}: Engineering` });
+    expect(title).toHaveAttribute("href", release.route);
+    expect(screen.getByText("Latest message").closest("a")).toBeNull();
+    fireEvent.click(title);
+    expect(useSidebarConfigStore.getState().expandedStreamUuids).toEqual([]);
+    expect(avatar).toHaveAttribute("href", engineering.route);
+    fireEvent.click(avatar);
+    expect(useSidebarConfigStore.getState().expandedStreamUuids).toEqual(["stream-a"]);
+
+    act(() => useSidebarConfigStore.getState().setConfig({ expandedStreamUuids: [] }));
+    act(() => useSettingsStore.getState().setChatClickAction("general"));
+    expect(title).toHaveAttribute("href", engineering.route);
+    fireEvent.click(title);
+    expect(useSidebarConfigStore.getState().expandedStreamUuids).toEqual(["stream-a"]);
   });
 });
 

@@ -12,7 +12,7 @@ import { writeText } from "~/shared/lib/clipboard";
 import { toast } from "~/shared/lib/toast/toast";
 import { selectEncryptedChatInfo } from "./encrypted-chat-info-selector.lib";
 
-export function useEncryptedChatInfo(streamUuid: string) {
+export function useEncryptedChatInfo(streamUuid: string, sendingKeyUuid: string | null = null) {
   const sessions = useWorkspaceAuthStore((state) => state.sessions);
   const currentAccountId = useWorkspaceAuthStore((state) => state.currentAccountId);
   const runtime = useMemo(
@@ -54,7 +54,11 @@ export function useEncryptedChatInfo(streamUuid: string) {
       usersById,
     ],
   );
-  const scopeKey = `${ownerKey}:${runtime?.runtimeGeneration}:${streamUuid}:${projection?.stream.currentEncryptionKey?.keyUuid}`;
+  const selectedKeyUuid =
+    projection?.stream.encryption === true
+      ? projection.stream.currentEncryptionKey?.keyUuid
+      : sendingKeyUuid;
+  const scopeKey = `${ownerKey}:${runtime?.runtimeGeneration}:${streamUuid}:${selectedKeyUuid}`;
   const activeScopeRef = useRef<string | null>(null);
   useLayoutEffect(() => {
     activeScopeRef.current = scopeKey;
@@ -76,12 +80,13 @@ export function useEncryptedChatInfo(streamUuid: string) {
     const stream = catalog.streamsById[streamUuid];
     if (
       stream?.projectId !== current.projectId ||
-      stream.encryption !== true ||
-      stream.currentEncryptionKey == null
+      (stream.encryption !== true && stream.sourceName !== "native")
     )
       return;
-    const keyUuid = stream.currentEncryptionKey.keyUuid;
-    void writeText(stream.currentEncryptionKey.keyUuid).then((copied) => {
+    const keyUuid =
+      stream.encryption === true ? stream.currentEncryptionKey?.keyUuid : sendingKeyUuid;
+    if (keyUuid == null) return;
+    void writeText(keyUuid).then((copied) => {
       const latest = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
       if (
         activeScopeRef.current !== scopeKey ||
@@ -89,13 +94,14 @@ export function useEncryptedChatInfo(streamUuid: string) {
         workspaceRuntimeOwnerKey(latest) !== ownerKey ||
         latest.runtimeGeneration !== current.runtimeGeneration ||
         useMessengerStore.getState().ownerKey !== ownerKey ||
-        useMessengerStore.getState().streamsById[streamUuid]?.currentEncryptionKey?.keyUuid !==
-          keyUuid
+        (stream.encryption === true &&
+          useMessengerStore.getState().streamsById[streamUuid]?.currentEncryptionKey?.keyUuid !==
+            keyUuid)
       )
         return;
       if (!copied) toast.error(t("e2ee.copyFailed"));
     });
-  }, [ownerKey, runtime?.runtimeGeneration, scopeKey, streamUuid]);
+  }, [ownerKey, runtime?.runtimeGeneration, scopeKey, streamUuid, sendingKeyUuid]);
   return {
     projection,
     onCopyKey,

@@ -3,6 +3,7 @@ import { webcrypto } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createStore } from "zustand/vanilla";
 import { useWorkspaceMessageStore } from "~/entities/message/message.model";
+import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import { createMessage, editMessage, getMessagesPage } from "~/shared/api/messenger-messages.api";
@@ -11,6 +12,7 @@ import type {
   WorkspaceMessengerMessageDto,
   WorkspaceMessengerStreamDto,
 } from "~/shared/api/messenger.types";
+import { buildWorkspaceSecretUrn } from "~/shared/lib/workspace-reference-urn.lib";
 import {
   realChatCryptoProvider,
   realChatKeyStorage,
@@ -22,6 +24,9 @@ import {
   openRealChatSession as openChatSession,
   decryptRealChatMessage,
   decryptRealChatMessageResult,
+  decryptRealChatEnvelopeResult,
+  commitPreparedPlaintextWindow,
+  type PreparedPlaintextRecord,
 } from "./chat-crypto-runtime.lib";
 import { encodeChatE2eePayload } from "./chat-e2ee-payload-adapters.lib";
 import { realChatInitialKeyBootstrap } from "./chat-real-key-bootstrap.lib";
@@ -211,13 +216,24 @@ function runtime(user = ADMIN): WorkspaceRuntimeContext {
   };
 }
 
-async function setup({ publishRotationUpdates = true } = {}) {
+async function setup({
+  publishRotationUpdates = true,
+  encrypted = true,
+  hasInitialKey = true,
+} = {}) {
   const admin = runtime();
   const member = runtime(MEMBER);
   const metadata = await realChatInitialKeyBootstrap.prepare({
     runtimeContext: admin,
     isCurrent: () => true,
   });
+  if (!encrypted && hasInitialKey)
+    await realChatInitialKeyBootstrap.finalize!({
+      runtimeContext: admin,
+      metadata,
+      streamUuid: STREAM,
+      isCurrent: () => true,
+    });
   let currentKey = { key_uuid: metadata.keyUuid };
   const stream = (user: string): WorkspaceMessengerStreamDto => ({
     uuid: STREAM,
@@ -232,14 +248,13 @@ async function setup({ publishRotationUpdates = true } = {}) {
     active_unread_count: 0,
     passive_unread_count: 0,
     source_name: "native",
-    source: { kind: "native" },
     invite_only: false,
     announce: false,
     private: false,
     is_archived: false,
     direct_user_uuid: null,
-    encryption: true,
-    current_encryption_key_uuid: currentKey.key_uuid,
+    encryption: encrypted,
+    current_encryption_key_uuid: hasInitialKey ? currentKey.key_uuid : null,
     created_at: DATE,
     updated_at: DATE,
   });
@@ -690,6 +705,324 @@ describe("real ordinary chat orchestration", () => {
     expect(member.getState()).toMatchObject({ access: "missing", sendKeyUuid: null });
     await member.requestKey(f.metadata.keyUuid);
     expect(f.wire.at(-1)?.uuid).not.toBe(request.uuid);
+  });
+
+  it("batches a window and validates cached plaintext against durable key changes", async () => {
+    const f = await setup();
+    const session = await openSessionFor(f.admin);
+    await session.load();
+    await session.send({ text: "window text", topicUuid: TOPIC });
+    const message = adaptMessengerMessage(f.wire.at(-1)!);
+    const originalRuntime = useWorkspaceAuthStore.getState().getCurrentRuntimeContext;
+    useWorkspaceAuthStore.setState({ getCurrentRuntimeContext: () => f.admin });
+    try {
+      const messages = Array.from({ length: 50 }, (_, index) => ({
+        ...message,
+        uuid: `window-${index}`,
+      }));
+      const readDevice = vi.spyOn(realChatKeyStorage, "readDeviceIdentity");
+      const readKeys = vi.spyOn(realChatKeyStorage, "readChatKeySnapshots");
+      const decrypt = vi.spyOn(realChatCryptoProvider, "decryptMessage");
+      const prepare = async () => {
+        const records: PreparedPlaintextRecord[] = [];
+        const results = await Promise.all(
+          messages.map((item) =>
+            decryptRealChatMessageResult(f.admin, item, () => true, undefined, {
+              id: "window",
+              onPrepared: (record) => records.push(record),
+            }),
+          ),
+        );
+        commitPreparedPlaintextWindow(f.admin, "window", records);
+        return results;
+      };
+      expect((await prepare()).every((result) => result.status === "ready")).toBe(true);
+      expect(readDevice).toHaveBeenCalledTimes(1);
+      expect(readKeys).toHaveBeenCalledTimes(2);
+      expect(readKeys.mock.calls[0]?.[0]).toHaveLength(1);
+      expect(decrypt).toHaveBeenCalledTimes(50);
+      expect((await prepare()).every((result) => result.status === "ready")).toBe(true);
+      expect(decrypt).toHaveBeenCalledTimes(50);
+      useWorkspaceAuthStore.setState({ getCurrentRuntimeContext: () => null });
+      useWorkspaceAuthStore.setState({ getCurrentRuntimeContext: () => f.admin });
+      expect((await prepare()).every((result) => result.status === "ready")).toBe(true);
+      expect(decrypt).toHaveBeenCalledTimes(100);
+      await realChatKeyStorage.removeChatKey(session.scope);
+      expect((await prepare()).every((result) => result.status === "missing-key")).toBe(true);
+      expect(decrypt).toHaveBeenCalledTimes(100);
+    } finally {
+      useWorkspaceAuthStore.setState({ getCurrentRuntimeContext: originalRuntime });
+    }
+  });
+
+  it("retains and evicts entire recent windows without letting previews affect recency", async () => {
+    const f = await setup();
+    const session = await openSessionFor(f.admin);
+    await session.load();
+    await session.send({ text: "window text", topicUuid: TOPIC });
+    const message = adaptMessengerMessage(f.wire.at(-1)!);
+    const originalRuntime = useWorkspaceAuthStore.getState().getCurrentRuntimeContext;
+    useWorkspaceAuthStore.setState({ getCurrentRuntimeContext: () => f.admin });
+    try {
+      const decrypt = vi.spyOn(realChatCryptoProvider, "decryptMessage").mockImplementation(() =>
+        Promise.resolve({
+          ok: true,
+          value: new TextEncoder().encode("readable"),
+        }),
+      );
+      const windowMessages = (id: string, count: number) =>
+        Array.from({ length: count }, (_, index) => ({
+          ...message,
+          uuid: `${id}-${index}`,
+        }));
+      const prepare = async (id: string, items: (typeof message)[]) => {
+        const records: PreparedPlaintextRecord[] = [];
+        const results = await Promise.all(
+          items.map((item) =>
+            decryptRealChatMessageResult(f.admin, item, () => true, undefined, {
+              id,
+              onPrepared: (record) => records.push(record),
+            }),
+          ),
+        );
+        expect(results[0]).toEqual({ status: "ready", plaintext: "readable" });
+        commitPreparedPlaintextWindow(f.admin, id, records);
+      };
+      const a = windowMessages("a", 200);
+      const b = windowMessages("b", 200);
+      const c = windowMessages("c", 200);
+      await prepare("a", a);
+      await prepare("b", b);
+      await prepare("a", a);
+      expect(decrypt).toHaveBeenCalledTimes(400);
+      await decryptRealChatMessageResult(f.admin, b[0]!, () => true);
+      await prepare("c", c);
+      expect(decrypt).toHaveBeenCalledTimes(601);
+      await prepare("a", a);
+      expect(decrypt).toHaveBeenCalledTimes(601);
+      await prepare("b", b);
+      expect(decrypt).toHaveBeenCalledTimes(801);
+      const oversized = windowMessages("oversized", 501);
+      await prepare("oversized", oversized);
+      const afterOversized = decrypt.mock.calls.length;
+      await prepare("a", a);
+      expect(decrypt).toHaveBeenCalledTimes(afterOversized);
+      await prepare("oversized", oversized);
+      expect(decrypt).toHaveBeenCalledTimes(afterOversized + 501);
+      await prepare("a", a.slice(0, 1));
+      await prepare("a", a.slice(0, 2));
+      expect(decrypt).toHaveBeenCalledTimes(afterOversized + 502);
+      // The same message in a different list belongs to a different window.
+      await prepare("topic", a.slice(0, 2));
+      expect(decrypt).toHaveBeenCalledTimes(afterOversized + 504);
+      await prepare("a", a.slice(0, 2));
+      expect(decrypt).toHaveBeenCalledTimes(afterOversized + 504);
+      if (a[0]!.payload.kind !== "e2ee") throw new Error("Expected encrypted message");
+      const bytes = Buffer.from(a[0]!.payload.content, "base64");
+      bytes[bytes.length - 1] = bytes[bytes.length - 1]! ^ 1;
+      const changed = {
+        ...a[0]!,
+        payload: { ...a[0]!.payload, content: bytes.toString("base64") },
+      };
+      await prepare("a", [changed]);
+      expect(decrypt).toHaveBeenCalledTimes(afterOversized + 505);
+      await prepare("topic", a.slice(0, 2));
+      expect(decrypt).toHaveBeenCalledTimes(afterOversized + 505);
+    } finally {
+      useWorkspaceAuthStore.setState({ getCurrentRuntimeContext: originalRuntime });
+    }
+  });
+
+  it("enforces the character limit by whole window and skips oversized windows", async () => {
+    const f = await setup();
+    const session = await openSessionFor(f.admin);
+    await session.load();
+    await session.send({ text: "text", topicUuid: TOPIC });
+    const message = adaptMessengerMessage(f.wire.at(-1)!);
+    const originalRuntime = useWorkspaceAuthStore.getState().getCurrentRuntimeContext;
+    useWorkspaceAuthStore.setState({ getCurrentRuntimeContext: () => f.admin });
+    try {
+      let textSize = 600_000;
+      const decrypt = vi.spyOn(realChatCryptoProvider, "decryptMessage").mockImplementation(() =>
+        Promise.resolve({
+          ok: true,
+          value: new TextEncoder().encode("x".repeat(textSize)),
+        }),
+      );
+      const prepare = async (id: string, count = 1) => {
+        const records: PreparedPlaintextRecord[] = [];
+        const results = await Promise.all(
+          Array.from({ length: count }, (_, index) =>
+            decryptRealChatMessageResult(
+              f.admin,
+              { ...message, uuid: `${id}-${index}` },
+              () => true,
+              undefined,
+              {
+                id,
+                onPrepared: (record) => records.push(record),
+              },
+            ),
+          ),
+        );
+        expect(results.every((result) => result.status === "ready")).toBe(true);
+        commitPreparedPlaintextWindow(f.admin, id, records);
+      };
+      await prepare("chars-a");
+      await prepare("chars-b");
+      await prepare("chars-c");
+      await prepare("chars-a");
+      expect(decrypt).toHaveBeenCalledTimes(3);
+      await prepare("chars-d");
+      expect(decrypt).toHaveBeenCalledTimes(4);
+      await prepare("chars-b");
+      expect(decrypt).toHaveBeenCalledTimes(5);
+      textSize = 2_000_001;
+      await prepare("oversized-single");
+      textSize = 1_000_000;
+      await prepare("oversized-multi", 2);
+      const afterOversized = decrypt.mock.calls.length;
+      await prepare("chars-b");
+      expect(decrypt).toHaveBeenCalledTimes(afterOversized);
+      await prepare("oversized-multi", 2);
+      expect(decrypt).toHaveBeenCalledTimes(afterOversized + 2);
+      textSize = 2_000_001;
+      await prepare("oversized-single");
+      expect(decrypt).toHaveBeenCalledTimes(afterOversized + 3);
+    } finally {
+      useWorkspaceAuthStore.setState({ getCurrentRuntimeContext: originalRuntime });
+    }
+  });
+
+  it("checks every group after the slowest decrypt and detects replacement without a notification", async () => {
+    const f = await setup();
+    const session = await openSessionFor(f.admin);
+    await session.load();
+    await session.send({ text: "window text", topicUuid: TOPIC });
+    const message = adaptMessengerMessage(f.wire.at(-1)!);
+    if (message.payload.kind !== "e2ee") throw new Error("Expected encrypted message");
+    const second = {
+      ...message,
+      uuid: crypto.randomUUID(),
+      payload: { ...message.payload, keyUuid: crypto.randomUUID() },
+    };
+    const originalRuntime = useWorkspaceAuthStore.getState().getCurrentRuntimeContext;
+    useWorkspaceAuthStore.setState({ getCurrentRuntimeContext: () => f.admin });
+    let firstKey = new Uint8Array(32).fill(1);
+    const secondKey = new Uint8Array(32).fill(2);
+    const started = deferred<void>();
+    const gate = deferred<void>();
+    try {
+      vi.spyOn(realChatKeyStorage, "readChatKeySnapshots").mockImplementation((addresses) =>
+        Promise.resolve(
+          addresses.map((address) => ({
+            key: {
+              groupKey: {
+                bytes: new Uint8Array(
+                  address.keyUuid === second.payload.keyUuid ? secondKey : firstKey,
+                ),
+              },
+            },
+            deletionRevision: 0,
+          })),
+        ),
+      );
+      let delay = true;
+      const decrypt = vi
+        .spyOn(realChatCryptoProvider, "decryptMessage")
+        .mockImplementation(async ({ context }) => {
+          if (context.keyUuid === second.payload.keyUuid && delay) {
+            started.resolve();
+            await gate.promise;
+          }
+          return { ok: true, value: new TextEncoder().encode("readable") };
+        });
+      const prepare = async () => {
+        const records: PreparedPlaintextRecord[] = [];
+        const results = await Promise.all(
+          [message, second].map((item) =>
+            decryptRealChatMessageResult(f.admin, item, () => true, undefined, {
+              id: "groups",
+              onPrepared: (record) => records.push(record),
+            }),
+          ),
+        );
+        commitPreparedPlaintextWindow(f.admin, "groups", records);
+        return results;
+      };
+      const pending = prepare();
+      await started.promise;
+      firstKey = new Uint8Array(32).fill(3);
+      gate.resolve();
+      expect(await pending).toEqual([
+        { status: "missing-key" },
+        { status: "ready", plaintext: "readable" },
+      ]);
+      delay = false;
+      expect(await prepare()).toEqual([
+        { status: "ready", plaintext: "readable" },
+        { status: "ready", plaintext: "readable" },
+      ]);
+      expect(decrypt).toHaveBeenCalledTimes(3);
+      firstKey = new Uint8Array(32).fill(4);
+      expect(await prepare()).toEqual([
+        { status: "ready", plaintext: "readable" },
+        { status: "ready", plaintext: "readable" },
+      ]);
+      expect(decrypt).toHaveBeenCalledTimes(4);
+    } finally {
+      useWorkspaceAuthStore.setState({ getCurrentRuntimeContext: originalRuntime });
+    }
+  });
+
+  it("revalidates earlier keys when a message joins a running window", async () => {
+    const f = await setup();
+    const session = await openSessionFor(f.admin);
+    await session.load();
+    await session.send({ text: "window text", topicUuid: TOPIC });
+    const first = adaptMessengerMessage(f.wire.at(-1)!);
+    if (first.payload.kind !== "e2ee") throw new Error("Expected encrypted message");
+    const firstKeyUuid = first.payload.keyUuid;
+    const second = {
+      ...first,
+      uuid: crypto.randomUUID(),
+      payload: { ...first.payload, keyUuid: crypto.randomUUID() },
+    };
+    let firstPresent = true;
+    vi.spyOn(realChatKeyStorage, "readChatKeySnapshots").mockImplementation((addresses) =>
+      Promise.resolve(
+        addresses.map((address) => ({
+          key:
+            address.keyUuid === firstKeyUuid && !firstPresent
+              ? null
+              : { groupKey: { bytes: new Uint8Array(32).fill(1) } },
+          deletionRevision: address.keyUuid === firstKeyUuid && !firstPresent ? 1 : 0,
+        })),
+      ),
+    );
+    const startedFirst = deferred<void>();
+    const finishFirst = deferred<void>();
+    const startedSecond = deferred<void>();
+    const finishSecond = deferred<void>();
+    vi.spyOn(realChatCryptoProvider, "decryptMessage").mockImplementation(async ({ context }) => {
+      if (context.keyUuid === second.payload.keyUuid) {
+        startedSecond.resolve();
+        await finishSecond.promise;
+      } else {
+        startedFirst.resolve();
+        await finishFirst.promise;
+      }
+      return { ok: true, value: new TextEncoder().encode("text") };
+    });
+    const pendingFirst = decryptRealChatMessageResult(f.admin, first, () => true, "window");
+    await startedFirst.promise;
+    const pendingSecond = decryptRealChatMessageResult(f.admin, second, () => true, "window");
+    finishFirst.resolve();
+    await startedSecond.promise;
+    firstPresent = false;
+    finishSecond.resolve();
+    expect(await pendingFirst).toEqual({ status: "missing-key" });
+    expect(await pendingSecond).toEqual({ status: "ready", plaintext: "text" });
   });
 
   it.each(["key-removed", "disposed", "runtime-replaced"] as const)(
@@ -2541,5 +2874,466 @@ describe("real ordinary chat orchestration", () => {
       "still a participant",
     );
     session.dispose();
+  });
+});
+
+describe("ordinary chat shared key sessions", () => {
+  const mixedInput = (fragments: readonly string[]) => ({
+    text: "",
+    topicUuid: TOPIC,
+    secretFragments: fragments.map((text) => ({ text })),
+    buildMarkdown: (payloads: readonly ChatEncryptedPayload[]) =>
+      "Public " +
+      payloads
+        .map(
+          (payload) =>
+            `[Secret](${buildWorkspaceSecretUrn(STREAM, payload.keyUuid, payload.content)})`,
+        )
+        .join(" "),
+  });
+
+  it("opens an ordinary chat without creating a key and lets any member initialize, reuse and rotate locally", async () => {
+    const f = await setup({
+      encrypted: false,
+      hasInitialKey: false,
+      publishRotationUpdates: false,
+    });
+    const create = vi.spyOn(realChatCryptoProvider, "createGroupKey");
+    const owner = await openSessionFor(f.admin);
+    const member = await openSessionFor(f.member);
+    await owner.load();
+    await member.load();
+    expect(create).not.toHaveBeenCalled();
+    expect(f.wire).toEqual([]);
+    expect(owner.getState()).toMatchObject({ access: "missing", sendKeyUuid: null });
+    const [keyUuid, concurrentKeyUuid] = await Promise.all([
+      member.prepareFragmentKey(),
+      member.prepareFragmentKey(),
+    ]);
+    expect(concurrentKeyUuid).toBe(keyUuid);
+    expect(await member.prepareFragmentKey()).toBe(keyUuid);
+    expect(member.getRights().canRotate).toBe(false);
+    expect(f.wire).toEqual([]);
+    expect(f.catalog(f.member).getState().streamsById[STREAM]?.currentEncryptionKey).toBeNull();
+    await owner.prepareFragmentKey();
+    expect(create).toHaveBeenCalledTimes(2);
+    expect(f.catalog(f.admin).getState().streamsById[STREAM]?.encryption).toBe(false);
+    expect(owner.getState()).toMatchObject({ access: "ready", sendKeyUuid: owner.scope.keyUuid });
+    await owner.send(mixedInput(["first", "second"]));
+    expect(create).toHaveBeenCalledTimes(2);
+    expect(f.wire.at(-1)?.payload.kind).toBe("markdown");
+    expect(JSON.stringify(f.wire)).not.toContain('"first"');
+    expect(JSON.stringify(f.wire)).not.toContain('"second"');
+  });
+
+  it("reuses one request across fragments and opens them after reload only from a current participant", async () => {
+    const f = await setup({ encrypted: false, hasInitialKey: false });
+    const author = await openRealChatSession({
+      runtimeContext: f.admin,
+      streamUuid: STREAM,
+      getRuntimeContext: () => f.admin,
+    });
+    const recipient = await openRealChatSession({
+      runtimeContext: f.member,
+      streamUuid: STREAM,
+      getRuntimeContext: () => f.member,
+    });
+    await author.load();
+    await recipient.load();
+    await author.prepareFragmentKey();
+    const payloads: ChatEncryptedPayload[] = [];
+    await author.send({
+      ...mixedInput(["secret A", "secret B"]),
+      onEncryptedFragment: (_, value) => payloads.push(value),
+    });
+    const keyUuid = payloads[0]!.keyUuid;
+    await author.prepareFragmentKey(true);
+    await recipient.requestEnvelopeKey(keyUuid, payloads[0]!.content);
+    const firstRequest = f.wire.at(-1)!;
+    await recipient.requestEnvelopeKey(keyUuid, payloads[1]!.content);
+    expect(f.wire.at(-1)?.uuid).toBe(firstRequest.uuid);
+    expect(f.wire.at(-1)?.payload).toEqual(firstRequest.payload);
+    const request = f.wire.at(-1)!;
+    expect(request.payload).not.toHaveProperty("target_message_uuid");
+    await recipient.ingest([adaptMessengerMessage(request)]);
+    expect(recipient.canGrantKey(request.uuid)).toBe(false);
+    await expect(recipient.grantKey(request.uuid)).rejects.toThrow("forbidden");
+    await author.ingest([adaptMessengerMessage(request)]);
+    expect(author.canGrantKey(request.uuid)).toBe(true);
+    await author.grantKey(request.uuid);
+    const grant = f.wire.at(-1)!;
+    const restored = await openRealChatSession({
+      runtimeContext: f.member,
+      streamUuid: STREAM,
+      getRuntimeContext: () => f.member,
+    });
+    await restored.load();
+    await restored.ingest([
+      adaptMessengerMessage(request),
+      adaptMessengerMessage({ ...grant, author_uuid: crypto.randomUUID() }),
+    ]);
+    expect(restored.getGenerationState(keyUuid)?.access).not.toBe("ready");
+    await restored.ingest([adaptMessengerMessage(grant)]);
+    expect(await restored.prepareFragmentKey()).toBe(keyUuid);
+    for (const [index, payload] of payloads.entries())
+      expect(
+        await decryptRealChatEnvelopeResult(
+          f.member,
+          {
+            projectId: PROJECT,
+            streamUuid: STREAM,
+            keyUuid: payload.keyUuid,
+            envelope: payload.content,
+          },
+          () => true,
+        ),
+      ).toEqual({ status: "ready", plaintext: index === 0 ? "secret A" : "secret B" });
+    expect(f.catalog(f.member).getState().streamsById[STREAM]?.currentEncryptionKey).toBeNull();
+  });
+
+  async function memberFragmentFixture() {
+    const f = await setup({ encrypted: false, hasInitialKey: false });
+    const third = runtime(crypto.randomUUID());
+    deviceCatalogs.set(
+      workspaceRuntimeOwnerKey(third),
+      createDeviceCatalog(third, f.stream(third.userUuid)),
+    );
+    const thirdBinding = {
+      ...memberBinding(),
+      uuid: crypto.randomUUID(),
+      userUuid: third.userUuid,
+    };
+    for (const account of [f.admin, f.member, third])
+      f.catalog(account)
+        .getState()
+        .upsertStreamBindings(workspaceRuntimeOwnerKey(account), [thirdBinding]);
+    const author = await openSessionFor(f.member);
+    await author.load();
+    await author.prepareFragmentKey();
+    const payloads: ChatEncryptedPayload[] = [];
+    await author.send({
+      ...mixedInput(["Member's first protected text"]),
+      onEncryptedFragment: (_, payload) => payloads.push(payload),
+    });
+    const payload = payloads[0]!;
+    return { ...f, third, thirdBinding, author, payload };
+  }
+
+  it("lets the first member author grant a fragment key and a recipient member relay it", async () => {
+    const f = await memberFragmentFixture();
+    expect(f.author.getRights()).toMatchObject({ canGrant: false, canRotate: false });
+    for (const account of [f.admin, f.third]) {
+      const recipient = await openSessionFor(account);
+      await recipient.load();
+      await recipient.requestEnvelopeKey(f.payload.keyUuid, f.payload.content);
+      const request = f.wire.at(-1)!;
+      await f.author.ingest([adaptMessengerMessage(request)]);
+      expect(f.author.canRespondToKeyRequest(request.uuid)).toBe(true);
+      expect(f.author.canGrantKey(request.uuid)).toBe(true);
+      expect(f.author.canRejectKey(request.uuid)).toBe(true);
+      await f.author.grantKey(request.uuid);
+      const grant = f.wire.at(-1)!;
+      expect(grant.author_uuid).toBe(MEMBER);
+      await recipient.ingest([adaptMessengerMessage(request), adaptMessengerMessage(grant)]);
+      expect(
+        await decryptRealChatEnvelopeResult(
+          account,
+          {
+            projectId: PROJECT,
+            streamUuid: STREAM,
+            keyUuid: f.payload.keyUuid,
+            envelope: f.payload.content,
+          },
+          () => true,
+        ),
+      ).toEqual({ status: "ready", plaintext: "Member's first protected text" });
+      expect(await recipient.prepareFragmentKey()).toBe(f.payload.keyUuid);
+    }
+    const holder = await openSessionFor(f.third);
+    const recipient = await openSessionFor(f.admin);
+    await holder.load();
+    await recipient.load();
+    await recipient.removeLocalKey(f.payload.keyUuid);
+    expect(recipient.getGenerationState(f.payload.keyUuid)?.access).not.toBe("ready");
+    await recipient.requestEnvelopeKey(f.payload.keyUuid, f.payload.content);
+    const request = f.wire.at(-1)!;
+    await holder.ingest([adaptMessengerMessage(request)]);
+    expect(holder.getRights().canGrant).toBe(false);
+    expect(holder.canGrantKey(request.uuid)).toBe(true);
+    await holder.grantKey(request.uuid);
+    const grant = f.wire.at(-1)!;
+    expect(grant.author_uuid).toBe(f.third.userUuid);
+    await recipient.ingest([adaptMessengerMessage(request), adaptMessengerMessage(grant)]);
+    expect(
+      await decryptRealChatEnvelopeResult(
+        f.admin,
+        {
+          projectId: PROJECT,
+          streamUuid: STREAM,
+          keyUuid: f.payload.keyUuid,
+          envelope: f.payload.content,
+        },
+        () => true,
+      ),
+    ).toEqual({ status: "ready", plaintext: "Member's first protected text" });
+  });
+
+  it("keeps members without the requested generation from responding and excludes departed requesters", async () => {
+    const f = await memberFragmentFixture();
+    const recipient = await openSessionFor(f.third);
+    await recipient.load();
+    await recipient.prepareFragmentKey();
+    await recipient.requestEnvelopeKey(f.payload.keyUuid, f.payload.content);
+    const request = f.wire.at(-1)!;
+    await recipient.ingest([adaptMessengerMessage(request)]);
+    expect(recipient.canRespondToKeyRequest(request.uuid)).toBe(false);
+    expect(recipient.canRejectKey(request.uuid)).toBe(false);
+    await expect(recipient.rejectKey(request.uuid)).rejects.toThrow("forbidden");
+    await f.author.ingest([adaptMessengerMessage(request)]);
+    f.catalog(f.member)
+      .getState()
+      .removeStreamBinding(workspaceRuntimeOwnerKey(f.member), f.thirdBinding);
+    expect(f.author.canGrantKey(request.uuid)).toBe(false);
+    expect(f.author.canRejectKey(request.uuid)).toBe(false);
+    await expect(f.author.grantKey(request.uuid)).rejects.toThrow("forbidden");
+  });
+
+  it("does not import a grant from a departed member and retries when current membership arrives", async () => {
+    const f = await memberFragmentFixture();
+    const recipient = await openSessionFor(f.admin);
+    await recipient.load();
+    await recipient.requestEnvelopeKey(f.payload.keyUuid, f.payload.content);
+    const request = f.wire.at(-1)!;
+    await f.author.ingest([adaptMessengerMessage(request)]);
+    await f.author.grantKey(request.uuid);
+    const grant = f.wire.at(-1)!;
+    const catalog = f.catalog(f.admin);
+    catalog.getState().removeStreamBinding(workspaceRuntimeOwnerKey(f.admin), memberBinding());
+    await recipient.ingest([adaptMessengerMessage(request), adaptMessengerMessage(grant)]);
+    expect(recipient.getGenerationState(f.payload.keyUuid)?.access).not.toBe("ready");
+    catalog.getState().upsertStreamBindings(workspaceRuntimeOwnerKey(f.admin), [memberBinding()]);
+    await vi.waitFor(() =>
+      expect(recipient.getGenerationState(f.payload.keyUuid)?.access).toBe("ready"),
+    );
+  });
+
+  it("rechecks member send rights after encrypting a fragment grant", async () => {
+    const f = await memberFragmentFixture();
+    const recipient = await openSessionFor(f.admin);
+    await recipient.load();
+    await recipient.requestEnvelopeKey(f.payload.keyUuid, f.payload.content);
+    const request = f.wire.at(-1)!;
+    await f.author.ingest([adaptMessengerMessage(request)]);
+    const encrypt = realChatCryptoProvider.encryptGroupKeyGrant.bind(realChatCryptoProvider);
+    const started = deferred<void>();
+    const release = deferred<void>();
+    vi.spyOn(realChatCryptoProvider, "encryptGroupKeyGrant").mockImplementationOnce(
+      async (input) => {
+        started.resolve();
+        await release.promise;
+        return encrypt(input);
+      },
+    );
+    const granting = f.author.grantKey(request.uuid);
+    const failed = expect(granting).rejects.toThrow("forbidden");
+    await started.promise;
+    f.catalog(f.member)
+      .getState()
+      .removeStreamBinding(workspaceRuntimeOwnerKey(f.member), memberBinding());
+    expect(f.author.getRights().canSend).toBe(false);
+    release.resolve();
+    await failed;
+    expect(f.wire.some((message) => message.payload.kind === "key_grant")).toBe(false);
+  });
+
+  it.each(["issuer", "recipient"] as const)(
+    "does not persist a fragment grant if its %s leaves during decryption",
+    async (departed) => {
+      const f = await memberFragmentFixture();
+      const recipient = await openSessionFor(f.third);
+      await recipient.load();
+      await recipient.requestEnvelopeKey(f.payload.keyUuid, f.payload.content);
+      const request = f.wire.at(-1)!;
+      await f.author.ingest([adaptMessengerMessage(request)]);
+      await f.author.grantKey(request.uuid);
+      const grant = f.wire.at(-1)!;
+      const decrypt = realChatCryptoProvider.decryptGroupKeyGrant.bind(realChatCryptoProvider);
+      const started = deferred<void>();
+      const release = deferred<void>();
+      vi.spyOn(realChatCryptoProvider, "decryptGroupKeyGrant").mockImplementationOnce(
+        async (input) => {
+          started.resolve();
+          await release.promise;
+          return decrypt(input);
+        },
+      );
+      const receiving = recipient.ingest([
+        adaptMessengerMessage(request),
+        adaptMessengerMessage(grant),
+      ]);
+      await started.promise;
+      f.catalog(f.third)
+        .getState()
+        .removeStreamBinding(
+          workspaceRuntimeOwnerKey(f.third),
+          departed === "issuer" ? memberBinding() : f.thirdBinding,
+        );
+      release.resolve();
+      await receiving;
+      expect(recipient.getGenerationState(f.payload.keyUuid)?.access).not.toBe("ready");
+      expect(
+        (
+          await realChatKeyStorage.readChatKey({
+            ...recipient.storageScope,
+            keyUuid: f.payload.keyUuid,
+          })
+        )?.groupKey,
+      ).toBeFalsy();
+    },
+  );
+
+  it("retains every fragment and the canonical UUID after a lost mixed-message response", async () => {
+    const f = await setup({ encrypted: false });
+    const session = await openSessionFor(f.admin);
+    await session.load();
+    const create = vi.mocked(createMessage).getMockImplementation()!;
+    vi.mocked(createMessage).mockImplementationOnce(async (...args) => {
+      await create(...args);
+      throw new Error("lost-response");
+    });
+    const retained: ChatEncryptedPayload[] = [];
+    const input = {
+      ...mixedInput(["one", "two"]),
+      canonicalMessageUuid: crypto.randomUUID(),
+      onEncryptedFragment: (index: number, payload: ChatEncryptedPayload) => {
+        retained[index] = payload;
+      },
+    };
+    await expect(session.send(input)).rejects.toThrow("send-failed");
+    await session.send({
+      ...input,
+      secretFragments: input.secretFragments.map((fragment, index) => ({
+        ...fragment,
+        preparedPayload: retained[index],
+      })),
+    });
+    expect(f.wire[0]?.uuid).toBe(f.wire[1]?.uuid);
+    expect(f.wire[0]?.payload).toEqual(f.wire[1]?.payload);
+  });
+
+  it("rejects retained envelopes after same-UUID key material changes", async () => {
+    const f = await setup({ encrypted: false });
+    const session = await openSessionFor(f.admin);
+    await session.load();
+    let retained: ChatEncryptedPayload | undefined;
+    await session.send({
+      ...mixedInput(["secret"]),
+      onEncryptedFragment: (_, value) => {
+        retained = value;
+      },
+    });
+    const key = await realChatCryptoProvider.createGroupKey();
+    if (!key.ok) throw new Error(key.reason);
+    await realChatKeyStorage.removeChatKey(session.scope);
+    await realChatKeyStorage.writeChatKey(session.scope, { groupKey: key.value });
+    const count = f.wire.length;
+    await expect(
+      session.send({
+        ...mixedInput(["secret"]),
+        secretFragments: [{ text: "secret", preparedPayload: retained }],
+      }),
+    ).rejects.toThrow("invalid-key");
+    expect(f.wire).toHaveLength(count);
+  });
+
+  it("does not dispatch mixed Markdown if the key is removed between fragment preparation and dispatch", async () => {
+    const f = await setup({ encrypted: false });
+    const session = await openSessionFor(f.admin);
+    await session.load();
+    await expect(
+      session.send({
+        ...mixedInput(["one", "two"]),
+        onEncryptedFragment: (index) => {
+          if (index === 1)
+            notifyRealChatKeyChanges({
+              kind: "removed",
+              ownerKey: workspaceRuntimeOwnerKey(f.admin),
+              deviceId: session.device.deviceId,
+              streamUuid: STREAM,
+              keyUuid: session.scope.keyUuid,
+            });
+        },
+      }),
+    ).rejects.toThrow("stale");
+    expect(f.wire).toEqual([]);
+  });
+
+  it("edits mixed Markdown through the same controller without sending the new secret plaintext", async () => {
+    const f = await setup({ encrypted: false });
+    const session = await openSessionFor(f.admin);
+    await session.load();
+    await session.send(mixedInput(["original"]));
+    const dto = f.wire.at(-1)!;
+    const source = adaptMessengerMessage(dto);
+    useWorkspaceMessageStore.getState().setOwner(workspaceRuntimeOwnerKey(f.admin), false);
+    useWorkspaceMessageStore.getState().applyLiveCreatedMessage(source);
+    vi.mocked(editMessage).mockImplementation((_options, _uuid, body) =>
+      Promise.resolve({ ...dto, payload: body.payload }),
+    );
+    const result = await session.editMarkdown(source, mixedInput(["changed secret"]));
+    expect(result.status).toBe("applied");
+    expect(JSON.stringify(vi.mocked(editMessage).mock.calls)).not.toContain("changed secret");
+    if (result.status !== "applied") throw new Error("not applied");
+    expect(result.message?.payload.kind).toBe("markdown");
+  });
+});
+
+describe("ordinary first-key recovery", () => {
+  it("does not publish or replace the channel key when a fragment key is created", async () => {
+    const f = await setup({ encrypted: false, hasInitialKey: false });
+    const session = await openSessionFor(f.member);
+    await session.load();
+    const first = await session.prepareFragmentKey();
+    const next = await session.prepareFragmentKey(true);
+    expect(first).not.toBe(next);
+    expect(f.wire).toEqual([]);
+    expect(f.catalog(f.member).getState().streamsById[STREAM]?.currentEncryptionKey).toBeNull();
+    expect((await session.listLocalKeys()).map((key) => key.keyUuid)).toEqual(
+      expect.arrayContaining([first, next]),
+    );
+    expect(await session.prepareFragmentKey()).toBe(next);
+  });
+
+  it("drops a mixed-message receipt after runtime invalidation before it resolves", async () => {
+    const f = await setup({ encrypted: false });
+    let live: WorkspaceRuntimeContext | null = f.admin;
+    const session = await openRealChatSession({
+      runtimeContext: f.admin,
+      streamUuid: STREAM,
+      getRuntimeContext: () => live,
+    });
+    await session.load();
+    const gate = deferred<void>();
+    const create = vi.mocked(createMessage).getMockImplementation()!;
+    vi.mocked(createMessage).mockImplementationOnce(async (...args) => {
+      const dto = await create(...args);
+      await gate.promise;
+      return dto;
+    });
+    const cache = vi
+      .spyOn(messengerMessageActionCache, "writeConversationMessagePage")
+      .mockResolvedValue();
+    const pending = session.send({
+      text: "",
+      topicUuid: TOPIC,
+      secretFragments: [{ text: "secret" }],
+      buildMarkdown: (payloads) => JSON.stringify(encodeChatE2eePayload(payloads[0]!)),
+    });
+    await vi.waitFor(() => expect(f.wire).toHaveLength(1));
+    live = { ...f.admin, runtimeGeneration: f.admin.runtimeGeneration + 1 };
+    gate.resolve();
+    await expect(pending).rejects.toThrow("stale");
+    expect(cache).not.toHaveBeenCalled();
+    expect(useWorkspaceMessageStore.getState().messagesById[f.wire[0]!.uuid]).toBeUndefined();
   });
 });

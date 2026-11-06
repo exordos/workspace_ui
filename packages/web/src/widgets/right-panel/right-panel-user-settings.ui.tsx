@@ -15,6 +15,7 @@ import {
 } from "~/features/theme-picker/theme-picker.model";
 import type { AvailablePalette } from "~/features/theme-picker/theme-picker.types";
 import { useTranslation } from "~/i18n/i18n";
+import { isElectronDarwin } from "~/shared/lib/electron";
 import { playNotificationSound } from "~/shared/lib/notification-sound";
 import type { ThemeMode } from "~/shared/lib/themes/tokens";
 import type { IconName } from "~/shared/ui/icon";
@@ -33,6 +34,12 @@ import {
   NOTIFICATION_SOUNDS,
   THEME_MODES,
 } from "./right-panel-user-menu-constants.lib";
+
+const HotkeySettingsDialog = React.lazy(() =>
+  import("~/features/hotkey-settings/hotkey-settings.ui").then((module) => ({
+    default: module.HotkeySettingsDialog,
+  })),
+);
 
 interface NestedHeaderProps {
   title: string;
@@ -94,26 +101,29 @@ function OptionSurface({
 
 function SettingsOptionRow({
   label,
+  subtitle,
   active,
   onClick,
 }: Readonly<{
   label: string;
+  subtitle?: string;
   active: boolean;
   onClick: () => void;
 }>): React.ReactElement {
   return (
     <li>
-      <RightPanelOptionButton label={label} active={active} onClick={onClick} />
+      <RightPanelOptionButton label={label} subtitle={subtitle} active={active} onClick={onClick} />
     </li>
   );
 }
 
-type SettingsSection = "sound" | "language" | "timeout";
+type SettingsSection = "sound" | "language" | "timeout" | "chatClick";
 
 const DEFAULT_SETTINGS_SECTIONS: Record<SettingsSection, boolean> = {
   sound: false,
   language: false,
   timeout: false,
+  chatClick: false,
 };
 
 export function RightPanelUserSettings({
@@ -126,11 +136,17 @@ export function RightPanelUserSettings({
   showHeader?: boolean;
 }>): React.ReactElement {
   const { t, locale: currentLocale, supportedLocales: locales } = useTranslation();
+  const [hotkeysOpen, setHotkeysOpen] = useState(false);
+  const hotkeysTriggerId = React.useId();
   const notificationSound = useSettingsStore((s) => s.notificationSound);
   const setNotificationSound = useSettingsStore((s) => s.setNotificationSound);
+  const dockBounceEnabled = useSettingsStore((s) => s.dockBounceEnabled);
+  const setDockBounceEnabled = useSettingsStore((s) => s.setDockBounceEnabled);
   const setLanguage = useSettingsStore((s) => s.setLanguage);
   const authIdleTimeout = useSettingsStore((s) => s.authIdleTimeout);
   const setAuthIdleTimeout = useSettingsStore((s) => s.setAuthIdleTimeout);
+  const chatClickAction = useSettingsStore((s) => s.chatClickAction);
+  const setChatClickAction = useSettingsStore((s) => s.setChatClickAction);
   const [expandedSections, setExpandedSections] =
     useState<Record<SettingsSection, boolean>>(DEFAULT_SETTINGS_SECTIONS);
 
@@ -159,6 +175,9 @@ export function RightPanelUserSettings({
     },
     [setLanguage],
   );
+  const toggleDockBounce = useCallback(() => {
+    setDockBounceEnabled(!dockBounceEnabled);
+  }, [dockBounceEnabled, setDockBounceEnabled]);
   const selectTimeout = useCallback(
     (timeout: AuthIdleTimeout) => {
       setAuthIdleTimeout(timeout);
@@ -176,6 +195,48 @@ export function RightPanelUserSettings({
       ) : null}
       <ScrollArea className="min-h-0 flex-1 pb-5 pt-3">
         <div className="space-y-0 px-2">
+          <PanelMenuRow
+            id={hotkeysTriggerId}
+            label={t("hotkeys.title")}
+            icon="command"
+            variant="nested"
+            onClick={() => setHotkeysOpen(true)}
+            right={<Icon name="chevron-right" size={16} />}
+          />
+          <PanelMenuRow
+            label={t("settings.chatClickAction")}
+            subtitle={t("settings.chatClickActionHint")}
+            icon="chatBubble"
+            variant="nested"
+            onClick={() => toggleSection("chatClick")}
+            id="right-panel-settings-chat-click-trigger"
+            testId="right-panel-settings-chat-click-trigger"
+            aria-expanded={expandedSections.chatClick}
+            aria-controls="right-panel-settings-chat-click-options"
+            right={
+              <Icon name={expandedSections.chatClick ? "chevron-up" : "chevron-right"} size={16} />
+            }
+          />
+          {expandedSections.chatClick ? (
+            <OptionSurface
+              panelId="right-panel-settings-chat-click-options"
+              testId="right-panel-settings-chat-click-options"
+              triggerId="right-panel-settings-chat-click-trigger"
+            >
+              <SettingsOptionRow
+                label={t("settings.chatClickActionGeneral")}
+                active={chatClickAction === "general"}
+                onClick={() => setChatClickAction("general")}
+              />
+              <SettingsOptionRow
+                label={t("settings.chatClickActionLatestTopic")}
+                subtitle={t("settings.chatClickActionAvatarHint")}
+                active={chatClickAction === "latestTopic"}
+                onClick={() => setChatClickAction("latestTopic")}
+              />
+            </OptionSurface>
+          ) : null}
+
           <PanelMenuRow
             label={t("settings.notificationSound")}
             icon="volumeUp"
@@ -207,6 +268,28 @@ export function RightPanelUserSettings({
                 />
               ))}
             </OptionSurface>
+          ) : null}
+
+          {isElectronDarwin() ? (
+            <PanelMenuRow
+              label={t("settings.dockBounce")}
+              icon="desktop_windows"
+              variant="nested"
+              role="switch"
+              aria-checked={dockBounceEnabled}
+              onClick={toggleDockBounce}
+              testId="right-panel-settings-dock-bounce"
+              right={
+                <span
+                  aria-hidden="true"
+                  className={`relative block h-5 w-9 shrink-0 rounded-full transition-colors ${dockBounceEnabled ? "bg-accent" : "bg-border-subtle"}`}
+                >
+                  <span
+                    className={`absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${dockBounceEnabled ? "translate-x-4" : ""}`}
+                  />
+                </span>
+              }
+            />
           ) : null}
 
           <PanelMenuRow
@@ -277,6 +360,17 @@ export function RightPanelUserSettings({
           ) : null}
         </div>
       </ScrollArea>
+      {hotkeysOpen && (
+        <React.Suspense fallback={null}>
+          <HotkeySettingsDialog
+            onClose={() => setHotkeysOpen(false)}
+            onCloseAutoFocus={(event) => {
+              event.preventDefault();
+              document.getElementById(hotkeysTriggerId)?.focus();
+            }}
+          />
+        </React.Suspense>
+      )}
     </div>
   );
 }
@@ -469,6 +563,11 @@ export function RightPanelUserAppearance({
                   label={t("settings.messengerSidebarSortModeUnreadFirst")}
                   active={messengerSidebarSortMode === "unread_first"}
                   onClick={() => setMessengerSidebarSortMode("unread_first")}
+                />
+                <SettingsOptionRow
+                  label={t("settings.messengerSidebarSortModeAlphabetical")}
+                  active={messengerSidebarSortMode === "alphabetical"}
+                  onClick={() => setMessengerSidebarSortMode("alphabetical")}
                 />
               </OptionSurface>
             ) : null}

@@ -5,6 +5,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import userEvent from "@testing-library/user-event";
 import { StrictMode, useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useWorkspaceMessageStore } from "~/entities/message/message.model";
 import type { MessengerOutgoingMessage } from "~/entities/messenger/messenger-outbox.types";
 import type { MessengerMessage } from "~/entities/messenger/messenger.types";
 import { useUsersStore } from "~/entities/user/user.model";
@@ -209,6 +210,104 @@ function WorkspaceMessageSelectionHarness({
   );
 }
 
+describe("message quote shortcut", () => {
+  afterEach(() => {
+    window.getSelection()?.removeAllRanges();
+    cleanup();
+  });
+
+  it("quotes the focused message unless text is selected in another message", () => {
+    const onReplyMessage = vi.fn();
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({ uuid: "first", markdown: "First message" }),
+          createWorkspaceMessage({
+            uuid: "second",
+            markdown: "Second message",
+            createdAt: "2026-07-03T09:01:00.000Z",
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onReplyMessage }}
+      />,
+    );
+    const first = container.querySelector<HTMLElement>("[data-message-uuid='first']")!;
+    const pressQuote = () =>
+      fireEvent.keyDown(document.activeElement ?? document.body, {
+        key: "l",
+        code: "KeyL",
+        ctrlKey: true,
+      });
+    first.querySelector<HTMLElement>("[data-workspace-message-bubble]")!.focus();
+    pressQuote();
+    expect(onReplyMessage).toHaveBeenLastCalledWith("first", undefined);
+    selectMessageBodyText(container, "second", "Second");
+    pressQuote();
+    expect(onReplyMessage).toHaveBeenLastCalledWith("second", "Second");
+  });
+
+  it("does not pass selected DOM text from messages containing secrets", () => {
+    const onReplyMessage = vi.fn();
+    const urn =
+      "urn:secret:v1:11111111-1111-4111-8111-111111111111:22222222-2222-4222-8222-222222222222:AAAA";
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({ uuid: "secret", markdown: `Public [secret](<${urn}>)` }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onReplyMessage }}
+      />,
+    );
+    selectMessageBodyText(container, "secret", "Public");
+    fireEvent.keyDown(window, { key: "l", code: "KeyL", ctrlKey: true });
+    expect(onReplyMessage).toHaveBeenCalledWith("secret", undefined);
+  });
+
+  it("does not consume Ctrl+L without a message target", () => {
+    const onReplyMessage = vi.fn();
+    render(
+      <WorkspaceMessageList
+        messages={[createWorkspaceMessage()]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onReplyMessage }}
+      />,
+    );
+    const event = new KeyboardEvent("keydown", {
+      key: "l",
+      code: "KeyL",
+      ctrlKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    window.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(false);
+    expect(onReplyMessage).not.toHaveBeenCalled();
+  });
+
+  it("replies to checked messages while a selection checkbox has focus", () => {
+    const reply = vi.fn();
+    const { getByRole } = render(
+      <WorkspaceMessageList
+        messages={[createWorkspaceMessage({ uuid: "selected" })]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        selectionMode
+        selectedMessageUuids={new Set(["selected"])}
+        onReplySelectedMessages={reply}
+      />,
+    );
+    const checkbox = getByRole("checkbox");
+    checkbox.focus();
+    fireEvent.keyDown(checkbox, { key: "l", code: "KeyL", ctrlKey: true });
+    expect(reply).toHaveBeenCalledOnce();
+  });
+});
+
 describe("WorkspaceMessageList", () => {
   beforeEach(() => {
     setLocale("en");
@@ -230,6 +329,287 @@ describe("WorkspaceMessageList", () => {
     useUsersStore.getState().clear();
     vi.useRealTimers();
     vi.unstubAllGlobals();
+  });
+
+  it("hides unrelated service-only days even during selection and focused navigation", () => {
+    const messages = [
+      createServiceMessage(0, { authorUuid: "current-user-uuid" }),
+      createServiceMessage(1, {
+        payload: SERVICE_REQUEST,
+        createdAt: "2026-07-04T09:00:00.000Z",
+      }),
+      createServiceMessage(2, {
+        payload: {
+          kind: "key_grant",
+          keyUuid: "generation",
+          requestMessageUuid: "service-1",
+          senderDeviceId: "sender",
+          recipientDeviceId: SERVICE_REQUEST.deviceId,
+          content: "synthetic-ciphertext",
+        },
+      }),
+    ];
+    const { container, rerender } = render(
+      <WorkspaceMessageList
+        messages={messages}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        presentation={{ serviceMessages: "account", topicDividers: true }}
+        selectionMode
+        focusedMessageTarget={{ intentId: 1, messageUuid: "service-0", focusAttempt: 0 }}
+      />,
+    );
+    expect(container.querySelector("[data-empty-state]")).toBeInTheDocument();
+    expect(
+      container.querySelector("[data-service-message-group], [data-day-divider], article"),
+    ).toBeNull();
+    rerender(
+      <WorkspaceMessageList
+        messages={messages}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        presentation={{ serviceMessages: "all" }}
+      />,
+    );
+    expect(container.querySelectorAll("article")).toHaveLength(3);
+  });
+
+  it("keeps requests and responses for another device of the account in one disclosure", () => {
+    const request = createServiceMessage(1, {
+      authorUuid: "current-user-uuid",
+      payload: SERVICE_REQUEST,
+    });
+    const response = {
+      keyUuid: "generation",
+      requestMessageUuid: request.uuid,
+      senderDeviceId: "sender",
+      recipientDeviceId: SERVICE_REQUEST.deviceId,
+    };
+    const messages = [
+      createServiceMessage(0, { createdAt: "2026-07-02T09:00:00.000Z" }),
+      request,
+      createServiceMessage(2),
+      createServiceMessage(3, { payload: { kind: "key_reject", ...response } }),
+      createServiceMessage(4, {
+        payload: { kind: "key_grant", ...response, content: "synthetic-ciphertext" },
+      }),
+      createServiceMessage(5, { payload: SERVICE_REQUEST }),
+    ];
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={messages}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        presentation={{ serviceMessages: "account" }}
+        actions={{
+          getKeyServiceState: () => createServiceState({ canManageKeys: false }),
+          getKeyRequestActions: () => [],
+        }}
+      />,
+    );
+    const toggle = screen.getByRole("button", { name: /3 events/ });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(container.querySelectorAll("[data-day-divider]")).toHaveLength(1);
+    expect(container.querySelectorAll("article")).toHaveLength(3);
+    fireEvent.click(toggle);
+    expect(container.querySelectorAll("[data-encrypted-service-message]")).toHaveLength(3);
+    expect(screen.queryByRole("button", { name: /Request access/ })).not.toBeInTheDocument();
+    fireEvent.click(toggle);
+    expect(container.querySelector("[data-encrypted-service-message]")).toBeNull();
+  });
+
+  it("keeps actionable and completed incoming requests and the account's responses", () => {
+    const request = createServiceMessage(0, { payload: SERVICE_REQUEST });
+    const response = createServiceMessage(1, {
+      authorUuid: "current-user-uuid",
+      payload: {
+        kind: "key_reject",
+        keyUuid: "generation",
+        requestMessageUuid: request.uuid,
+        senderDeviceId: "current-device",
+        recipientDeviceId: SERVICE_REQUEST.deviceId,
+      },
+    });
+    const props: WorkspaceMessageListProps = {
+      messages: [
+        request,
+        response,
+        createServiceMessage(2),
+        createServiceMessage(3, {
+          authorUuid: "another-manager",
+          payload: { ...response.payload },
+        }),
+      ],
+      currentUserUuid: "current-user-uuid",
+      conversationId: "topic:stream-uuid-1:topic-uuid-1",
+      presentation: { serviceMessages: "account" },
+      actions: {
+        getKeyRequestActions: (message) =>
+          message.uuid === request.uuid
+            ? [{ label: "Approve", disabled: true, onClick: vi.fn() }]
+            : [],
+      },
+    };
+    const { rerender } = render(<WorkspaceMessageList {...props} />);
+    fireEvent.click(screen.getByRole("button", { name: /3 events/ }));
+    expect(screen.getByRole("button", { name: "Approve" })).toBeDisabled();
+    rerender(
+      <WorkspaceMessageList
+        {...props}
+        actions={{
+          getKeyServiceState: () => createServiceState({ requestStatus: "rejected" }),
+          getKeyRequestActions: () => [],
+        }}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "3 events" })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+    expect(screen.getByText("Request rejected.")).toBeInTheDocument();
+  });
+
+  it("shows a fragment request to an eligible key holder and hides it after eligibility is lost", () => {
+    const grant = vi.fn();
+    const request = createServiceMessage(0, { payload: SERVICE_REQUEST });
+    const props: WorkspaceMessageListProps = {
+      messages: [request],
+      currentUserUuid: "member-with-fragment-key",
+      conversationId: "topic:stream-uuid-1:topic-uuid-1",
+      presentation: { serviceMessages: "account" },
+      actions: {
+        getKeyServiceState: () => createServiceState({ requestStatus: "pending" }),
+        getKeyRequestActions: () => [{ label: "Send key", onClick: grant }],
+      },
+    };
+    const { rerender, container } = render(<WorkspaceMessageList {...props} />);
+    fireEvent.click(screen.getByRole("button", { name: /1 event/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Send key" }));
+    expect(grant).toHaveBeenCalledOnce();
+    rerender(
+      <WorkspaceMessageList
+        {...props}
+        actions={{
+          getKeyServiceState: () => createServiceState({ canManageKeys: false, hasKey: false }),
+          getKeyRequestActions: () => [],
+        }}
+      />,
+    );
+    expect(container.querySelector("[data-service-message-group]")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Send key" })).not.toBeInTheDocument();
+  });
+
+  it("updates response relevance when a request outside the window becomes available", () => {
+    const request = createServiceMessage(0, {
+      authorUuid: "current-user-uuid",
+      payload: SERVICE_REQUEST,
+    });
+    const response = createServiceMessage(1, {
+      payload: {
+        kind: "key_grant",
+        keyUuid: "generation",
+        requestMessageUuid: request.uuid,
+        senderDeviceId: "sender",
+        recipientDeviceId: SERVICE_REQUEST.deviceId,
+        content: "synthetic-ciphertext",
+      },
+    });
+    const props: WorkspaceMessageListProps = {
+      messages: [response],
+      currentUserUuid: "current-user-uuid",
+      conversationId: "topic:stream-uuid-1:topic-uuid-1",
+      presentation: { serviceMessages: "account" },
+    };
+    const { container, rerender } = render(<WorkspaceMessageList {...props} />);
+    expect(container.querySelector("[data-empty-state]")).toBeInTheDocument();
+    act(() => useWorkspaceMessageStore.setState({ messagesById: { [request.uuid]: request } }));
+    expect(screen.getByRole("button", { name: /1 event/ })).toBeInTheDocument();
+    expect(container.querySelector("article")).toHaveAttribute("data-message-uuid", response.uuid);
+    rerender(<WorkspaceMessageList {...props} currentUserUuid="another-account" />);
+    expect(container.querySelector("[data-empty-state]")).toBeInTheDocument();
+    act(() => useWorkspaceMessageStore.setState({ messagesById: {} }));
+  });
+
+  it("does not split visible author or topic runs with hidden events", () => {
+    const messages = [
+      createWorkspaceMessage({ uuid: "before" }),
+      createServiceMessage(1, { topicUuid: "hidden-topic" }),
+      createWorkspaceMessage({ uuid: "after", createdAt: "2026-07-03T09:02:00.000Z" }),
+    ];
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={messages}
+        currentUserUuid="current-user-uuid"
+        conversationId="stream:stream-uuid-1"
+        presentation={{ serviceMessages: "account", topicDividers: true }}
+      />,
+    );
+    expect(container.querySelectorAll("[data-author-group]")).toHaveLength(1);
+    expect(
+      container.querySelector("[data-topic-divider], [data-service-message-group]"),
+    ).toBeNull();
+    expect(container.querySelectorAll("article")).toHaveLength(2);
+  });
+
+  it.each(["older", "newer"] as const)(
+    "continues past hidden %s history pages without retrying the same boundary",
+    (direction) => {
+      const load = vi.fn();
+      const props: WorkspaceMessageListProps = {
+        messages: [createServiceMessage(0)],
+        currentUserUuid: "current-user-uuid",
+        conversationId: "topic:stream-uuid-1:topic-uuid-1",
+        presentation: { serviceMessages: "account" },
+        hasOlderMessages: direction === "older",
+        hasNewerMessages: direction === "newer",
+        initialPositionReady: true,
+        onLoadOlder: load,
+        onLoadNewer: load,
+      };
+      const { rerender } = render(<WorkspaceMessageList {...props} />);
+      expect(load).toHaveBeenCalledOnce();
+      rerender(<WorkspaceMessageList {...props} isLoadingOlder />);
+      rerender(<WorkspaceMessageList {...props} />);
+      expect(load).toHaveBeenCalledOnce();
+      const messages = [createServiceMessage(-1), ...props.messages];
+      rerender(<WorkspaceMessageList {...props} messages={messages} />);
+      expect(load).toHaveBeenCalledTimes(2);
+      rerender(
+        <WorkspaceMessageList
+          {...props}
+          messages={[createWorkspaceMessage({ uuid: "visible-message" }), ...messages]}
+        />,
+      );
+      expect(load).toHaveBeenCalledTimes(2);
+    },
+  );
+
+  it("places the unread divider at the next visible message after a hidden event", () => {
+    const hiddenUnread = createServiceMessage(0);
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "read-before",
+            read: true,
+            createdAt: "2026-07-02T09:00:00Z",
+          }),
+          hiddenUnread,
+          createWorkspaceMessage({ uuid: "visible-unread", createdAt: "2026-07-03T10:00:00Z" }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        presentation={{ serviceMessages: "account" }}
+        firstUnreadUuid={hiddenUnread.uuid}
+        unreadCount={2}
+        initialPositionReady
+      />,
+    );
+    const divider = container.querySelector("[data-unread-divider='true']");
+    expect(divider).toBeInTheDocument();
+    expect(divider?.nextElementSibling).toContainElement(
+      container.querySelector("[data-message-uuid='visible-unread']"),
+    );
   });
 
   it("collapses a continuous service run across authors and preserves its DOM read anchors on keyboard expansion", async () => {
@@ -774,7 +1154,8 @@ describe("WorkspaceMessageList", () => {
 
     expect(container.querySelectorAll("[data-workspace-peer-avatar='true']")).toHaveLength(1);
     expect(container.querySelector("[data-workspace-peer-avatar='true']")).toHaveClass(
-      "relative",
+      "sticky",
+      "bottom-2",
       "z-[1]",
     );
     expect(container.querySelector("[data-workspace-peer-avatar='true'] img")).toHaveAttribute(
@@ -1872,6 +2253,22 @@ describe("WorkspaceMessageList", () => {
     expect(unreadDivider?.nextElementSibling).toBe(authorGroups[1]);
     expect(authorGroups[1]).toContainElement(
       container.querySelector("[data-message-uuid='unread-anchor']"),
+    );
+  });
+
+  it("formats the unread divider above the exact display limit", () => {
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[createWorkspaceMessage({ uuid: "unread-anchor" })]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        firstUnreadUuid="unread-anchor"
+        unreadCount={1001}
+      />,
+    );
+
+    expect(container.querySelector("[data-unread-divider='true']")).toHaveTextContent(
+      "Unread messages • 1k+",
     );
   });
 
@@ -3892,9 +4289,11 @@ describe("WorkspaceMessageList", () => {
     expect(peerGroup).not.toHaveClass("gap-2");
     expect(
       peerGroup?.querySelector("[data-workspace-peer-avatar='true']")?.parentElement,
-    ).toHaveClass("pointer-events-none", "absolute", "left-0", "w-12");
+    ).toHaveClass("pointer-events-none", "absolute", "inset-y-0", "left-0", "w-12");
     expect(peerGroup?.querySelector("[data-workspace-peer-avatar='true']")).toHaveClass(
       "pointer-events-auto",
+      "sticky",
+      "bottom-2",
     );
     const ownOuterRail = ownArticle?.querySelector(
       "[data-workspace-message-selection-outer-rail='true']",
@@ -4492,35 +4891,21 @@ describe("WorkspaceMessageList", () => {
     openSpy.mockRestore();
   });
 
-  it("keeps Workspace message permalinks as internal links", () => {
-    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
-    const workspaceMessageUuid = "11111111-1111-4111-8111-111111111111";
-    const { container } = render(
+  it("opens trusted Workspace message permalinks with their full scope", () => {
+    const onOpenMessagePermalink = vi.fn();
+    const path = "/org/org-a/project/project-b/message/11111111-1111-4111-8111-111111111111";
+    render(
       <WorkspaceMessageList
-        messages={[
-          createWorkspaceMessage({
-            uuid: "workspace-permalink-message",
-            markdown: `[jump](https://workspace.example/org/org-a/project/project-a/message/${workspaceMessageUuid})`,
-          }),
-        ]}
+        messages={[createWorkspaceMessage({ markdown: `https://workspace.example${path}` })]}
         currentUserUuid="current-user-uuid"
         conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ messageWebOrigin: "https://workspace.example", onOpenMessagePermalink }}
       />,
     );
-
-    const link = container.querySelector<HTMLAnchorElement>(
-      `[data-workspace-message-link='true'][href='https://workspace.example/org/org-a/project/project-a/message/${workspaceMessageUuid}']`,
-    );
-
-    expect(link).toHaveAttribute("data-workspace-message-uuid", workspaceMessageUuid);
-    expect(link).not.toHaveAttribute("target");
-
-    link?.addEventListener("click", (event) => event.preventDefault());
-    fireEvent.click(link!);
-
-    expect(openSpy).not.toHaveBeenCalled();
-
-    openSpy.mockRestore();
+    const link = screen.getByRole("link");
+    expect(link).toHaveAttribute("target", "_blank");
+    fireEvent.click(link);
+    expect(onOpenMessagePermalink).toHaveBeenCalledExactlyOnceWith(path);
   });
 
   it("opens canonical Workspace URN entities through UUID callbacks", () => {
@@ -5517,7 +5902,7 @@ describe("WorkspaceMessageList", () => {
       />,
     );
 
-    const placeholder = await screen.findByRole("button", {
+    const placeholder = await screen.findByRole("group", {
       name: "This video cannot be played",
     });
     expect(onLoadWorkspaceFilePreview).toHaveBeenCalledTimes(1);
@@ -5557,7 +5942,7 @@ describe("WorkspaceMessageList", () => {
       />,
     );
 
-    const placeholder = await screen.findByRole("button", { name: "Failed to load video" });
+    const placeholder = await screen.findByRole("group", { name: "Failed to load video" });
     await waitFor(() => {
       expect(placeholder).toHaveAttribute("data-workspace-preview-status", "load-error");
     });
@@ -5662,7 +6047,7 @@ describe("WorkspaceMessageList", () => {
     fireEvent.error(previewImage!);
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Изображение" })).toHaveAttribute(
+      expect(screen.getByRole("group", { name: "Изображение" })).toHaveAttribute(
         "data-workspace-preview-status",
         "display-error",
       );
@@ -6050,6 +6435,46 @@ describe("WorkspaceMessageList", () => {
       }),
     );
   });
+
+  it.each(["click", "keyboard"])(
+    "retries failed media with %s without opening or downloading it",
+    async (interaction) => {
+      const user = userEvent.setup();
+      const onDownloadFile = vi.fn();
+      const onOpenWorkspaceMedia = vi.fn();
+      const onLoadWorkspaceFilePreview = vi
+        .fn()
+        .mockRejectedValueOnce(new Error("404"))
+        .mockResolvedValue(new Blob(["image"], { type: "image/png" }));
+      render(
+        <WorkspaceMessageList
+          messages={[
+            createWorkspaceMessage({
+              uuid: "preview-retry-interaction",
+              markdown:
+                "![image.png](urn:image:66666666-6666-4666-8666-666666666666?name=image.png&content_type=image%2Fpng)",
+            }),
+          ]}
+          currentUserUuid="current-user-uuid"
+          conversationId="topic:stream-uuid-1:topic-uuid-1"
+          actions={{ onDownloadFile, onOpenWorkspaceMedia, onLoadWorkspaceFilePreview }}
+        />,
+      );
+      const retry = await screen.findByRole("button", { name: "Retry" });
+      if (interaction === "keyboard") {
+        retry.focus();
+        await user.keyboard("{Enter}");
+      } else {
+        await user.click(retry);
+      }
+      await waitFor(() => expect(onLoadWorkspaceFilePreview).toHaveBeenCalledTimes(2));
+      await waitFor(() =>
+        expect(screen.queryByRole("button", { name: "Retry" })).not.toBeInTheDocument(),
+      );
+      expect(onDownloadFile).not.toHaveBeenCalled();
+      expect(onOpenWorkspaceMedia).not.toHaveBeenCalled();
+    },
+  );
 
   it("opens resolved Workspace mentions through UUID-only callback", () => {
     const onOpenMentionUser = vi.fn();
@@ -6708,7 +7133,6 @@ describe("WorkspaceMessageList", () => {
       const message = createWorkspaceMessage({
         uuid: "bounded-reaction-message",
         sourceName,
-        source: { kind: sourceName },
         provider: sourceName === "zulip" ? { kind: "zulip", external_id: "42" } : null,
         reactions: { heart: 5, eyes: 1 },
         reactionUserUuidsByEmojiName: {
@@ -6935,7 +7359,12 @@ describe("WorkspaceMessageList", () => {
     expect(screen.getByRole("menuitem", { name: "Edit message" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Delete" })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByLabelText("Thumbs up"));
+    const quickReaction = screen.getByLabelText("Thumbs up");
+    expect(quickReaction.parentElement?.parentElement).toHaveClass(
+      "overflow-x-auto",
+      "scrollbar-none",
+    );
+    fireEvent.click(quickReaction);
     expect(onToggleMessageReaction).toHaveBeenCalledWith("own-menu-message", "👍");
   });
 
@@ -7018,6 +7447,57 @@ describe("WorkspaceMessageList", () => {
     fireEvent.contextMenu(bubble!, { clientX: 120, clientY: 80 });
 
     expect(await screen.findByRole("menuitem", { name: "Copy text" })).toBeInTheDocument();
+  });
+
+  it("offers a peer message permalink separately from the URL under the cursor", async () => {
+    const onCopyMessageLink = vi.fn();
+    const uuid = "11111111-1111-4111-8111-111111111111";
+    render(
+      <WorkspaceMessageList
+        messages={[createWorkspaceMessage({ uuid, markdown: "[docs](https://example.com)" })]}
+        currentUserUuid="other-user"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onCopyMessageLink }}
+      />,
+    );
+    fireEvent.contextMenu(screen.getByRole("link"), { clientX: 120, clientY: 80 });
+    expect(await screen.findByRole("menuitem", { name: "Copy link" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy message link" }));
+    expect(onCopyMessageLink).toHaveBeenCalledExactlyOnceWith(uuid);
+  });
+
+  it.each(["sending", "failed"] as const)(
+    "does not offer a permalink for %s outbox entries with valid UUIDs",
+    (status) => {
+      const uuid = "11111111-1111-4111-8111-111111111111";
+      const { container } = render(
+        <WorkspaceMessageList
+          messages={[]}
+          outgoingMessages={[
+            createOutgoingMessage({ canonicalMessageUuid: uuid, placementUuid: uuid, status }),
+          ]}
+          currentUserUuid="current-user-uuid"
+          conversationId="topic:stream-uuid-1:topic-uuid-1"
+          actions={{ onCopyMessageLink: vi.fn() }}
+        />,
+      );
+      fireEvent.contextMenu(container.querySelector("[data-workspace-message-bubble='true']")!);
+      expect(screen.queryByRole("menuitem", { name: "Copy message link" })).not.toBeInTheDocument();
+    },
+  );
+
+  it("does not offer a permalink for a nonpersistent message identifier", async () => {
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[createWorkspaceMessage({ uuid: "local-message" })]}
+        currentUserUuid="other-user"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onCopyMessageLink: vi.fn() }}
+      />,
+    );
+    fireEvent.contextMenu(container.querySelector("[data-workspace-message-bubble='true']")!);
+    expect(await screen.findByRole("menuitem", { name: "Copy text" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Copy message link" })).not.toBeInTheDocument();
   });
 
   it("offers to copy a safe link from its right-click context", async () => {
@@ -7178,7 +7658,7 @@ describe("WorkspaceMessageList", () => {
       <WorkspaceMessageList
         messages={[
           createWorkspaceMessage({
-            uuid: "divider-order-message",
+            uuid: "11111111-1111-4111-8111-111111111111",
             authorUuid: "current-user-uuid",
             userUuid: "current-user-uuid",
             isOwn: true,
@@ -7188,6 +7668,7 @@ describe("WorkspaceMessageList", () => {
         currentUserUuid="current-user-uuid"
         conversationId="topic:stream-uuid-1:topic-uuid-1"
         actions={{
+          onCopyMessageLink: vi.fn(),
           onReplyMessage: vi.fn(),
           onAddReplyMessage: vi.fn(),
           onForwardMessage: vi.fn(),
@@ -7216,6 +7697,7 @@ describe("WorkspaceMessageList", () => {
       "Forward",
       "separator",
       "Copy text",
+      "Copy message link",
       "Select",
       "separator",
       "Edit message",

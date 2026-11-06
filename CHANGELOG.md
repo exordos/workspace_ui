@@ -6,6 +6,217 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.9.11] — 2026-11-06
+
+### Added
+
+- Copy a shareable message link and open it in the browser or desktop app.
+  Desktop opening can be remembered per organization in the browser for 30 days,
+  with a browser fallback.
+- Sort streams and topics by name while preserving pinned-chat priority.
+
+### Fixed
+
+- Preserve the message's organization and project through sign-in and show an
+  unavailable-message state for missing or inaccessible messages.
+- Clear entered credentials when changing organizations and discover login
+  settings from the selected organization origin.
+- Match keyboard shortcuts by physical key position across keyboard layouts,
+  using US QWERTY labels and keeping keypad/international positions distinct.
+- Improve horizontal scrolling in tabs, composer tools, and reaction strips,
+  and refine chat details and media viewer controls.
+
+### Requirements and compatibility
+
+- Dependencies, server API contracts, and the durable messenger cache schema
+  are unchanged. Existing message permissions still apply to shared links.
+- For separate web and API hosts, set `VITE_WORKSPACE_WEB_ORIGIN` to the public
+  HTTPS web origin when building both clients. Same-origin web deployments
+  need no additional configuration.
+- The legacy `realm` login-prefill query is no longer consumed; select or enter
+  the organization instead. Message links retain their target during login.
+- Existing shortcut settings remain stored; matching now follows physical
+  positions. Review custom bindings when using multiple keyboard layouts.
+
+### Migration notes
+
+- Update `workspace_ui` to `0.9.11`; no manual data migration or cache reset is
+  required. Update the desktop client to use its new message-link handling.
+- Save or send protected drafts before reloading; they remain only in account memory.
+
+## [0.9.10] — 2026-11-03
+
+### Added
+
+- Keep multiple quoted replies in encrypted chats using the shared reply tabs.
+  Repeating Ctrl+L adds another quote while preserving the previous tab's answer during the current session.
+
+### Fixed
+
+- Remove only affected encrypted quotes when their source message or key changes.
+- Wrap long shortcut descriptions while keeping key combinations on one line.
+- Render the `:info:` emoji shortcode using the information symbol.
+
+### Requirements and compatibility
+
+- Deployment requirements, dependencies, server API contracts, and the durable
+  messenger cache schema are unchanged.
+- Decrypted quotes and replies stay in account memory. Existing encrypted-chat
+  key requirements still apply; these controls do not encrypt attachment bytes.
+
+### Migration notes
+
+- Update `workspace_ui` to `0.9.10`; no manual migration or cache reset is required.
+  Save or send protected drafts before reloading; they remain only in account memory.
+
+## [0.9.9] — 2026-11-02
+
+### Added
+
+- Configure keyboard shortcuts in Settings, including Ctrl+L for quoting, with
+  validation for reserved keys and conflicting bindings.
+- Copy images directly from the media viewer where clipboard support is available.
+
+### Changed
+
+- Enable supported application shortcuts by default. Individual bindings and the
+  global shortcut switch are stored per account; some navigation actions start unbound.
+- Display unread counts above 1000 as whole-thousand buckets: 1001–1999 as
+  `1k+`, 2000–2999 as `2k+`, and so on. Counts through 1000, drafts, and starred
+  totals keep their existing display. Numeric data and read/notification behavior
+  are unchanged; backend-bounded categories can remain approximate below 1000.
+
+### Fixed
+
+- Retain new realtime messages when loading more history expands the loaded window.
+- Improve message quick actions, copy feedback, and the Settings tooltip.
+
+### Requirements and compatibility
+
+- Bundle `@tanstack/react-hotkeys` 0.21.0 and its `@tanstack/hotkeys` 0.23.0 dependency.
+  Existing deployment and Node requirements are unchanged.
+- Keyboard settings use the existing account-scoped local storage. Browser/system
+  editing keys remain reserved. Mouse history navigation remains disabled.
+- The durable messenger cache schema and server API contracts are unchanged.
+
+### Migration notes
+
+- Update `workspace_ui` to `0.9.9`; no manual migration or cache reset is required.
+  Review Keyboard Shortcuts in Settings to change or disable the new defaults.
+- Save or send protected drafts before reloading; they remain only in account memory.
+
+## [0.9.8] — 2026-11-02
+
+### Added
+
+- Insert a global date and time from the composer; each reader sees the instant
+  in their own time zone. Invalid, escaped, or zone-less values remain literal.
+- Choose whether a chat click opens the general conversation or latest topic;
+  the avatar retains access to the general conversation.
+
+### Fixed
+
+- Prepare encrypted history before mounting message rows, batch key reads, and
+  reuse recent conversation windows in memory. Preserve scroll anchors as
+  quotes and media expand, and invalidate plaintext when keys or ownership change.
+- Show whole encrypted payloads in ordinary native chats when the required key
+  is available. Reply and Edit remain unavailable for these messages.
+- Recover failed image and video previews after matching file updates and offer
+  a Retry action for persistent errors.
+- Keep grouped author avatars visible while scrolling and hide the quick-reaction
+  scrollbar.
+
+### Requirements and compatibility
+
+- Deployment requirements, dependencies, and the durable messenger cache schema
+  are unchanged. Decrypted conversation windows are cached only in memory.
+- The default chat-click action remains the general conversation. Older clients
+  can show time extensions as literal Markdown.
+- Existing encrypted-message and protected-fragment key requirements still apply.
+  Attachment bytes remain unencrypted by these controls.
+
+### Migration notes
+
+- Update `workspace_ui` to `0.9.8`. No manual migration or cache reset is required.
+  Save or send protected drafts before reloading; they remain only in account memory.
+
+## [0.9.7] — 2026-10-29
+
+### Added
+
+- Protect selected text in ordinary native chats with encrypted spoilers. Public
+  text remains readable; each protected fragment can be revealed or hidden when
+  its shared chat key is available.
+- Edit mixed messages and preserve encrypted fragments in quotes, forwards, and
+  retries. Missing keys lock the affected fragment while keeping public text visible.
+
+### Changed
+
+- Drafts containing protected ranges stay in account-scoped memory instead of
+  local or server draft storage. Marking an ordinary draft as protected removes
+  its stored draft; these protected drafts are cleared on page reload.
+- Ordinary chats show key-service events relevant to the viewing account and
+  retain the existing shared-key request and grant flow.
+
+### Requirements and compatibility
+
+- Dependencies and messenger cache schema version 7 are unchanged. No manual
+  migration or cache reset is required.
+- Use this client version for encrypted-fragment controls. Protection uses the
+  existing native-chat keys, message payloads, and draft revision APIs.
+- Enable protection before entering private text: earlier ordinary input may
+  already have reached a server draft. Attachment bytes remain unencrypted.
+
+### Migration notes
+
+- Update `workspace_ui` to `0.9.7`. Save or send protected drafts before reloading.
+
+## [0.9.6] — 2026-10-27
+
+### Added
+
+- A macOS desktop Settings switch to disable Dock icon bouncing for incoming
+  notifications while keeping banners, sound, and unread indicators enabled.
+  The preference is saved per account and applies without restarting the app.
+
+### Fixed
+
+- Background-account notifications use the receiving account's Dock preference,
+  including when the active account changes while a notification is pending.
+
+### Requirements and compatibility
+
+- Deployment requirements, dependencies, and the message cache schema are unchanged.
+- Existing installations keep Dock bouncing enabled until the user switches it off.
+  Other desktop platforms retain their existing taskbar attention behavior.
+
+### Migration notes
+
+- Update `workspace_ui` to `0.9.6`. No manual migration or cache reset is required.
+
+## [0.9.5] — 2026-10-25
+
+### Changed
+
+- Messenger DTOs accept flat provider UUID and identity fields without requiring
+  nested source metadata. Native chat creation leaves source defaults to the server.
+
+### Fixed
+
+- Silent user references remain clickable in messages, quotes, and forwarded
+  content without adding an `@` prefix or triggering mention-only desktop alerts.
+
+### Requirements and compatibility
+
+- Deployment requirements and dependencies remain unchanged. The updated stream
+  DTO guard accepts Workspace backend `2.1.1` responses and the flat provider
+  fields used by the newer backend contract.
+- The messenger cache remains at schema version 7. No cache reset is required.
+
+### Migration notes
+
+- Update `workspace_ui` to `0.9.5`. No manual migration is required.
+
 ## [0.9.4] — 2026-10-22
 
 ### Added

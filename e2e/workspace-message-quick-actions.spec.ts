@@ -63,6 +63,11 @@ async function installDecryptedMessage(page: Page): Promise<void> {
       ...messageSuccess(""),
       payload: { kind: "e2ee", key_uuid: ENCRYPTED_KEY_UUID, content },
     },
+    {
+      ...messageSuccess("", PREVIOUS_MESSAGE_UUID),
+      created_at: "2026-07-16T10:01:00.000Z",
+      payload: { kind: "e2ee", key_uuid: ENCRYPTED_KEY_UUID, content },
+    },
   ];
   await page.route(/\/messenger\/streams\/?(?:[^?]*)?(?:\?.*)?$/, async (route) => {
     if (route.request().method() !== "GET") return route.fallback();
@@ -156,9 +161,67 @@ async function expectActionsHidden(actions: Locator): Promise<void> {
 }
 
 test.describe("Workspace message quick actions @mock", () => {
+  test("Ctrl+L adds the message under the pointer and keeps the first answer", async ({
+    authenticated,
+  }) => {
+    await installNarrowMessages(authenticated, "peer", "Second quote");
+    await openStreamChatWithComposer(authenticated);
+    const row = authenticated.locator(`[data-message-uuid='${E2E_MESSAGE_UUID}']`);
+    await row.locator("[data-workspace-message-bubble='true']").hover();
+    const composer = await expectReadyMessageComposer(authenticated);
+    await composer.fill("Draft");
+    await authenticated.keyboard.press("Control+l");
+    await expect(authenticated.locator("[data-composer-reply-quote='true']")).toHaveCount(0);
+    await expect(composer).toHaveValue("Draft");
+    await composer.fill("");
+    await authenticated.keyboard.press("Control+l");
+    const quote = authenticated.locator("[data-composer-reply-quote='true']");
+    await expect(quote).toContainText("Second quote");
+    await composer.fill("Answer to keep");
+    await authenticated
+      .locator(`[data-message-uuid='${PREVIOUS_MESSAGE_UUID}'] [data-workspace-message-bubble]`)
+      .hover();
+    await authenticated.keyboard.press("Control+l");
+    await expect(quote).toContainText("First short message");
+    const tabs = authenticated
+      .locator('[role="tablist"]')
+      .filter({ has: authenticated.getByRole("tab", { name: /ответ|reply/i }) })
+      .getByRole("tab");
+    await expect(tabs).toHaveCount(2);
+    await tabs.first().click();
+    await expect(quote).toContainText("Second quote");
+    await expect(composer).toHaveValue("Answer to keep");
+  });
+
+  test("Ctrl+L quotes the selected part of a message", async ({ authenticated }) => {
+    await openStreamChatWithComposer(authenticated);
+    const row = authenticated.locator(`[data-message-uuid='${E2E_MESSAGE_UUID}']`);
+    const bubble = row.locator("[data-workspace-message-bubble='true']");
+    await bubble.focus();
+    await bubble.getByText("E2E initial message", { exact: true }).evaluate((body) => {
+      const range = document.createRange();
+      range.setStart(body.firstChild!, 4);
+      range.setEnd(body.firstChild!, 11);
+      const selection = window.getSelection()!;
+      selection.removeAllRanges();
+      selection.addRange(range);
+    });
+    await authenticated.keyboard.press("Control+l");
+    const quote = authenticated.locator("[data-composer-reply-quote='true']");
+    await expect(quote).toContainText("initial");
+    await expect(quote).not.toContainText("E2E initial message");
+  });
+
   test("decrypted messages expose hover reactions and send a genuinely encrypted quick reply", async ({
     authenticated: page,
   }) => {
+    const draftWrites: unknown[] = [];
+    await page.route(/\/messenger\/drafts\/?(?:[^?]*)?(?:\?.*)?$/, async (route) => {
+      if (["POST", "PUT", "PATCH"].includes(route.request().method())) {
+        draftWrites.push(route.request().postDataJSON());
+      }
+      await route.fallback();
+    });
     await installDecryptedMessage(page);
     await installReactionMutationMock(page);
     await openStreamChatWithComposer(page);
@@ -191,6 +254,21 @@ test.describe("Workspace message quick actions @mock", () => {
     const answer = "Encrypted answer from hover reply";
     const composer = await expectReadyMessageComposer(page);
     await composer.fill(answer);
+    const second = page.locator(
+      `[data-message-uuid='${PREVIOUS_MESSAGE_UUID}'] [data-workspace-message-bubble='true']`,
+    );
+    await second.hover();
+    await page.keyboard.press("Control+l");
+    const tabs = page
+      .locator('[role="tablist"]')
+      .filter({ has: page.getByRole("tab", { name: /ответ|reply/i }) })
+      .getByRole("tab");
+    await expect(tabs).toHaveCount(2);
+    await composer.fill("Second encrypted answer");
+    await tabs.first().click();
+    await expect(composer).toHaveValue(answer);
+    await tabs.last().click();
+    await expect(composer).toHaveValue("Second encrypted answer");
     const sent = page.waitForRequest(
       (request) => request.method() === "POST" && /\/messenger\/messages\/?$/.test(request.url()),
     );
@@ -208,6 +286,7 @@ test.describe("Workspace message quick actions @mock", () => {
     expect(payload.payload.key_uuid).toBe(ENCRYPTED_KEY_UUID);
     expect(request.postData()).not.toContain(ENCRYPTED_MESSAGE_TEXT);
     expect(request.postData()).not.toContain(answer);
+    expect(request.postData()).not.toContain("Second encrypted answer");
     expect(request.postData()).not.toContain("urn:quote:");
     const decrypted = await page.evaluate(
       async ({ streamUuid, keyUuid, content }) => {
@@ -244,22 +323,29 @@ test.describe("Workspace message quick actions @mock", () => {
     );
     expect(decrypted).toContain(`urn:quote:${E2E_MESSAGE_UUID}`);
     expect(decrypted).toContain(answer);
+    expect(decrypted).toContain("Second encrypted answer");
+    expect(decrypted).toContain(`urn:quote:${PREVIOUS_MESSAGE_UUID}`);
     await expect(composer).toHaveValue("");
     await expect(quote).toHaveCount(0);
     const replyUuid = createMessengerPlacementUuid(E2E_TOPIC_UUID, payload.uuid);
     const savedReply = page.locator(`[data-message-uuid='${replyUuid}']`);
     await expect(savedReply).toHaveAttribute("data-message-kind", "server");
     await expect(savedReply).toContainText(answer);
-    await expect(savedReply.locator("[data-workspace-quote='true']")).toContainText(
+    await expect(savedReply.locator("[data-workspace-quote='true']")).toHaveCount(2);
+    await expect(savedReply.locator("[data-workspace-quote='true']").first()).toContainText(
       ENCRYPTED_MESSAGE_TEXT,
     );
     await expect(savedReply.locator("blockquote.workspace-message-quote-reference")).toHaveCount(0);
 
     await page.reload();
     await expect(savedReply).toContainText(answer);
-    await expect(savedReply.locator("[data-workspace-quote='true']")).toContainText(
+    await expect(savedReply.locator("[data-workspace-quote='true']")).toHaveCount(2);
+    await expect(savedReply.locator("[data-workspace-quote='true']").first()).toContainText(
       ENCRYPTED_MESSAGE_TEXT,
     );
+    expect(JSON.stringify(draftWrites)).not.toContain(answer);
+    expect(JSON.stringify(draftWrites)).not.toContain("Second encrypted answer");
+    expect(JSON.stringify(draftWrites)).not.toContain(ENCRYPTED_MESSAGE_TEXT);
   });
 
   test("removing a decrypted message key replaces hover actions with the persistent key request", async ({

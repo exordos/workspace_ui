@@ -246,7 +246,7 @@ function mergeSnapshotMessages(
   return { messagesById, acceptedMessages };
 }
 
-function liveMessagesForReplacement(
+function liveMessagesForWindow(
   state: WorkspaceMessageStoreData,
   conversationId: MessengerConversationId,
   previousWindow: WorkspaceConversationWindow | undefined,
@@ -407,7 +407,7 @@ export const useWorkspaceMessageStore = create<WorkspaceMessageStoreState>((set,
         afterPageMarker: input.markers.afterPageMarker,
         revision,
       };
-      const retainedLiveMessages = liveMessagesForReplacement(
+      const retainedLiveMessages = liveMessagesForWindow(
         { ...state, messagesById },
         input.conversationId,
         previousWindow,
@@ -466,23 +466,39 @@ export const useWorkspaceMessageStore = create<WorkspaceMessageStoreState>((set,
         input.capturedMutationRevision,
       );
       const revision = nextWindowRevision(previousWindow);
+      const mergedWindow: WorkspaceConversationWindow = {
+        ...previousWindow,
+        messageUuids: mergeSortedWorkspaceMessageIds(
+          previousWindow.messageUuids,
+          acceptedMessages,
+          messagesById,
+        ),
+        beforePageMarker:
+          input.direction === "before" ? input.pageMarker : previousWindow.beforePageMarker,
+        afterPageMarker:
+          input.direction === "after" ? input.pageMarker : previousWindow.afterPageMarker,
+        revision,
+      };
+      // Recheck live bodies against the expanded bounds, including a newly reached tail.
+      const retainedLiveMessages = liveMessagesForWindow(
+        { ...state, messagesById },
+        input.conversationId,
+        previousWindow,
+        mergedWindow,
+        input.capturedMutationRevision,
+      );
       appliedRevision = revision;
       return {
         messagesById,
         conversationWindowsById: {
           ...state.conversationWindowsById,
           [input.conversationId]: {
-            ...previousWindow,
+            ...mergedWindow,
             messageUuids: mergeSortedWorkspaceMessageIds(
-              previousWindow.messageUuids,
-              acceptedMessages,
+              mergedWindow.messageUuids,
+              retainedLiveMessages,
               messagesById,
             ),
-            beforePageMarker:
-              input.direction === "before" ? input.pageMarker : previousWindow.beforePageMarker,
-            afterPageMarker:
-              input.direction === "after" ? input.pageMarker : previousWindow.afterPageMarker,
-            revision,
           },
         },
       };

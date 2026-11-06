@@ -22,7 +22,7 @@
  */
 
 import { useCallback, useEffect, useRef } from "react";
-import { KEYBOARD_SHORTCUTS_ENABLED } from "~/shared/config/constants";
+import { isHotkeyBlockedByModal } from "./hotkeys";
 
 // ---------------------------------------------------------------------------
 // Focus zone navigation (F6 cycle between landmarks)
@@ -265,16 +265,15 @@ export function focusMainContent(): void {
 let initialized = false;
 
 export function initFocusManagement(): () => void {
-  if (!KEYBOARD_SHORTCUTS_ENABLED) return () => {};
   if (initialized) return () => {};
   initialized = true;
 
   const handler = (e: KeyboardEvent) => {
-    if (e.key === "F6" && !e.ctrlKey && !e.metaKey && !e.altKey) {
-      e.preventDefault();
-      if (e.shiftKey) cycleToPrevZone();
-      else cycleToNextZone();
-    }
+    if (e.key !== "F6" || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.defaultPrevented || e.isComposing || e.repeat || isHotkeyBlockedByModal()) return;
+    e.preventDefault();
+    if (e.shiftKey) cycleToPrevZone();
+    else cycleToNextZone();
   };
 
   window.addEventListener("keydown", handler);

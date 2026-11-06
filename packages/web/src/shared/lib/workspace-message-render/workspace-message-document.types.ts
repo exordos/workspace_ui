@@ -120,7 +120,13 @@ export interface WorkspaceMessageUnsupportedMediaInline {
   label: string;
 }
 
+export interface WorkspaceMessageTimeInline {
+  kind: "time";
+  utc: string;
+}
+
 export type WorkspaceMessageInline =
+  | WorkspaceMessageTimeInline
   | WorkspaceMessageTextInline
   | WorkspaceMessageBreakInline
   | WorkspaceMessageEmphasisInline

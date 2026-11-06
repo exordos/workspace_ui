@@ -3,24 +3,18 @@ import { resolveMessengerNavigationPath } from "~/shared/lib/last-messenger-rout
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { workspaceActivityRoute } from "~/shared/lib/workspace-messenger-route.lib";
 
-export type GlobalNavigationShortcutKey = "mod+1" | "mod+2" | "mod+3" | "mod+4" | "mod+shift+a";
-export type GlobalShortcutKey = GlobalNavigationShortcutKey | "mod+shift+t";
-export type GlobalShortcutAction =
-  | {
-      type: "navigate";
-      route: string;
-    }
-  | {
-      type: "toggle-theme";
-    };
-
+export type GlobalNavigationActionId =
+  | "navigation.messenger"
+  | "navigation.calendar"
+  | "navigation.mail"
+  | "navigation.calls"
+  | "navigation.activity";
 export function resolveGlobalNavigationRoute(
-  key: GlobalNavigationShortcutKey,
-  _defaultStream: string,
+  key: GlobalNavigationActionId,
   instanceId?: string | null,
   projectId?: string | null,
 ): string {
-  if (key === "mod+1") {
+  if (key === "navigation.messenger") {
     const runtimeContext = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
     return withCurrentOrgRoute(
       resolveMessengerNavigationPath({
@@ -29,13 +23,13 @@ export function resolveGlobalNavigationRoute(
       }),
     );
   }
-  if (key === "mod+2") {
+  if (key === "navigation.calendar") {
     return withCurrentOrgRoute("/calendar");
   }
-  if (key === "mod+3") {
+  if (key === "navigation.mail") {
     return withCurrentOrgRoute("/mail");
   }
-  if (key === "mod+shift+a") {
+  if (key === "navigation.activity") {
     const runtimeContext = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
     if (runtimeContext != null) {
       return workspaceActivityRoute({
@@ -47,17 +41,4 @@ export function resolveGlobalNavigationRoute(
     return withCurrentOrgRoute("/");
   }
   return withCurrentOrgRoute("/calls");
-}
-
-export function resolveGlobalShortcutAction(
-  key: GlobalShortcutKey,
-  defaultStream: string,
-): GlobalShortcutAction {
-  if (key === "mod+shift+t") {
-    return { type: "toggle-theme" };
-  }
-  return {
-    type: "navigate",
-    route: resolveGlobalNavigationRoute(key, defaultStream),
-  };
 }

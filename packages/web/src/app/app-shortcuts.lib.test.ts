@@ -5,11 +5,7 @@ import {
   saveLastMessengerRoute,
 } from "~/shared/lib/last-messenger-route.lib";
 import { setCurrentOrgRouteIdResolver } from "~/shared/lib/org-route";
-import {
-  resolveGlobalNavigationRoute,
-  resolveGlobalShortcutAction,
-  type GlobalNavigationShortcutKey,
-} from "./app-shortcuts.lib";
+import { resolveGlobalNavigationRoute, type GlobalNavigationActionId } from "./app-shortcuts.lib";
 
 describe("app-shortcuts", () => {
   afterEach(() => {
@@ -48,28 +44,28 @@ describe("app-shortcuts", () => {
 
   it("prefixes shortcut routes with current org scope", () => {
     setCurrentOrgRouteIdResolver(() => "chat.example.com");
-    expect(resolveGlobalNavigationRoute("mod+1", "general")).toBe("/org/chat.example.com");
-    expect(resolveGlobalNavigationRoute("mod+4", "general")).toBe("/org/chat.example.com/calls");
+    expect(resolveGlobalNavigationRoute("navigation.messenger")).toBe("/org/chat.example.com");
+    expect(resolveGlobalNavigationRoute("navigation.calls")).toBe("/org/chat.example.com/calls");
   });
 
   it("maps global navigation shortcuts to expected routes", () => {
-    const cases: { key: GlobalNavigationShortcutKey; route: string }[] = [
-      { key: "mod+1", route: "/" },
-      { key: "mod+2", route: "/calendar" },
-      { key: "mod+3", route: "/mail" },
-      { key: "mod+4", route: "/calls" },
-      { key: "mod+shift+a", route: "/" },
+    const cases: { key: GlobalNavigationActionId; route: string }[] = [
+      { key: "navigation.messenger", route: "/" },
+      { key: "navigation.calendar", route: "/calendar" },
+      { key: "navigation.mail", route: "/mail" },
+      { key: "navigation.calls", route: "/calls" },
+      { key: "navigation.activity", route: "/" },
     ];
 
     for (const item of cases) {
-      expect(resolveGlobalNavigationRoute(item.key, "general")).toBe(item.route);
+      expect(resolveGlobalNavigationRoute(item.key)).toBe(item.route);
     }
   });
 
   it("uses Workspace project root for messenger route", () => {
     setWorkspaceRuntime("project-a", "inst-1");
 
-    expect(resolveGlobalNavigationRoute("mod+1", "engineering")).toBe(
+    expect(resolveGlobalNavigationRoute("navigation.messenger")).toBe(
       "/project/project-a/messenger",
     );
   });
@@ -77,22 +73,18 @@ describe("app-shortcuts", () => {
   it("uses Workspace project activity route for activity shortcut", () => {
     setWorkspaceRuntime("project-a", "inst-1");
 
-    expect(resolveGlobalNavigationRoute("mod+shift+a", "engineering")).toBe(
+    expect(resolveGlobalNavigationRoute("navigation.activity")).toBe(
       "/org/chat.example.com/project/project-a/activity/favorites",
     );
   });
 
-  it("opens last messenger chat for mod+1 when saved for instance", () => {
+  it("opens last messenger chat for the messenger action when saved for instance", () => {
     setCurrentOrgRouteIdResolver(() => "chat.example.com");
     setWorkspaceRuntime("project-a", "inst-1");
     saveLastMessengerRoute("inst-1", "/project/project-a/stream/stream-uuid");
 
-    expect(resolveGlobalNavigationRoute("mod+1", "general", "inst-1")).toBe(
+    expect(resolveGlobalNavigationRoute("navigation.messenger", "inst-1")).toBe(
       "/org/chat.example.com/project/project-a/stream/stream-uuid",
     );
-  });
-
-  it("maps theme shortcut to non-navigation action", () => {
-    expect(resolveGlobalShortcutAction("mod+shift+t", "general")).toEqual({ type: "toggle-theme" });
   });
 });

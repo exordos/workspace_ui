@@ -11,6 +11,7 @@ import BlockIcon from "~/shared/assets/icons/block.svg?react";
 import BorderColorIcon from "~/shared/assets/icons/border_color.svg?react";
 import BuildIcon from "~/shared/assets/icons/build.svg?react";
 import BusinessCenterIcon from "~/shared/assets/icons/business_center.svg?react";
+import CalendarNextIcon from "~/shared/assets/icons/calendar-next.svg?react";
 import CalendarIcon from "~/shared/assets/icons/calendar.svg?react";
 import CalendarMonthIcon from "~/shared/assets/icons/calendar_month.svg?react";
 import CelebrationIcon from "~/shared/assets/icons/celebration.svg?react";
@@ -23,6 +24,7 @@ import ChevronDownIcon from "~/shared/assets/icons/chevron-down.svg?react";
 import ChevronRightIcon from "~/shared/assets/icons/chevron-right.svg?react";
 import ChevronUpIcon from "~/shared/assets/icons/chevron-up.svg?react";
 import CloseIcon from "~/shared/assets/icons/close.svg?react";
+import CommandIcon from "~/shared/assets/icons/command.svg?react";
 import CopyIcon from "~/shared/assets/icons/copy.svg?react";
 import DashboardCustomizeIcon from "~/shared/assets/icons/dashboard_customize.svg?react";
 import DeleteIcon from "~/shared/assets/icons/delete.svg?react";
@@ -32,6 +34,7 @@ import DownloadIcon from "~/shared/assets/icons/download.svg?react";
 import DraftsIcon from "~/shared/assets/icons/drafts.svg?react";
 import DraftsCompactIcon from "~/shared/assets/icons/drafts_compact.svg?react";
 import DrawIcon from "~/shared/assets/icons/draw.svg?react";
+import EncryptedSpoilerIcon from "~/shared/assets/icons/encrypted_spoiler.svg?react";
 import FilesIcon from "~/shared/assets/icons/files.svg?react";
 import FlagIcon from "~/shared/assets/icons/flag.svg?react";
 import FolderIcon from "~/shared/assets/icons/folder.svg?react";
@@ -150,6 +153,7 @@ const ICONS: Record<string, IconSvgComponent> = {
   profile: ProfileIcon,
   reply: ReplyIcon,
   close: CloseIcon,
+  command: CommandIcon,
   // Material notifications / notifications_off — 28×28 padded (Figma 13072:28507 / 28503)
   bell: BellIcon,
   bell_off: BellOffIcon,
@@ -164,6 +168,7 @@ const ICONS: Record<string, IconSvgComponent> = {
   heart: HeartIcon,
   star_outline: StarOutlineIcon,
   "thumbs-up": ThumbsUpIcon,
+  "calendar-next": CalendarNextIcon,
   "chevron-down": ChevronDownIcon,
   "chevron-up": ChevronUpIcon,
   "chevron-right": ChevronRightIcon,
@@ -173,6 +178,7 @@ const ICONS: Record<string, IconSvgComponent> = {
   grid: GridIcon,
   chatBubble: ChatBubbleIcon,
   chatLock: ChatLockIcon,
+  encrypted_spoiler: EncryptedSpoilerIcon,
   calendar: CalendarIcon,
   calendar_month: CalendarMonthIcon,
   celebration: CelebrationIcon,
@@ -241,6 +247,11 @@ export const Icon = React.memo<IconComponentProps>(({ name, size = 20, className
   const SvgIcon = ICONS[name];
   if (!SvgIcon) return null;
   return (
-    <SvgIcon width={size} height={size} className={`shrink-0 ${className}`.trim()} aria-hidden />
+    <SvgIcon
+      width={size}
+      height={size}
+      className={`shrink-0 ${name === "calendar-next" ? "[&_path]:fill-current" : ""} ${className}`.trim()}
+      aria-hidden
+    />
   );
 });
