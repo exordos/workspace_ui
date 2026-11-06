@@ -4,7 +4,9 @@ import type {
   LoadMessengerConversationMessagesOptions,
   MessengerConversationMessagesResult,
 } from "~/entities/messenger/messenger-messages-loader.lib";
+import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import type { MessengerTopic } from "~/entities/messenger/messenger.types";
+import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import {
   useWorkspaceConversationOpening,
@@ -55,6 +57,8 @@ const requests: {
 }[] = [];
 
 beforeEach(() => {
+  useMessengerStore.getState().clear();
+  useMessengerStore.setState({ ownerKey: workspaceRuntimeOwnerKey(runtime) });
   mocks.current.mockReturnValue(runtime);
   mocks.resolve.mockReset();
   requests.length = 0;
@@ -82,57 +86,38 @@ describe("topic opening resolution", () => {
     createdAt: "2026-07-07T10:00:00Z",
     updatedAt: "2026-07-07T10:00:00Z",
   };
-  it("opens the canonical destination returned for a missing selected topic", async () => {
-    mocks.resolve.mockResolvedValue(topic);
-    const resolved = vi.fn();
-    renderHook(() =>
+  it("ignores an older lookup when another topic is clicked before navigation", async () => {
+    let finishOld = (_topic: MessengerTopic) => {};
+    mocks.resolve
+      .mockReturnValueOnce(
+        new Promise<MessengerTopic>((resolve) => {
+          finishOld = resolve;
+        }),
+      )
+      .mockResolvedValueOnce(topic);
+    const onResolved = vi.fn();
+    const { result } = renderHook(() =>
       useWorkspaceTopicResolution({
         runtimeContext: runtime,
-        topicUuid: "old-topic",
-        topicKnown: false,
-        onResolved: resolved,
+        topicUuid: null,
+        locationKey: "same-location",
+        onResolved,
       }),
     );
-    await act(() => Promise.resolve());
-    expect(resolved).toHaveBeenCalledWith(topic);
-  });
-  it("does not navigate after the user leaves the topic while lookup is pending", async () => {
-    let finish = (_value: MessengerTopic) => {};
-    mocks.resolve.mockReturnValue(
-      new Promise<MessengerTopic>((resolve) => {
-        finish = resolve;
-      }),
-    );
-    const resolved = vi.fn();
-    const { unmount } = renderHook(() =>
-      useWorkspaceTopicResolution({
-        runtimeContext: runtime,
-        topicUuid: "old-topic",
-        topicKnown: false,
-        onResolved: resolved,
-      }),
-    );
-    unmount();
-    await act(() => {
-      finish(topic);
-      return Promise.resolve();
+
+    act(() => result.current("first-topic"));
+    await act(async () => {
+      result.current("second-topic");
+      await Promise.resolve();
     });
-    expect(resolved).not.toHaveBeenCalled();
-  });
-  it("ignores a response from an earlier generation of the same owner", async () => {
-    mocks.resolve.mockResolvedValue(topic);
-    const resolved = vi.fn();
-    renderHook(() =>
-      useWorkspaceTopicResolution({
-        runtimeContext: runtime,
-        topicUuid: "old-topic",
-        topicKnown: false,
-        onResolved: resolved,
-      }),
-    );
-    mocks.current.mockReturnValue({ ...runtime, runtimeGeneration: 2 });
-    await act(() => Promise.resolve());
-    expect(resolved).not.toHaveBeenCalled();
+    await act(async () => {
+      finishOld({ ...topic, uuid: "obsolete-topic" });
+      await Promise.resolve();
+    });
+
+    expect(onResolved).toHaveBeenCalledExactlyOnceWith(topic, false);
+    expect(useMessengerStore.getState().topicsById[topic.uuid]).toEqual(topic);
+    expect(useMessengerStore.getState().topicsById["obsolete-topic"]).toBeUndefined();
   });
 });
 

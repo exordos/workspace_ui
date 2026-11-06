@@ -224,8 +224,54 @@ function shouldInsertLiveMessageIntoWindow(
   );
 }
 
+function moveMessageBetweenLoadedWindows(
+  windows: WorkspaceMessageStoreData["conversationWindowsById"],
+  previousMessage: MessengerMessage,
+  message: MessengerMessage,
+  messagesById: WorkspaceMessageStoreData["messagesById"],
+): WorkspaceMessageStoreData["conversationWindowsById"] {
+  let nextWindows = windows;
+  const destinations = new Set(
+    conversationBucketsForWorkspaceMessage(message, {
+      includeStreamConversation: true,
+    }),
+  );
+  const affected = new Set([
+    ...conversationBucketsForWorkspaceMessage(previousMessage, {
+      includeStreamConversation: true,
+    }),
+    ...destinations,
+  ]);
+  for (const id of affected) {
+    const window = windows[id];
+    if (window == null) continue;
+    let messageUuids = window.messageUuids;
+    if (destinations.has(id)) {
+      if (shouldInsertLiveMessageIntoWindow(window, message, messagesById)) {
+        messageUuids = insertSortedWorkspaceMessageId(
+          messageUuids,
+          message,
+          messagesById,
+          previousMessage,
+        );
+      }
+    } else if (messageUuids.includes(message.uuid)) {
+      messageUuids = removeWorkspaceMessageId(messageUuids, message.uuid);
+    }
+    if (messageUuids === window.messageUuids) continue;
+    if (nextWindows === windows) nextWindows = { ...windows };
+    nextWindows[id] = {
+      ...window,
+      messageUuids,
+      revision: nextWindowRevision(window),
+    };
+  }
+  return nextWindows;
+}
+
 function mergeSnapshotMessages(
   state: WorkspaceMessageStoreData,
+  conversationId: MessengerConversationId,
   messages: readonly MessengerMessage[],
   capturedMutationRevision: number,
 ): { messagesById: Record<MessengerUuid, MessengerMessage>; acceptedMessages: MessengerMessage[] } {
@@ -237,7 +283,14 @@ function mergeSnapshotMessages(
     }
     if ((state.messageMutationRevisionById[message.uuid] ?? 0) > capturedMutationRevision) {
       const currentMessage = state.messagesById[message.uuid];
-      if (currentMessage != null) acceptedMessages.push(currentMessage);
+      if (
+        currentMessage != null &&
+        conversationBucketsForWorkspaceMessage(currentMessage, {
+          includeStreamConversation: true,
+        }).includes(conversationId)
+      ) {
+        acceptedMessages.push(currentMessage);
+      }
       continue;
     }
     messagesById[message.uuid] = mergeWorkspaceMessageSnapshot(messagesById[message.uuid], message);
@@ -391,6 +444,7 @@ export const useWorkspaceMessageStore = create<WorkspaceMessageStoreState>((set,
 
       const { messagesById, acceptedMessages } = mergeSnapshotMessages(
         state,
+        input.conversationId,
         keepMessagesOutsideRemovedStreams(input.messages),
         input.capturedMutationRevision,
       );
@@ -462,6 +516,7 @@ export const useWorkspaceMessageStore = create<WorkspaceMessageStoreState>((set,
 
       const { messagesById, acceptedMessages } = mergeSnapshotMessages(
         state,
+        input.conversationId,
         keepMessagesOutsideRemovedStreams(input.messages),
         input.capturedMutationRevision,
       );
@@ -572,59 +627,30 @@ export const useWorkspaceMessageStore = create<WorkspaceMessageStoreState>((set,
       }
       const mutationRevision = state.messageMutationRevision + 1;
       const previousMessage = state.messagesById[message.uuid];
+      const messagesById =
+        previousMessage == null
+          ? state.messagesById
+          : {
+              ...state.messagesById,
+              [message.uuid]: mergeWorkspaceMessageSnapshot(previousMessage, message),
+            };
       let conversationWindowsById = state.conversationWindowsById;
       if (
         previousMessage != null &&
         (previousMessage.streamUuid !== message.streamUuid ||
           previousMessage.topicUuid !== message.topicUuid)
       ) {
-        const destinations = new Set(
-          conversationBucketsForWorkspaceMessage(message, {
-            includeStreamConversation: true,
-          }),
+        conversationWindowsById = moveMessageBetweenLoadedWindows(
+          state.conversationWindowsById,
+          previousMessage,
+          message,
+          messagesById,
         );
-        const messagesById = { ...state.messagesById, [message.uuid]: message };
-        const affected = new Set([
-          ...conversationBucketsForWorkspaceMessage(previousMessage, {
-            includeStreamConversation: true,
-          }),
-          ...destinations,
-        ]);
-        for (const id of affected) {
-          const window = state.conversationWindowsById[id];
-          if (window == null) continue;
-          const messageUuids = destinations.has(id)
-            ? shouldInsertLiveMessageIntoWindow(window, message, messagesById)
-              ? insertSortedWorkspaceMessageId(
-                  window.messageUuids,
-                  message,
-                  messagesById,
-                  previousMessage,
-                )
-              : window.messageUuids
-            : window.messageUuids.includes(message.uuid)
-              ? removeWorkspaceMessageId(window.messageUuids, message.uuid)
-              : window.messageUuids;
-          if (messageUuids === window.messageUuids) continue;
-          if (conversationWindowsById === state.conversationWindowsById)
-            conversationWindowsById = { ...state.conversationWindowsById };
-          conversationWindowsById[id] = {
-            ...window,
-            messageUuids,
-            revision: nextWindowRevision(window),
-          };
-        }
       }
       applied = true;
       return {
         conversationWindowsById,
-        messagesById:
-          previousMessage == null
-            ? state.messagesById
-            : {
-                ...state.messagesById,
-                [message.uuid]: mergeWorkspaceMessageSnapshot(previousMessage, message),
-              },
+        messagesById,
         messageMutationRevision: mutationRevision,
         messageMutationRevisionById: {
           ...state.messageMutationRevisionById,

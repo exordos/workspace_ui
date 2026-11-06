@@ -1009,9 +1009,8 @@ function buildWindowRow(
   previous: WorkspaceMessengerMessageWindowRow | null,
 ): WorkspaceMessengerMessageWindowRow {
   const sortedRows = sortBucketsAscending([...rows]);
-  const oldestMessageUuid = sortedRows[0]?.messageUuid ?? previous?.oldestMessageUuid ?? null;
-  const newestMessageUuid =
-    sortedRows[sortedRows.length - 1]?.messageUuid ?? previous?.newestMessageUuid ?? null;
+  const oldestMessageUuid = sortedRows[0]?.messageUuid ?? null;
+  const newestMessageUuid = sortedRows[sortedRows.length - 1]?.messageUuid ?? null;
 
   return {
     id: cacheRowId(ownerKey, conversationId),
@@ -2530,6 +2529,36 @@ async function retainConversationMessages(
   return removed.map((bucket) => bucket.messageUuid);
 }
 
+async function cachedMessageFitsWindow(
+  transaction: IDBTransaction,
+  ownerKey: string,
+  conversationId: string,
+  message: WorkspaceMessengerCachedMessage,
+  { allowUncached }: { allowUncached: boolean },
+): Promise<boolean> {
+  const stores = WORKSPACE_MESSENGER_CACHE_STORES;
+  const index = transaction.objectStore(stores.messageBuckets).index("byConversationOrder");
+  const range = conversationBucketRange(ownerKey, conversationId);
+  const [window, oldest, newest] = await Promise.all([
+    requestToPromise<WorkspaceMessengerMessageWindowRow | undefined>(
+      transaction.objectStore(stores.messageWindows).get(cacheRowId(ownerKey, conversationId)),
+    ),
+    requestToPromise<WorkspaceMessengerMessageBucketRow[]>(index.getAll(range, 1)),
+    requestToPromise(index.openCursor(range, "prev")),
+  ]);
+  if (window == null) return allowUncached;
+  // reachedOldest defaults to false even for full pages; the pagination fields
+  // are the existing cache reader's source of truth for the older boundary.
+  const hasOlder = window.nextPageMarker != null || window.hasMore;
+  const first = oldest[0];
+  if (first == null || newest == null) return !hasOlder && window.reachedNewest;
+  const orderKey = workspaceMessengerMessageOrderKey(message);
+  if (orderKey < first.orderKey) return !hasOlder;
+  const last = newest.value as WorkspaceMessengerMessageBucketRow;
+  if (orderKey > last.orderKey) return window.reachedNewest;
+  return true;
+}
+
 async function deleteUnreferencedMessages(
   transaction: IDBTransaction,
   ownerKey: string,
@@ -2591,6 +2620,13 @@ async function writeMessageCache(
   const bucketStore = transaction.objectStore(stores.messageBuckets);
   for (const message of messages) {
     for (const conversationId of bucketConversationIdsForMessage(message, page.conversationIds)) {
+      if (
+        options.realtime &&
+        !(await cachedMessageFitsWindow(transaction, ownerKey, conversationId, message, {
+          allowUncached: true,
+        }))
+      )
+        continue;
       conversationIds.add(conversationId);
       bucketStore.put(toBucketRow(ownerKey, conversationId, message));
     }
@@ -2678,27 +2714,37 @@ export async function patchCachedMessage(
       (previous.message.streamUuid !== message.streamUuid ||
         previous.message.topicUuid !== message.topicUuid);
     const targetConversationIds =
-      existingBuckets.length > 0 && !moved
+      previous != null && !moved
         ? existingBuckets.map((bucket) => bucket.conversationId)
         : bucketConversationIdsForMessage(message);
     await putMessageRows(transaction, ownerKey, [message]);
     const bucketStore = transaction.objectStore(stores.messageBuckets);
+    const changedConversations = new Set<string>();
     if (moved) {
       for (const bucket of existingBuckets) {
-        if (!targetConversationIds.includes(bucket.conversationId)) bucketStore.delete(bucket.id);
+        if (!targetConversationIds.includes(bucket.conversationId)) {
+          bucketStore.delete(bucket.id);
+          changedConversations.add(bucket.conversationId);
+        }
       }
     }
     for (const bucketConversationId of targetConversationIds) {
+      const hasMembership = existingBuckets.some(
+        (bucket) => bucket.conversationId === bucketConversationId,
+      );
+      if (
+        !hasMembership &&
+        !(await cachedMessageFitsWindow(transaction, ownerKey, bucketConversationId, message, {
+          allowUncached: false,
+        }))
+      )
+        continue;
       bucketStore.put(toBucketRow(ownerKey, bucketConversationId, message));
+      if (!hasMembership) changedConversations.add(bucketConversationId);
     }
 
-    if (moved) {
-      for (const conversationId of new Set([
-        ...existingBuckets.map((bucket) => bucket.conversationId),
-        ...targetConversationIds,
-      ])) {
-        await retainConversationMessages(transaction, ownerKey, conversationId, 0);
-      }
+    for (const conversationId of changedConversations) {
+      await retainConversationMessages(transaction, ownerKey, conversationId, 0);
     }
     await transactionDone(transaction);
   } catch {

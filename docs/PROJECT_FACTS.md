@@ -44,16 +44,22 @@ Global message times use the bare URN `urn:time:2026-10-13T10:02:00Z` as an expl
 ## Backend contracts
 
 A topic lookup can return a different canonical UUID and stream after a rename,
-merge or move. Missing selected topics and unresolved topic URNs use the normal
-Workspace topic endpoint under the current runtime. Navigation follows the
-returned metadata and ignores stale or cancelled responses. Known topic
-references continue to use the catalog without an extra request.
-Topic lookup runs only for an explicit topic route, preserving ownership of staged message-anchor navigation.
+merge or move. `workspace-conversation-opening` shares one request lifecycle for
+missing topic routes and clicked topic URNs; known topics use their current catalog
+stream without a request. A newer click, location change, unmount or runtime change
+invalidates the previous lookup. Automatic recovery runs only on an explicit topic
+route in the current runtime, preserving Favorites and staged message-anchor ownership.
+Canonical route corrections replace history and retain search/hash; explicit clicks
+push their destination.
 
 When `message.updated` changes a known message's stream or topic, the message
 store moves its membership only between the affected loaded conversations,
 respecting pagination boundaries. The owner-scoped IndexedDB cache removes old
 placement buckets and updates destination buckets. Body edits keep membership.
+Live moves and replays enter existing cached windows only within their known pagination
+bounds; a move without a destination window retains the message body without inventing
+a window. Empty source windows clear their endpoints, and older REST responses cannot
+restore moved messages to their former conversation.
 
 Check the backend checkout and branch before drawing capability conclusions. The sibling checkout observed for this revision was on `master`.
 

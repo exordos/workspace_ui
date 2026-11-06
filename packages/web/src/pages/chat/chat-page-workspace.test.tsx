@@ -1,7 +1,7 @@
 import "fake-indexeddb/auto";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useEffect } from "react";
-import { MemoryRouter, useLocation, useNavigate } from "react-router-dom";
+import { MemoryRouter, useLocation, useNavigate, useNavigationType } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   resetWorkspaceComposerDraftStoreForTests,
@@ -16,6 +16,7 @@ import {
   decryptRealChatEnvelopeResult,
   decryptRealChatMessage,
 } from "~/entities/messenger/chat-crypto-runtime.lib";
+import * as topicResolution from "~/entities/messenger/messenger-conversation-metadata.lib";
 import { createMessengerPlacementUuid } from "~/entities/messenger/messenger-message-identity.lib";
 import * as messageLoader from "~/entities/messenger/messenger-messages-loader.lib";
 import {
@@ -26,6 +27,7 @@ import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import type {
   MessengerBootstrapPayload,
   MessengerMessage,
+  MessengerTopic,
 } from "~/entities/messenger/messenger.types";
 import { useUsersStore } from "~/entities/user/user.model";
 import type { WorkspaceAuthSession } from "~/entities/workspace-auth/workspace-auth.model";
@@ -872,8 +874,14 @@ function seedEncryptedReplyComposer(access: "ready" | "missing" = "ready", own =
 
 function WorkspaceLocationProbe() {
   const location = useLocation();
+  const navigationType = useNavigationType();
   return (
-    <span data-testid="workspace-location" data-location-key={location.key}>
+    <span
+      data-testid="workspace-location"
+      data-location-key={location.key}
+      data-location-search={location.search}
+      data-navigation-type={navigationType}
+    >
       {`${location.pathname}${location.hash}`}
     </span>
   );
@@ -3435,6 +3443,9 @@ describe("ChatPage Workspace route", () => {
     expect(captured.messageListProps?.conversationId).toBe(
       `topic:${DIRECT_STREAM_UUID}:${DIRECT_TOPIC_UUID}`,
     );
+    expect(screen.getByTestId("workspace-location").textContent).toBe(
+      "/org/org-a/project/project-a/activity/favorites",
+    );
   });
 
   it("uses the Favorites presentation for a direct self-chat route", async () => {
@@ -5111,43 +5122,124 @@ describe("ChatPage Workspace route", () => {
     );
   });
 
-  it("does not navigate when a canonical topic is absent from the topic store", async () => {
+  it("resolves a topic-only reference and pushes its canonical route", async () => {
     const unknownTopicUuid = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
-    const initialRoute = `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`;
-    renderWorkspaceChatPageWithShellContexts(initialRoute);
-
-    await waitFor(() =>
-      expect(captured.messageListProps?.onOpenWorkspaceReference).toEqual(expect.any(Function)),
-    );
-
-    act(() => {
-      captured.messageListProps?.onOpenWorkspaceReference?.({
-        kind: "topic",
-        topicUuid: unknownTopicUuid,
+    const resolved = createBootstrapPayload().topics[0]!;
+    const resolve = vi.spyOn(topicResolution, "resolveMessengerTopic").mockResolvedValue(resolved);
+    const initialRoute = `/org/org-a/project/project-a/stream/${STREAM_UUID}`;
+    try {
+      renderWorkspaceChatPageWithShellContexts(initialRoute);
+      await waitFor(() =>
+        expect(captured.messageListProps?.onOpenWorkspaceReference).toEqual(expect.any(Function)),
+      );
+      await act(async () => {
+        captured.messageListProps?.onOpenWorkspaceReference?.({
+          kind: "topic",
+          topicUuid: unknownTopicUuid,
+        });
+        await Promise.resolve();
       });
-    });
-
-    expect(screen.getByTestId("workspace-location")).toHaveTextContent(initialRoute);
+      expect(resolve).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ topicUuid: unknownTopicUuid, signal: expect.any(AbortSignal) }),
+      );
+      expect(screen.getByTestId("workspace-location")).toHaveTextContent(
+        `${initialRoute}/topic/${TOPIC_UUID}`,
+      );
+      expect(screen.getByTestId("workspace-location")).toHaveAttribute(
+        "data-navigation-type",
+        "PUSH",
+      );
+      await act(() => navigateTo?.(-1));
+      expect(screen.getByTestId("workspace-location").textContent).toBe(initialRoute);
+    } finally {
+      resolve.mockRestore();
+    }
   });
 
-  it("does not navigate when a topic reference contains a mismatched stream", async () => {
-    const initialRoute = `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`;
+  it("opens a known topic using its current stream when a stored reference has the old stream", async () => {
+    const initialRoute = `/org/org-a/project/project-a/stream/${STREAM_UUID}`;
     const mismatchedStreamUuid = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
-    renderWorkspaceChatPageWithShellContexts(initialRoute);
-
-    await waitFor(() =>
-      expect(captured.messageListProps?.onOpenWorkspaceReference).toEqual(expect.any(Function)),
-    );
-
-    act(() => {
-      captured.messageListProps?.onOpenWorkspaceReference?.({
-        kind: "topic",
-        topicUuid: TOPIC_UUID,
-        streamUuid: mismatchedStreamUuid,
+    const resolve = vi.spyOn(topicResolution, "resolveMessengerTopic");
+    try {
+      renderWorkspaceChatPageWithShellContexts(initialRoute);
+      await waitFor(() =>
+        expect(captured.messageListProps?.onOpenWorkspaceReference).toEqual(expect.any(Function)),
+      );
+      act(() => {
+        captured.messageListProps?.onOpenWorkspaceReference?.({
+          kind: "topic",
+          topicUuid: TOPIC_UUID,
+          streamUuid: mismatchedStreamUuid,
+        });
       });
-    });
+      expect(screen.getByTestId("workspace-location")).toHaveTextContent(
+        `${initialRoute}/topic/${TOPIC_UUID}`,
+      );
+      expect(resolve).not.toHaveBeenCalled();
+    } finally {
+      resolve.mockRestore();
+    }
+  });
 
-    expect(screen.getByTestId("workspace-location")).toHaveTextContent(initialRoute);
+  it("replaces an old topic route while retaining search and hash", async () => {
+    const resolved = createBootstrapPayload().topics[0]!;
+    const oldTopicUuid = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const resolve = vi.spyOn(topicResolution, "resolveMessengerTopic").mockResolvedValue(resolved);
+    try {
+      renderWorkspaceChatPageWithShellContexts(
+        `/org/org-a/project/project-a/stream/old-stream/topic/${oldTopicUuid}?view=compact#details`,
+      );
+      await waitFor(() =>
+        expect(screen.getByTestId("workspace-location").textContent).toBe(
+          `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}#details`,
+        ),
+      );
+      expect(screen.getByTestId("workspace-location")).toHaveAttribute(
+        "data-location-search",
+        "?view=compact",
+      );
+      expect(screen.getByTestId("workspace-location")).toHaveAttribute(
+        "data-navigation-type",
+        "REPLACE",
+      );
+      expect(resolve).toHaveBeenCalledOnce();
+    } finally {
+      resolve.mockRestore();
+    }
+  });
+
+  it("does not let a late topic-reference lookup undo a newer stream selection", async () => {
+    const pending = createDeferred<MessengerTopic>();
+    const resolve = vi
+      .spyOn(topicResolution, "resolveMessengerTopic")
+      .mockReturnValue(pending.promise);
+    const selectedRoute = `/org/org-a/project/project-a/stream/${STREAM_UUID}`;
+    try {
+      renderWorkspaceChatPageWithShellContexts(`${selectedRoute}/topic/${TOPIC_UUID}`);
+      await waitFor(() =>
+        expect(captured.messageListProps?.onOpenWorkspaceReference).toEqual(expect.any(Function)),
+      );
+      act(() => {
+        captured.messageListProps?.onOpenWorkspaceReference?.({
+          kind: "topic",
+          topicUuid: "old-topic",
+        });
+      });
+      act(() => {
+        captured.messageListProps?.onOpenWorkspaceReference?.({
+          kind: "stream",
+          streamUuid: STREAM_UUID,
+        });
+      });
+      await act(async () => {
+        pending.resolve(createBootstrapPayload().topics[0]!);
+        await pending.promise;
+      });
+      expect(screen.getByTestId("workspace-location").textContent).toBe(selectedRoute);
+      expect(resolve.mock.calls[0]?.[0].signal?.aborted).toBe(true);
+    } finally {
+      resolve.mockRestore();
+    }
   });
 
   it.each(["stream", "topic"])(
