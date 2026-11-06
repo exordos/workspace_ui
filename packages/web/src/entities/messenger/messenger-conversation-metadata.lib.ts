@@ -1,10 +1,48 @@
+import type { WorkspaceRuntimeContextGetter } from "~/entities/workspace-runtime/workspace-runtime.lib";
+import {
+  captureWorkspaceRuntimeRequestContext,
+  isWorkspaceRuntimeRequestInvalidated,
+} from "~/entities/workspace-runtime/workspace-runtime.lib";
+import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
+import { getStreamTopic } from "~/shared/api/messenger-topics.api";
 import type {
   WorkspaceMessengerStreamNotificationMode,
   WorkspaceMessengerTopicNotificationMode,
 } from "~/shared/api/messenger.types";
+import { adaptMessengerTopic } from "./messenger-adapters.lib";
 import { readMessengerCatalogPayloadCache } from "./messenger-cache.lib";
+import { buildMessengerRequestOptions } from "./messenger-request-options.lib";
 import { useMessengerStore } from "./messenger.model";
 import type { MessengerStream, MessengerTopic, MessengerUuid } from "./messenger.types";
+
+/** The server may resolve a renamed topic to a different UUID and stream. */
+export async function resolveMessengerTopic({
+  runtimeContext,
+  getRuntimeContext,
+  topicUuid,
+  signal,
+  getTopic = getStreamTopic,
+}: {
+  runtimeContext: WorkspaceRuntimeContext;
+  getRuntimeContext: WorkspaceRuntimeContextGetter;
+  topicUuid: MessengerUuid;
+  signal?: AbortSignal;
+  getTopic?: typeof getStreamTopic;
+}): Promise<MessengerTopic | null> {
+  const request = captureWorkspaceRuntimeRequestContext(() => runtimeContext);
+  if (isWorkspaceRuntimeRequestInvalidated(request, getRuntimeContext, signal)) return null;
+  const dto = await getTopic(
+    buildMessengerRequestOptions(runtimeContext, undefined, signal),
+    topicUuid,
+  );
+  if (
+    isWorkspaceRuntimeRequestInvalidated(request, getRuntimeContext, signal) ||
+    dto.project_id !== runtimeContext.projectId ||
+    dto.user_uuid !== runtimeContext.userUuid
+  )
+    return null;
+  return adaptMessengerTopic(dto);
+}
 
 /**
  * Stream and topic facts a notification decision needs, taken from the catalog

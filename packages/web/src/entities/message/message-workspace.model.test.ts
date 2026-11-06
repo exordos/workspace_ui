@@ -647,6 +647,57 @@ describe("workspace message store", () => {
     ).toBe(revision);
   });
 
+  it.each([STREAM_UUID, "75309057-419c-4b12-a7c1-3932429ec4a7"])(
+    "moves a known message without changing unrelated windows (%s)",
+    (destinationStream) => {
+      const destinationTopic = "4ec0b996-b778-45f8-8ef4-ef863be0c048";
+      const destination = conversationIdForTopic(destinationStream, destinationTopic);
+      const destinationStreamId = conversationIdForStream(destinationStream);
+      const original = createMessage({ uuid: MESSAGE_A });
+      replaceWindow(TOPIC_CONVERSATION_ID, [original]);
+      replaceWindow(STREAM_CONVERSATION_ID, [original]);
+      replaceWindow(destination, []);
+      if (destinationStream !== STREAM_UUID) replaceWindow(destinationStreamId, []);
+      const unrelated = conversationIdForTopic(STREAM_UUID, "4ec0b996-b778-45f8-8ef4-ef863be0c049");
+      replaceWindow(unrelated, []);
+      const unrelatedWindow =
+        useWorkspaceMessageStore.getState().conversationWindowsById[unrelated];
+      const moved = {
+        ...original,
+        streamUuid: destinationStream,
+        topicUuid: destinationTopic,
+        conversationId: destination,
+      };
+      useWorkspaceMessageStore.getState().applyLiveKnownBodyMutation(moved);
+      expect(selectMessages(TOPIC_CONVERSATION_ID)).toEqual([]);
+      expect(selectMessages(STREAM_CONVERSATION_ID)).toEqual(
+        destinationStream === STREAM_UUID ? [moved] : [],
+      );
+      expect(selectMessages(destination)).toEqual([moved]);
+      expect(selectMessages(destinationStreamId)).toEqual([moved]);
+      expect(useWorkspaceMessageStore.getState().conversationWindowsById[unrelated]).toBe(
+        unrelatedWindow,
+      );
+    },
+  );
+
+  it("does not restore moved membership from an older source response", () => {
+    const original = createMessage({ uuid: MESSAGE_A });
+    const destinationTopic = "4ec0b996-b778-45f8-8ef4-ef863be0c048";
+    const destination = conversationIdForTopic(STREAM_UUID, destinationTopic);
+    const store = useWorkspaceMessageStore.getState();
+    store.upsertMessageBodyFromSnapshot(original, store.messageMutationRevision);
+    replaceWindow(destination, []);
+    const capturedMutationRevision = useWorkspaceMessageStore.getState().messageMutationRevision;
+    const moved = { ...original, topicUuid: destinationTopic, conversationId: destination };
+    store.applyLiveKnownBodyMutation(moved);
+
+    const applied = replaceWindow(TOPIC_CONVERSATION_ID, [original], { capturedMutationRevision });
+    expect(applied).not.toBeNull();
+    expect(selectMessages(TOPIC_CONVERSATION_ID)).toEqual([]);
+    expect(selectMessages(destination)).toEqual([moved]);
+  });
+
   it("deletes the body and membership, records a tombstone, and advances touched windows", () => {
     replaceWindow(TOPIC_CONVERSATION_ID, [createMessage({ uuid: MESSAGE_A })]);
     replaceWindow(STREAM_CONVERSATION_ID, [createMessage({ uuid: MESSAGE_A })]);

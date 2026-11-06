@@ -4,10 +4,24 @@ import type {
   LoadMessengerConversationMessagesOptions,
   MessengerConversationMessagesResult,
 } from "~/entities/messenger/messenger-messages-loader.lib";
+import { useMessengerStore } from "~/entities/messenger/messenger.model";
+import type { MessengerTopic } from "~/entities/messenger/messenger.types";
+import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
-import { useWorkspaceConversationOpening } from "./workspace-conversation-opening.hook";
+import {
+  useWorkspaceConversationOpening,
+  useWorkspaceTopicResolution,
+} from "./workspace-conversation-opening.hook";
 
-const mocks = vi.hoisted(() => ({ load: vi.fn(), saved: vi.fn(() => null) }));
+const mocks = vi.hoisted(() => ({
+  load: vi.fn(),
+  saved: vi.fn(() => null),
+  resolve: vi.fn(),
+  current: vi.fn(),
+}));
+vi.mock("~/entities/messenger/messenger-conversation-metadata.lib", () => ({
+  resolveMessengerTopic: mocks.resolve,
+}));
 vi.mock("~/entities/messenger/messenger-messages-loader.lib", () => ({
   loadMessengerConversationMessages: mocks.load,
 }));
@@ -15,7 +29,7 @@ vi.mock("~/entities/messenger/messenger-conversation-position.lib", () => ({
   readMessengerConversationPosition: mocks.saved,
 }));
 vi.mock("~/entities/workspace-auth/workspace-auth.model", () => ({
-  useWorkspaceAuthStore: { getState: () => ({ getCurrentRuntimeContext: () => null }) },
+  useWorkspaceAuthStore: { getState: () => ({ getCurrentRuntimeContext: mocks.current }) },
 }));
 
 const runtime: WorkspaceRuntimeContext = {
@@ -43,6 +57,10 @@ const requests: {
 }[] = [];
 
 beforeEach(() => {
+  useMessengerStore.getState().clear();
+  useMessengerStore.setState({ ownerKey: workspaceRuntimeOwnerKey(runtime) });
+  mocks.current.mockReturnValue(runtime);
+  mocks.resolve.mockReset();
   requests.length = 0;
   mocks.saved.mockReset().mockReturnValue(null);
   mocks.load.mockReset().mockImplementation(
@@ -51,6 +69,56 @@ beforeEach(() => {
         requests.push({ options, finish });
       }),
   );
+});
+
+describe("topic opening resolution", () => {
+  const topic: MessengerTopic = {
+    uuid: "new-topic",
+    projectId: runtime.projectId,
+    userUuid: runtime.userUuid,
+    streamUuid: "new-stream",
+    name: "Renamed",
+    unreadCount: 0,
+    isDefault: false,
+    isDone: false,
+    notificationMode: "default",
+    lastMessageUuid: null,
+    createdAt: "2026-07-07T10:00:00Z",
+    updatedAt: "2026-07-07T10:00:00Z",
+  };
+  it("ignores an older lookup when another topic is clicked before navigation", async () => {
+    let finishOld = (_topic: MessengerTopic) => {};
+    mocks.resolve
+      .mockReturnValueOnce(
+        new Promise<MessengerTopic>((resolve) => {
+          finishOld = resolve;
+        }),
+      )
+      .mockResolvedValueOnce(topic);
+    const onResolved = vi.fn();
+    const { result } = renderHook(() =>
+      useWorkspaceTopicResolution({
+        runtimeContext: runtime,
+        topicUuid: null,
+        locationKey: "same-location",
+        onResolved,
+      }),
+    );
+
+    act(() => result.current("first-topic"));
+    await act(async () => {
+      result.current("second-topic");
+      await Promise.resolve();
+    });
+    await act(async () => {
+      finishOld({ ...topic, uuid: "obsolete-topic" });
+      await Promise.resolve();
+    });
+
+    expect(onResolved).toHaveBeenCalledExactlyOnceWith(topic, false);
+    expect(useMessengerStore.getState().topicsById[topic.uuid]).toEqual(topic);
+    expect(useMessengerStore.getState().topicsById["obsolete-topic"]).toBeUndefined();
+  });
 });
 
 function props(runtimeContext = runtime, retryNonce = 0) {

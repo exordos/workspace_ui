@@ -769,6 +769,68 @@ describe("workspace-messenger-cache-db", () => {
     expect(topicWindow.messages.map((item) => item.uuid)).toEqual(["msg-b", "msg-a"]);
   });
 
+  it("moves cached messages across streams only for their owner", async () => {
+    const original = message("msg-moved", "2026-07-01T08:01:00.000Z");
+    const destination = "topic:stream-b:topic-b";
+    await writeConversationMessagePage(OWNER, TOPIC_CONVERSATION, { messages: [original] });
+    await writeConversationMessagePage(OTHER_OWNER, TOPIC_CONVERSATION, { messages: [original] });
+    await writeConversationMessagePage(OWNER, destination, { messages: [] });
+    await writeConversationMessagePage(OWNER, "stream:stream-b", { messages: [] });
+    const moved = {
+      ...original,
+      streamUuid: "stream-b",
+      topicUuid: "topic-b",
+      conversationId: destination,
+    };
+    await patchCachedMessage(OWNER, moved);
+    const source = await readConversationMessageWindow(OWNER, TOPIC_CONVERSATION);
+    const target = await readConversationMessageWindow(OWNER, destination);
+    const sourceStream = await readConversationMessageWindow(OWNER, STREAM_CONVERSATION);
+    const targetStream = await readConversationMessageWindow(OWNER, "stream:stream-b");
+    const otherOwner = await readConversationMessageWindow(OTHER_OWNER, TOPIC_CONVERSATION);
+    expect(source.messages).toEqual([]);
+    expect(source.window).toMatchObject({
+      windowSize: 0,
+      oldestMessageUuid: null,
+      newestMessageUuid: null,
+    });
+    expect(sourceStream.messages).toEqual([]);
+    expect(target.messages).toEqual([moved]);
+    expect(targetStream.messages).toEqual([moved]);
+    expect(otherOwner.messages).toEqual([original]);
+  });
+
+  it("keeps moved history outside a paginated cached window", async () => {
+    const original = message("msg-old", "2026-07-01T08:01:00.000Z");
+    const destination = `topic:${STREAM}:topic-b`;
+    const moved = { ...original, conversationId: destination, topicUuid: "topic-b" };
+    const latest = { ...moved, uuid: "msg-new", createdAt: "2026-07-01T08:04:00.000Z" };
+    await writeConversationMessagePage(OWNER, TOPIC_CONVERSATION, { messages: [original] });
+    await writeConversationMessagePage(OWNER, destination, {
+      messages: [latest],
+      nextPageMarker: "older-messages",
+      hasMore: true,
+    });
+    await patchCachedMessage(OWNER, moved);
+    const restored = await readConversationMessageWindow(OWNER, destination);
+    const cachedBodies = await readCachedMessagesByUuids(OWNER, [original.uuid]);
+    expect(restored.messages).toEqual([latest]);
+    expect(restored.window?.nextPageMarker).toBe("older-messages");
+    expect(cachedBodies[0]).toEqual(moved);
+  });
+
+  it("keeps historical realtime creations outside a paginated cached destination", async () => {
+    await writeConversationMessagePage(OWNER, TOPIC_CONVERSATION, {
+      messages: [message("msg-new", "2026-07-01T08:02:00.000Z")],
+      nextPageMarker: "older-messages",
+      hasMore: true,
+    });
+    await writeRealtimeMessages(OWNER, [message("msg-old", "2026-07-01T08:01:00.000Z")]);
+    const restored = await readConversationMessageWindow(OWNER, TOPIC_CONVERSATION);
+    expect(restored.messages.map((item) => item.uuid)).toEqual(["msg-new"]);
+    expect(restored.window?.nextPageMarker).toBe("older-messages");
+  });
+
   it("marks cached messages read in one owner without changing bucket membership", async () => {
     await writeConversationMessagePage(OWNER, TOPIC_CONVERSATION, {
       messages: [

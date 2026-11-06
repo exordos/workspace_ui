@@ -1,10 +1,89 @@
-import { useCallback, useEffect, useReducer, useRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useReducer, useRef } from "react";
+import { resolveMessengerTopic } from "~/entities/messenger/messenger-conversation-metadata.lib";
 import { readMessengerConversationPosition } from "~/entities/messenger/messenger-conversation-position.lib";
 import { loadMessengerConversationMessages } from "~/entities/messenger/messenger-messages-loader.lib";
-import type { MessengerConversationId } from "~/entities/messenger/messenger.types";
+import { useMessengerStore } from "~/entities/messenger/messenger.model";
+import type { MessengerTopic, MessengerConversationId } from "~/entities/messenger/messenger.types";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
-import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
+import {
+  workspaceRuntimeOwnerKey,
+  isWorkspaceRuntimeRequestInvalidated,
+} from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
+
+/** Route recovery and topic clicks share one request owned by the current location. */
+export function useWorkspaceTopicResolution({
+  runtimeContext,
+  topicUuid,
+  locationKey,
+  onResolved,
+}: {
+  runtimeContext: WorkspaceRuntimeContext | null;
+  topicUuid: string | null;
+  locationKey: string;
+  onResolved: (topic: MessengerTopic, replace: boolean) => void;
+}) {
+  const ownerKey = runtimeContext == null ? null : workspaceRuntimeOwnerKey(runtimeContext);
+  const knownTopicStreamUuid = useMessengerStore((state) =>
+    state.ownerKey === ownerKey && topicUuid != null
+      ? state.topicsById[topicUuid]?.streamUuid
+      : undefined,
+  );
+  const requestRef = useRef<{ controller: AbortController; replace: boolean } | null>(null);
+  const openTopic = useCallback(
+    (requestedTopicUuid: string, replace = false) => {
+      requestRef.current?.controller.abort();
+      if (runtimeContext == null) return;
+      const controller = new AbortController();
+      requestRef.current = { controller, replace };
+      const getRuntimeContext = () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
+      const applyTopic = (topic: MessengerTopic | null) => {
+        if (
+          topic == null ||
+          isWorkspaceRuntimeRequestInvalidated(runtimeContext, getRuntimeContext, controller.signal)
+        )
+          return;
+        const store = useMessengerStore.getState();
+        if (store.topicsById[topic.uuid] !== topic)
+          store.upsertTopic(workspaceRuntimeOwnerKey(runtimeContext), topic);
+        onResolved(topic, replace);
+      };
+      const store = useMessengerStore.getState();
+      const knownTopic = store.ownerKey === ownerKey ? store.topicsById[requestedTopicUuid] : null;
+      if (knownTopic != null) {
+        applyTopic(knownTopic);
+        return;
+      }
+      void resolveMessengerTopic({
+        runtimeContext,
+        topicUuid: requestedTopicUuid,
+        signal: controller.signal,
+        getRuntimeContext,
+      })
+        .then(applyTopic)
+        .catch(() => undefined)
+        .finally(() => {
+          if (requestRef.current?.controller === controller) requestRef.current = null;
+        });
+    },
+    [onResolved, ownerKey, runtimeContext],
+  );
+
+  // Cancel at the location commit, before a late promise can navigate from the old route.
+  useLayoutEffect(() => {
+    return () => {
+      requestRef.current?.controller.abort();
+      requestRef.current = null;
+    };
+  }, [locationKey, openTopic]);
+
+  useEffect(() => {
+    if (topicUuid == null || requestRef.current?.replace === false) return;
+    openTopic(topicUuid, true);
+  }, [knownTopicStreamUuid, locationKey, openTopic, topicUuid]);
+
+  return openTopic;
+}
 
 interface OpeningState {
   scope: string;

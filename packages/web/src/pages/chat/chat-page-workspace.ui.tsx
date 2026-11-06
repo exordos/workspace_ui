@@ -106,7 +106,10 @@ import {
   prependWorkspaceComposerExistingAttachmentMarkdown,
   type WorkspaceComposerExistingAttachment,
 } from "~/features/workspace-composer-attachments/workspace-composer-edit-attachments.lib";
-import { useWorkspaceConversationOpening } from "~/features/workspace-conversation-opening/workspace-conversation-opening.hook";
+import {
+  useWorkspaceConversationOpening,
+  useWorkspaceTopicResolution,
+} from "~/features/workspace-conversation-opening/workspace-conversation-opening.hook";
 import {
   deriveWorkspaceDownloadFileName,
   startWorkspaceFileDownload,
@@ -1250,6 +1253,32 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
   const topic = useMessengerStore((state) =>
     topicUuid != null ? state.topicsById[topicUuid] : undefined,
   );
+  const handleResolvedTopic = useCallback(
+    (resolved: MessengerTopic, replace: boolean) => {
+      if (runtimeContext == null) return;
+      const path = workspaceMessengerTopicRoute({
+        orgId: runtimeContext.organizationId,
+        projectId: runtimeContext.projectId,
+        streamUuid: resolved.streamUuid,
+        topicUuid: resolved.uuid,
+      });
+      if (!replace || path !== location.pathname)
+        void navigate(replace ? path + location.search + location.hash : path, { replace });
+    },
+    [runtimeContext, location.pathname, location.search, location.hash, navigate],
+  );
+  const openWorkspaceTopic = useWorkspaceTopicResolution({
+    runtimeContext,
+    topicUuid:
+      presentation === "default" &&
+      route?.kind === "topic" &&
+      route.orgId === runtimeContext?.organizationId &&
+      route.projectId === runtimeContext?.projectId
+        ? route.topicUuid
+        : null,
+    locationKey: location.key,
+    onResolved: handleResolvedTopic,
+  });
   const isTopicClosed =
     selection.status === "conversation" && selection.kind === "topic" && topic?.isDone === true;
   let lastMessageUuid: MessengerUuid | null = null;
@@ -3979,24 +4008,9 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
         return;
       }
 
-      const topic = topicsById[reference.topicUuid];
-      if (topic == null) {
-        return;
-      }
-      if (reference.streamUuid != null && topic.streamUuid !== reference.streamUuid) {
-        return;
-      }
-
-      void navigate(
-        workspaceMessengerTopicRoute({
-          orgId: runtimeContext.organizationId,
-          projectId: runtimeContext.projectId,
-          streamUuid: topic.streamUuid,
-          topicUuid: topic.uuid,
-        }),
-      );
+      openWorkspaceTopic(reference.topicUuid);
     },
-    [navigate, runtimeContext, topicsById],
+    [navigate, runtimeContext, openWorkspaceTopic],
   );
   const handleSelectStreamPromptTopic = useCallback(
     (topicUuid: MessengerUuid) => {
