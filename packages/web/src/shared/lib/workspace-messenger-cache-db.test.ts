@@ -769,6 +769,15 @@ describe("workspace-messenger-cache-db", () => {
     expect(topicWindow.messages.map((item) => item.uuid)).toEqual(["msg-b", "msg-a"]);
   });
 
+  it("aborts a patch invalidated while its transaction reads", async () => {
+    const original = { ...message("msg-guard", "2026-07-01T08:01:00.000Z"), read: false };
+    await writeConversationMessagePage(OWNER, TOPIC_CONVERSATION, { messages: [original] });
+    const isCurrent = vi.fn().mockReturnValueOnce(true).mockReturnValue(false);
+    await patchCachedMessage(OWNER, { ...original, read: true }, isCurrent);
+    expect(isCurrent).toHaveBeenCalledTimes(2);
+    expect(await readCachedMessagesByUuids(OWNER, [original.uuid])).toEqual([original]);
+  });
+
   it("moves cached messages across streams only for their owner", async () => {
     const original = message("msg-moved", "2026-07-01T08:01:00.000Z");
     const destination = "topic:stream-b:topic-b";
@@ -1478,4 +1487,39 @@ describe("realtime cache batching", () => {
     await advanceMessengerReadBoundaryCache(boundary);
     expect(await readCachedMessagesByUuids(OWNER, ["old"])).toMatchObject([{ read: true }]);
   });
+});
+
+it("keeps the newest poll revision across page and realtime writes without losing read state", async () => {
+  const original = {
+    ...message("poll", "2026-07-01T08:00:00Z"),
+    payload: {
+      kind: "poll" as const,
+      questions: [{ uuid: "q", text: "Latest", options: [], correctOptionUuids: [] }],
+      multipleAnswers: false,
+      isAnonymous: true,
+      allowRevote: false,
+      resultsVisibility: "always" as const,
+      allowAddingOptions: false,
+      closesAt: null,
+      closedAt: null,
+    },
+    pollState: { revision: 3, isClosed: true, voterCount: 1, questions: [], myVotes: [] },
+    read: false,
+  };
+  await writeConversationMessagePage(OWNER, TOPIC_CONVERSATION, { messages: [original] });
+  await patchCachedMessage(OWNER, {
+    ...original,
+    read: true,
+    payload: { ...original.payload, questions: [] },
+    pollState: { ...original.pollState, revision: 2, isClosed: false },
+  });
+  expect(await readCachedMessagesByUuids(OWNER, [original.uuid])).toMatchObject([
+    { read: true, payload: original.payload, pollState: original.pollState },
+  ]);
+  await writeConversationMessagePage(OWNER, TOPIC_CONVERSATION, {
+    messages: [{ ...original, read: true, pollState: { ...original.pollState, isClosed: false } }],
+  });
+  expect(await readCachedMessagesByUuids(OWNER, [original.uuid])).toMatchObject([
+    { pollState: { revision: 3, isClosed: true } },
+  ]);
 });

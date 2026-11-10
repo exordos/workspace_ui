@@ -11,6 +11,7 @@ export const blueMist: ThemePalette = {
     "card-bg": "#243040",
     "card-bg-active": "#30465d",
     "text-field-bg": "#232c38",
+    "compact-field-bg": "#303c4a",
 
     "text-primary": "#f7fbff",
     "text-secondary": "#9aa8b8",
@@ -74,6 +75,7 @@ export const blueMist: ThemePalette = {
     "card-bg": "#eff5fb",
     "card-bg-active": "#d5e5f6",
     "text-field-bg": "#f0f6fc",
+    "compact-field-bg": "#e2edf7",
 
     "text-primary": "#1a2330",
     "text-secondary": "#66758a",

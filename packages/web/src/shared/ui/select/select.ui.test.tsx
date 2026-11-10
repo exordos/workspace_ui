@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
@@ -52,6 +52,47 @@ describe("Select", () => {
     fireEvent.keyDown(screen.getByRole("combobox"), { key: "Enter" });
     // Escape resets the prefix for a new interaction.
     expect(onValueChange).toHaveBeenLastCalledWith("sv");
+  });
+
+  it("preserves groups while keyboard navigation skips headings and disabled choices", async () => {
+    const user = userEvent.setup();
+    const onValueChange = vi.fn();
+    render(
+      <Select
+        aria-label="Answer"
+        value="first"
+        onValueChange={onValueChange}
+        options={[
+          {
+            value: "first",
+            label: "Yes",
+            group: { id: "first-question", label: "First question" },
+          },
+          {
+            value: "unavailable",
+            label: "Unavailable",
+            disabled: true,
+            group: { id: "first-question", label: "First question" },
+          },
+          {
+            value: "second",
+            label: "Yes",
+            group: { id: "second-question", label: "Second question" },
+          },
+        ]}
+      />,
+    );
+    const trigger = screen.getByRole("combobox", { name: "Answer" });
+    await user.click(trigger);
+    const list = screen.getByRole("listbox");
+    expect(within(list).getAllByRole("group")).toHaveLength(2);
+    const second = within(list).getByRole("group", { name: "Second question" });
+    const option = within(second).getByRole("option", { name: "Yes" });
+    await user.keyboard("{ArrowDown}");
+    expect(trigger).toHaveAttribute("aria-activedescendant", option.id);
+    await user.keyboard("{Enter}");
+    expect(onValueChange).toHaveBeenCalledExactlyOnceWith("second");
+    expect(trigger).toHaveFocus();
   });
 
   it("clears displayed native validation errors after a controlled value becomes valid", () => {

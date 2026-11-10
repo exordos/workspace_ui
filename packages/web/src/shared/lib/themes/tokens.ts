@@ -12,6 +12,7 @@ export interface PaletteTokens {
   "card-bg": string;
   "card-bg-active": string;
   "text-field-bg": string;
+  "compact-field-bg": string;
 
   /** Typography */
   "text-primary": string;

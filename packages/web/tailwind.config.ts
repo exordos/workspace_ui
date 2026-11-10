@@ -16,6 +16,7 @@ export default {
         "card-bg": colorVar("card-bg"),
         "card-bg-active": colorVar("card-bg-active"),
         "text-field-bg": colorVar("text-field-bg"),
+        "compact-field-bg": colorVar("compact-field-bg"),
 
         /* Typography */
         "text-primary": colorVar("text-primary"),

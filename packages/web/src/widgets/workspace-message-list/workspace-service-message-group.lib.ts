@@ -13,7 +13,8 @@ export function isWorkspaceMessageRelevantToAccount(
   actions: WorkspaceMessageListActions | undefined,
 ): boolean {
   const payload = message.payload;
-  if (payload.kind === "markdown" || payload.kind === "e2ee") return true;
+  if (payload.kind === "markdown" || payload.kind === "e2ee" || payload.kind === "poll")
+    return true;
   if (payload.kind === "key_announced") return false;
   if (message.authorUuid === currentUserUuid) return true;
   if (payload.kind === "key_request") {
@@ -43,7 +44,12 @@ function getServiceMessageStatus(
   actions: WorkspaceMessageListActions | undefined,
 ): WorkspaceServiceGroupStatus {
   const payload = message.payload;
-  if (payload.kind === "markdown" || payload.kind === "e2ee" || payload.kind === "key_grant")
+  if (
+    payload.kind === "markdown" ||
+    payload.kind === "e2ee" ||
+    payload.kind === "poll" ||
+    payload.kind === "key_grant"
+  )
     return null;
   const state = actions?.getKeyServiceState?.(message);
   if (

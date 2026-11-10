@@ -3,8 +3,18 @@ import { createPortal } from "react-dom";
 import { useTranslation } from "~/i18n/i18n";
 import { Icon } from "~/shared/ui/icon";
 import { getListboxOptionId } from "./listbox.lib";
-import type { ListboxProps } from "./listbox.types";
+import type { ListboxOption, ListboxProps } from "./listbox.types";
 import type { CSSProperties } from "react";
+
+function groupOptions(options: readonly ListboxOption[]) {
+  const sections: { group: ListboxOption["group"]; options: ListboxOption[] }[] = [];
+  for (const option of options) {
+    const previous = sections.at(-1);
+    if (previous && previous.group?.id === option.group?.id) previous.options.push(option);
+    else sections.push({ group: option.group, options: [option] });
+  }
+  return sections;
+}
 
 export function Listbox({
   id,
@@ -118,46 +128,65 @@ export function Listbox({
           {emptyText ?? t("selector.noOptions")}
         </div>
       ) : (
-        options.map((option) => (
+        groupOptions(options).map((section) => (
           <div
-            key={option.value}
-            id={getListboxOptionId(id, option.value)}
-            role="option"
-            tabIndex={-1}
-            aria-label={option.label}
-            aria-describedby={
-              option.description != null
-                ? `${getListboxOptionId(id, option.value)}-description`
-                : undefined
-            }
-            aria-selected={option.value === value}
-            aria-disabled={option.disabled}
-            data-active={option.value === activeValue || undefined}
-            className={`flex min-h-9 items-center gap-3 rounded-lg px-2.5 py-2 text-sm text-text-primary ${option.disabled ? "cursor-not-allowed opacity-45" : "cursor-pointer hover:bg-card-bg-active"} ${option.value === activeValue ? "bg-card-bg-active" : ""}`}
-            onPointerMove={() => {
-              if (!option.disabled) onActiveChange?.(option.value);
-            }}
-            onClick={() => {
-              if (!option.disabled) onSelect(option.value);
-            }}
+            key={section.options[0]?.value}
+            role={section.group ? "group" : "presentation"}
+            aria-label={section.group?.label}
           >
-            <span className="min-w-0 flex-1">
-              <span className="block truncate" title={option.label}>
-                {option.label}
-              </span>
-              {option.description != null ? (
-                <span
-                  id={`${getListboxOptionId(id, option.value)}-description`}
-                  className="mt-0.5 block truncate text-xs text-text-muted"
-                  title={option.description}
-                >
-                  {option.description}
+            {section.group && (
+              <div
+                aria-hidden="true"
+                className="px-2.5 py-2 text-xs font-medium text-text-secondary"
+              >
+                {section.group.label}
+              </div>
+            )}
+            {section.options.map((option) => (
+              <div
+                key={option.value}
+                id={getListboxOptionId(id, option.value)}
+                role="option"
+                tabIndex={-1}
+                aria-label={option.label}
+                aria-describedby={
+                  option.description != null
+                    ? `${getListboxOptionId(id, option.value)}-description`
+                    : undefined
+                }
+                aria-selected={option.value === value}
+                aria-disabled={option.disabled}
+                data-active={option.value === activeValue || undefined}
+                className={`flex min-h-9 items-center gap-3 rounded-lg px-2.5 py-2 text-sm text-text-primary ${option.disabled ? "cursor-not-allowed opacity-45" : "cursor-pointer hover:bg-card-bg-active"} ${option.value === activeValue ? "bg-card-bg-active" : ""}`}
+                onPointerMove={() => {
+                  if (!option.disabled) onActiveChange?.(option.value);
+                }}
+                onClick={() => {
+                  if (!option.disabled) onSelect(option.value);
+                }}
+              >
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate" title={option.label}>
+                    {option.label}
+                  </span>
+                  {option.description != null ? (
+                    <span
+                      id={`${getListboxOptionId(id, option.value)}-description`}
+                      className="mt-0.5 block truncate text-xs text-text-muted"
+                      title={option.description}
+                    >
+                      {option.description}
+                    </span>
+                  ) : null}
                 </span>
-              ) : null}
-            </span>
-            <span className="flex w-4 shrink-0 items-center justify-center text-accent" aria-hidden>
-              {option.value === value ? <Icon name="check" size={16} /> : null}
-            </span>
+                <span
+                  className="flex w-4 shrink-0 items-center justify-center text-accent"
+                  aria-hidden
+                >
+                  {option.value === value ? <Icon name="check" size={16} /> : null}
+                </span>
+              </div>
+            ))}
           </div>
         ))
       )}

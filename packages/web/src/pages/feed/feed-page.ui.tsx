@@ -373,7 +373,9 @@ export const FeedPage: React.FC = () => {
                         m.payload.content,
                         FEED_MESSAGE_SUMMARY_OPTIONS,
                       ).text
-                    : encryptedMessageLabel(m.payload);
+                    : m.payload.kind === "poll"
+                      ? m.payload.questions.map((q) => q.text).join(" · ")
+                      : encryptedMessageLabel(m.payload);
 
                 return (
                   <li key={m.uuid}>

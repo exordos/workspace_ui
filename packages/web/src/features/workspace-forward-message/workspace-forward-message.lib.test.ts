@@ -255,3 +255,49 @@ it("forwards the encrypted canonical source when selected DOM text contains a re
   expect(reference).not.toHaveProperty("snapshotFormat");
   expect(JSON.stringify(reference)).not.toContain("revealed password");
 });
+
+it("forwards only visible poll results as a plain snapshot", async () => {
+  const { buildWorkspaceForwardMarkdown } = await import(LIB_MODULE);
+  const poll = {
+    ...createForwardMessage(),
+    payload: {
+      kind: "poll" as const,
+      questions: [
+        {
+          uuid: "q",
+          text: "<Question>",
+          options: [{ uuid: "a", text: "[Answer]" }],
+          correctOptionUuids: ["a"],
+        },
+      ],
+      multipleAnswers: false,
+      isAnonymous: false,
+      allowRevote: true,
+      resultsVisibility: "after_vote" as const,
+      allowAddingOptions: false,
+      closesAt: null,
+      closedAt: null,
+    },
+    pollState: {
+      revision: 1,
+      isClosed: false,
+      voterCount: 5,
+      questions: [{ questionUuid: "q", voterCount: 5, optionCounts: { a: 5 } }],
+      myVotes: [],
+    },
+  };
+  const output = buildWorkspaceForwardMarkdown({
+    messages: [poll],
+    resolveAuthorLabel: () => "Alice",
+    resolveSourceLabel: () => "Chat",
+  });
+  const match = /^\[Alice\]\((.+)\)$/.exec(output ?? "");
+  const reference = match?.[1] ? parseWorkspaceReferenceUrn(match[1]) : null;
+  expect(reference).toMatchObject({
+    kind: "forward",
+    messageUuid: poll.uuid,
+    snapshotMarkdown: "<Question>\n• [Answer]",
+    snapshotFormat: "plain",
+  });
+  expect(JSON.stringify(reference)).not.toContain("voterCount");
+});

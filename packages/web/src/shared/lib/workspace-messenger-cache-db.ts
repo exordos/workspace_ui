@@ -176,6 +176,13 @@ export interface WorkspaceMessengerCachedMessage {
   streamUuid: string;
   topicUuid: string;
   payload: WorkspaceMessengerCachedMessagePayload;
+  pollState?: {
+    revision: number;
+    isClosed: boolean;
+    voterCount: number;
+    questions: { questionUuid: string; voterCount: number; optionCounts: Record<string, number> }[];
+    myVotes: { questionUuid: string; optionUuids: string[] }[];
+  } | null;
   read?: boolean;
   createdAt: string;
   updatedAt?: string | null;
@@ -231,6 +238,22 @@ export interface WorkspaceMessengerCachedMarkdownPayload {
 }
 export type WorkspaceMessengerCachedMessagePayload =
   | WorkspaceMessengerCachedMarkdownPayload
+  | {
+      kind: "poll";
+      questions: {
+        uuid: string;
+        text: string;
+        options: { uuid: string; text: string }[];
+        correctOptionUuids: string[];
+      }[];
+      multipleAnswers: boolean;
+      isAnonymous: boolean;
+      allowRevote: boolean;
+      resultsVisibility: "always" | "after_vote";
+      allowAddingOptions: boolean;
+      closesAt: string | null;
+      closedAt: string | null;
+    }
   | WorkspaceMessengerCachedE2eePayload;
 
 export interface WorkspaceMessengerMessageCacheRow {
@@ -425,6 +448,11 @@ export interface WorkspaceMessengerConversationMessageWindow {
   window: WorkspaceMessengerMessageWindowRow | null;
 }
 
+function messageHasPollState(value: object): boolean {
+  const state = (value as { pollState?: { revision?: unknown } }).pollState;
+  return state != null && typeof state.revision === "number";
+}
+
 function isCachedMessageWithPayload(value: unknown): value is WorkspaceMessengerCachedMessage {
   if (value == null || typeof value !== "object") return false;
   const message = value as { payload?: unknown };
@@ -432,6 +460,7 @@ function isCachedMessageWithPayload(value: unknown): value is WorkspaceMessenger
   if (payload == null || typeof payload !== "object") return false;
   const fields = payload as Record<string, unknown>;
   if (fields.kind === "markdown") return typeof fields.content === "string";
+  if (fields.kind === "poll") return Array.isArray(fields.questions) && messageHasPollState(value);
   if (typeof fields.keyUuid !== "string") return false;
   switch (fields.kind) {
     case "e2ee":
@@ -850,11 +879,29 @@ function toMessageRow(
   message: WorkspaceMessengerCachedMessage,
   previous?: WorkspaceMessengerMessageCacheRow,
 ): WorkspaceMessengerMessageCacheRow {
+  let snapshot = message;
+  const old = previous?.message;
+  if (
+    old?.payload.kind === "poll" &&
+    message.payload.kind === "poll" &&
+    old.pollState &&
+    message.pollState
+  ) {
+    if (old.pollState.revision > message.pollState.revision) {
+      snapshot = { ...message, payload: old.payload, pollState: old.pollState };
+    } else if (
+      old.pollState.revision === message.pollState.revision &&
+      old.pollState.isClosed &&
+      !message.pollState.isClosed
+    ) {
+      snapshot = { ...message, pollState: { ...message.pollState, isClosed: true } };
+    }
+  }
   return {
     id: cacheRowId(ownerKey, message.uuid),
     ownerKey,
     messageUuid: message.uuid,
-    message,
+    message: snapshot,
     createdAt: message.createdAt,
     updatedAt: updatedAtOrNow(message.updatedAt),
     version: (previous?.version ?? 0) + 1,
@@ -1080,6 +1127,14 @@ function shouldReplaceCachedMessage(
   message: WorkspaceMessengerCachedMessage,
 ): boolean {
   if (previous == null) return true;
+  if (
+    previous.message.payload.kind === "poll" &&
+    message.payload.kind === "poll" &&
+    previous.message.pollState &&
+    message.pollState
+  ) {
+    if (previous.message.pollState.revision < message.pollState.revision) return true;
+  }
   const previousUpdatedAt = previous.message.updatedAt ?? previous.message.createdAt;
   const incomingUpdatedAt = message.updatedAt ?? message.createdAt;
   return incomingUpdatedAt >= previousUpdatedAt;
@@ -2690,11 +2745,13 @@ export async function writeRealtimeMessages(
 export async function patchCachedMessage(
   ownerKey: string,
   message: WorkspaceMessengerCachedMessage,
+  isWriteCurrent: () => boolean = () => true,
 ): Promise<void> {
   if (!isIndexedDBAvailable()) return;
 
   try {
     const db = await openWorkspaceMessengerCacheDb();
+    if (!isWriteCurrent()) return;
     const stores = WORKSPACE_MESSENGER_CACHE_STORES;
     const transaction = db.transaction(
       [stores.messages, stores.messageBuckets, stores.messageWindows, stores.readBoundaries],
@@ -2746,6 +2803,7 @@ export async function patchCachedMessage(
     for (const conversationId of changedConversations) {
       await retainConversationMessages(transaction, ownerKey, conversationId, 0);
     }
+    if (!isWriteCurrent()) transaction.abort();
     await transactionDone(transaction);
   } catch {
     return;

@@ -23,6 +23,7 @@ import type {
   WorkspaceMessengerStreamDto,
   WorkspaceMessengerCreateMessageRequestBody,
   WorkspaceMessengerMessageDto,
+  WorkspaceMessengerPollPayloadDto,
   WorkspaceMessengerUpdateMessageRequestBody,
 } from "~/shared/api/messenger.types";
 import { hasWorkspaceSecretDraft } from "~/shared/lib/workspace-secret-draft.lib";
@@ -120,6 +121,7 @@ export interface MessengerMessageActionCacheWriter {
     ownerKey: string,
     conversationId: MessengerConversationId,
     page: MessengerMessageActionCacheConversationPage,
+    isWriteCurrent?: () => boolean,
   ) => Promise<void> | void;
 }
 
@@ -131,6 +133,7 @@ export interface MessengerMessageActionStoreApi {
     | "markMessagesReadUpTo"
     | "removeMessage"
     | "messageMutationRevision"
+    | "deletedMessageRevisionById"
     | "ownerKey"
     | "messagesById"
     | "conversationWindowsById"
@@ -151,13 +154,15 @@ export type MessengerMessageActionResult =
   | { status: "applied"; ownerKey: string; message: MessengerMessage | null }
   | { status: "skipped"; ownerKey: string | null; reason: "missing-context" | "stale-owner" };
 
-export interface SendMessengerMessageOptions extends MessengerMessageActionBaseOptions {
+export type SendMessengerMessageOptions = MessengerMessageActionBaseOptions & {
   streamUuid: MessengerUuid;
   topicUuid: MessengerUuid;
-  markdown: string;
   canonicalMessageUuid?: MessengerUuid;
   includeStreamConversation?: boolean;
-}
+} & (
+    | { markdown: string; pollPayload?: never }
+    | { markdown?: never; pollPayload: WorkspaceMessengerPollPayloadDto }
+  );
 
 export type EditMessengerMessageOptions = MessengerMessageActionBaseOptions & {
   messageUuid: MessengerUuid;
@@ -253,10 +258,15 @@ async function writeMessagePageCacheBestEffort(
         !isCurrent()
           ? Promise.resolve()
           : Promise.resolve(
-              writeConversationMessagePage(ownerKey, conversationId, {
-                messages: [message],
-                source: "message-action",
-              }),
+              writeConversationMessagePage(
+                ownerKey,
+                conversationId,
+                {
+                  messages: [message],
+                  source: "message-action",
+                },
+                isCurrent,
+              ),
             ),
       ),
     );
@@ -274,11 +284,13 @@ export async function sendMessengerMessage({
   streamUuid,
   topicUuid,
   markdown,
+  pollPayload,
   canonicalMessageUuid = crypto.randomUUID(),
   includeStreamConversation = false,
 }: SendMessengerMessageOptions): Promise<MessengerMessageActionResult> {
-  if (hasWorkspaceSecretDraft(markdown)) throw new Error("invalid-secret");
-  // Sending creates a markdown payload in the Workspace API and applies it to an active tail window.
+  if (markdown != null && hasWorkspaceSecretDraft(markdown)) throw new Error("invalid-secret");
+  if ((markdown == null) === (pollPayload == null)) throw new Error("invalid-message");
+  // Apply the created message to an active tail window.
   const action = captureMessageAction(runtimeContext, getRuntimeContext, signal);
   if (action.ownerKey == null)
     return { status: "skipped", ownerKey: null, reason: "missing-context" };
@@ -296,9 +308,15 @@ export async function sendMessengerMessage({
   if (stream.uuid !== streamUuid || stream.encryption === true) {
     throw new Error("Encrypted chats require an available crypto provider");
   }
-  const payload: WorkspaceMessengerCreateMessageRequestBody["payload"] = {
+  if (
+    pollPayload != null &&
+    ("source_name" in stream ? stream.source_name : stream.sourceName) !== "native"
+  ) {
+    throw new Error("Polls require a native stream");
+  }
+  const payload: WorkspaceMessengerCreateMessageRequestBody["payload"] = pollPayload ?? {
     kind: "markdown",
-    content: markdown,
+    content: markdown ?? "",
   };
   const dto = await (client.createMessage ?? defaultCreateMessage)(requestOptions, {
     uuid: normalizeMessengerMessageUuid(canonicalMessageUuid),
@@ -309,8 +327,21 @@ export async function sendMessengerMessage({
   if (action.isStale())
     return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
 
+  if (
+    pollPayload != null &&
+    (dto.uuid !== createMessengerPlacementUuid(topicUuid, canonicalMessageUuid) ||
+      dto.project_id !== runtimeContext.projectId ||
+      dto.user_uuid !== runtimeContext.userUuid ||
+      dto.author_uuid !== runtimeContext.userUuid ||
+      dto.stream_uuid !== streamUuid ||
+      dto.topic_uuid !== topicUuid ||
+      dto.payload.kind !== "poll" ||
+      dto.poll_state == null)
+  )
+    throw new Error("invalid-message");
   const message = adaptMessengerMessage(dto);
   store.getState().applyLiveCreatedMessage(message);
+  const createdRevision = store.getState().messageMutationRevision;
   settleMessengerOutgoingMessage(action.ownerKey, message);
   useMessengerStore
     .getState()
@@ -321,6 +352,16 @@ export async function sendMessengerMessage({
     action.ownerKey,
     conversationIdsForMessageAction(message, includeStreamConversation),
     message,
+    () => {
+      const current = store.getState().messagesById[message.uuid];
+      const state = store.getState();
+      return (
+        !action.isStale() &&
+        (state.deletedMessageRevisionById[message.uuid] ?? 0) <= createdRevision &&
+        (current == null ||
+          (current.streamUuid === message.streamUuid && current.topicUuid === message.topicUuid))
+      );
+    },
   );
   return { status: "applied", ownerKey: action.ownerKey, message };
 }
@@ -433,7 +474,9 @@ export async function sendMessengerE2eePayload({
   });
   if (!current()) return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
   const decodedResponse =
-    dto.payload.kind === "markdown" ? null : decodeChatE2eePayload(dto.payload);
+    dto.payload.kind === "markdown" || dto.payload.kind === "poll"
+      ? null
+      : decodeChatE2eePayload(dto.payload);
   if (
     dto.uuid !== createMessengerPlacementUuid(topicUuid, canonicalMessageUuid) ||
     dto.project_id !== runtimeContext.projectId ||

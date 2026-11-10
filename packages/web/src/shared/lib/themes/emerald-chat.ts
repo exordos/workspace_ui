@@ -11,6 +11,7 @@ export const emeraldChat: ThemePalette = {
     "card-bg": "#373737",
     "card-bg-active": "#4b4b4b",
     "text-field-bg": "#1a2a25",
+    "compact-field-bg": "#394740",
 
     "text-primary": "#e9fff5",
     "text-secondary": "#9fb8b0",
@@ -75,6 +76,7 @@ export const emeraldChat: ThemePalette = {
     // Reuse accent-soft: gray hover disappeared on the old white cards
     "card-bg-active": "#d9f1e4",
     "text-field-bg": "#f2f2f2",
+    "compact-field-bg": "#e5ede9",
 
     "text-primary": "#17231f",
     "text-secondary": "#5f7870",

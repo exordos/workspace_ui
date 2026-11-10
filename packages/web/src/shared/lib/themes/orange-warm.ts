@@ -11,6 +11,7 @@ export const orangeWarm: ThemePalette = {
     "card-bg": "#373737",
     "card-bg-active": "#4b4b4b",
     "text-field-bg": "#3d3d3d",
+    "compact-field-bg": "#3d3d3d",
 
     "text-primary": "#ffffff",
     "text-secondary": "#999999",
@@ -74,6 +75,7 @@ export const orangeWarm: ThemePalette = {
     "card-bg": "#f5f5f5",
     "card-bg-active": "#ffe7cc",
     "text-field-bg": "#e6e6e6",
+    "compact-field-bg": "#e6e6e6",
 
     "text-primary": "#1b1b1d",
     "text-secondary": "#787878",

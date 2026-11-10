@@ -109,6 +109,7 @@ export interface ComposerMentionContextInput {
 }
 
 export interface MessageComposerProps {
+  onCreatePoll?: () => void;
   onSend?: (
     content: string,
     subject?: string,
@@ -199,6 +200,7 @@ export interface FormattingToolbarProps {
   scheduleTrigger?: ReactNode;
   snippetsTrigger?: ReactNode;
   aiTrigger?: ReactNode;
+  pollTrigger?: ReactNode;
   secretFragmentsEnabled?: boolean;
 }
 

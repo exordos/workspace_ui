@@ -39,6 +39,10 @@ Operational guides describe repository configuration. External account permissio
 
 ## History and proposals
 
+[Открытые вопросы Workspace UI](OPEN_QUESTIONS.md) — продуктовые и технические вопросы для отдельного обсуждения.
+
+[План опросов в сообщениях](plans/message-polls.md) описывает возможности первой итерации, отложенные сценарии и проект контрактов API и хранения голосов. Это предложение для согласования, а не описание уже доступной функции. [План реализации бэкенда](plans/message-polls-backend.md) выделяет API, DM/DTO, миграции, транзакции и проверки перед передачей серверному разработчику.
+
 [ADRs](adr/) preserve decisions and historical context. Their original versions, inventories and audit numbers are dated snapshots. Current source and active guidance supersede obsolete implementation details; revisiting a decision should be explicit.
 
 [Archived cache plan](archive/WORKSPACE_MESSENGER_CACHE_PLAN.md) preserves the original implementation proposal, not a task queue to execute again. Draft documents describe proposals and open decisions; they do not authorize implementation or establish backend support.

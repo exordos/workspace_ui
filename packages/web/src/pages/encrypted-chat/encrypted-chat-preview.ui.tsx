@@ -5,6 +5,7 @@ import { EncryptedChatServiceMessage } from "~/features/encrypted-chat-message/e
 import { EncryptedMessagePlaceholder } from "~/features/encrypted-chat-message/encrypted-message-placeholder.ui";
 import { useTranslation } from "~/i18n/i18n";
 import { Button } from "~/shared/ui/button";
+import { Select } from "~/shared/ui/select";
 import { resolveLayoutChatScreenTitle } from "~/widgets/layout/layout-right-drawer-title.lib";
 import { RightDrawer } from "~/widgets/right-panel/right-drawer.ui";
 
@@ -73,19 +74,22 @@ export function EncryptedChatPreview(): React.ReactElement {
           <legend className="px-1 text-sm">{t("e2ee.previewControls")}</legend>
           <label className="flex items-center gap-2 text-sm">
             {t("e2ee.previewState")}
-            <select
-              className="rounded border border-border-subtle bg-bg-elevated p-2"
+            <Select
+              aria-label={t("e2ee.previewState")}
+              className="w-auto min-w-48"
               value={state}
-              onChange={(event) => {
-                const value = event.target.value;
+              options={(
+                [
+                  ["locked", "lockedTitle"],
+                  ["loading", "loadingTitle"],
+                  ["error", "decryptErrorTitle"],
+                ] as const
+              ).map(([value, key]) => ({ value, label: t(`e2ee.${key}`) }))}
+              onValueChange={(value) => {
                 if (value === "locked" || value === "loading" || value === "error") setState(value);
                 setNotice(null);
               }}
-            >
-              <option value="locked">{t("e2ee.lockedTitle")}</option>
-              <option value="loading">{t("e2ee.loadingTitle")}</option>
-              <option value="error">{t("e2ee.decryptErrorTitle")}</option>
-            </select>
+            />
           </label>
           <label className="flex items-center gap-2 text-sm">
             <input

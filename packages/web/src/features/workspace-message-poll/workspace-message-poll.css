@@ -1,0 +1,144 @@
+@font-face {
+  font-family: "Workspace Poll Montserrat";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./fonts/montserrat-regular.ttf") format("truetype");
+}
+
+.workspace-poll-container {
+  container-type: inline-size;
+  width: 336px;
+  font-family: "Workspace Poll Montserrat", "Helvetica Neue", sans-serif;
+  font-size: 12px;
+  line-height: 15px;
+  --poll-gap: 6px;
+  --poll-option-padding: 6px;
+}
+
+.workspace-poll-question-title {
+  float: left;
+  width: 100%;
+  margin: 0 0 var(--poll-gap);
+  padding: 0;
+  overflow-wrap: anywhere;
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 17px;
+}
+
+.workspace-poll-subtitle {
+  clear: both;
+  margin: 0 0 var(--poll-gap);
+  color: var(--color-text-secondary);
+}
+
+.workspace-poll-options {
+  clear: both;
+  display: flex;
+  flex-direction: column;
+  gap: var(--poll-gap);
+}
+
+.workspace-poll-option {
+  padding: var(--poll-option-padding) 0;
+  color: var(--color-text-primary);
+}
+
+.workspace-poll-option-selected {
+  color: var(--color-accent);
+}
+.workspace-poll-option-correct {
+  color: var(--color-indicator-green);
+}
+
+.workspace-poll-option-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  min-height: 28px;
+}
+
+.workspace-poll-option-choice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  min-height: 28px;
+  font-size: 14px;
+  line-height: 17px;
+  color: inherit;
+}
+
+.workspace-poll-option-aggregate {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.workspace-poll-voter-slot,
+.workspace-poll-voters-button {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-shrink: 0;
+  min-height: 28px;
+}
+
+.workspace-poll-voters-button:empty {
+  display: none;
+}
+
+.workspace-poll-result-bar {
+  display: block;
+  height: 2px;
+  margin-top: 6px;
+}
+
+.workspace-poll-correct-answer,
+.workspace-poll-summary,
+.workspace-poll-status,
+.workspace-poll-question-status {
+  margin-top: var(--poll-gap);
+  color: var(--color-text-secondary);
+  overflow-wrap: anywhere;
+}
+
+/* Reserve the result line before voting without revealing the answer. */
+.workspace-poll-correct-answer {
+  min-height: 15px;
+  color: var(--color-indicator-green);
+}
+.workspace-poll-summary-link {
+  color: var(--color-accent);
+}
+.workspace-poll-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+}
+@container (max-width: 300px) {
+  .workspace-poll-option-choice {
+    flex-wrap: wrap;
+    column-gap: 6px;
+  }
+  .workspace-poll-option-aggregate {
+    padding-left: 22px;
+    width: 100%;
+  }
+}
+
+@media (hover: hover) {
+  .workspace-poll-option-choice:enabled:hover,
+  .workspace-poll-summary-link:hover {
+    text-decoration: underline;
+  }
+}
+
+/* Reserve room for the standard message time in the bottom-right corner. */
+.workspace-poll-message-bubble:has(> .workspace-poll-message-time) .workspace-poll-final-line {
+  min-height: 16px;
+  padding-right: 48px;
+}

@@ -1,0 +1,5 @@
+.compact-text-field-input::placeholder {
+  color: var(--color-text-primary);
+  color: color-mix(in srgb, var(--color-text-secondary) 55%, var(--color-text-primary));
+  opacity: 1;
+}

@@ -127,6 +127,31 @@ const ENABLE_SCHEDULED_SEND_UI = false;
 
 const DEFAULT_ACTION_CAPABILITY: MessageComposerActionCapability = { mode: "enabled" };
 
+function PollButton({ onClick, disabled }: Readonly<{ onClick: () => void; disabled: boolean }>) {
+  return (
+    <button
+      type="button"
+      className={TOOLBAR_BTN}
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={t("pollForm.title")}
+      title={t("pollForm.title")}
+    >
+      <svg
+        width="24"
+        height="24"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        aria-hidden="true"
+      >
+        <path d="M4 20V13h4v7M10 20V4h4v16M16 20V9h4v11M3 20h18" />
+      </svg>
+    </button>
+  );
+}
+
 type ComposerTextEditingCommand = "cut" | "copy" | "paste" | "selectAll";
 
 function resolveActionCapability(
@@ -150,6 +175,7 @@ function resolveToolbarActionLabel(
 }
 
 interface MessageComposerToolbarRowProps {
+  onCreatePoll?: () => void;
   expanded: boolean;
   onExpandedChange: (expanded: boolean) => void;
   mode: ComposerMode;
@@ -220,6 +246,7 @@ const MessageComposerCompactLeadingControls =
   );
 
 interface MessageComposerCompactActionControlsProps {
+  onCreatePoll?: () => void;
   disabled: boolean;
   uploadSupported: boolean;
   uploadCapability: MessageComposerActionCapability;
@@ -233,6 +260,7 @@ interface MessageComposerCompactActionControlsProps {
 const MessageComposerCompactSecondaryActionControls =
   React.memo<MessageComposerCompactActionControlsProps>(
     function MessageComposerCompactSecondaryActionControls({
+      onCreatePoll,
       disabled,
       uploadSupported,
       uploadCapability,
@@ -283,6 +311,7 @@ const MessageComposerCompactSecondaryActionControls =
           >
             <MessageComposerEmojiIcon />
           </button>
+          {onCreatePoll && <PollButton onClick={onCreatePoll} disabled={disabled} />}
         </div>
       );
     },
@@ -290,6 +319,7 @@ const MessageComposerCompactSecondaryActionControls =
 
 const MessageComposerToolbarRow = React.memo<MessageComposerToolbarRowProps>(
   function MessageComposerToolbarRow({
+    onCreatePoll,
     expanded,
     onExpandedChange,
     mode,
@@ -449,6 +479,11 @@ const MessageComposerToolbarRow = React.memo<MessageComposerToolbarRowProps>(
               scheduleTrigger={scheduleTrigger}
               snippetsTrigger={snippetsTrigger}
               aiTrigger={aiTrigger}
+              pollTrigger={
+                !isEditing && onCreatePoll ? (
+                  <PollButton onClick={onCreatePoll} disabled={disabled} />
+                ) : undefined
+              }
             />
           )}
         </div>
@@ -458,6 +493,7 @@ const MessageComposerToolbarRow = React.memo<MessageComposerToolbarRowProps>(
 );
 
 export const MessageComposerInner: React.FC<MessageComposerProps> = ({
+  onCreatePoll,
   onSend,
   optimisticClearOnSend = false,
   attachments,
@@ -1849,6 +1885,7 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
   const compactControlRailVisible = isCompactWriteMode && heightButtonVisible;
   const toolbarRow = (
     <MessageComposerToolbarRow
+      onCreatePoll={onCreatePoll}
       expanded={isToolbarExpanded}
       onExpandedChange={setToolbarExpanded}
       mode={mode}
@@ -1923,6 +1960,7 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
   );
   const compactSecondaryActions = isCompactWriteMode ? (
     <MessageComposerCompactSecondaryActionControls
+      onCreatePoll={!isEditing ? onCreatePoll : undefined}
       disabled={disabled}
       uploadSupported={uploadSupported}
       uploadCapability={uploadCapability}

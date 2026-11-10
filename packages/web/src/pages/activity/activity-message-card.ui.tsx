@@ -62,7 +62,9 @@ export function ActivityMessageCard({
     message.payload.kind === "markdown"
       ? summarizeWorkspaceMessageMarkdown(message.payload.content, ACTIVITY_MESSAGE_SUMMARY_OPTIONS)
           .text
-      : encryptedMessageLabel(message.payload);
+      : message.payload.kind === "poll"
+        ? message.payload.questions.map((q) => q.text).join(" · ")
+        : encryptedMessageLabel(message.payload);
 
   return (
     <div
@@ -115,9 +117,10 @@ export function ActivityMessageCard({
         </button>
         <button
           type="button"
-          disabled={message.payload.kind !== "markdown"}
+          disabled={message.payload.kind !== "markdown" && message.payload.kind !== "poll"}
           onClick={() => {
-            if (message.payload.kind === "markdown") onForward(message.uuid);
+            if (message.payload.kind === "markdown" || message.payload.kind === "poll")
+              onForward(message.uuid);
           }}
           className="hover:bg-bg-elevated/70 rounded p-1 text-text-muted hover:text-text-primary"
           aria-label={t("message.forward")}

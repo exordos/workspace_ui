@@ -16,6 +16,8 @@ Workspace API is the source of truth for the messenger. Read [Project Facts](doc
 - Preserve unrelated changes. Inspect `git status --short` before edits and before the final report. Stage only intended paths; commit or push only when requested.
 - Extend existing flows before adding stores, helpers, or files. Create only the FSD segments the task needs.
 - Preserve the visible UI unless the task asks for a design change. Follow the user's latest visual requirements and report unperformed visual checks.
+- Whenever a task depends on the current Workspace design or calls for a mockup change, use the [Workspace Figma Bridge skill](.agents/skills/workspace-figma-bridge/SKILL.md) to consult the live file through Figma Bridge MCP. Apply this rule as soon as the need arises, even if the user did not mention Figma.
+- When creating, editing, reviewing, or implementing a Workspace Figma mockup, use the [Workspace Figma design skill](.agents/skills/workspace-figma-design/SKILL.md) to select a finished reference screen and reuse its UI-kit patterns.
 
 ## Domain and architecture
 

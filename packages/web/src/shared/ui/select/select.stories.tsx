@@ -57,3 +57,26 @@ export const Disabled: Story = { args: { disabled: true } };
 export const Invalid: Story = { args: { value: "", invalid: true, required: true } };
 export const Compact: Story = { args: { size: "compact" } };
 export const Empty: Story = { args: { value: "", options: [] } };
+
+export const Grouped: Story = {
+  render: function GroupedExample(args) {
+    const [{ value }, updateArgs] = useArgs<SelectProps>();
+    const appearance = { id: "appearance", label: t("settings.appearance") };
+    const language = { id: "language", label: t("settings.language") };
+    return (
+      <Select
+        {...args}
+        value={value}
+        onValueChange={(value) => updateArgs({ value })}
+        aria-label={t("settings.settings")}
+        options={[
+          { value: "system", label: t("settings.themeSystem"), group: appearance },
+          { value: "light", label: t("settings.themeLight"), group: appearance },
+          { value: "dark", label: t("settings.themeDark"), group: appearance },
+          { value: "en", label: "English", group: language },
+          { value: "ru", label: "Русский", group: language },
+        ]}
+      />
+    );
+  },
+};

@@ -1,3 +1,4 @@
+import { summarizeMessengerPoll } from "~/entities/messenger/messenger-poll-text.lib";
 import type { MessengerUuid } from "~/entities/messenger/messenger.types";
 import { buildWorkspaceForwardReference } from "~/shared/lib/workspace-message-quote.lib";
 import { parseWorkspaceMessageBody } from "~/shared/lib/workspace-message-render/workspace-message-parse.lib";
@@ -73,7 +74,12 @@ export function buildWorkspaceForwardMarkdown(options: {
   resolveSourceKind?: (message: WorkspaceForwardSourceMessage) => "direct" | "channel";
   wroteLabel?: string;
 }): string | null {
-  if (options.messages.some((message) => message.payload.kind !== "markdown")) return null;
+  if (
+    options.messages.some(
+      (message) => message.payload.kind !== "markdown" && message.payload.kind !== "poll",
+    )
+  )
+    return null;
   const selectedText = normalizeSelectedForwardText(options.selectedText);
   const hasSecrets = options.messages.some(
     (message) =>
@@ -82,18 +88,27 @@ export function buildWorkspaceForwardMarkdown(options: {
   );
   // Selected DOM text may include a decrypted fragment; forward the encrypted source instead.
   const shouldUseSelectedText =
-    options.messages.length === 1 && selectedText != null && !hasSecrets;
+    options.messages.length === 1 &&
+    options.messages[0]?.payload.kind === "markdown" &&
+    selectedText != null &&
+    !hasSecrets;
 
   const references = options.messages.map((message) => {
     const senderName =
       options.resolveAuthorLabel?.(message.authorUuid, message) ?? message.authorUuid;
     const sourceLabel = options.resolveSourceLabel(message).trim() || message.streamUuid;
-    const markdown = message.payload.kind === "markdown" ? message.payload.content : "";
+    const poll = message.payload.kind === "poll" ? message.payload : null;
+    const markdown =
+      message.payload.kind === "markdown"
+        ? message.payload.content
+        : poll == null
+          ? ""
+          : summarizeMessengerPoll(poll, message.pollState);
     const forwardReference = buildWorkspaceForwardReference({
       senderName,
       messageUuid: message.uuid,
       snapshotMarkdown: shouldUseSelectedText ? selectedText : markdown,
-      ...(shouldUseSelectedText ? { snapshotFormat: "plain" as const } : {}),
+      ...(shouldUseSelectedText || poll != null ? { snapshotFormat: "plain" as const } : {}),
       sourceLabel,
       ...(options.resolveSourceKind?.(message) === "direct"
         ? { sourceKind: "direct" as const }

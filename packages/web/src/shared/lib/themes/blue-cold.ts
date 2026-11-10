@@ -10,6 +10,7 @@ export const blueCold: ThemePalette = {
     "card-bg": "#282a32",
     "card-bg-active": "#2c3747",
     "text-field-bg": "#222328",
+    "compact-field-bg": "#303139",
 
     "text-primary": "#ffffff",
     "text-secondary": "#999999",
@@ -73,6 +74,7 @@ export const blueCold: ThemePalette = {
     "card-bg": "#eef5fb",
     "card-bg-active": "#cde6ff",
     "text-field-bg": "#eef5fb",
+    "compact-field-bg": "#e4edf5",
 
     "text-primary": "#1b1b1d",
     "text-secondary": "#787878",

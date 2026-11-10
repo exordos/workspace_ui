@@ -223,6 +223,7 @@ const mappingCases: MappingCase[] = [
           uuid: MESSAGE_UUID,
           payload: { kind: "markdown", content: "Updated" },
         }),
+        expect.any(Function),
       );
     },
   },
@@ -238,6 +239,7 @@ const mappingCases: MappingCase[] = [
       expect(writer.patchCachedMessage).toHaveBeenCalledWith(
         OWNER_KEY,
         expect.objectContaining({ uuid: MESSAGE_UUID, read: true }),
+        expect.any(Function),
       );
       expect(writer.advanceReadBoundary).toHaveBeenCalledWith({
         ownerKey: OWNER_KEY,
