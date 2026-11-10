@@ -6,7 +6,7 @@ import { invokePollAction } from "~/shared/api/messenger-messages.api";
 import type { WorkspaceMessengerMessageDto } from "~/shared/api/messenger.types";
 import { adaptMessengerMessage } from "./messenger-adapters.lib";
 import { messengerMessageActionCache } from "./messenger-cache.lib";
-import { mutateMessengerPoll } from "./messenger-poll-actions.lib";
+import { mutateMessengerPoll, supportsMessengerPolls } from "./messenger-poll-actions.lib";
 
 vi.mock("~/shared/api/messenger-messages.api", () => ({
   invokePollAction: vi.fn(),
@@ -107,4 +107,13 @@ it("invalidates a pending cache write after the message is deleted", async () =>
   expect(check()).toBe(false);
   finish();
   await pending;
+});
+
+it("allows native and Zulip poll participation while rejecting encrypted or archived streams", () => {
+  for (const sourceName of ["native", "zulip"] as const) {
+    expect(supportsMessengerPolls({ sourceName, encryption: false, isArchived: false })).toBe(true);
+    expect(supportsMessengerPolls({ sourceName, encryption: true, isArchived: false })).toBe(false);
+    expect(supportsMessengerPolls({ sourceName, encryption: false, isArchived: true })).toBe(false);
+  }
+  expect(supportsMessengerPolls(undefined)).toBe(false);
 });

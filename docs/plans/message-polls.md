@@ -1,3 +1,5 @@
+> Interoperability update (2026-11-10): backend PR #317 now supports polls in unencrypted Zulip streams. Compatible widgets synchronize votes and options; extended polls stay in Workspace and show a partial-support preview with an exact message link in Zulip. The UI permits creation and voting in these streams. Closing and policy-management controls remain limited to native conversations because compatible Zulip widgets cannot enforce those policies. The original design notes below describe the earlier native-only scope.
+
 # Опросы в сообщениях
 
 Статус: реализация первой итерации в работе. Контракт и решения ниже сохраняют контекст плана; актуальное поведение проверяйте по исходному коду и тестам клиента и сервера.

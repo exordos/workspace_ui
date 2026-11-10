@@ -14,6 +14,7 @@ import {
   E2E_PROJECT_ID,
   E2E_USER_UUID,
   messageSuccess,
+  streamsSuccess,
 } from "./mocks/workspace-default-responses";
 
 async function openPollComposer(page: Page) {
@@ -338,4 +339,22 @@ test("keeps poll controls within the bubble while voting and closing @mock", asy
   await expect(poll.getByText(/0%/).first()).toBeVisible();
   await expectFits();
   expect(voterRequests).toHaveLength(0);
+});
+
+test("offers poll creation in an unencrypted Zulip conversation @mock", async ({
+  authenticated: page,
+}) => {
+  await page.route(/\/messenger\/streams\/?(?:\?.*)?$/, async (route) => {
+    if (route.request().method() !== "GET") return route.fallback();
+    await route.fulfill({
+      json: streamsSuccess().map((stream) => ({ ...stream, source_name: "zulip" })),
+    });
+  });
+  await page.reload();
+  await page.goto(`${e2eOrgBasePath()}/stream/${E2E_STREAM_UUID}/topic/${E2E_TOPIC_UUID}`);
+  await expectReadyMessageComposer(page);
+  await page.getByRole("button", { name: /создать опрос|create poll/i }).click();
+  await expect(
+    page.getByRole("dialog").getByPlaceholder(/введите вопрос|enter a question/i),
+  ).toBeVisible();
 });

@@ -56,6 +56,7 @@ import type {
   MessengerSendOptions,
   MessengerOutgoingMessage,
 } from "~/entities/messenger/messenger-outbox.types";
+import { supportsMessengerPolls } from "~/entities/messenger/messenger-poll-actions.lib";
 import { summarizeMessengerPoll } from "~/entities/messenger/messenger-poll-text.lib";
 import { buildMessengerRequestOptions } from "~/entities/messenger/messenger-request-options.lib";
 import { runMessengerRuntimeMutation } from "~/entities/messenger/messenger-runtime-mutation.lib";
@@ -1857,9 +1858,8 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
   const canCreatePoll =
     runtimeContext != null &&
     selection.status === "conversation" &&
-    stream?.sourceName === "native" &&
-    stream.encryption !== true &&
-    !stream.isArchived &&
+    stream != null &&
+    supportsMessengerPolls(stream) &&
     composerReadOnlyReason == null &&
     Boolean(stream.name || conversation?.title) &&
     !isTopicClosed &&

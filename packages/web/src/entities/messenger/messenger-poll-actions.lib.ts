@@ -13,6 +13,17 @@ import { adaptMessengerMessage } from "./messenger-adapters.lib";
 import { messengerMessageActionCache } from "./messenger-cache.lib";
 import { buildMessengerRequestOptions } from "./messenger-request-options.lib";
 import { useMessengerStore } from "./messenger.model";
+import type { MessengerStream } from "./messenger.types";
+
+export function supportsMessengerPolls(
+  stream: Pick<MessengerStream, "sourceName" | "encryption" | "isArchived"> | undefined,
+): boolean {
+  return (
+    (stream?.sourceName === "native" || stream?.sourceName === "zulip") &&
+    stream.encryption !== true &&
+    !stream.isArchived
+  );
+}
 
 interface PollOptions {
   runtimeContext: WorkspaceRuntimeContext;
