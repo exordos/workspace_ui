@@ -73,6 +73,18 @@
   color: inherit;
 }
 
+.workspace-poll-add-option {
+  margin-top: var(--poll-gap);
+}
+
+.checkbox-indicator.workspace-poll-add-marker {
+  border-color: var(--color-text-secondary);
+}
+
+.workspace-poll-add-option:focus-within .workspace-poll-add-marker {
+  border-color: var(--color-accent);
+}
+
 .workspace-poll-option-aggregate {
   flex-shrink: 0;
   white-space: nowrap;

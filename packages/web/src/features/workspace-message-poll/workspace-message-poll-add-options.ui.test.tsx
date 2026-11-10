@@ -36,17 +36,20 @@ describe("poll answer additions", () => {
       .mockResolvedValue(undefined);
     render(<WorkspaceMessagePoll poll={poll} onAddOption={onAddOption} />);
     const question = within(screen.getByRole("group", { name: "second question" }));
-    fireEvent.click(question.getByRole("button", { name: /Add option/ }));
     const input = question.getByRole("textbox", { name: "New option" });
-    const submit = question.getByRole("button", { name: "Add" });
-    expect(submit).toBeDisabled();
+    expect(input).toHaveAttribute("placeholder", "Add an answer option…");
+    expect(question.queryByRole("button", { name: "Add" })).not.toBeInTheDocument();
+    input.focus();
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(onAddOption).not.toHaveBeenCalled();
     fireEvent.change(input, { target: { value: "  Another answer  " } });
-    fireEvent.click(submit);
+    fireEvent.keyDown(input, { key: "Enter" });
     expect(onAddOption).toHaveBeenCalledWith("second", "Another answer");
     expect(await question.findByRole("alert")).toBeVisible();
     expect(input).toHaveValue("  Another answer  ");
-    fireEvent.click(submit);
-    await waitFor(() => expect(question.queryByRole("textbox")).not.toBeInTheDocument());
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() => expect(input).toHaveValue(""));
+    expect(input).toHaveFocus();
     expect(onAddOption).toHaveBeenCalledTimes(2);
     expect(question.queryByRole("alert")).not.toBeInTheDocument();
     expect(screen.queryByText("Another answer", { exact: true })).not.toBeInTheDocument();
@@ -56,7 +59,6 @@ describe("poll answer additions", () => {
     const onAddOption = vi.fn().mockResolvedValue(undefined);
     const { rerender } = render(<WorkspaceMessagePoll poll={poll} onAddOption={onAddOption} />);
     const first = within(screen.getByRole("group", { name: "first question" }));
-    fireEvent.click(first.getByRole("button", { name: /Add option/ }));
     const input = first.getByRole("textbox", { name: "New option" });
     fireEvent.change(input, { target: { value: "Draft" } });
     rerender(
@@ -64,12 +66,11 @@ describe("poll answer additions", () => {
     );
     expect(input).toBeDisabled();
     expect(input).toHaveValue("Draft");
-    expect(first.getByRole("button", { name: "Add" })).toBeDisabled();
     fireEvent.submit(input.closest("form")!);
     expect(onAddOption).not.toHaveBeenCalled();
     expect(
-      within(screen.getByRole("group", { name: "second question" })).getByRole("button", {
-        name: /Add option/,
+      within(screen.getByRole("group", { name: "second question" })).getByRole("textbox", {
+        name: "New option",
       }),
     ).toBeEnabled();
     rerender(<WorkspaceMessagePoll poll={poll} onAddOption={onAddOption} />);
@@ -81,13 +82,13 @@ describe("poll answer additions", () => {
     "hides additions when the poll disallows them: %j",
     (settings) => {
       render(<WorkspaceMessagePoll poll={{ ...poll, ...settings }} onAddOption={vi.fn()} />);
-      expect(screen.queryByRole("button", { name: /Add option/ })).not.toBeInTheDocument();
+      expect(screen.queryByRole("textbox", { name: "New option" })).not.toBeInTheDocument();
     },
   );
 
   it("hides additions in a read-only snapshot", () => {
     render(<WorkspaceMessagePoll poll={poll} readOnly onAddOption={vi.fn()} />);
-    expect(screen.queryByRole("button", { name: /Add option/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "New option" })).not.toBeInTheDocument();
   });
 
   it("respects the server limit of twenty options independently for each question", () => {
@@ -108,14 +109,39 @@ describe("poll answer additions", () => {
       />,
     );
     expect(
-      within(screen.getByRole("group", { name: "first question" })).queryByRole("button", {
-        name: /Add option/,
+      within(screen.getByRole("group", { name: "first question" })).queryByRole("textbox", {
+        name: "New option",
       }),
     ).not.toBeInTheDocument();
     expect(
-      within(screen.getByRole("group", { name: "second question" })).getByRole("button", {
-        name: /Add option/,
+      within(screen.getByRole("group", { name: "second question" })).getByRole("textbox", {
+        name: "New option",
       }),
     ).toBeEnabled();
+  });
+
+  it("keeps Shift+Enter and IME confirmation as text input and blocks repeated submissions", async () => {
+    let finish!: () => void;
+    const onAddOption = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    render(<WorkspaceMessagePoll poll={poll} onAddOption={onAddOption} />);
+    const question = within(screen.getByRole("group", { name: "first question" }));
+    const input = question.getByRole("textbox", { name: "New option" });
+    fireEvent.change(input, { target: { value: "Friday\nafter lunch" } });
+    fireEvent.keyDown(input, { key: "Enter", shiftKey: true });
+    fireEvent.keyDown(input, { key: "Enter", isComposing: true });
+    expect(onAddOption).not.toHaveBeenCalled();
+    fireEvent.keyDown(input, { key: "Enter" });
+    fireEvent.submit(input.closest("form")!);
+    expect(onAddOption).toHaveBeenCalledExactlyOnceWith("first", "Friday\nafter lunch");
+    expect(input).toBeDisabled();
+    expect(input).toHaveValue("Friday\nafter lunch");
+    finish();
+    await waitFor(() => expect(input).toBeEnabled());
+    expect(input).toHaveValue("");
   });
 });

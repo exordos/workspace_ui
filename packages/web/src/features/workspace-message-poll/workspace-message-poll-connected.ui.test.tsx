@@ -169,15 +169,16 @@ describe("connected poll", () => {
         message={{ ...message, payload: { ...message.payload, allowAddingOptions: true } }}
       />,
     );
-    fireEvent.click(screen.getByRole("button", { name: /Add option/ }));
     fireEvent.change(screen.getByRole("textbox", { name: "New option" }), {
       target: { value: "Another answer" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "New option" }), { key: "Enter" });
     expect(await screen.findByText("Could not add the option. Try again.")).toBeVisible();
     expect(screen.getByRole("textbox", { name: "New option" })).toHaveValue("Another answer");
-    fireEvent.click(screen.getByRole("button", { name: "Add" }));
-    await waitFor(() => expect(screen.queryByRole("textbox")).not.toBeInTheDocument());
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "New option" }), { key: "Enter" });
+    await waitFor(() =>
+      expect(screen.getByRole("textbox", { name: "New option" })).toHaveValue(""),
+    );
     const firstAttempt = mocks.mutate.mock.calls[0]?.[0];
     expect(firstAttempt).toMatchObject({
       messageUuid: "message",

@@ -1856,6 +1856,8 @@
     "retry": "Повторить",
     "loadMore": "Загрузить ещё",
     "addOption": "Добавить вариант",
+    "addOptionPlaceholder": "Добавить вариант ответа…",
+    "addOptionHint": "Enter — добавить ответ. Shift+Enter — перенос строки.",
     "newOption": "Новый вариант",
     "add": "Добавить",
     "cancel": "Отмена",

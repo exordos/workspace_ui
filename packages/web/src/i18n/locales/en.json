@@ -1843,6 +1843,8 @@
     "retry": "Retry",
     "loadMore": "Load more",
     "addOption": "Add option",
+    "addOptionPlaceholder": "Add an answer option…",
+    "addOptionHint": "Press Enter to add an answer. Shift+Enter inserts a new line.",
     "newOption": "New option",
     "add": "Add",
     "cancel": "Cancel",

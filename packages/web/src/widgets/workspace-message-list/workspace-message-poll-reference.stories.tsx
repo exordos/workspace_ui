@@ -7,10 +7,12 @@ import type {
 } from "~/features/workspace-message-poll/workspace-message-poll.types";
 import { WorkspaceMessagePoll } from "~/features/workspace-message-poll/workspace-message-poll.ui";
 import { useTranslation } from "~/i18n/i18n";
+import { CheckboxIndicator } from "~/shared/ui/checkbox";
+import { InlineTextField } from "~/shared/ui/inline-text-field";
 import { WorkspaceMessageBubblePresentation } from "./workspace-message-bubble-presentation.ui";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 
-type ReferenceVariant = "active" | "correct" | "incorrect" | "closed";
+type ReferenceVariant = "active" | "correct" | "incorrect" | "closed" | "adding";
 const author = "reference-author";
 const createdAt = "2026-11-10T15:40:00+03:00";
 const closesAt = "2026-11-12T18:00:00+03:00";
@@ -53,7 +55,7 @@ function pollFixture(variant: ReferenceVariant, russian: boolean): WorkspacePoll
     multipleAnswers: false,
     anonymous: false,
     allowRevote: true,
-    allowAddingOptions: false,
+    allowAddingOptions: variant === "adding",
     resultsVisibility: "after_vote",
     closed: variant === "closed",
     closesAt: correct ? null : closesAt,
@@ -175,6 +177,20 @@ function ReferenceBubble({
             onVote={(questionId, optionId, selected) =>
               setPoll((previous) => applyVote(previous, questionId, optionId, selected))
             }
+            onAddOption={(questionId, text) => {
+              setPoll((previous) => ({
+                ...previous,
+                questions: previous.questions.map((question) =>
+                  question.id !== questionId
+                    ? question
+                    : {
+                        ...question,
+                        options: [...question.options, { id: crypto.randomUUID(), text, votes: 0 }],
+                      },
+                ),
+              }));
+              return Promise.resolve();
+            }}
             onLoadVoters={(questionId, optionId) =>
               setVoters({
                 questionId,
@@ -217,3 +233,25 @@ export const Closed: Story = { render: () => <ReferenceExample variant="closed" 
 export const AllStates: Story = { render: () => <ReferenceExample /> };
 
 export const IncorrectAnswer: Story = { render: () => <ReferenceExample variant="incorrect" /> };
+
+export const InlineAnswer: Story = { render: () => <ReferenceExample variant="adding" /> };
+
+function InputExample() {
+  const { t } = useTranslation();
+  const [value, setValue] = useState("");
+  return (
+    <div className="w-[360px] max-w-full rounded-lg bg-bg-elevated px-3 py-2">
+      <div className="workspace-poll-container min-w-0 max-w-full">
+        <InlineTextField
+          value={value}
+          onChange={(event) => setValue(event.target.value)}
+          aria-label={t("pollBubble.newOption")}
+          placeholder={t("pollBubble.addOptionPlaceholder")}
+          leading={<CheckboxIndicator checked={false} className="workspace-poll-add-marker" />}
+        />
+      </div>
+    </div>
+  );
+}
+
+export const InlineInput: Story = { render: () => <InputExample /> };

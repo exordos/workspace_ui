@@ -1,8 +1,8 @@
-import React, { useId, useState } from "react";
+import React, { useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "~/i18n/i18n";
 import { AvatarGroup } from "~/shared/ui/avatar";
-import { Button } from "~/shared/ui/button";
 import { CheckboxIndicator } from "~/shared/ui/checkbox";
+import { InlineTextField } from "~/shared/ui/inline-text-field";
 import type {
   WorkspaceMessagePollProps,
   WorkspacePollQuestion,
@@ -50,66 +50,85 @@ function PollAddOption({
   disabled: boolean;
 }>): React.ReactElement {
   const { t } = useTranslation();
-  const [editing, setEditing] = useState(false);
   const [text, setText] = useState("");
   const [pending, setPending] = useState(false);
   const [failed, setFailed] = useState(false);
   const inputId = useId();
-  if (!editing)
-    return (
-      <Button appearance="ghost" size="sm" disabled={disabled} onClick={() => setEditing(true)}>
-        + {t("pollBubble.addOption")}
-      </Button>
-    );
+  const hintId = `${inputId}-hint`;
+  const errorId = failed ? `${inputId}-error` : undefined;
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const inFlight = useRef(false);
+  const restoreFocus = useRef(false);
+  useEffect(() => {
+    if (pending || disabled || !restoreFocus.current) return;
+    restoreFocus.current = false;
+    if (document.activeElement === document.body || document.activeElement === inputRef.current)
+      inputRef.current?.focus();
+  }, [pending, disabled]);
   return (
     <form
-      className="mt-2 flex flex-wrap gap-2"
+      className="workspace-poll-add-option"
       onSubmit={(event) => {
         event.preventDefault();
-        if (!text.trim() || pending || disabled) return;
+        if (!text.trim() || inFlight.current || disabled) return;
+        inFlight.current = true;
+        restoreFocus.current = document.activeElement === inputRef.current;
         setPending(true);
         setFailed(false);
         void onAdd(questionId, text.trim())
           .then(() => {
             setText("");
-            setEditing(false);
           })
           .catch(() => setFailed(true))
-          .finally(() => setPending(false));
+          .finally(() => {
+            inFlight.current = false;
+            setPending(false);
+          });
       }}
     >
       <label className="sr-only" htmlFor={inputId}>
         {t("pollBubble.newOption")}
       </label>
-      <input
+      <InlineTextField
+        ref={inputRef}
         id={inputId}
         value={text}
         maxLength={200}
         disabled={pending || disabled}
+        aria-busy={pending || undefined}
+        aria-invalid={failed || undefined}
+        aria-describedby={errorId ? `${hintId} ${errorId}` : hintId}
+        placeholder={t("pollBubble.addOptionPlaceholder")}
+        enterKeyHint="done"
+        leading={<CheckboxIndicator checked={false} className="workspace-poll-add-marker" />}
         onChange={(event) => setText(event.target.value)}
-        className="min-w-0 flex-1 rounded-lg border border-border-subtle bg-transparent px-3 py-2 text-sm outline-none focus:border-accent"
-      />
-      <Button
-        size="sm"
-        type="submit"
-        loading={pending}
-        disabled={!text.trim() || pending || disabled}
-      >
-        {t("pollBubble.add")}
-      </Button>
-      <Button
-        size="sm"
-        appearance="ghost"
-        disabled={pending}
-        onClick={() => {
-          setEditing(false);
-          setFailed(false);
+        onKeyDown={(event) => {
+          if (
+            event.key !== "Enter" ||
+            event.shiftKey ||
+            event.altKey ||
+            event.ctrlKey ||
+            event.metaKey ||
+            event.defaultPrevented ||
+            event.nativeEvent.isComposing ||
+            // eslint-disable-next-line sonarjs/deprecation -- Safari can omit isComposing on IME confirmation.
+            event.keyCode === 229
+          )
+            return;
+          event.preventDefault();
+          event.currentTarget.form?.requestSubmit();
         }}
-      >
-        {t("pollBubble.cancel")}
-      </Button>
+      />
+      <span id={hintId} className="sr-only">
+        {t("pollBubble.addOptionHint")}
+      </span>
+      {pending && (
+        <span role="status" className="sr-only">
+          {t("pollBubble.saving")}
+        </span>
+      )}
       {failed && (
-        <p role="alert" className="w-full text-xs text-danger">
+        <p id={errorId} role="alert" className="text-xs text-danger">
           {t("pollBubble.addError")}
         </p>
       )}
@@ -310,7 +329,7 @@ export function PollQuestion({
         </div>
       )}
       {poll.allowAddingOptions && onAddOption && question.options.length < maxOptions && (
-        <div className="min-h-8">
+        <div>
           {canAct && (
             <PollAddOption
               key={`${poll.id}:${question.id}`}
