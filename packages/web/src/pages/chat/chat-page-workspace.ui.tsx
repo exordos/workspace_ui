@@ -1882,9 +1882,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
       if (
         currentStream?.userUuid !== runtimeContext.userUuid ||
         currentStream.projectId !== runtimeContext.projectId ||
-        currentStream.sourceName !== "native" ||
-        currentStream.encryption === true ||
-        currentStream.isArchived
+        !supportsMessengerPolls(currentStream)
       )
         throw new Error("Poll unavailable");
       const target = resolveSendTarget();

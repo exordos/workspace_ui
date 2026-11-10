@@ -43,6 +43,7 @@ import {
   normalizeMessengerMessageUuid,
 } from "./messenger-message-identity.lib";
 import { settleMessengerOutgoingMessage } from "./messenger-outbox.model";
+import { supportsMessengerPolls } from "./messenger-poll-actions.lib";
 import {
   beginWorkspaceTopicReadCounters,
   rollbackWorkspaceTopicReadCounters,
@@ -310,9 +311,17 @@ export async function sendMessengerMessage({
   }
   if (
     pollPayload != null &&
-    ("source_name" in stream ? stream.source_name : stream.sourceName) !== "native"
+    !supportsMessengerPolls(
+      "source_name" in stream
+        ? {
+            sourceName: stream.source_name,
+            encryption: stream.encryption,
+            isArchived: stream.is_archived,
+          }
+        : stream,
+    )
   ) {
-    throw new Error("Polls require a native stream");
+    throw new Error("Polls are unavailable in this stream");
   }
   const payload: WorkspaceMessengerCreateMessageRequestBody["payload"] = pollPayload ?? {
     kind: "markdown",

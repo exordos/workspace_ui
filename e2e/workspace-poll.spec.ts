@@ -341,7 +341,7 @@ test("keeps poll controls within the bubble while voting and closing @mock", asy
   expect(voterRequests).toHaveLength(0);
 });
 
-test("offers poll creation in an unencrypted Zulip conversation @mock", async ({
+test("submits a poll in an unencrypted Zulip conversation @mock", async ({
   authenticated: page,
 }) => {
   await page.route(/\/messenger\/streams\/?(?:\?.*)?$/, async (route) => {
@@ -353,8 +353,42 @@ test("offers poll creation in an unencrypted Zulip conversation @mock", async ({
   await page.reload();
   await page.goto(`${e2eOrgBasePath()}/stream/${E2E_STREAM_UUID}/topic/${E2E_TOPIC_UUID}`);
   await expectReadyMessageComposer(page);
-  await page.getByRole("button", { name: /создать опрос|create poll/i }).click();
+  await openPollComposer(page);
+  let created: WorkspaceMessengerCreateMessageRequestBody | null = null;
+  await page.route(/\/messenger\/messages\/?(?:\?.*)?$/, async (route) => {
+    if (route.request().method() !== "POST") return route.fallback();
+    const body = route.request().postDataJSON() as WorkspaceMessengerCreateMessageRequestBody;
+    created = body;
+    if (!body.uuid || body.payload.kind !== "poll") throw new Error("Expected poll");
+    const question = body.payload.questions[0]!;
+    await route.fulfill({
+      status: 201,
+      json: {
+        ...messageSuccess("", createMessengerPlacementUuid(E2E_TOPIC_UUID, body.uuid)),
+        payload: body.payload,
+        poll_state: {
+          revision: 1,
+          is_closed: false,
+          voter_count: 0,
+          questions: [{ question_uuid: question.uuid, voter_count: 0, option_counts: {} }],
+          my_votes: [],
+        },
+      },
+    });
+  });
+  const dialog = page.getByRole("dialog");
+  await dialog.getByPlaceholder(/введите вопрос|enter a question/i).fill("Zulip round trip?");
+  const options = dialog.getByPlaceholder(/добавить ответ|add an answer/i);
+  await options.nth(0).fill("Office");
+  await options.nth(1).fill("Online");
+  await dialog.getByRole("button", { name: /^(создать|create)$/i }).click();
+  await expect(dialog).toBeHidden();
+  expect(created).toMatchObject({
+    stream_uuid: E2E_STREAM_UUID,
+    topic_uuid: E2E_TOPIC_UUID,
+    payload: { kind: "poll", questions: [{ text: "Zulip round trip?" }] },
+  });
   await expect(
-    page.getByRole("dialog").getByPlaceholder(/введите вопрос|enter a question/i),
+    page.getByTestId("workspace-message-poll").getByText("Zulip round trip?"),
   ).toBeVisible();
 });
