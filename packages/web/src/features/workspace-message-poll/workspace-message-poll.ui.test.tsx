@@ -42,7 +42,7 @@ const poll: WorkspacePoll = {
 beforeEach(() => setLocale("en"));
 describe("WorkspaceMessagePoll", () => {
   it("shows at most five voter avatars and keeps the voter-list action", () => {
-    const recentVoters = Array.from({ length: 7 }, (_, index) => ({
+    const previewVoters = Array.from({ length: 7 }, (_, index) => ({
       id: `voter-${index}`,
       name: `Voter ${index}`,
     }));
@@ -50,7 +50,7 @@ describe("WorkspaceMessagePoll", () => {
       ...poll,
       questions: poll.questions.map((question) => ({
         ...question,
-        options: question.options.map((option) => ({ ...option, recentVoters })),
+        options: question.options.map((option) => ({ ...option, previewVoters })),
       })),
     };
     const onLoadVoters = vi.fn();
@@ -61,6 +61,11 @@ describe("WorkspaceMessagePoll", () => {
     expect(screen.queryByTitle("Voter 5")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Who chose .*Alpha/ }));
     expect(onLoadVoters).toHaveBeenCalledWith("first", "a", false);
+    const dialog = within(screen.getByRole("dialog", { name: "Voters" }));
+    expect(dialog.queryByRole("combobox")).not.toBeInTheDocument();
+    expect(dialog.getByText("First question")).toBeInTheDocument();
+    expect(dialog.getByText("Alpha")).toBeInTheDocument();
+    expect(dialog.getByText("3 participants")).toBeInTheDocument();
     rerender(<WorkspaceMessagePoll poll={preview} readOnly onLoadVoters={onLoadVoters} />);
     expect(screen.queryByTitle("Voter 0")).not.toBeInTheDocument();
     rerender(

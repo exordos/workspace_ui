@@ -399,6 +399,7 @@ export const WorkspaceMessageBubbleMenu = React.memo(function WorkspaceMessageBu
       ownItems.push({
         type: "action",
         key: "poll-settings",
+        icon: "settings",
         label: t("pollBubble.settings"),
         onSelect: () => {
           closeMenu();
@@ -409,8 +410,8 @@ export const WorkspaceMessageBubbleMenu = React.memo(function WorkspaceMessageBu
       ownItems.push({
         type: "action",
         key: "poll-close",
+        icon: "block",
         label: t("pollBubble.close"),
-        danger: true,
         onSelect: () => {
           closeMenu();
           onPollClose();

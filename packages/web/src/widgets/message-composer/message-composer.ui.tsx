@@ -22,6 +22,7 @@ import { isWebView } from "~/shared/lib/webview";
 import { hasWorkspaceSecretDraft } from "~/shared/lib/workspace-secret-draft.lib";
 import { DropdownMenu, type DropdownMenuItem } from "~/shared/ui/dropdown-menu";
 import { WidgetErrorBoundary } from "~/shared/ui/error-boundary";
+import { Icon } from "~/shared/ui/icon";
 import { ScrollArea } from "~/shared/ui/scroll-area";
 import {
   MessageComposerAiActionMenuLayer,
@@ -137,17 +138,7 @@ function PollButton({ onClick, disabled }: Readonly<{ onClick: () => void; disab
       aria-label={t("pollForm.title")}
       title={t("pollForm.title")}
     >
-      <svg
-        width="24"
-        height="24"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        aria-hidden="true"
-      >
-        <path d="M4 20V13h4v7M10 20V4h4v16M16 20V9h4v11M3 20h18" />
-      </svg>
+      <Icon name="poll" size={24} />
     </button>
   );
 }
@@ -246,7 +237,6 @@ const MessageComposerCompactLeadingControls =
   );
 
 interface MessageComposerCompactActionControlsProps {
-  onCreatePoll?: () => void;
   disabled: boolean;
   uploadSupported: boolean;
   uploadCapability: MessageComposerActionCapability;
@@ -260,7 +250,6 @@ interface MessageComposerCompactActionControlsProps {
 const MessageComposerCompactSecondaryActionControls =
   React.memo<MessageComposerCompactActionControlsProps>(
     function MessageComposerCompactSecondaryActionControls({
-      onCreatePoll,
       disabled,
       uploadSupported,
       uploadCapability,
@@ -311,7 +300,6 @@ const MessageComposerCompactSecondaryActionControls =
           >
             <MessageComposerEmojiIcon />
           </button>
-          {onCreatePoll && <PollButton onClick={onCreatePoll} disabled={disabled} />}
         </div>
       );
     },
@@ -1960,7 +1948,6 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
   );
   const compactSecondaryActions = isCompactWriteMode ? (
     <MessageComposerCompactSecondaryActionControls
-      onCreatePoll={!isEditing ? onCreatePoll : undefined}
       disabled={disabled}
       uploadSupported={uploadSupported}
       uploadCapability={uploadCapability}

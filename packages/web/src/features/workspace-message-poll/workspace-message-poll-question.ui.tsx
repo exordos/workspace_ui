@@ -162,12 +162,12 @@ function PollOption({
   const percent =
     question.voterCount > 0 ? Math.round((option.votes / question.voterCount) * 100) : 0;
   const showVoters = !poll.anonymous && !readOnly;
-  const recentVoters = showVoters ? option.recentVoters : undefined;
+  const previewVoters = showVoters ? option.previewVoters : undefined;
   const optionTone = correct ? "workspace-poll-option-correct" : "";
   const selectedTone = selected && !wrong ? "workspace-poll-option-selected" : "";
-  const avatars = recentVoters?.length ? (
+  const avatars = previewVoters?.length ? (
     <AvatarGroup
-      items={recentVoters}
+      items={previewVoters}
       className="[&_.avatar-group-item>*]:border-bg-elevated"
       max={5}
       size={28}

@@ -346,7 +346,6 @@ export async function getPollVoters(
     optionUuid: string;
     pageMarker?: string;
     pageLimit?: number;
-    order?: "recent";
   },
 ): Promise<MessengerCollectionPage<{ uuid: string }>> {
   const { data, headers } = await messengerRequestJsonResult(
@@ -358,7 +357,6 @@ export async function getPollVoters(
       option_uuid: query.optionUuid,
       page_marker: query.pageMarker,
       page_limit: query.pageLimit,
-      order: query.order,
     },
   );
   const isVoter = (value: unknown): value is { uuid: string } =>

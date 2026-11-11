@@ -12,7 +12,6 @@ interface AvatarFixtures {
     optionUuid: string;
     optionText: string;
     votes: number;
-    recentNames: string[];
   }[];
 }
 
@@ -45,6 +44,22 @@ async function avatarNames(option: Locator) {
     .evaluateAll((items) => items.map((item) => item.getAttribute("title")));
 }
 
+async function previewNames(
+  request: APIRequestContext,
+  headers: Record<string, string>,
+  messageUuid: string,
+  questionUuid: string,
+  optionUuid: string,
+) {
+  const response = await request.get(
+    `${stand}/workspace/v1/messenger/messages/${messageUuid}/poll_voters/`,
+    { headers, params: { question_uuid: questionUuid, option_uuid: optionUuid, page_limit: 5 } },
+  );
+  expect(response.ok()).toBe(true);
+  const voters: { uuid: string }[] = await response.json();
+  return voters.map(({ uuid }) => fixtures!.users.find((user) => user.uuid === uuid)?.name);
+}
+
 test("avatar stacks cap at five while counts and the voter list retain every vote @live", async ({
   page,
   request,
@@ -65,6 +80,8 @@ test("avatar stacks cap at five while counts and the voter list retain every vot
   await page.locator("form button[type=submit]").click();
   await expect(page.getByRole("link", { name: "Test Lab", exact: true })).toBeVisible();
   await page.goto(new URL(fixtures!.topicPath, stand).href);
+  const tokens = await Promise.all(fixtures!.users.map((user) => loginToken(request, user.login)));
+  const headers = { Authorization: `Bearer ${tokens[0]}` };
 
   for (const fixture of fixtures!.polls) {
     const poll = page.getByTestId("workspace-message-poll").filter({ hasText: fixture.question });
@@ -73,7 +90,14 @@ test("avatar stacks cap at five while counts and the voter list retain every vot
       has: page.getByRole("button", { name: fixture.optionText, exact: true }),
     });
     await expect(option.locator(".avatar-group-item")).toHaveCount(Math.min(fixture.votes, 5));
-    await expect.poll(() => avatarNames(option)).toEqual(fixture.recentNames);
+    const expected = await previewNames(
+      request,
+      headers,
+      fixture.messageUuid,
+      fixture.questionUuid,
+      fixture.optionUuid,
+    );
+    await expect.poll(() => avatarNames(option)).toEqual(expected);
     await expect(option.locator(".workspace-poll-option-aggregate")).toContainText(
       `· ${fixture.votes}`,
     );
@@ -88,6 +112,7 @@ test("avatar stacks cap at five while counts and the voter list retain every vot
       expect(rectangles[index]!.left).toBeLessThan(rectangles[index - 1]!.right);
     }
     if (fixture.votes === 10) {
+      await option.scrollIntoViewIfNeeded();
       await expect
         .poll(async () =>
           option
@@ -112,8 +137,6 @@ test("avatar stacks cap at five while counts and the voter list retain every vot
     }
   }
 
-  const tokens = await Promise.all(fixtures!.users.map((user) => loginToken(request, user.login)));
-  const headers = { Authorization: `Bearer ${tokens[0]}` };
   const original = fixtures!.polls[0]!;
   const originalResponse = await request.get(
     `${stand}/workspace/v1/messenger/messages/${original.messageUuid}`,
@@ -162,11 +185,13 @@ test("avatar stacks cap at five while counts and the voter list retain every vot
       },
     );
     expect(response.ok()).toBe(true);
-    const expectedNames = fixtures!.users
-      .slice(0, index + 1)
-      .reverse()
-      .slice(0, 5)
-      .map((user) => user.name);
+    const expectedNames = await previewNames(
+      request,
+      headers,
+      message.uuid,
+      questionUuid,
+      optionUuid,
+    );
     await expect.poll(() => avatarNames(option)).toEqual(expectedNames);
     await expect(option.locator(".workspace-poll-option-aggregate")).toContainText(
       `· ${index + 1}`,
@@ -180,11 +205,7 @@ test("avatar stacks cap at five while counts and the voter list retain every vot
     },
   );
   expect(withdraw.ok()).toBe(true);
-  const remaining = fixtures!.users
-    .slice(0, 9)
-    .reverse()
-    .slice(0, 5)
-    .map((user) => user.name);
+  const remaining = await previewNames(request, headers, message.uuid, questionUuid, optionUuid);
   await expect.poll(() => avatarNames(option)).toEqual(remaining);
   await expect(option.locator(".workspace-poll-option-aggregate")).toContainText("· 9");
   await page.reload();
@@ -199,11 +220,8 @@ test("avatar stacks cap at five while counts and the voter list retain every vot
       },
     );
     expect(response.ok()).toBe(true);
-    const voters = fixtures!.users.slice(1, 9).reverse();
-    if (selected) voters.unshift(fixtures!.users[0]!);
-    await expect
-      .poll(() => avatarNames(option))
-      .toEqual(voters.slice(0, 5).map((user) => user.name));
+    const voters = await previewNames(request, headers, message.uuid, questionUuid, optionUuid);
+    await expect.poll(() => avatarNames(option)).toEqual(voters);
   }
   await expect(option.locator(".workspace-poll-option-aggregate")).toContainText("· 9");
 });

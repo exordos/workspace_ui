@@ -93,13 +93,12 @@ beforeEach(() => {
   mocks.voters.mockResolvedValue({ items: [], nextPageMarker: null });
 });
 describe("connected poll", () => {
-  it("loads five recent voters separately from paginated voter lists and refreshes revisions", async () => {
+  it("loads a five-voter preview and refreshes it on revision changes", async () => {
     mocks.voters.mockResolvedValue({ items: [{ uuid: "recent" }], nextPageMarker: null });
     const { rerender } = render(<WorkspaceMessagePollConnected {...props} />);
     expect(await screen.findByTitle("#recent")).toBeInTheDocument();
     expect(mocks.voters).toHaveBeenCalledWith(
       expect.objectContaining({
-        order: "recent",
         pageLimit: 5,
         optionUuid: "a",
         questionUuid: "q",
@@ -209,8 +208,8 @@ describe("connected poll", () => {
     await waitFor(() => expect(option).toBeEnabled());
   });
   it("loads and appends voter pages using the server marker", async () => {
-    mocks.voters.mockImplementation((options: { order?: string; pageMarker?: string }) => {
-      if (options.order === "recent") return Promise.resolve({ items: [], nextPageMarker: null });
+    mocks.voters.mockImplementation((options: { pageLimit?: number; pageMarker?: string }) => {
+      if (options.pageLimit === 5) return Promise.resolve({ items: [], nextPageMarker: null });
       return Promise.resolve(
         options.pageMarker
           ? { items: [{ uuid: "two" }], nextPageMarker: null }

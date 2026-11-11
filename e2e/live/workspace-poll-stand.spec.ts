@@ -66,29 +66,12 @@ test("public poll syncs two voters, author settings and closure @live", async ({
     await expect(bob.getByText(/результаты после голосования|results after voting/i)).toBeVisible();
     await bob.getByRole("button", { name: "Friday", exact: true }).click();
     await expect(bob.getByRole("button", { name: "Friday", pressed: true })).toBeVisible();
-    await expect(
-      bob
-        .getByRole("button", { name: /(?:кто выбрал|who chose).*Friday/i })
-        .locator(".avatar-group-item"),
-    ).toHaveCount(1);
     await expect(alice.getByRole("button", { name: "Friday", pressed: false })).toBeVisible();
-    await expect(alice.locator(".avatar-group-item")).toHaveCount(0);
     await alice.getByRole("button", { name: "Tuesday", exact: true }).click();
     for (const poll of [alice, bob]) {
       await expect(poll.getByText(/(?:2 участника|2 participants)/i)).toBeVisible();
       await expect(poll.getByText("50%", { exact: true })).toHaveCount(2);
-      for (const answer of ["Tuesday", "Friday"]) {
-        await expect(
-          poll
-            .getByRole("button", { name: new RegExp(`(?:кто выбрал|who chose).*${answer}`, "i") })
-            .locator(".avatar-group-item"),
-        ).toHaveCount(1);
-      }
     }
-    await alice.getByRole("button", { name: /(?:кто выбрал|who chose).*Friday/i }).click();
-    await expect(page.getByRole("dialog").getByText(/bob/i)).toBeVisible();
-    await page.keyboard.press("Escape");
-
     await alice.click({ button: "right" });
     await page.getByRole("menuitem", { name: /настройки опроса|poll settings/i }).click();
     await expect(dialog).toBeVisible();
@@ -99,9 +82,9 @@ test("public poll syncs two voters, author settings and closure @live", async ({
       .getByRole("switch", { name: /разрешить добавление вариантов|allow adding options/i })
       .click();
     await dialog.getByRole("button", { name: /^(сохранить|save)$/i }).click();
-    await bob.getByRole("button", { name: /добавить вариант|add option/i }).click();
-    await bob.getByRole("textbox").fill("Monday");
-    await bob.getByRole("button", { name: /^(добавить|add)$/i }).click();
+    const newOption = bob.getByRole("textbox", { name: /новый вариант|new option/i });
+    await newOption.fill("Monday");
+    await newOption.press("Enter");
     await expect(alice.getByRole("button", { name: "Monday", exact: true })).toBeVisible();
 
     await alice.click({ button: "right" });

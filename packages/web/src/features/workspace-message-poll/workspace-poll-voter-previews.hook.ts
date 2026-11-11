@@ -9,7 +9,7 @@ import {
 
 const getRuntimeContext = () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
 
-export function usePollRecentVoters(
+export function usePollVoterPreviews(
   message: MessengerMessage,
   enabled: boolean,
   deadlineReached?: boolean,
@@ -54,7 +54,6 @@ export function usePollRecentVoters(
             getRuntimeContext,
             messageUuid: message.uuid,
             ...job,
-            order: "recent",
             pageLimit: 5,
             signal: controller.signal,
           });

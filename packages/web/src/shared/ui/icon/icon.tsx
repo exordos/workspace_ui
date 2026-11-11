@@ -79,6 +79,7 @@ import PhoneIcon from "~/shared/assets/icons/phone.svg?react";
 import PhotoCameraIcon from "~/shared/assets/icons/photo_camera.svg?react";
 import PinIcon from "~/shared/assets/icons/pin.svg?react";
 import PlusIcon from "~/shared/assets/icons/plus.svg?react";
+import PollIcon from "~/shared/assets/icons/poll.svg?react";
 import ProfileIcon from "~/shared/assets/icons/profile.svg?react";
 import ReplyIcon from "~/shared/assets/icons/reply.svg?react";
 import ScheduleIcon from "~/shared/assets/icons/schedule.svg?react";
@@ -137,6 +138,7 @@ const ICONS: Record<string, IconSvgComponent> = {
   folder_copy: FolderCopyIcon,
   folders: FoldersIcon,
   plus: PlusIcon,
+  poll: PollIcon,
   add: AddIcon,
   phone: PhoneIcon,
   send: SendIcon,

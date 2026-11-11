@@ -15,7 +15,7 @@ import { t } from "~/i18n/i18n";
 import { toWorkspacePoll } from "./workspace-message-poll-adapter.lib";
 import { WorkspaceMessagePoll } from "./workspace-message-poll.ui";
 import { PollCloseDialog, PollSettingsDialog } from "./workspace-poll-management-dialogs.ui";
-import { usePollRecentVoters } from "./workspace-poll-recent-voters.hook";
+import { usePollVoterPreviews } from "./workspace-poll-voter-previews.hook";
 import type {
   WorkspaceMessagePollProps,
   WorkspacePollVoters,
@@ -64,7 +64,7 @@ export function WorkspaceMessagePollConnected({
     };
   }, []);
   const enabled = !readOnly;
-  const recentVoters = usePollRecentVoters(message, enabled, deadlineReached);
+  const previewVoters = usePollVoterPreviews(message, enabled, deadlineReached);
   const snapshot = toWorkspacePoll(message);
   const poll = snapshot && {
     ...snapshot,
@@ -72,7 +72,7 @@ export function WorkspaceMessagePollConnected({
       ...question,
       options: question.options.map((option) => ({
         ...option,
-        recentVoters: recentVoters?.[option.id]?.map((uuid) => ({
+        previewVoters: previewVoters?.[option.id]?.map((uuid) => ({
           id: uuid,
           name: selectUserDisplayName(usersById[uuid], `#${uuid.slice(0, 8)}`),
           avatarUrl: usersById[uuid]?.avatarUrl ?? undefined,

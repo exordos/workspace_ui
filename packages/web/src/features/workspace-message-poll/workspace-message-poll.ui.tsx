@@ -22,9 +22,11 @@ export function WorkspaceMessagePoll({
 }: Readonly<WorkspaceMessagePollProps>): React.ReactElement {
   const { t, locale } = useTranslation();
   const [now, setNow] = useState(Date.now);
-  const [voterTarget, setVoterTarget] = useState<{ questionId: string; optionId: string } | null>(
-    null,
-  );
+  const [voterTarget, setVoterTarget] = useState<{
+    questionId: string;
+    optionId: string;
+    mode: "option" | "overview";
+  } | null>(null);
   const deadline = poll.closesAt ? Date.parse(poll.closesAt) : NaN;
   useEffect(() => {
     if (deadlineReached !== undefined || !Number.isFinite(deadline)) return;
@@ -75,7 +77,7 @@ export function WorkspaceMessagePoll({
     ? `${new Date(statusDate).toLocaleDateString(locale, { day: "numeric", month: "long" })}, ${new Date(statusDate).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" })}`
     : null;
   const openVoters = (questionId: string, optionId: string) => {
-    setVoterTarget({ questionId, optionId });
+    setVoterTarget({ questionId, optionId, mode: "overview" });
     onLoadVoters?.(questionId, optionId, false);
   };
   const firstQuestion = poll.questions[0];
@@ -108,7 +110,9 @@ export function WorkspaceMessagePoll({
           }}
           busy={pendingQuestionIds.includes(question.id)}
           error={questionErrors[question.id]}
-          onOpenVoters={(questionId, optionId) => setVoterTarget({ questionId, optionId })}
+          onOpenVoters={(questionId, optionId) =>
+            setVoterTarget({ questionId, optionId, mode: "option" })
+          }
         />
       ))}
       <div

@@ -13,7 +13,11 @@ interface Props {
   poll: WorkspacePoll;
   onSelectOption: (questionId: string, optionId: string) => void;
   enabled: boolean;
-  voterTarget: { questionId: string; optionId: string } | null;
+  voterTarget: {
+    questionId: string;
+    optionId: string;
+    mode: "option" | "overview";
+  } | null;
   activeVoters?: WorkspacePollVoters;
   onDismiss: () => void;
   onLoadVoters: WorkspaceMessagePollProps["onLoadVoters"];
@@ -29,6 +33,8 @@ export function PollVotersDialog({
 }: Readonly<Props>): React.ReactElement {
   const { t } = useTranslation();
   const selectId = useId();
+  const question = poll.questions.find((question) => question.id === voterTarget?.questionId);
+  const option = question?.options.find((option) => option.id === voterTarget?.optionId);
   const options = poll.questions.flatMap((question) =>
     question.options.map((option) => ({
       value: JSON.stringify([question.id, option.id]),
@@ -55,12 +61,18 @@ export function PollVotersDialog({
         if (!open) onDismiss();
       }}
       title={t("pollBubble.voters")}
+      scrollBody
+      positionClassName="top-1/2 -translate-y-1/2"
     >
       <div className="space-y-3">
-        <div className="space-y-1 text-sm">
-          <label htmlFor={selectId}>{t("pollBubble.answer")}</label>
+        {poll.questions.length > 1 && (
+          <p className="break-words text-sm text-text-secondary">{question?.text}</p>
+        )}
+        {voterTarget?.mode === "overview" ? (
           <Select
             id={selectId}
+            size="compact"
+            aria-label={t("pollBubble.answer")}
             value={
               voterTarget ? JSON.stringify([voterTarget.questionId, voterTarget.optionId]) : ""
             }
@@ -70,7 +82,14 @@ export function PollVotersDialog({
               if (target) onSelectOption(target.questionId, target.optionId);
             }}
           />
-        </div>
+        ) : (
+          <p className="break-words text-sm">{option?.text}</p>
+        )}
+        {option && (
+          <p className="text-xs text-text-secondary">
+            {t("pollBubble.participantCount", { count: option.votes })}
+          </p>
+        )}
         {activeVoters?.items.map((voter) => (
           <div key={voter.id} className="flex items-center gap-3">
             <Avatar size="sm" src={voter.avatarUrl}>

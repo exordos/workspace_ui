@@ -50,7 +50,7 @@ const meta = {
     const { locale } = useTranslation();
     let initialPoll = fixture(
       locale === "ru",
-      ["Results", "Closed", "Public Results", "Read Only"].includes(context.name),
+      ["Results", "Closed", "Public Results", "Many Voters", "Read Only"].includes(context.name),
     );
     if (["Independent Questions", "Results"].includes(context.name))
       initialPoll = { ...initialPoll, anonymous: true };
@@ -71,6 +71,16 @@ const meta = {
         multipleAnswers: false,
         voterCount: 24,
         questions: initialPoll.questions.slice(0, 1),
+      };
+    if (context.name === "Many Voters")
+      initialPoll = {
+        ...initialPoll,
+        voterCount: 80,
+        questions: initialPoll.questions.slice(0, 1).map((question) => ({
+          ...question,
+          voterCount: 80,
+          options: question.options.map((option) => ({ ...option, votes: 80 })),
+        })),
       };
     if (context.name === "Default")
       initialPoll = {
@@ -114,7 +124,7 @@ const meta = {
         ...question,
         options: question.options.map((option) => ({
           ...option,
-          recentVoters: Array.from({ length: Math.min(5, option.votes) }, (_, index) => ({
+          previewVoters: Array.from({ length: Math.min(5, option.votes) }, (_, index) => ({
             id: `member-${index}`,
             avatarUrl:
               "data:image/svg+xml," +
@@ -195,22 +205,26 @@ const meta = {
               }),
             )
           }
-          onLoadVoters={(questionId, optionId) =>
+          onLoadVoters={(questionId, optionId, more) => {
+            const option = poll.questions
+              .find((q) => q.id === questionId)
+              ?.options.find((o) => o.id === optionId);
+            const count = Math.min(
+              option?.votes ?? 0,
+              more && voters?.questionId === questionId && voters.optionId === optionId
+                ? voters.items.length + 20
+                : 20,
+            );
             setVoters({
               questionId,
               optionId,
-              items: poll.questions
-                .find((q) => q.id === questionId)
-                ?.options.find((o) => o.id === optionId)?.votes
-                ? [
-                    {
-                      id: "synthetic-voter",
-                      name: locale === "ru" ? "Участник команды" : "Team member",
-                    },
-                  ]
-                : [],
-            })
-          }
+              items: Array.from({ length: count }, (_, index) => ({
+                id: `synthetic-voter-${index}`,
+                name: `${locale === "ru" ? "Участник команды" : "Team member"} ${index + 1}`,
+              })),
+              hasMore: count < (option?.votes ?? 0),
+            });
+          }}
         />
       </div>
     );
@@ -231,6 +245,7 @@ export const Anonymous: Story = {};
 export const CorrectAnswers: Story = {};
 
 export const PublicResults: Story = {};
+export const ManyVoters: Story = {};
 export const AddingOptions: Story = {};
 
 export const SingleChoice: Story = {};

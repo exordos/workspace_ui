@@ -92,19 +92,10 @@ export async function getMessengerPollVoters(
     optionUuid: string;
     pageMarker?: string;
     pageLimit?: number;
-    order?: "recent";
   },
 ) {
-  const {
-    runtimeContext,
-    signal,
-    messageUuid,
-    questionUuid,
-    optionUuid,
-    pageMarker,
-    pageLimit,
-    order,
-  } = options;
+  const { runtimeContext, signal, messageUuid, questionUuid, optionUuid, pageMarker, pageLimit } =
+    options;
   const context = captureWorkspaceRuntimeRequestContext(() => runtimeContext);
   if (context == null) throw new Error("missing-context");
   const stale = () => isPollRequestStale(context, options);
@@ -112,7 +103,7 @@ export async function getMessengerPollVoters(
   const result = await getPollVoters(
     buildMessengerRequestOptions(runtimeContext, undefined, signal),
     messageUuid,
-    { questionUuid, optionUuid, pageMarker, pageLimit, order },
+    { questionUuid, optionUuid, pageMarker, pageLimit },
   );
   if (stale()) throw new Error("stale-owner");
   return result;

@@ -72,7 +72,7 @@ function pollFixture(variant: ReferenceVariant, russian: boolean): WorkspacePoll
           id: `option-${index}`,
           text,
           votes: votes[index]!,
-          recentVoters: Array.from({ length: Math.min(5, votes[index]!) }, (_, voterIndex) =>
+          previewVoters: Array.from({ length: Math.min(5, votes[index]!) }, (_, voterIndex) =>
             voterFixture(voterIndex, russian),
           ),
         })),
@@ -198,7 +198,7 @@ function ReferenceBubble({
                 items:
                   poll.questions
                     .find((question) => question.id === questionId)
-                    ?.options.find((option) => option.id === optionId)?.recentVoters ?? [],
+                    ?.options.find((option) => option.id === optionId)?.previewVoters ?? [],
               })
             }
           />

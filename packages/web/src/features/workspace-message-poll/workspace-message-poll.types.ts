@@ -4,7 +4,7 @@ export interface WorkspacePollOption {
   id: string;
   text: string;
   votes: number;
-  recentVoters?: readonly WorkspacePollVoter[];
+  previewVoters?: readonly WorkspacePollVoter[];
 }
 export interface WorkspacePollQuestion {
   id: string;

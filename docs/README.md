@@ -39,6 +39,8 @@ Operational guides describe repository configuration. External account permissio
 
 ## History and proposals
 
+[Локальная проверка опросов](plans/message-polls-local-test-cases.md) содержит тест-кейсы и проверяемые ревизии. [Результаты по 106 кейсам](plans/message-polls-local-test-results.md) и [список проблем](plans/message-polls-local-test-issues.md) фиксируют фактическую проверку.
+
 [Открытые вопросы Workspace UI](OPEN_QUESTIONS.md) — продуктовые и технические вопросы для отдельного обсуждения.
 
 [План опросов в сообщениях](plans/message-polls.md) описывает возможности первой итерации, отложенные сценарии и проект контрактов API и хранения голосов. Это предложение для согласования, а не описание уже доступной функции. [План реализации бэкенда](plans/message-polls-backend.md) выделяет API, DM/DTO, миграции, транзакции и проверки перед передачей серверному разработчику.

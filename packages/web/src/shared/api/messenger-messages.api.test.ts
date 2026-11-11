@@ -118,19 +118,18 @@ function parsedFetchUrl(input: Parameters<typeof fetch>[0]) {
 }
 
 describe("messenger messages API", () => {
-  it("requests a bounded recent voter preview without changing default pagination", async () => {
+  it("requests a bounded voter preview using default ordering", async () => {
     const fetchMock = createFetchMock([{ uuid: USER_UUID }]);
     await expect(
       getPollVoters({ accessToken: "access-token", fetchImpl: fetchMock }, MESSAGE_UUID, {
         questionUuid: TOPIC_UUID,
         optionUuid: REACTION_UUID,
-        order: "recent",
         pageLimit: 5,
       }),
     ).resolves.toMatchObject({ items: [{ uuid: USER_UUID }] });
     const [url] = firstFetchCall(fetchMock);
     const params = parsedFetchUrl(url).searchParams;
-    expect(params.get("order")).toBe("recent");
+    expect(params.has("order")).toBe(false);
     expect(params.get("page_limit")).toBe("5");
     expect(params.has("page_marker")).toBe(false);
   });

@@ -123,9 +123,9 @@ test("creates and manages a poll without changing the draft @mock", async ({
   await expect.poll(() => requests.filter((item) => item.action === "settings").length).toBe(1);
   expect(requests[1]?.body).toMatchObject({ selected: true });
   expect(requests[2]?.body).toEqual({ settings: { closes_at: null, allow_adding_options: true } });
-  await poll.getByRole("button", { name: /добавить вариант|add option/i }).click();
-  await poll.getByRole("textbox", { name: /новый вариант|new option/i }).fill("Cafe");
-  await poll.getByRole("button", { name: /^(добавить|add)$/i }).click();
+  const newOption = poll.getByRole("textbox", { name: /новый вариант|new option/i });
+  await newOption.fill("Cafe");
+  await newOption.press("Enter");
   await expect(poll.getByRole("button", { name: "Cafe", exact: true })).toBeVisible();
   expect(requests[3]?.body).toMatchObject({ option: { text: "Cafe" } });
   await expect(textbox).toHaveValue("Draft remains");
