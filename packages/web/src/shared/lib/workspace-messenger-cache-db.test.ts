@@ -1494,16 +1494,31 @@ it("keeps the newest poll revision across page and realtime writes without losin
     ...message("poll", "2026-07-01T08:00:00Z"),
     payload: {
       kind: "poll" as const,
-      questions: [{ uuid: "q", text: "Latest", options: [], correctOptionUuids: [] }],
+      questions: [
+        { uuid: "q", text: "Latest", options: [{ uuid: "a", text: "A" }], correctOptionUuids: [] },
+      ],
       multipleAnswers: false,
-      isAnonymous: true,
+      isAnonymous: false,
       allowRevote: false,
       resultsVisibility: "always" as const,
       allowAddingOptions: false,
       closesAt: null,
       closedAt: null,
     },
-    pollState: { revision: 3, isClosed: true, voterCount: 1, questions: [], myVotes: [] },
+    pollState: {
+      revision: 3,
+      isClosed: true,
+      voterCount: 1,
+      questions: [
+        {
+          questionUuid: "q",
+          voterCount: 1,
+          optionCounts: { a: 1 },
+          optionVoterPreviews: { a: ["voter"] },
+        },
+      ],
+      myVotes: [],
+    },
     read: false,
   };
   await writeConversationMessagePage(OWNER, TOPIC_CONVERSATION, { messages: [original] });
@@ -1511,7 +1526,7 @@ it("keeps the newest poll revision across page and realtime writes without losin
     ...original,
     read: true,
     payload: { ...original.payload, questions: [] },
-    pollState: { ...original.pollState, revision: 2, isClosed: false },
+    pollState: { ...original.pollState, revision: 2, isClosed: false, questions: [] },
   });
   expect(await readCachedMessagesByUuids(OWNER, [original.uuid])).toMatchObject([
     { read: true, payload: original.payload, pollState: original.pollState },

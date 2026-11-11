@@ -639,14 +639,27 @@ describe("poll actions", () => {
           { uuid: MESSAGE_UUID, text: "Q", options: [{ uuid: REACTION_UUID, text: "A" }] },
         ],
         multiple_answers: false,
-        is_anonymous: true,
+        is_anonymous: false,
         allow_revote: false,
         results_visibility: "always",
         closes_at: null,
         closed_at: null,
         allow_adding_options: false,
       },
-      poll_state: { revision: 2, is_closed: false, voter_count: 0, questions: [], my_votes: [] },
+      poll_state: {
+        revision: 2,
+        is_closed: false,
+        voter_count: 1,
+        questions: [
+          {
+            question_uuid: MESSAGE_UUID,
+            voter_count: 1,
+            option_counts: { [REACTION_UUID]: 1 },
+            option_voter_previews: { [REACTION_UUID]: [USER_UUID] },
+          },
+        ],
+        my_votes: [],
+      },
     };
     const fetchMock = createFetchMock(poll);
     await expect(

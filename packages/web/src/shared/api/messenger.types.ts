@@ -126,6 +126,7 @@ export interface WorkspaceMessengerPollStateDto {
     question_uuid: string;
     voter_count: number;
     option_counts: Record<string, number>;
+    option_voter_previews?: Record<string, WorkspaceMessengerUuid[]>;
   }[];
   my_votes: { question_uuid: string; option_uuids: string[] }[];
 }
@@ -1128,6 +1129,20 @@ function isPollPayload(value: unknown): value is WorkspaceMessengerPollPayloadDt
     (value.closed_at == null || isDateTime(value.closed_at))
   );
 }
+function isPollVoterPreviews(value: unknown): boolean {
+  return (
+    isPlainRecord(value) &&
+    Object.entries(value).every(
+      ([id, users]) =>
+        isUuid(id) &&
+        Array.isArray(users) &&
+        users.length > 0 &&
+        users.every(isUuid) &&
+        new Set(users).size === users.length,
+    )
+  );
+}
+
 function isPollState(value: unknown): value is WorkspaceMessengerPollStateDto {
   return (
     isRecord(value) &&
@@ -1144,7 +1159,8 @@ function isPollState(value: unknown): value is WorkspaceMessengerPollStateDto {
         isPlainRecord(q.option_counts) &&
         Object.entries(q.option_counts).every(
           ([id, count]) => isUuid(id) && isNonNegativeInteger(count),
-        ),
+        ) &&
+        (q.option_voter_previews === undefined || isPollVoterPreviews(q.option_voter_previews)),
     ) &&
     Array.isArray(value.my_votes) &&
     value.my_votes.every(

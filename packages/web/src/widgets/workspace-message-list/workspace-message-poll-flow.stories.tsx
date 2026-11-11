@@ -4,11 +4,13 @@ import {
   CreatePollDialog,
   type PollDraft,
 } from "~/features/workspace-message-poll/create-poll-dialog.ui";
+import { visiblePollVoterQuestions } from "~/features/workspace-message-poll/workspace-message-poll-adapter.lib";
 import type {
   WorkspacePoll,
-  WorkspacePollVoters,
+  PollVoterTarget,
 } from "~/features/workspace-message-poll/workspace-message-poll.types";
 import { WorkspaceMessagePoll } from "~/features/workspace-message-poll/workspace-message-poll.ui";
+import { usePollDeadline } from "~/features/workspace-message-poll/workspace-poll-deadline.hook";
 import {
   PollCloseDialog,
   PollSettingsDialog,
@@ -106,7 +108,11 @@ type PreviewItem =
 
 function PollRow({ initialPoll }: Readonly<{ initialPoll: WorkspacePoll }>) {
   const [poll, setPoll] = useState(initialPoll);
-  const [voters, setVoters] = useState<WorkspacePollVoters>();
+  const [target, setTarget] = useState<PollVoterTarget | null>(null);
+  const deadlineReached = usePollDeadline(poll.closesAt);
+  const voterQuestions = visiblePollVoterQuestions(poll, false, deadlineReached);
+  const voterQuestion = voterQuestions.find((question) => question.id === target?.questionId);
+  const voterOption = voterQuestion?.options.find((option) => option.id === target?.optionId);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [closeOpen, setCloseOpen] = useState(false);
   const updatePoll = (update: (current: WorkspacePoll) => WorkspacePoll) => {
@@ -153,7 +159,17 @@ function PollRow({ initialPoll }: Readonly<{ initialPoll: WorkspacePoll }>) {
         bodyOverride={
           <WorkspaceMessagePoll
             poll={poll}
-            voters={voters}
+            deadlineReached={deadlineReached}
+            voterList={{
+              questions: voterQuestions,
+              target,
+              onSelect: setTarget,
+              page: voterOption && {
+                items: voterQuestion?.selectedOptionIds.includes(voterOption.id)
+                  ? [{ id: author, name: "Alex" }]
+                  : [],
+              },
+            }}
             onVote={(questionId, optionId, selected) =>
               updatePoll((current) => applyVote(current, questionId, optionId, selected) ?? current)
             }
@@ -169,18 +185,6 @@ function PollRow({ initialPoll }: Readonly<{ initialPoll: WorkspacePoll }>) {
               }));
               return Promise.resolve();
             }}
-            onLoadVoters={(questionId, optionId) =>
-              setVoters({
-                questionId,
-                optionId,
-                items: poll.questions.some(
-                  (question) =>
-                    question.id === questionId && question.selectedOptionIds.includes(optionId),
-                )
-                  ? [{ id: author, name: "Alex" }]
-                  : [],
-              })
-            }
           />
         }
       />

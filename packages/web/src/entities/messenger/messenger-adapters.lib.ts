@@ -178,6 +178,14 @@ export function adaptMessengerMessage(dto: WorkspaceMessengerMessageDto): Messen
               questionUuid: q.question_uuid,
               voterCount: q.voter_count,
               optionCounts: { ...q.option_counts },
+              ...(q.option_voter_previews && {
+                optionVoterPreviews: Object.fromEntries(
+                  Object.entries(q.option_voter_previews).map(([option, users]) => [
+                    option,
+                    [...users],
+                  ]),
+                ),
+              }),
             })),
             myVotes: dto.poll_state.my_votes.map((v) => ({
               questionUuid: v.question_uuid,

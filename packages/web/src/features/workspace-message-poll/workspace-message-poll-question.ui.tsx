@@ -11,7 +11,7 @@ import type {
 type QuestionProps = Readonly<
   Pick<
     WorkspaceMessagePollProps,
-    "poll" | "readOnly" | "onVote" | "onLoadVoters" | "onAddOption" | "renderVoterAvatar"
+    "poll" | "readOnly" | "onVote" | "voterList" | "onAddOption" | "renderVoterAvatar"
   > & {
     subtitle?: string;
     question: WorkspacePollQuestion;
@@ -21,7 +21,6 @@ type QuestionProps = Readonly<
     busy: boolean;
     error?: string;
     maxOptions: number;
-    onOpenVoters: (questionId: string, optionId: string) => void;
   }
 >;
 type OptionProps = Readonly<
@@ -145,8 +144,7 @@ function PollOption({
   results,
   readOnly,
   onVote,
-  onLoadVoters,
-  onOpenVoters,
+  voterList,
   renderVoterAvatar,
 }: OptionProps): React.ReactElement {
   const { t } = useTranslation();
@@ -161,8 +159,8 @@ function PollOption({
     !correct;
   const percent =
     question.voterCount > 0 ? Math.round((option.votes / question.voterCount) * 100) : 0;
-  const showVoters = !poll.anonymous && !readOnly;
-  const previewVoters = showVoters ? option.previewVoters : undefined;
+  const previewVoters =
+    voterList && (voterList.getPreview?.(question.id, option) ?? option.previewVoters);
   const optionTone = correct ? "workspace-poll-option-correct" : "";
   const selectedTone = selected && !wrong ? "workspace-poll-option-selected" : "";
   const avatars = previewVoters?.length ? (
@@ -213,22 +211,24 @@ function PollOption({
             )}
           </span>
         </button>
-        {showVoters && (
+        {!poll.anonymous && !readOnly && (
           <span className="workspace-poll-voter-slot">
-            {results && onLoadVoters && (
+            {voterList && (
               <button
                 type="button"
                 className="workspace-poll-voters-button rounded outline-none focus-visible:ring-2 focus-visible:ring-accent"
                 aria-label={t("pollBubble.showVoters", { option: option.text })}
                 onClick={() => {
-                  onOpenVoters(question.id, option.id);
-                  onLoadVoters(question.id, option.id, false);
+                  voterList.onSelect({
+                    questionId: question.id,
+                    optionId: option.id,
+                    mode: "option",
+                  });
                 }}
               >
                 {avatars}
               </button>
             )}
-            {results && !onLoadVoters && avatars}
           </span>
         )}
       </div>
@@ -257,8 +257,7 @@ export function PollQuestion({
   readOnly,
   onVote,
   onAddOption,
-  onLoadVoters,
-  onOpenVoters,
+  voterList,
   renderVoterAvatar,
 }: QuestionProps): React.ReactElement {
   const { t } = useTranslation();
@@ -284,8 +283,7 @@ export function PollQuestion({
               results,
               readOnly,
               onVote,
-              onLoadVoters,
-              onOpenVoters,
+              voterList,
               renderVoterAvatar,
             }}
           />

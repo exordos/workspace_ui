@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { useTranslation } from "~/i18n/i18n";
+import { visiblePollVoterQuestions } from "./workspace-message-poll-adapter.lib";
 import { WorkspaceMessagePoll } from "./workspace-message-poll.ui";
-import type { WorkspacePoll, WorkspacePollVoters } from "./workspace-message-poll.types";
+import type { PollVoterTarget, WorkspacePoll } from "./workspace-message-poll.types";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 
 function fixture(russian: boolean, answered: boolean): WorkspacePoll {
@@ -139,8 +140,14 @@ const meta = {
       })),
     };
     const [current, setCurrent] = useState<WorkspacePoll | null>(null);
-    const [voters, setVoters] = useState<WorkspacePollVoters | undefined>();
+    const [target, setTarget] = useState<PollVoterTarget | null>(null);
+    const [limit, setLimit] = useState(20);
     const poll = current ?? initialPoll;
+    const voterQuestions = visiblePollVoterQuestions(poll, args.readOnly ?? false);
+    const option = voterQuestions
+      .find((question) => question.id === target?.questionId)
+      ?.options.find((item) => item.id === target?.optionId);
+    const count = Math.min(option?.votes ?? 0, limit);
     return (
       <div
         className={`${context.name === "Public Results" ? "w-[360px] px-3 py-2" : "w-[440px] px-4 py-3"} max-w-full rounded-lg bg-msg-bg`}
@@ -158,7 +165,22 @@ const meta = {
               : args.questionErrors
           }
           poll={poll}
-          voters={voters}
+          voterList={{
+            questions: voterQuestions,
+            target,
+            onSelect: (next) => {
+              setTarget(next);
+              setLimit(20);
+            },
+            onLoadPage: () => setLimit((previous) => previous + 20),
+            page: option && {
+              items: Array.from({ length: count }, (_, index) => ({
+                id: `synthetic-voter-${index}`,
+                name: `${locale === "ru" ? "Участник команды" : "Team member"} ${index + 1}`,
+              })),
+              hasMore: count < option.votes,
+            },
+          }}
           onVote={(questionId, optionId, selected) => {
             const questions = poll.questions.map((q) => {
               if (q.id !== questionId) return q;
@@ -205,26 +227,6 @@ const meta = {
               }),
             )
           }
-          onLoadVoters={(questionId, optionId, more) => {
-            const option = poll.questions
-              .find((q) => q.id === questionId)
-              ?.options.find((o) => o.id === optionId);
-            const count = Math.min(
-              option?.votes ?? 0,
-              more && voters?.questionId === questionId && voters.optionId === optionId
-                ? voters.items.length + 20
-                : 20,
-            );
-            setVoters({
-              questionId,
-              optionId,
-              items: Array.from({ length: count }, (_, index) => ({
-                id: `synthetic-voter-${index}`,
-                name: `${locale === "ru" ? "Участник команды" : "Team member"} ${index + 1}`,
-              })),
-              hasMore: count < (option?.votes ?? 0),
-            });
-          }}
         />
       </div>
     );

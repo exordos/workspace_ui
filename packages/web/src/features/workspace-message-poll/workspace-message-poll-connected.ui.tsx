@@ -1,8 +1,5 @@
-import { useEffect, useRef, useState } from "react";
-import {
-  mutateMessengerPoll,
-  getMessengerPollVoters,
-} from "~/entities/messenger/messenger-poll-actions.lib";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { mutateMessengerPoll } from "~/entities/messenger/messenger-poll-actions.lib";
 import type { MessengerMessage } from "~/entities/messenger/messenger.types";
 import { selectUserDisplayName } from "~/entities/user/user-selectors.lib";
 import type { UsersById } from "~/entities/user/user.types";
@@ -12,14 +9,12 @@ import {
   isWorkspaceRuntimeRequestInvalidated,
 } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { t } from "~/i18n/i18n";
-import { toWorkspacePoll } from "./workspace-message-poll-adapter.lib";
+import { toWorkspacePoll, visiblePollVoterQuestions } from "./workspace-message-poll-adapter.lib";
 import { WorkspaceMessagePoll } from "./workspace-message-poll.ui";
 import { PollCloseDialog, PollSettingsDialog } from "./workspace-poll-management-dialogs.ui";
-import { usePollVoterPreviews } from "./workspace-poll-voter-previews.hook";
-import type {
-  WorkspaceMessagePollProps,
-  WorkspacePollVoters,
-} from "./workspace-message-poll.types";
+import { usePollVoterList } from "./workspace-poll-voter-list.hook";
+import { pollVoterOptionKey, usePollVoterPreviews } from "./workspace-poll-voter-previews.hook";
+import type { WorkspaceMessagePollProps } from "./workspace-message-poll.types";
 
 const getRuntimeContext = () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
 
@@ -41,7 +36,7 @@ export function WorkspaceMessagePollConnected({
   setSettingsOpen: (open: boolean) => void;
   closeOpen: boolean;
   setCloseOpen: (open: boolean) => void;
-  deadlineReached?: boolean;
+  deadlineReached: boolean;
   renderVoterAvatar?: WorkspaceMessagePollProps["renderVoterAvatar"];
 }>) {
   const [pendingQuestions, setPendingQuestions] = useState<string[]>([]);
@@ -51,35 +46,30 @@ export function WorkspaceMessagePollConnected({
   const [pending, setPending] = useState(false);
   const pendingRef = useRef(false);
   const [error, setError] = useState<string>();
-  const [voters, setVoters] = useState<WorkspacePollVoters>();
-  const voterRequest = useRef(0);
-  const voterMarker = useRef<string | undefined>(undefined);
-  const failedMore = useRef(false);
   const alive = useRef(true);
   useEffect(() => {
     alive.current = true;
     return () => {
       alive.current = false;
-      voterRequest.current += 1;
     };
   }, []);
   const enabled = !readOnly;
-  const previewVoters = usePollVoterPreviews(message, enabled, deadlineReached);
-  const snapshot = toWorkspacePoll(message);
-  const poll = snapshot && {
-    ...snapshot,
-    questions: snapshot.questions.map((question) => ({
-      ...question,
-      options: question.options.map((option) => ({
-        ...option,
-        previewVoters: previewVoters?.[option.id]?.map((uuid) => ({
-          id: uuid,
-          name: selectUserDisplayName(usersById[uuid], `#${uuid.slice(0, 8)}`),
-          avatarUrl: usersById[uuid]?.avatarUrl ?? undefined,
-        })),
-      })),
-    })),
-  };
+  const poll = useMemo(
+    () => toWorkspacePoll(message.uuid, message.payload, message.pollState),
+    [message.uuid, message.payload, message.pollState],
+  );
+  const voterQuestions = useMemo(
+    () => visiblePollVoterQuestions(poll, readOnly, deadlineReached),
+    [poll, readOnly, deadlineReached],
+  );
+  const revision = message.pollState?.revision;
+  const fallbackPreviews = usePollVoterPreviews(message.uuid, revision, voterQuestions);
+  const voterList = usePollVoterList(message.uuid, revision, voterQuestions);
+  const toVoter = (uuid: string) => ({
+    id: uuid,
+    name: selectUserDisplayName(usersById[uuid], `#${uuid.slice(0, 8)}`),
+    avatarUrl: usersById[uuid]?.avatarUrl ?? undefined,
+  });
 
   if (poll == null) return <p role="status">{t("pollBubble.unavailable")}</p>;
 
@@ -131,70 +121,6 @@ export function WorkspaceMessagePollConnected({
     }
   };
 
-  const loadVoters = async (questionId: string, optionId: string, more: boolean) => {
-    const context = getRuntimeContext();
-    if (!context || !enabled) return;
-    const guard = captureWorkspaceRuntimeRequestContext(getRuntimeContext);
-    const request = ++voterRequest.current;
-    const loadMore =
-      voters?.error && voters.questionId === questionId && voters.optionId === optionId
-        ? failedMore.current
-        : more;
-    const pageMarker = loadMore ? voterMarker.current : undefined;
-    if (!loadMore) voterMarker.current = undefined;
-    setVoters((old) => ({
-      questionId,
-      optionId,
-      items:
-        loadMore && old?.questionId === questionId && old.optionId === optionId ? old.items : [],
-      loading: true,
-    }));
-    try {
-      const result = await getMessengerPollVoters({
-        runtimeContext: context,
-        getRuntimeContext,
-        messageUuid: message.uuid,
-        questionUuid: questionId,
-        optionUuid: optionId,
-        pageMarker,
-      });
-      if (
-        !alive.current ||
-        request !== voterRequest.current ||
-        isWorkspaceRuntimeRequestInvalidated(guard, getRuntimeContext)
-      )
-        return;
-      voterMarker.current = result.nextPageMarker ?? undefined;
-      setVoters((old) => ({
-        questionId,
-        optionId,
-        items: [
-          ...(loadMore ? (old?.items ?? []) : []),
-          ...result.items.map(({ uuid }) => ({
-            id: uuid,
-            name: selectUserDisplayName(usersById[uuid], `#${uuid.slice(0, 8)}`),
-            avatarUrl: usersById[uuid]?.avatarUrl ?? undefined,
-          })),
-        ],
-        hasMore: Boolean(result.nextPageMarker),
-      }));
-    } catch {
-      if (
-        !alive.current ||
-        request !== voterRequest.current ||
-        isWorkspaceRuntimeRequestInvalidated(guard, getRuntimeContext)
-      )
-        return;
-      failedMore.current = loadMore;
-      setVoters((old) => ({
-        questionId,
-        optionId,
-        items: old?.items ?? [],
-        error: t("pollBubble.votersError"),
-        hasMore: loadMore,
-      }));
-    }
-  };
   return (
     <>
       <WorkspaceMessagePoll
@@ -202,7 +128,7 @@ export function WorkspaceMessagePollConnected({
         renderVoterAvatar={renderVoterAvatar}
         deadlineReached={deadlineReached}
         readOnly={!enabled}
-        {...{ pending, pendingQuestionIds: pendingQuestions, questionErrors, error, voters }}
+        {...{ pending, pendingQuestionIds: pendingQuestions, questionErrors, error }}
         onVote={
           enabled
             ? (questionUuid, optionUuid, selected) => {
@@ -224,13 +150,25 @@ export function WorkspaceMessagePollConnected({
               }
             : undefined
         }
-        onLoadVoters={
-          enabled
-            ? (questionId, optionId, more) => {
-                void loadVoters(questionId, optionId, more);
-              }
-            : undefined
-        }
+        voterList={{
+          questions: voterQuestions,
+          target: voterList.target,
+          onSelect: voterList.select,
+          onLoadPage: voterList.loadPage,
+          page: voterList.page && {
+            items: voterList.page.items.map(toVoter),
+            loading: voterList.page.loading,
+            hasMore: voterList.page.hasMore,
+            error: voterList.page.failed ? t("pollBubble.votersError") : undefined,
+          },
+          getPreview: (questionId, option) => {
+            if (option.votes === 0) return undefined;
+            const uuids =
+              option.previewVoterUuids ??
+              fallbackPreviews?.[pollVoterOptionKey(questionId, option.id)];
+            return uuids?.slice(0, 5).map(toVoter);
+          },
+        }}
       />
       <PollSettingsDialog
         open={settingsOpen}

@@ -180,7 +180,12 @@ export interface WorkspaceMessengerCachedMessage {
     revision: number;
     isClosed: boolean;
     voterCount: number;
-    questions: { questionUuid: string; voterCount: number; optionCounts: Record<string, number> }[];
+    questions: {
+      questionUuid: string;
+      voterCount: number;
+      optionCounts: Record<string, number>;
+      optionVoterPreviews?: Record<string, string[]>;
+    }[];
     myVotes: { questionUuid: string; optionUuids: string[] }[];
   } | null;
   read?: boolean;

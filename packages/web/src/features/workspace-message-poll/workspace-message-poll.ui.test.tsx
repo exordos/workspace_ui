@@ -1,8 +1,10 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
+import { useState } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { setLocale } from "~/i18n/i18n";
+import { visiblePollVoterQuestions } from "./workspace-message-poll-adapter.lib";
 import { WorkspaceMessagePoll } from "./workspace-message-poll.ui";
-import type { WorkspacePoll } from "./workspace-message-poll.types";
+import type { PollVoterTarget, WorkspacePoll } from "./workspace-message-poll.types";
 
 const poll: WorkspacePoll = {
   kind: "poll",
@@ -39,39 +41,26 @@ const poll: WorkspacePoll = {
     },
   ],
 };
+function PollWithVoterList({ poll }: Readonly<{ poll: WorkspacePoll }>) {
+  const [target, setTarget] = useState<PollVoterTarget | null>(null);
+  return (
+    <WorkspaceMessagePoll
+      poll={poll}
+      voterList={{ questions: visiblePollVoterQuestions(poll, false), target, onSelect: setTarget }}
+    />
+  );
+}
+
 beforeEach(() => setLocale("en"));
 describe("WorkspaceMessagePoll", () => {
-  it("shows at most five voter avatars and keeps the voter-list action", () => {
-    const previewVoters = Array.from({ length: 7 }, (_, index) => ({
-      id: `voter-${index}`,
-      name: `Voter ${index}`,
-    }));
-    const preview = {
-      ...poll,
-      questions: poll.questions.map((question) => ({
-        ...question,
-        options: question.options.map((option) => ({ ...option, previewVoters })),
-      })),
-    };
-    const onLoadVoters = vi.fn();
-    const { rerender } = render(
-      <WorkspaceMessagePoll poll={preview} onLoadVoters={onLoadVoters} />,
-    );
-    expect(screen.getAllByTitle("Voter 0")).toHaveLength(2);
-    expect(screen.queryByTitle("Voter 5")).not.toBeInTheDocument();
+  it("opens the option-specific dialog without an answer selector", () => {
+    render(<PollWithVoterList poll={poll} />);
     fireEvent.click(screen.getByRole("button", { name: /Who chose .*Alpha/ }));
-    expect(onLoadVoters).toHaveBeenCalledWith("first", "a", false);
     const dialog = within(screen.getByRole("dialog", { name: "Voters" }));
     expect(dialog.queryByRole("combobox")).not.toBeInTheDocument();
     expect(dialog.getByText("First question")).toBeInTheDocument();
     expect(dialog.getByText("Alpha")).toBeInTheDocument();
     expect(dialog.getByText("3 participants")).toBeInTheDocument();
-    rerender(<WorkspaceMessagePoll poll={preview} readOnly onLoadVoters={onLoadVoters} />);
-    expect(screen.queryByTitle("Voter 0")).not.toBeInTheDocument();
-    rerender(
-      <WorkspaceMessagePoll poll={{ ...preview, anonymous: true }} onLoadVoters={onLoadVoters} />,
-    );
-    expect(screen.queryByTitle("Voter 0")).not.toBeInTheDocument();
   });
   it.each([false, true])(
     "applies shared multipleAnswers=%s without locking another question",
@@ -181,33 +170,9 @@ describe("WorkspaceMessagePoll", () => {
     expect(screen.getByRole("button", { name: /Alpha/ })).toBeDisabled();
     expect(screen.getByRole("button", { name: /Gamma/ })).toBeEnabled();
   });
-  it("never exposes voters in anonymous or read-only snapshots", () => {
-    const onLoadVoters = vi.fn();
-    render(
-      <WorkspaceMessagePoll poll={{ ...poll, anonymous: true }} onLoadVoters={onLoadVoters} />,
-    );
-    expect(screen.queryByRole("button", { name: /Who chose/ })).not.toBeInTheDocument();
-    expect(onLoadVoters).not.toHaveBeenCalled();
-  });
-  it("opens the summary voter list and allows switching answers", () => {
-    const onLoadVoters = vi.fn();
-    const first = poll.questions[0]!;
-    render(
-      <WorkspaceMessagePoll
-        poll={{ ...poll, questions: [{ ...first, correctOptionIds: undefined }] }}
-        onLoadVoters={onLoadVoters}
-      />,
-    );
-    fireEvent.click(screen.getByRole("button", { name: "4 participants · View votes" }));
-    expect(onLoadVoters).toHaveBeenLastCalledWith("first", "a", false);
-    fireEvent.click(screen.getByRole("combobox", { name: "Answer" }));
-    fireEvent.click(screen.getByRole("option", { name: "Beta" }));
-    expect(onLoadVoters).toHaveBeenLastCalledWith("first", "b", false);
-  });
   it("routes identical answer labels to the selected question in the voter list", () => {
-    const onLoadVoters = vi.fn();
     render(
-      <WorkspaceMessagePoll
+      <PollWithVoterList
         poll={{
           ...poll,
           resultsVisibility: "always",
@@ -220,7 +185,6 @@ describe("WorkspaceMessagePoll", () => {
             })),
           })),
         }}
-        onLoadVoters={onLoadVoters}
       />,
     );
     fireEvent.click(screen.getByRole("button", { name: "4 participants · View votes" }));
@@ -230,9 +194,10 @@ describe("WorkspaceMessagePoll", () => {
       name: "Second question",
     });
     fireEvent.click(within(question).getByRole("option", { name: "No" }));
-    expect(onLoadVoters).toHaveBeenLastCalledWith("second", "d", false);
+    const dialog = within(screen.getByRole("dialog", { name: "Voters" }));
+    expect(dialog.getByText("Second question")).toBeVisible();
+    expect(trigger).toHaveTextContent("No");
     expect(trigger).toHaveFocus();
-    expect(screen.getByRole("dialog", { name: "Voters" })).toBeInTheDocument();
   });
   it("shows the actual closure time and hides the active voting description", () => {
     render(

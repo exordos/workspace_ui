@@ -5,6 +5,7 @@ import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { WorkspaceAvatar } from "~/features/workspace-avatar/workspace-avatar.ui";
 import { WorkspaceMessagePollConnected } from "~/features/workspace-message-poll/workspace-message-poll-connected.ui";
+import { usePollDeadline } from "~/features/workspace-message-poll/workspace-poll-deadline.hook";
 import { WorkspaceMessageBubblePresentation } from "./workspace-message-bubble-presentation.ui";
 import type { WorkspaceMessageBubbleProps } from "./workspace-message-bubble.types";
 
@@ -27,34 +28,10 @@ function PollBubbleSession({
 }: WorkspaceMessageBubbleProps & { source: MessengerMessage }) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [closeOpen, setCloseOpen] = useState(false);
-  const [now, setNow] = useState(Date.now);
   const stream = useMessengerStore((state) => state.streamsById[source.streamUuid]);
   const owner = useMessengerStore((state) => state.ownerKey);
   const runtime = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
-  const deadline =
-    source.payload.kind === "poll" && source.payload.closesAt
-      ? Date.parse(source.payload.closesAt)
-      : NaN;
-  useEffect(() => {
-    if (!Number.isFinite(deadline)) return;
-    let timer: number;
-    const refresh = () => {
-      window.clearTimeout(timer);
-      const current = Date.now();
-      setNow(current);
-      if (deadline > current)
-        timer = window.setTimeout(refresh, Math.min(deadline - current, 2147483647));
-    };
-    refresh();
-    window.addEventListener("focus", refresh);
-    document.addEventListener("visibilitychange", refresh);
-    return () => {
-      window.clearTimeout(timer);
-      window.removeEventListener("focus", refresh);
-      document.removeEventListener("visibilitychange", refresh);
-    };
-  }, [deadline]);
-  const expired = Number.isFinite(deadline) && deadline <= now;
+  const expired = usePollDeadline(source.payload.kind === "poll" ? source.payload.closesAt : null);
   const participant =
     runtime != null &&
     owner === workspaceRuntimeOwnerKey(runtime) &&

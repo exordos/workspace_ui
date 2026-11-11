@@ -3095,7 +3095,7 @@ it("applies a personalized poll update through the message guard and realtime ap
     kind: "poll" as const,
     questions: [{ uuid: MESSAGE_B, text: "Q", options: [{ uuid: MESSAGE_C, text: "A" }] }],
     multiple_answers: false,
-    is_anonymous: true,
+    is_anonymous: false,
     allow_revote: true,
     results_visibility: "after_vote" as const,
   };
@@ -3109,7 +3109,14 @@ it("applies a personalized poll update through the message guard and realtime ap
       revision: 2,
       is_closed: false,
       voter_count: 1,
-      questions: [{ question_uuid: MESSAGE_B, voter_count: 1, option_counts: { [MESSAGE_C]: 1 } }],
+      questions: [
+        {
+          question_uuid: MESSAGE_B,
+          voter_count: 1,
+          option_counts: { [MESSAGE_C]: 1 },
+          option_voter_previews: { [MESSAGE_C]: [initial.user_uuid] },
+        },
+      ],
       my_votes: [{ question_uuid: MESSAGE_B, option_uuids: [MESSAGE_C] }],
     },
   };
@@ -3127,10 +3134,18 @@ it("applies a personalized poll update through the message guard and realtime ap
   expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.pollState).toMatchObject({
     revision: 2,
     myVotes: [{ questionUuid: MESSAGE_B, optionUuids: [MESSAGE_C] }],
+    questions: [{ optionVoterPreviews: { [MESSAGE_C]: [initial.user_uuid] } }],
   });
   expect(cache.patchCachedMessage).toHaveBeenCalledWith(
     context.ownerKey,
-    expect.objectContaining({ pollState: expect.objectContaining({ revision: 2 }) }),
+    expect.objectContaining({
+      pollState: expect.objectContaining({
+        revision: 2,
+        questions: [
+          expect.objectContaining({ optionVoterPreviews: { [MESSAGE_C]: [initial.user_uuid] } }),
+        ],
+      }),
+    }),
     expect.any(Function),
   );
 });

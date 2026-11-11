@@ -1,4 +1,4 @@
-import type { WebSocketRoute } from "@playwright/test";
+import type { Page, WebSocketRoute } from "@playwright/test";
 import { createMessengerPlacementUuid } from "../packages/web/src/entities/messenger/messenger-message-identity.lib";
 import type {
   WorkspaceMessengerCreateMessageRequestBody,
@@ -15,6 +15,13 @@ import {
   E2E_USER_UUID,
   messageSuccess,
 } from "./mocks/workspace-default-responses";
+
+async function openPollComposer(page: Page) {
+  await page
+    .getByRole("button", { name: /показать инструменты форматирования|show formatting tools/i })
+    .click();
+  await page.getByRole("button", { name: /создать опрос|create poll/i }).click();
+}
 
 test("creates and manages a poll without changing the draft @mock", async ({
   authenticated: page,
@@ -93,7 +100,7 @@ test("creates and manages a poll without changing the draft @mock", async ({
   await page.goto(`${e2eOrgBasePath()}/stream/${E2E_STREAM_UUID}/topic/${E2E_TOPIC_UUID}`);
   const textbox = await expectReadyMessageComposer(page);
   await textbox.fill("Draft remains");
-  await page.getByRole("button", { name: /создать опрос|create poll/i }).click();
+  await openPollComposer(page);
   const dialog = page.getByRole("dialog");
   await dialog.getByPlaceholder(/введите вопрос|enter a question/i).fill("Where?");
   const options = dialog.getByPlaceholder(/добавить ответ|add an answer/i);
@@ -154,14 +161,15 @@ test("keeps poll controls within the bubble while voting and closing @mock", asy
   let message: WorkspaceMessengerMessageDto | null = null;
   let releaseVote: (() => void) | undefined;
   let voteAttempt = 0;
+  const voterRequests: string[] = [];
+  const voterUuids = (count: number) =>
+    Array.from(
+      { length: count },
+      (_, index) => `bbbbbbbb-bbbb-4bbb-8bbb-${String(index).padStart(12, "0")}`,
+    );
   await page.route(/\/messenger\/messages\/[^/]+\/poll_voters\/?\?/, async (route) => {
-    const optionUuid = new URL(route.request().url()).searchParams.get("option_uuid");
-    const count = message?.poll_state?.questions[0]?.option_counts[optionUuid ?? ""] ?? 0;
-    await route.fulfill({
-      json: Array.from({ length: Math.min(5, count) }, (_, index) => ({
-        uuid: `bbbbbbbb-bbbb-4bbb-8bbb-${String(index).padStart(12, "0")}`,
-      })),
-    });
+    voterRequests.push(route.request().url());
+    await route.fulfill({ json: [] });
   });
   await page.route(/\/messenger\/messages\/?(?:\?.*)?$/, async (route) => {
     if (route.request().method() === "GET") return route.fulfill({ json: [] });
@@ -206,6 +214,7 @@ test("keeps poll controls within the bubble while voting and closing @mock", asy
                 question_uuid: question.uuid,
                 voter_count: selected ? 1 : 0,
                 option_counts: selected ? { [option.uuid]: 1 } : {},
+                option_voter_previews: selected ? { [option.uuid]: voterUuids(1) } : undefined,
               },
             ],
             my_votes: selected
@@ -224,7 +233,7 @@ test("keeps poll controls within the bubble while voting and closing @mock", asy
   );
   await page.goto(`${e2eOrgBasePath()}/stream/${E2E_STREAM_UUID}/topic/${E2E_TOPIC_UUID}`);
   await expectReadyMessageComposer(page);
-  await page.getByRole("button", { name: /создать опрос|create poll/i }).click();
+  await openPollComposer(page);
   const dialog = page.getByRole("dialog");
   await dialog.getByPlaceholder(/введите вопрос|enter a question/i).fill("Geometry?");
   const options = dialog.getByPlaceholder(/добавить ответ|add an answer/i);
@@ -284,6 +293,7 @@ test("keeps poll controls within the bubble while voting and closing @mock", asy
             question_uuid: question.uuid,
             voter_count: count,
             option_counts: { [option.uuid]: count },
+            option_voter_previews: { [option.uuid]: voterUuids(count) },
           },
         ],
         my_votes: [{ question_uuid: question.uuid, option_uuids: [option.uuid] }],
@@ -327,4 +337,5 @@ test("keeps poll controls within the bubble while voting and closing @mock", asy
   await expect(choice).toBeDisabled();
   await expect(poll.getByText(/0%/).first()).toBeVisible();
   await expectFits();
+  expect(voterRequests).toHaveLength(0);
 });

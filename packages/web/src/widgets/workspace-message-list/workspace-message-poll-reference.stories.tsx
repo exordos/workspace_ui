@@ -1,9 +1,10 @@
 import { useState } from "react";
 import type { MessengerMessage } from "~/entities/messenger/messenger.types";
+import { visiblePollVoterQuestions } from "~/features/workspace-message-poll/workspace-message-poll-adapter.lib";
 import type {
   WorkspacePoll,
   WorkspacePollVoter,
-  WorkspacePollVoters,
+  PollVoterTarget,
 } from "~/features/workspace-message-poll/workspace-message-poll.types";
 import { WorkspaceMessagePoll } from "~/features/workspace-message-poll/workspace-message-poll.ui";
 import { useTranslation } from "~/i18n/i18n";
@@ -119,7 +120,10 @@ function ReferenceBubble({
   russian,
 }: Readonly<{ variant: ReferenceVariant; russian: boolean }>) {
   const [poll, setPoll] = useState(() => pollFixture(variant, russian));
-  const [voters, setVoters] = useState<WorkspacePollVoters>();
+  const [target, setTarget] = useState<PollVoterTarget | null>(null);
+  const voterQuestions = visiblePollVoterQuestions(poll, false);
+  const voterQuestion = voterQuestions.find((question) => question.id === target?.questionId);
+  const voterOption = voterQuestion?.options.find((option) => option.id === target?.optionId);
   const message: MessengerMessage = {
     uuid: poll.id,
     conversationId: "topic:reference-stream:reference-topic",
@@ -172,7 +176,12 @@ function ReferenceBubble({
         bodyOverride={
           <WorkspaceMessagePoll
             poll={poll}
-            voters={voters}
+            voterList={{
+              questions: voterQuestions,
+              target,
+              onSelect: setTarget,
+              page: voterOption && { items: voterOption.previewVoters ?? [] },
+            }}
             deadlineReached={false}
             onVote={(questionId, optionId, selected) =>
               setPoll((previous) => applyVote(previous, questionId, optionId, selected))
@@ -191,16 +200,6 @@ function ReferenceBubble({
               }));
               return Promise.resolve();
             }}
-            onLoadVoters={(questionId, optionId) =>
-              setVoters({
-                questionId,
-                optionId,
-                items:
-                  poll.questions
-                    .find((question) => question.id === questionId)
-                    ?.options.find((option) => option.id === optionId)?.previewVoters ?? [],
-              })
-            }
           />
         }
       />

@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from "react";
+import React from "react";
 import "./workspace-message-poll.css";
 import { useTranslation } from "~/i18n/i18n";
 import { PollQuestion } from "./workspace-message-poll-question.ui";
 import { PollVotersDialog } from "./workspace-message-poll-voters-dialog.ui";
+import { usePollDeadline } from "./workspace-poll-deadline.hook";
 import type { WorkspaceMessagePollProps } from "./workspace-message-poll.types";
 
 export function WorkspaceMessagePoll({
@@ -12,51 +13,21 @@ export function WorkspaceMessagePoll({
   questionErrors = {},
   pending = false,
   error,
-  voters,
+  voterList,
   renderVoterAvatar,
   onVote,
   onAddOption,
-  onLoadVoters,
   maxOptions = 20,
   deadlineReached,
 }: Readonly<WorkspaceMessagePollProps>): React.ReactElement {
   const { t, locale } = useTranslation();
-  const [now, setNow] = useState(Date.now);
-  const [voterTarget, setVoterTarget] = useState<{
-    questionId: string;
-    optionId: string;
-    mode: "option" | "overview";
-  } | null>(null);
-  const deadline = poll.closesAt ? Date.parse(poll.closesAt) : NaN;
-  useEffect(() => {
-    if (deadlineReached !== undefined || !Number.isFinite(deadline)) return;
-    let timer: number;
-    const refresh = () => {
-      window.clearTimeout(timer);
-      const current = Date.now();
-      setNow(current);
-      if (deadline > current)
-        timer = window.setTimeout(refresh, Math.min(deadline - current, 2147483647));
-    };
-    refresh();
-    window.addEventListener("focus", refresh);
-    document.addEventListener("visibilitychange", refresh);
-    return () => {
-      window.clearTimeout(timer);
-      window.removeEventListener("focus", refresh);
-      document.removeEventListener("visibilitychange", refresh);
-    };
-  }, [deadline, deadlineReached]);
-  const closed = poll.closed || (deadlineReached ?? (Number.isFinite(deadline) && deadline <= now));
+  const expired = usePollDeadline(poll.closesAt, deadlineReached);
+  const closed = poll.closed || expired;
   const canAct = !readOnly && !closed && !pending;
   const visibleResults =
     poll.resultsVisibility === "always" ||
     closed ||
     poll.questions.every((q) => q.selectedOptionIds.length > 0);
-  const activeVoters =
-    voters?.questionId === voterTarget?.questionId && voters?.optionId === voterTarget?.optionId
-      ? voters
-      : undefined;
   const quiz = poll.questions.some(
     (question) => question.selectedOptionIds.length > 0 && question.correctOptionIds?.length,
   );
@@ -71,19 +42,42 @@ export function WorkspaceMessagePoll({
       ]
         .filter(Boolean)
         .join(" · ");
-  const completedAt = poll.closedAt ?? (deadline <= now ? poll.closesAt : null);
+  const completedAt = poll.closedAt ?? (expired ? poll.closesAt : null);
   const statusDate = closed ? completedAt : poll.closesAt;
   const formattedDate = statusDate
     ? `${new Date(statusDate).toLocaleDateString(locale, { day: "numeric", month: "long" })}, ${new Date(statusDate).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" })}`
     : null;
-  const openVoters = (questionId: string, optionId: string) => {
-    setVoterTarget({ questionId, optionId, mode: "overview" });
-    onLoadVoters?.(questionId, optionId, false);
-  };
-  const firstQuestion = poll.questions[0];
+  const firstQuestion = voterList?.questions[0];
   const firstOption =
     firstQuestion?.options.find((option) => firstQuestion.selectedOptionIds.includes(option.id)) ??
     firstQuestion?.options[0];
+  const canOpenOverview =
+    visibleResults && !quiz && !closed && voterList && firstQuestion && firstOption;
+  const countRegion = visibleResults
+    ? { role: "region", "aria-label": t("pollBubble.countsRegion") }
+    : undefined;
+  const countLabel = t("pollBubble.participantCount", { count: poll.voterCount });
+  let summary = <span>{t("pollBubble.resultsAfterVote")}</span>;
+  if (visibleResults) summary = <span>{countLabel}</span>;
+  if (canOpenOverview) {
+    summary = (
+      <button
+        type="button"
+        className="workspace-poll-summary-link rounded outline-none focus-visible:ring-2 focus-visible:ring-accent"
+        onClick={() =>
+          voterList.onSelect({
+            questionId: firstQuestion.id,
+            optionId: firstOption.id,
+            mode: "overview",
+          })
+        }
+      >
+        {countLabel}
+        {" · "}
+        {t("pollBubble.viewVotes")}
+      </button>
+    );
+  }
   return (
     <div
       className="workspace-poll-container relative min-w-0 max-w-full text-text-primary"
@@ -104,48 +98,24 @@ export function WorkspaceMessagePoll({
             readOnly,
             onVote,
             onAddOption,
-            onLoadVoters,
             renderVoterAvatar,
             maxOptions,
           }}
           busy={pendingQuestionIds.includes(question.id)}
           error={questionErrors[question.id]}
-          onOpenVoters={(questionId, optionId) =>
-            setVoterTarget({ questionId, optionId, mode: "option" })
-          }
+          voterList={voterList?.questions.includes(question) ? voterList : undefined}
         />
       ))}
       <div
         className={`workspace-poll-summary ${!formattedDate && !readOnly && !error ? "workspace-poll-final-line" : ""}`}
-        role={visibleResults ? "region" : undefined}
-        aria-label={visibleResults ? t("pollBubble.countsRegion") : undefined}
+        {...countRegion}
       >
-        {visibleResults ? (
-          <>
-            {quiz || closed || poll.anonymous || readOnly || !onLoadVoters ? (
-              <span>{t("pollBubble.participantCount", { count: poll.voterCount })}</span>
-            ) : (
-              <button
-                type="button"
-                className="workspace-poll-summary-link rounded outline-none focus-visible:ring-2 focus-visible:ring-accent"
-                onClick={() => {
-                  if (firstQuestion && firstOption) openVoters(firstQuestion.id, firstOption.id);
-                }}
-              >
-                {t("pollBubble.participantCount", { count: poll.voterCount })}
-                {" · "}
-                {t("pollBubble.viewVotes")}
-              </button>
-            )}
-            {quiz && (
-              <span>
-                {" · "}
-                {t("pollBubble.youVoted")}
-              </span>
-            )}
-          </>
-        ) : (
-          <span>{t("pollBubble.resultsAfterVote")}</span>
+        {summary}
+        {visibleResults && quiz && (
+          <span>
+            {" · "}
+            {t("pollBubble.youVoted")}
+          </span>
         )}
       </div>
       {(formattedDate || readOnly || error) && (
@@ -169,13 +139,13 @@ export function WorkspaceMessagePoll({
           )}
         </div>
       )}
-      <PollVotersDialog
-        poll={poll}
-        onSelectOption={openVoters}
-        enabled={!poll.anonymous && !readOnly}
-        {...{ voterTarget, activeVoters, onLoadVoters }}
-        onDismiss={() => setVoterTarget(null)}
-      />
+      {voterList && (
+        <PollVotersDialog
+          multipleQuestions={poll.questions.length > 1}
+          voterList={voterList}
+          renderVoterAvatar={renderVoterAvatar}
+        />
+      )}
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { MessengerMessage } from "~/entities/messenger/messenger.types";
 import { setLocale } from "~/i18n/i18n";
@@ -83,8 +83,33 @@ const props = {
   settingsOpen: false,
   setSettingsOpen: vi.fn(),
   closeOpen: false,
+  deadlineReached: false,
   setCloseOpen: vi.fn(),
 };
+const previewUuids = Array.from(
+  { length: 20 },
+  (_, index) => `voter-${String(index + 1).padStart(2, "0")}`,
+);
+
+function messageWithPreview(count: number, voters = previewUuids, revision = 1): MessengerMessage {
+  return {
+    ...message,
+    pollState: {
+      revision,
+      isClosed: false,
+      voterCount: count,
+      questions: [
+        {
+          questionUuid: "q",
+          voterCount: count,
+          optionCounts: { a: count, b: 0 },
+          optionVoterPreviews: { a: voters },
+        },
+      ],
+      myVotes: [],
+    },
+  };
+}
 
 beforeEach(() => {
   setLocale("en");
@@ -117,30 +142,127 @@ describe("connected poll", () => {
     expect(screen.queryByTitle("#recent")).not.toBeInTheDocument();
     expect(await screen.findByTitle("#newest")).toBeInTheDocument();
   });
-  it("does not request voter previews for anonymous, read-only, or hidden results", () => {
-    const { rerender } = render(<WorkspaceMessagePollConnected {...props} readOnly />);
-    rerender(
+  it.each([
+    { readOnly: true, isAnonymous: false, resultsVisibility: "always" },
+    { readOnly: false, isAnonymous: true, resultsVisibility: "always" },
+    { readOnly: false, isAnonymous: false, resultsVisibility: "after_vote" },
+  ] as const)("hides voter identities and skips fallback for %j", (restriction) => {
+    const { readOnly, ...visibility } = restriction;
+    if (message.payload.kind !== "poll") throw new Error("Expected poll");
+    const payload = { ...message.payload, ...visibility };
+    const { rerender } = render(
       <WorkspaceMessagePollConnected
         {...props}
-        message={{
-          ...message,
-          payload: { ...message.payload, isAnonymous: true } as MessengerMessage["payload"],
-        }}
-      />,
-    );
-    rerender(
-      <WorkspaceMessagePollConnected
-        {...props}
-        message={{
-          ...message,
-          payload: {
-            ...message.payload,
-            resultsVisibility: "after_vote",
-          } as MessengerMessage["payload"],
-        }}
+        readOnly={readOnly}
+        message={{ ...message, payload }}
       />,
     );
     expect(mocks.voters).not.toHaveBeenCalled();
+    rerender(
+      <WorkspaceMessagePollConnected
+        {...props}
+        readOnly={readOnly}
+        message={{ ...messageWithPreview(20), payload }}
+      />,
+    );
+    expect(screen.queryByTitle("#voter-01")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Who chose/ })).not.toBeInTheDocument();
+  });
+  it("shows five inline avatars and opens complete and empty lists without requests", () => {
+    render(<WorkspaceMessagePollConnected {...props} message={messageWithPreview(20)} />);
+    expect(screen.getByTitle("#voter-05")).toBeVisible();
+    expect(screen.queryByTitle("#voter-06")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "20 participants · View votes" }));
+    const dialog = within(screen.getByRole("dialog", { name: "Voters" }));
+    expect(dialog.getByText("#voter-20")).toBeVisible();
+    expect(dialog.queryByRole("button", { name: "Load more" })).not.toBeInTheDocument();
+    fireEvent.click(dialog.getByRole("combobox", { name: "Answer" }));
+    fireEvent.click(screen.getByRole("option", { name: "Beta" }));
+    expect(dialog.getByText("No votes yet")).toBeVisible();
+    expect(dialog.queryByText("#voter-20")).not.toBeInTheDocument();
+    expect(mocks.voters).not.toHaveBeenCalled();
+  });
+  it("continues a partial inline list from its last UUID and retries the same page", async () => {
+    mocks.voters
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockResolvedValueOnce({ items: [{ uuid: "voter-21" }], nextPageMarker: null });
+    render(<WorkspaceMessagePollConnected {...props} message={messageWithPreview(21)} />);
+    fireEvent.click(screen.getByRole("button", { name: /Who chose .*Alpha/ }));
+    const dialog = within(screen.getByRole("dialog", { name: "Voters" }));
+    expect(dialog.getByText("#voter-20")).toBeVisible();
+    expect(mocks.voters).not.toHaveBeenCalled();
+    fireEvent.click(dialog.getByRole("button", { name: "Load more" }));
+    fireEvent.click(await dialog.findByRole("button", { name: "Retry" }));
+    expect(await dialog.findByText("#voter-21")).toBeVisible();
+    expect(dialog.getByText("#voter-20")).toBeVisible();
+    expect(dialog.queryByRole("button", { name: "Load more" })).not.toBeInTheDocument();
+    expect(mocks.voters).toHaveBeenCalledTimes(2);
+    for (const [request] of mocks.voters.mock.calls) {
+      expect(request).toMatchObject({ questionUuid: "q", optionUuid: "a", pageMarker: "voter-20" });
+    }
+  });
+  it("reseeds the open list when the revision changes and discards an old page", async () => {
+    let finish!: (value: { items: { uuid: string }[] }) => void;
+    mocks.voters.mockReturnValue(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    const { rerender } = render(
+      <WorkspaceMessagePollConnected {...props} message={messageWithPreview(21)} />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Who chose .*Alpha/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Load more" }));
+    rerender(
+      <WorkspaceMessagePollConnected {...props} message={messageWithPreview(1, ["latest"], 2)} />,
+    );
+    const dialog = within(screen.getByRole("dialog", { name: "Voters" }));
+    expect(dialog.getByText("#latest")).toBeVisible();
+    expect(dialog.queryByText("#voter-01")).not.toBeInTheDocument();
+    expect(mocks.voters.mock.calls[0]?.[0].signal.aborted).toBe(true);
+    await act(async () => {
+      finish({ items: [{ uuid: "stale" }] });
+      await Promise.resolve();
+    });
+    expect(dialog.queryByText("#stale")).not.toBeInTheDocument();
+  });
+  it("closes an after-vote list on withdrawal and drops the in-flight page", async () => {
+    const withPreview = messageWithPreview(21);
+    if (withPreview.payload.kind !== "poll") throw new Error("Expected poll");
+    const afterVote: MessengerMessage = {
+      ...withPreview,
+      payload: { ...withPreview.payload, resultsVisibility: "after_vote" },
+      pollState: {
+        ...withPreview.pollState!,
+        myVotes: [{ questionUuid: "q", optionUuids: ["a"] }],
+      },
+    };
+    let finish!: (value: { items: { uuid: string }[] }) => void;
+    mocks.voters.mockReturnValue(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    const { rerender } = render(<WorkspaceMessagePollConnected {...props} message={afterVote} />);
+    fireEvent.click(screen.getByRole("button", { name: /Who chose .*Alpha/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Load more" }));
+    rerender(
+      <WorkspaceMessagePollConnected
+        {...props}
+        message={{ ...afterVote, pollState: { ...afterVote.pollState!, myVotes: [] } }}
+      />,
+    );
+    expect(screen.queryByRole("dialog", { name: "Voters" })).not.toBeInTheDocument();
+    expect(screen.queryByTitle("#voter-01")).not.toBeInTheDocument();
+    expect(mocks.voters.mock.calls[0]?.[0].signal.aborted).toBe(true);
+    await act(async () => {
+      finish({ items: [{ uuid: "stale" }] });
+      await Promise.resolve();
+    });
+    expect(screen.queryByText("#stale")).not.toBeInTheDocument();
+
+    rerender(<WorkspaceMessagePollConnected {...props} message={afterVote} />);
+    expect(screen.queryByRole("dialog", { name: "Voters" })).not.toBeInTheDocument();
   });
   it("rejects a late preview after a runtime generation switch", async () => {
     let finish!: (value: { items: { uuid: string }[] }) => void;
@@ -219,6 +341,9 @@ describe("connected poll", () => {
     render(<WorkspaceMessagePollConnected {...props} />);
     fireEvent.click(screen.getByRole("button", { name: /Who chose .*Alpha/ }));
     expect(await screen.findByText("#one")).toBeInTheDocument();
+    expect(mocks.voters).toHaveBeenLastCalledWith(
+      expect.objectContaining({ pageMarker: undefined }),
+    );
     fireEvent.click(screen.getByRole("button", { name: "Load more" }));
     expect(await screen.findByText("#two")).toBeInTheDocument();
     expect(screen.getByText("#one")).toBeInTheDocument();

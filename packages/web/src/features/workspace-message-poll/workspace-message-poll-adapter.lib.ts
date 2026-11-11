@@ -1,14 +1,28 @@
 import type { MessengerMessage } from "~/entities/messenger/messenger.types";
-import type { WorkspacePoll } from "./workspace-message-poll.types";
+import type { WorkspacePoll, WorkspacePollQuestion } from "./workspace-message-poll.types";
+
+const noVoterQuestions: readonly WorkspacePollQuestion[] = [];
+
+export function visiblePollVoterQuestions(
+  poll: WorkspacePoll | null,
+  readOnly: boolean,
+  deadlineReached = false,
+): readonly WorkspacePollQuestion[] {
+  if (poll == null || poll.anonymous || readOnly) return noVoterQuestions;
+  if (poll.resultsVisibility === "always" || poll.closed || deadlineReached) return poll.questions;
+  return poll.questions.filter((question) => question.selectedOptionIds.length > 0);
+}
 
 /** Content and counts are projected from the same server snapshot. */
-export function toWorkspacePoll(message: MessengerMessage): WorkspacePoll | null {
-  const payload = message.payload;
-  const state = message.pollState;
+export function toWorkspacePoll(
+  messageUuid: string,
+  payload: MessengerMessage["payload"],
+  state: MessengerMessage["pollState"],
+): WorkspacePoll | null {
   if (payload.kind !== "poll" || state == null) return null;
   return {
     kind: "poll",
-    id: message.uuid,
+    id: messageUuid,
     multipleAnswers: payload.multipleAnswers,
     anonymous: payload.isAnonymous,
     allowRevote: payload.allowRevote,
@@ -31,6 +45,7 @@ export function toWorkspacePoll(message: MessengerMessage): WorkspacePoll | null
           id: option.uuid,
           text: option.text,
           votes: counts?.optionCounts[option.uuid] ?? 0,
+          previewVoterUuids: counts?.optionVoterPreviews?.[option.uuid],
         })),
       };
     }),

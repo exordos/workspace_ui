@@ -4,6 +4,7 @@ export interface WorkspacePollOption {
   id: string;
   text: string;
   votes: number;
+  previewVoterUuids?: readonly string[];
   previewVoters?: readonly WorkspacePollVoter[];
 }
 export interface WorkspacePollQuestion {
@@ -34,12 +35,26 @@ export interface WorkspacePollVoter {
   avatarUrl?: string;
 }
 export interface WorkspacePollVoters {
-  questionId: string;
-  optionId: string;
   items: readonly WorkspacePollVoter[];
   loading?: boolean;
   error?: string;
   hasMore?: boolean;
+}
+export interface PollVoterTarget {
+  questionId: string;
+  optionId: string;
+  mode: "option" | "overview";
+}
+export interface PollVoterList {
+  questions: readonly WorkspacePollQuestion[];
+  target: PollVoterTarget | null;
+  onSelect: (target: PollVoterTarget | null) => void;
+  page?: WorkspacePollVoters;
+  onLoadPage?: () => void;
+  getPreview?: (
+    questionId: string,
+    option: WorkspacePollOption,
+  ) => readonly WorkspacePollVoter[] | undefined;
 }
 export interface WorkspaceMessagePollProps {
   deadlineReached?: boolean;
@@ -49,10 +64,9 @@ export interface WorkspaceMessagePollProps {
   questionErrors?: Readonly<Record<string, string | undefined>>;
   pending?: boolean;
   error?: string;
-  voters?: WorkspacePollVoters;
+  voterList?: PollVoterList;
   renderVoterAvatar?: (voter: WorkspacePollVoter) => ReactNode;
   onVote?: (questionId: string, optionId: string, selected: boolean) => void;
   onAddOption?: (questionId: string, text: string) => Promise<void>;
-  onLoadVoters?: (questionId: string, optionId: string, more: boolean) => void;
   maxOptions?: number;
 }
