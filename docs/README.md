@@ -39,6 +39,8 @@ Operational guides describe repository configuration. External account permissio
 
 ## History and proposals
 
+[Заметки об архитектуре мессенджера](plans/messenger-architecture/README.md) связывают сценарии, границы модулей и примеры вызовов.
+
 [Локальная проверка опросов](plans/message-polls-local-test-cases.md) содержит тест-кейсы и проверяемые ревизии. [Результаты по 106 кейсам](plans/message-polls-local-test-results.md) и [список проблем](plans/message-polls-local-test-issues.md) фиксируют фактическую проверку. [Ретест PR №322](plans/message-polls-pr322-retest.md) фиксирует проверку встроенных превью.
 
 [Открытые вопросы Workspace UI](OPEN_QUESTIONS.md) — продуктовые и технические вопросы для отдельного обсуждения.
