@@ -1,28 +1,54 @@
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
+import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { t } from "~/i18n/i18n";
 import { CALL_INCOMING_MODAL_VARIANT } from "~/shared/config/constants";
 import { IncomingCallCompact } from "./jitsi-call-incoming-compact.ui";
 import { IncomingCallLarge } from "./jitsi-call-incoming-large.ui";
 import { useIncomingCallLifecycle } from "./jitsi-call-incoming-lifecycle.hook";
+import { JitsiCallPresentation } from "./jitsi-call-presentation.ui";
 import { useJitsiCallStore } from "./jitsi-call.model";
-import { JitsiCallModal } from "./jitsi-call.ui";
 
-export const JitsiActiveCallHost: React.FC = () => {
+interface JitsiActiveCallHostProps {
+  openInSeparateWindow?: boolean;
+  ownerKey?: string | null;
+}
+
+export const JitsiActiveCallHost: React.FC<JitsiActiveCallHostProps> = ({
+  openInSeparateWindow = true,
+  ownerKey,
+}) => {
   const activeCall = useJitsiCallStore((s) => s.activeCall);
   const closeCall = useJitsiCallStore((s) => s.closeCall);
+  const hasOwner = ownerKey !== undefined;
+  const wrongOwner = hasOwner && activeCall?.ownerKey != null && activeCall.ownerKey !== ownerKey;
 
-  if (activeCall == null) {
+  useEffect(() => {
+    if (wrongOwner && activeCall != null) closeCall(activeCall.callId);
+  }, [activeCall, closeCall, wrongOwner]);
+
+  useEffect(() => {
+    if (!hasOwner) return;
+    // Logout can unmount the chat shell in the same render as the owner change.
+    return useWorkspaceAuthStore.subscribe((state) => {
+      const call = useJitsiCallStore.getState().activeCall;
+      if (call?.ownerKey == null) return;
+      const runtime = state.getCurrentRuntimeContext();
+      if (runtime == null || workspaceRuntimeOwnerKey(runtime) !== call.ownerKey) {
+        closeCall(call.callId);
+      }
+    });
+  }, [closeCall, hasOwner]);
+
+  if (activeCall == null || wrongOwner) {
     return null;
   }
 
   return (
-    <JitsiCallModal
-      open={true}
-      meetingUrl={activeCall.meetingUrl}
-      locationName={activeCall.locationName}
-      displayName={activeCall.displayName}
-      startWithVideoMuted={activeCall.startWithVideoMuted}
-      onClose={closeCall}
+    <JitsiCallPresentation
+      key={activeCall.callId}
+      call={activeCall}
+      openInSeparateWindow={openInSeparateWindow}
     />
   );
 };

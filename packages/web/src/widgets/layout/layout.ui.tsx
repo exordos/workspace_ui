@@ -11,6 +11,7 @@ import {
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { EncryptedChatInfoScreen } from "~/features/encrypted-chat-info/encrypted-chat-info.types";
 import { JitsiActiveCallHost } from "~/features/jitsi-call/jitsi-call-shell.ui";
+import { useSettingsStore } from "~/features/settings/settings.model";
 import { WorkspaceForwardMessageDialog } from "~/features/workspace-forward-message/workspace-forward-message.ui";
 import { parseWorkspaceMessengerRoute } from "~/shared/lib/workspace-messenger-route.lib";
 import type { StreamEntryInternal } from "~/shared/types/sidebar-chat";
@@ -72,6 +73,7 @@ export const Layout: React.FC = () => {
 
   const workspaceActivityCounts = useMessengerStore(selectMessengerSidebarActivityCounts);
   const bootstrapError = useMessengerStore((state) => state.error);
+  const openCallsInSeparateWindow = useSettingsStore((state) => state.openCallsInSeparateWindow);
   const currentUserId = null;
   const streamsFromStore = EMPTY_LEGACY_STREAMS;
   const dmsFromStore = EMPTY_LEGACY_DMS;
@@ -324,7 +326,10 @@ export const Layout: React.FC = () => {
           onDismiss={notificationPermission.dismiss}
         />
       ) : null}
-      <JitsiActiveCallHost />
+      <JitsiActiveCallHost
+        openInSeparateWindow={openCallsInSeparateWindow}
+        ownerKey={currentWorkspaceOwnerKey}
+      />
       <LayoutProfileShareLink
         runtimeContext={currentWorkspaceRuntimeContext}
         routeReady={workspaceRouteReady}

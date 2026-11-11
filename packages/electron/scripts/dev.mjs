@@ -43,8 +43,11 @@ async function buildElectron() {
     }),
     build({
       ...commonOptions,
-      entryPoints: [resolve(root, "src", "preload.ts")],
-      outfile: resolve(root, "dist", "preload.js"),
+      entryPoints: [
+        resolve(root, "src", "preload.ts"),
+        resolve(root, "src", "jitsi-call-window-preload.ts"),
+      ],
+      outdir: resolve(root, "dist"),
       format: "cjs",
     }),
   ]);

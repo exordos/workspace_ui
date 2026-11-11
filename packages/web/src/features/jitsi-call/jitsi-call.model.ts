@@ -16,6 +16,7 @@ export interface IncomingDmCallInvite {
 }
 
 export interface ActiveJitsiCall {
+  callId: string;
   callKey: string;
   meetingUrl: string;
   locationName: string;
@@ -42,11 +43,12 @@ export type RequestOpenJitsiCallResult =
 
 interface JitsiCallStoreState {
   activeCall: ActiveJitsiCall | null;
+  focusRequestCount: number;
   incomingInvite: IncomingDmCallInvite | null;
   lastIncomingMessageId: IncomingDmCallMessageId | null;
   requestOpenCall: (payload: RequestOpenJitsiCallPayload) => RequestOpenJitsiCallResult;
   openCall: (payload: RequestOpenJitsiCallPayload) => RequestOpenJitsiCallResult;
-  closeCall: () => void;
+  closeCall: (callId?: string) => void;
   ingestIncomingInvite: (invite: IncomingDmCallInvite) => void;
   acceptIncomingInvite: (options?: { startWithVideoMuted?: boolean }) => void;
   declineIncomingInvite: () => void;
@@ -70,9 +72,12 @@ export const createJitsiCallKey = (payload: { meetingUrl: string; ownerKey?: str
   return `${ownerKey}:${normalizeMeetingUrlForCallKey(payload.meetingUrl)}`;
 };
 
+let nextCallId = 0;
+
 const buildActiveCall = (payload: RequestOpenJitsiCallPayload): ActiveJitsiCall => {
   const startWithVideoMuted = payload.startWithVideoMuted ?? true;
   return {
+    callId: globalThis.crypto?.randomUUID?.() ?? String(++nextCallId),
     callKey: createJitsiCallKey(payload),
     meetingUrl: payload.meetingUrl,
     locationName: payload.locationName,
@@ -86,6 +91,7 @@ const buildActiveCall = (payload: RequestOpenJitsiCallPayload): ActiveJitsiCall 
 
 export const useJitsiCallStore = create<JitsiCallStoreState>((set, get) => ({
   activeCall: null,
+  focusRequestCount: 0,
   incomingInvite: null,
   lastIncomingMessageId: null,
 
@@ -99,6 +105,7 @@ export const useJitsiCallStore = create<JitsiCallStoreState>((set, get) => ({
         logStoreAction("jitsiCall", "requestOpenCallSame", {
           hasOwnerKey: payload.ownerKey != null && payload.ownerKey.trim().length > 0,
         });
+        set((state) => ({ focusRequestCount: state.focusRequestCount + 1 }));
         return { status: "same", activeCall: currentActiveCall };
       }
 
@@ -126,7 +133,8 @@ export const useJitsiCallStore = create<JitsiCallStoreState>((set, get) => ({
     return get().requestOpenCall(payload);
   },
 
-  closeCall() {
+  closeCall(callId) {
+    if (callId != null && get().activeCall?.callId !== callId) return;
     logStoreAction("jitsiCall", "closeCall", {});
     set({ activeCall: null });
   },

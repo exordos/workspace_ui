@@ -1077,6 +1077,7 @@
     "chatClickActionHint": "What to open when clicking a chat",
     "chatClickActionAvatarHint": "Click the avatar to open the general chat",
     "dockBounce": "Bounce Dock icon",
+    "openCallsInSeparateWindow": "Open calls in a separate window",
     "language": "Language",
     "authIdleTimeout": "Auto sign-out",
     "authIdleTimeoutHint": "After inactivity",

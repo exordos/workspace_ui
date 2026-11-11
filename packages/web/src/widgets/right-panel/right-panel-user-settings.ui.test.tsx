@@ -1,4 +1,5 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useThemeStore } from "~/entities/theme/theme.model";
 import { useSettingsStore } from "~/features/settings/settings.model";
@@ -10,14 +11,19 @@ vi.mock("~/shared/lib/notification-sound", () => ({
   playNotificationSound: vi.fn(),
 }));
 
-const isElectronDarwinMock = vi.hoisted(() => vi.fn(() => false));
+const { isElectronMock, isElectronDarwinMock } = vi.hoisted(() => ({
+  isElectronMock: vi.fn(() => false),
+  isElectronDarwinMock: vi.fn(() => false),
+}));
 vi.mock("~/shared/lib/electron", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
+  isElectron: isElectronMock,
   isElectronDarwin: isElectronDarwinMock,
 }));
 
 describe("RightPanelUserSettings", () => {
   afterEach(() => {
+    isElectronMock.mockReturnValue(false);
     isElectronDarwinMock.mockReturnValue(false);
     useSettingsStore.getState().resetToDefaults();
     useThemeStore.setState({ mode: "system", paletteId: "blue-cold" });
@@ -60,6 +66,29 @@ describe("RightPanelUserSettings", () => {
   it("hides the Dock bounce preference outside the macOS desktop app", () => {
     renderWithProviders(<RightPanelUserSettings onBack={vi.fn()} onClose={vi.fn()} />);
     expect(screen.queryByRole("switch", { name: "Bounce Dock icon" })).not.toBeInTheDocument();
+  });
+
+  it("lets desktop users toggle separate call windows with the keyboard", async () => {
+    isElectronMock.mockReturnValue(true);
+    const user = userEvent.setup();
+    renderWithProviders(<RightPanelUserSettings onBack={vi.fn()} onClose={vi.fn()} />);
+    const toggle = screen.getByRole("switch", { name: "Open calls in a separate window" });
+    expect(toggle).toBeChecked();
+
+    toggle.focus();
+    await user.keyboard("[Space]");
+    expect(toggle).not.toBeChecked();
+    expect(useSettingsStore.getState().openCallsInSeparateWindow).toBe(false);
+
+    await user.keyboard("[Enter]");
+    expect(toggle).toBeChecked();
+  });
+
+  it("hides the separate call window preference in the browser", () => {
+    renderWithProviders(<RightPanelUserSettings onBack={vi.fn()} onClose={vi.fn()} />);
+    expect(
+      screen.queryByRole("switch", { name: "Open calls in a separate window" }),
+    ).not.toBeInTheDocument();
   });
 
   it("keeps the latest topic hint inside its option before and after selecting either mode", () => {

@@ -164,6 +164,36 @@ declare module "zulip-js" {
   export default init;
 }
 
+interface JitsiCallWindowParticipant {
+  displayName: string;
+}
+
+interface JitsiCallWindowPayload {
+  callId: string;
+  meetingUrl: string;
+  locationName: string;
+  displayName: string;
+  startWithVideoMuted: boolean;
+  language: "ru" | "en";
+  theme?: { mode: "light" | "dark"; paletteId: string };
+}
+
+interface JitsiCallWindowHostBridge {
+  open(payload: JitsiCallWindowPayload): Promise<boolean>;
+  focus(callId: string): void;
+  close(callId: string): void;
+  onClosed(callback: (callId: string) => void): () => void;
+  onParticipants(
+    callback: (event: { callId: string; participants: JitsiCallWindowParticipant[] }) => void,
+  ): () => void;
+}
+
+interface JitsiCallWindowRendererBridge {
+  getPayload(): Promise<JitsiCallWindowPayload | null>;
+  close(callId: string): void;
+  updateParticipants(callId: string, participants: JitsiCallWindowParticipant[]): void;
+}
+
 interface ElectronAPI {
   /** Node `process.platform` from preload — used for macOS window chrome. Omitted in partial test mocks. */
   platform?: NodeJS.Platform;
@@ -226,6 +256,7 @@ interface ElectronAPI {
   deeplink: {
     onNavigate: (callback: (route: string) => void) => () => void;
   };
+  callWindow?: JitsiCallWindowHostBridge;
   call: {
     start: (data: { room: string; participants?: number }) => void;
     end: () => void;
@@ -264,6 +295,7 @@ interface NativeAppBridge {
 
 interface Window {
   electronAPI?: ElectronAPI;
+  jitsiCallWindow?: JitsiCallWindowRendererBridge;
   NativeApp?: NativeAppBridge;
   webkit?: {
     messageHandlers: {

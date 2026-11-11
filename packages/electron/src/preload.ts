@@ -1,6 +1,11 @@
 import { contextBridge, ipcRenderer } from "electron";
 import { install as installJitsiElectronSdk } from "@jitsi/electron-sdk/preload";
 import {
+  JITSI_CALL_WINDOW_IPC,
+  type JitsiCallWindowParticipantsEvent,
+  type JitsiCallWindowPayload,
+} from "./jitsi-call-window.contract";
+import {
   WORKSPACE_DOWNLOAD_IPC,
   type WorkspaceDownloadActionResult,
   type WorkspaceDownloadChangedEvent,
@@ -162,6 +167,23 @@ const electronAPI = {
       ipcRenderer.send("call:start", data),
     end: (): void => ipcRenderer.send("call:end"),
     update: (data: { participants?: number }): void => ipcRenderer.send("call:update", data),
+  },
+
+  callWindow: {
+    open: (payload: JitsiCallWindowPayload): Promise<boolean> =>
+      ipcRenderer.invoke(JITSI_CALL_WINDOW_IPC.open, payload),
+    focus: (callId: string): void => ipcRenderer.send(JITSI_CALL_WINDOW_IPC.focus, callId),
+    close: (callId: string): void => ipcRenderer.send(JITSI_CALL_WINDOW_IPC.close, callId),
+    onClosed: (callback: (callId: string) => void): (() => void) => {
+      const handler = (_event: unknown, callId: string) => callback(callId);
+      ipcRenderer.on(JITSI_CALL_WINDOW_IPC.closed, handler);
+      return () => ipcRenderer.removeListener(JITSI_CALL_WINDOW_IPC.closed, handler);
+    },
+    onParticipants: (callback: (event: JitsiCallWindowParticipantsEvent) => void): (() => void) => {
+      const handler = (_event: unknown, data: JitsiCallWindowParticipantsEvent) => callback(data);
+      ipcRenderer.on(JITSI_CALL_WINDOW_IPC.participants, handler);
+      return () => ipcRenderer.removeListener(JITSI_CALL_WINDOW_IPC.participants, handler);
+    },
   },
 
   power: {

@@ -166,6 +166,20 @@ describe("useSettingsStore", () => {
     expect(useSettingsStore.getState().dockBounceEnabled).toBe(false);
   });
 
+  it("keeps call window preferences separate and restores the default on reset", () => {
+    setWorkspaceSessionScope("account-a");
+    useSettingsStore.getState().setOpenCallsInSeparateWindow(false);
+
+    useWorkspaceAuthStore.getState().setCurrentAccountId("account-b");
+    expect(useSettingsStore.getState().openCallsInSeparateWindow).toBe(true);
+
+    useWorkspaceAuthStore.getState().setCurrentAccountId("account-a");
+    expect(useSettingsStore.getState().openCallsInSeparateWindow).toBe(false);
+
+    useSettingsStore.getState().resetToDefaults();
+    expect(useSettingsStore.getState().openCallsInSeparateWindow).toBe(true);
+  });
+
   describe("setLanguage", () => {
     it("changes language to Russian", () => {
       useSettingsStore.getState().setLanguage("ru");
@@ -497,6 +511,20 @@ describe("loadSettings (module reload)", () => {
     vi.resetModules();
     const { useSettingsStore: freshStore } = await import("./settings.model");
     expect(freshStore.getState().dockBounceEnabled).toBe(enabled);
+  });
+
+  it.each([
+    [false, false],
+    [undefined, true],
+    ["false", true],
+  ])("loads separate call window preference %s as %s", async (saved, expected) => {
+    localStorage.setItem(
+      "workspace-settings",
+      JSON.stringify({ openCallsInSeparateWindow: saved }),
+    );
+    vi.resetModules();
+    const { useSettingsStore: freshStore } = await import("./settings.model");
+    expect(freshStore.getState().openCallsInSeparateWindow).toBe(expected);
   });
 
   it.each([undefined, "false", null])(

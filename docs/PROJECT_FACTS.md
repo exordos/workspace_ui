@@ -85,6 +85,18 @@ See the [badge threshold story](../packages/web/src/shared/ui/badge/badge.storie
 
 `shared/lib/hotkeys` owns shortcut policy, recording and app registration through TanStack Hotkeys. Main-keyboard letter, digit and punctuation bindings are stored and displayed using US QWERTY labels. Recording derives these labels from `KeyboardEvent.code`; `useAppHotkey` converts them to TanStack physical bindings (for example `Mod+B` becomes `Mod+[KeyB]`). Keypad and international positions retain explicit physical codes so recording preserves their identity. Matching therefore follows key positions across keyboard layouts. Conflict checks compare the same physical bindings on Windows and macOS, including aliases written as shifted symbols. Existing input, modal, composition, repeat and AltGraph guards still apply.
 
+## Jitsi call presentation
+
+In Electron, calls open in a separate window by default. The desktop-only setting
+**Open calls in a separate window** is stored locally for the current Workspace
+profile and takes effect on the next call. Turning it off opens the in-app call
+dialog. Browser and PWA calls use that same dialog. Incoming invites appear in the
+main app, and each client permits one active call.
+
+[Active call host](../packages/web/src/features/jitsi-call/jitsi-call-shell.ui.tsx) ·
+[Application settings](../packages/web/src/features/settings/settings.model.ts) ·
+[Electron call window](../packages/electron/src/jitsi-call-window.ts)
+
 ## Verification
 
 Run commands from the repository root unless stated otherwise.
