@@ -6,6 +6,30 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.9.12] — 2026-11-12
+
+### Added
+
+- Create Messenger polls with multiple questions, voting, public or anonymous
+  results, voter previews, optional revoting, deadlines and author controls.
+- Use compatible Zulip polls interactively and open extended poll previews in
+  Workspace to view their full functionality and vote.
+
+### Fixed
+
+- Load mixed histories containing poll payloads and bound legacy voter-preview
+  requests while retaining explicit access to each option's voter list.
+- Follow topic moves and update message placement in live and cached histories.
+
+### Requirements and compatibility
+
+- Poll creation, actions and personalized live results require Workspace backend
+  3.1.0. Deploy this client before enabling the new backend's poll messages.
+- Reload existing browser tabs and update installed clients to a poll-compatible
+  version. UI 0.9.11 rejects history pages containing poll payloads.
+- Extended Zulip previews require the connected account's `workspace_url` setting
+  to contain the public Workspace origin.
+
 ## [0.9.11] — 2026-11-06
 
 ### Added
