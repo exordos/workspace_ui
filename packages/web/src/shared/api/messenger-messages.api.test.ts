@@ -9,6 +9,7 @@ import {
   getActivityUnsupported,
   getLinkPreviewUnsupported,
   getMessage,
+  getPollVoters,
   getMessageReactions,
   getMessagePagesAroundResolvedMessage,
   getMessages,
@@ -117,6 +118,21 @@ function parsedFetchUrl(input: Parameters<typeof fetch>[0]) {
 }
 
 describe("messenger messages API", () => {
+  it("requests a bounded voter preview using default ordering", async () => {
+    const fetchMock = createFetchMock([{ uuid: USER_UUID }]);
+    await expect(
+      getPollVoters({ accessToken: "access-token", fetchImpl: fetchMock }, MESSAGE_UUID, {
+        questionUuid: TOPIC_UUID,
+        optionUuid: REACTION_UUID,
+        pageLimit: 5,
+      }),
+    ).resolves.toMatchObject({ items: [{ uuid: USER_UUID }] });
+    const [url] = firstFetchCall(fetchMock);
+    const params = parsedFetchUrl(url).searchParams;
+    expect(params.has("order")).toBe(false);
+    expect(params.get("page_limit")).toBe("5");
+    expect(params.has("page_marker")).toBe(false);
+  });
   it("lists messages with filters and strict row parsing", async () => {
     const fetchMock = createFetchMock([messageDto]);
 
@@ -609,5 +625,68 @@ describe("opaque payload backend validation", () => {
       ),
     ).resolves.toMatchObject({ payload: wire });
     expect(fetchImpl).toHaveBeenCalledOnce();
+  });
+});
+
+describe("poll actions", () => {
+  it("posts the complete settings and parses the personalized poll snapshot", async () => {
+    const { invokePollAction } = await import("./messenger-messages.api");
+    const poll = {
+      ...messageDto,
+      payload: {
+        kind: "poll",
+        questions: [
+          { uuid: MESSAGE_UUID, text: "Q", options: [{ uuid: REACTION_UUID, text: "A" }] },
+        ],
+        multiple_answers: false,
+        is_anonymous: false,
+        allow_revote: false,
+        results_visibility: "always",
+        closes_at: null,
+        closed_at: null,
+        allow_adding_options: false,
+      },
+      poll_state: {
+        revision: 2,
+        is_closed: false,
+        voter_count: 1,
+        questions: [
+          {
+            question_uuid: MESSAGE_UUID,
+            voter_count: 1,
+            option_counts: { [REACTION_UUID]: 1 },
+            option_voter_previews: { [REACTION_UUID]: [USER_UUID] },
+          },
+        ],
+        my_votes: [],
+      },
+    };
+    const fetchMock = createFetchMock(poll);
+    await expect(
+      invokePollAction({ accessToken: "token", fetchImpl: fetchMock }, MESSAGE_UUID, {
+        kind: "settings",
+        closesAt: null,
+        allowAddingOptions: true,
+      }),
+    ).resolves.toEqual(poll);
+    const [url, init] = firstFetchCall(fetchMock);
+    expect(parsedFetchUrl(url).pathname).toContain(
+      `/messages/${MESSAGE_UUID}/actions/update_settings/invoke`,
+    );
+    expect(JSON.parse(init?.body as string)).toEqual({
+      settings: { closes_at: null, allow_adding_options: true },
+    });
+  });
+  it("reads voters and their pagination marker", async () => {
+    const { getPollVoters } = await import("./messenger-messages.api");
+    const fetchMock = createFetchMock([{ uuid: USER_UUID }], 200, {
+      "X-Pagination-Marker": "next",
+    });
+    await expect(
+      getPollVoters({ accessToken: "token", fetchImpl: fetchMock }, MESSAGE_UUID, {
+        questionUuid: TOPIC_UUID,
+        optionUuid: REACTION_UUID,
+      }),
+    ).resolves.toMatchObject({ items: [{ uuid: USER_UUID }], nextPageMarker: "next" });
   });
 });

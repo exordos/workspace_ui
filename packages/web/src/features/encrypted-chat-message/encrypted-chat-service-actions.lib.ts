@@ -75,6 +75,7 @@ export function getEncryptedChatServiceState({
     message.streamUuid !== streamUuid ||
     message.projectId !== projectId ||
     payload.kind === "markdown" ||
+    payload.kind === "poll" ||
     payload.kind === "e2ee"
   )
     return null;
@@ -132,6 +133,7 @@ export function getEncryptedChatServiceActions({
     message.streamUuid !== streamUuid ||
     message.projectId !== projectId ||
     payload.kind === "markdown" ||
+    payload.kind === "poll" ||
     payload.kind === "e2ee"
   )
     return [];

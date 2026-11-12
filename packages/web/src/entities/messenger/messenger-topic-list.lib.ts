@@ -59,6 +59,8 @@ const unsubscribeMessages = useWorkspaceMessageStore.subscribe((state, previous)
 if (import.meta.hot) import.meta.hot.dispose(unsubscribeMessages);
 
 function messagePreviewText(message: MessengerMessage, organizationId: string): string {
+  if (message.payload.kind === "poll")
+    return message.payload.questions.map((q) => q.text).join(" · ");
   if (message.payload.kind !== "markdown") return "";
   const key = JSON.stringify([organizationId, message.projectId, message.userUuid, message.uuid]);
   const markdown = message.payload.content;
@@ -183,7 +185,9 @@ export function createMessengerTopicMessagePreview(input: {
     // List previews never render raw markdown or HTML. The summary also hides private file URLs.
     text,
     ...(senderName != null ? { senderName } : {}),
-    ...(message.payload.kind !== "markdown" ? { encrypted: true as const } : {}),
+    ...(message.payload.kind !== "markdown" && message.payload.kind !== "poll"
+      ? { encrypted: true as const }
+      : {}),
   };
 }
 

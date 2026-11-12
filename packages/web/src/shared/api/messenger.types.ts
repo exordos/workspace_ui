@@ -97,6 +97,40 @@ export interface WorkspaceMessengerMarkdownPayloadDto {
   content: string;
 }
 
+export interface WorkspaceMessengerPollOptionDto {
+  uuid: string;
+  text: string;
+}
+export interface WorkspaceMessengerPollQuestionDto {
+  uuid: string;
+  text: string;
+  options: WorkspaceMessengerPollOptionDto[];
+  correct_option_uuids?: string[];
+}
+export interface WorkspaceMessengerPollPayloadDto {
+  kind: "poll";
+  questions: WorkspaceMessengerPollQuestionDto[];
+  multiple_answers: boolean;
+  is_anonymous: boolean;
+  allow_revote: boolean;
+  results_visibility: "always" | "after_vote";
+  allow_adding_options?: boolean;
+  closes_at?: string | null;
+  closed_at?: string | null;
+}
+export interface WorkspaceMessengerPollStateDto {
+  revision: number;
+  is_closed: boolean;
+  voter_count: number;
+  questions: {
+    question_uuid: string;
+    voter_count: number;
+    option_counts: Record<string, number>;
+    option_voter_previews?: Record<string, WorkspaceMessengerUuid[]>;
+  }[];
+  my_votes: { question_uuid: string; option_uuids: string[] }[];
+}
+
 export interface WorkspaceMessengerEncryptedPayloadDto {
   kind: "e2ee";
   key_uuid: WorkspaceMessengerUuid;
@@ -142,6 +176,7 @@ export type WorkspaceMessengerE2eePayloadDto =
 
 export type WorkspaceMessengerMessagePayloadDto =
   | WorkspaceMessengerMarkdownPayloadDto
+  | WorkspaceMessengerPollPayloadDto
   | WorkspaceMessengerE2eePayloadDto;
 
 export type WorkspaceMessengerDeliveryClass = "live" | "backfill";
@@ -246,6 +281,7 @@ export interface WorkspaceMessengerMessageDto {
   topic_uuid: WorkspaceMessengerUuid;
   author_uuid: WorkspaceMessengerUuid;
   payload: WorkspaceMessengerMessagePayloadDto;
+  poll_state?: WorkspaceMessengerPollStateDto | null;
   user_uuid: WorkspaceMessengerUuid;
   read: boolean;
   pinned: boolean;
@@ -799,7 +835,7 @@ function isPlainRecord(value: unknown): value is Record<string, unknown> {
   return prototype === Object.prototype || prototype === null;
 }
 
-function isUuid(value: unknown): value is WorkspaceMessengerUuid {
+export function isUuid(value: unknown): value is WorkspaceMessengerUuid {
   return typeof value === "string" && UUID_PATTERN.test(value);
 }
 
@@ -1066,10 +1102,81 @@ export function isWorkspaceMessengerMarkdownPayloadDto(
   return isRecord(value) && value.kind === "markdown" && typeof value.content === "string";
 }
 
+function isPollOption(value: unknown): value is WorkspaceMessengerPollOptionDto {
+  return isRecord(value) && isUuid(value.uuid) && typeof value.text === "string";
+}
+function isPollPayload(value: unknown): value is WorkspaceMessengerPollPayloadDto {
+  return (
+    isRecord(value) &&
+    value.kind === "poll" &&
+    Array.isArray(value.questions) &&
+    value.questions.every(
+      (q: unknown) =>
+        isRecord(q) &&
+        isUuid(q.uuid) &&
+        typeof q.text === "string" &&
+        Array.isArray(q.options) &&
+        q.options.every(isPollOption) &&
+        (q.correct_option_uuids === undefined ||
+          (Array.isArray(q.correct_option_uuids) && q.correct_option_uuids.every(isUuid))),
+    ) &&
+    typeof value.multiple_answers === "boolean" &&
+    typeof value.is_anonymous === "boolean" &&
+    typeof value.allow_revote === "boolean" &&
+    (value.results_visibility === "always" || value.results_visibility === "after_vote") &&
+    (value.allow_adding_options === undefined || typeof value.allow_adding_options === "boolean") &&
+    (value.closes_at == null || isDateTime(value.closes_at)) &&
+    (value.closed_at == null || isDateTime(value.closed_at))
+  );
+}
+function isPollVoterPreviews(value: unknown): boolean {
+  return (
+    isPlainRecord(value) &&
+    Object.entries(value).every(
+      ([id, users]) =>
+        isUuid(id) &&
+        Array.isArray(users) &&
+        users.length > 0 &&
+        users.every(isUuid) &&
+        new Set(users).size === users.length,
+    )
+  );
+}
+
+function isPollState(value: unknown): value is WorkspaceMessengerPollStateDto {
+  return (
+    isRecord(value) &&
+    isNonNegativeInteger(value.revision) &&
+    value.revision > 0 &&
+    typeof value.is_closed === "boolean" &&
+    isNonNegativeInteger(value.voter_count) &&
+    Array.isArray(value.questions) &&
+    value.questions.every(
+      (q: unknown) =>
+        isRecord(q) &&
+        isUuid(q.question_uuid) &&
+        isNonNegativeInteger(q.voter_count) &&
+        isPlainRecord(q.option_counts) &&
+        Object.entries(q.option_counts).every(
+          ([id, count]) => isUuid(id) && isNonNegativeInteger(count),
+        ) &&
+        (q.option_voter_previews === undefined || isPollVoterPreviews(q.option_voter_previews)),
+    ) &&
+    Array.isArray(value.my_votes) &&
+    value.my_votes.every(
+      (v: unknown) =>
+        isRecord(v) &&
+        isUuid(v.question_uuid) &&
+        Array.isArray(v.option_uuids) &&
+        v.option_uuids.every(isUuid),
+    )
+  );
+}
+
 export function isWorkspaceMessengerMessagePayloadDto(
   value: unknown,
 ): value is WorkspaceMessengerMessagePayloadDto {
-  if (isWorkspaceMessengerMarkdownPayloadDto(value)) return true;
+  if (isWorkspaceMessengerMarkdownPayloadDto(value) || isPollPayload(value)) return true;
   if (!isRecord(value) || !isUuid(value.key_uuid)) return false;
   switch (value.kind) {
     case "e2ee":
@@ -1247,6 +1354,7 @@ export function isWorkspaceMessengerMessageDto(
     isUuid(value.topic_uuid) &&
     isUuid(value.author_uuid) &&
     isWorkspaceMessengerMessagePayloadDto(value.payload) &&
+    (value.payload.kind === "poll" ? isPollState(value.poll_state) : value.poll_state == null) &&
     isUuid(value.user_uuid) &&
     typeof value.read === "boolean" &&
     typeof value.pinned === "boolean" &&

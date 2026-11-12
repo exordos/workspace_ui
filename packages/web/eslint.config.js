@@ -20,6 +20,21 @@ function softenErrors(rules) {
 export default tseslint.config(
   { ignores: ["dist", "node_modules", "*.config.*"] },
 
+  {
+    files: ["**/src/**/*.tsx"],
+    ignores: ["**/src/shared/ui/select/select.ui.tsx"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: "JSXOpeningElement[name.type='JSXIdentifier'][name.name='select']",
+          message:
+            "Use Select from ~/shared/ui/select. Native select is reserved for its hidden form control.",
+        },
+      ],
+    },
+  },
+
   js.configs.recommended,
   ...tseslint.configs.recommendedTypeChecked,
   ...tseslint.configs.stylisticTypeChecked,

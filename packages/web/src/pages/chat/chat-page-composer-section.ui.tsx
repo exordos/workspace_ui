@@ -11,6 +11,7 @@ import {
 import type { ChatPageComposerSectionProps } from "./chat-page-composer-section.types";
 
 export const ChatPageComposerSection = React.memo(function ChatPageComposerSection({
+  onCreatePoll,
   isDmView,
   activeDmUserIds,
   dmPartnerDeactivated = false,
@@ -142,6 +143,7 @@ export const ChatPageComposerSection = React.memo(function ChatPageComposerSecti
 
   return (
     <MessageComposer
+      onCreatePoll={onCreatePoll}
       onSend={onSend}
       optimisticClearOnSend={optimisticClearOnSend}
       sendDisabled={sendDisabled}

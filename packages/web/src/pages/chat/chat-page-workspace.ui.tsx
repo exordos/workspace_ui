@@ -56,6 +56,8 @@ import type {
   MessengerSendOptions,
   MessengerOutgoingMessage,
 } from "~/entities/messenger/messenger-outbox.types";
+import { supportsMessengerPolls } from "~/entities/messenger/messenger-poll-actions.lib";
+import { summarizeMessengerPoll } from "~/entities/messenger/messenger-poll-text.lib";
 import { buildMessengerRequestOptions } from "~/entities/messenger/messenger-request-options.lib";
 import { runMessengerRuntimeMutation } from "~/entities/messenger/messenger-runtime-mutation.lib";
 import {
@@ -122,6 +124,10 @@ import type {
   WorkspaceMessageAnchorPreviewPresentation,
   WorkspaceMessageAnchorRouteRequest,
 } from "~/features/workspace-message-anchor-navigation/workspace-message-anchor-navigation.types";
+import { CreatePollDialog } from "~/features/workspace-message-poll/create-poll-dialog.ui";
+import type { PollDraft } from "~/features/workspace-message-poll/create-poll-dialog.ui";
+import { preparePollSend } from "~/features/workspace-message-poll/create-poll.lib";
+import type { PollSendAttempt } from "~/features/workspace-message-poll/create-poll.lib";
 import { useWorkspaceVisibleMessageRead } from "~/features/workspace-message-read/workspace-visible-message-read.hook";
 import { createWorkspaceReplyEditRestoreController } from "~/features/workspace-reply/workspace-reply-edit-restore.lib";
 import {
@@ -574,6 +580,8 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
 }) => {
   // This page is not a new chat layout: it assembles old sections and swaps only the data source.
   const [retryNonce, setRetryNonce] = useState(0);
+  const [pollDialogOpen, setPollDialogOpen] = useState(false);
+  const pollAttemptRef = useRef<PollSendAttempt | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [topicReopenPending, setTopicReopenPending] = useState(false);
@@ -1340,7 +1348,12 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
   const handleRequestMessageKey = useCallback(
     (messageUuid: string) => {
       const message = allWorkspaceMessagesById[messageUuid];
-      if (message?.streamUuid !== streamUuid || message.payload.kind === "markdown") return;
+      if (
+        message?.streamUuid !== streamUuid ||
+        message.payload.kind === "markdown" ||
+        message.payload.kind === "poll"
+      )
+        return;
       void encryptedChat.requestKey(
         message.payload.keyUuid,
         message.payload.kind === "e2ee" ? message : undefined,
@@ -1841,6 +1854,77 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
       includeStreamConversation: true,
     };
   }, [isTopicClosed, selection, topicsById]);
+
+  const canCreatePoll =
+    runtimeContext != null &&
+    selection.status === "conversation" &&
+    stream != null &&
+    supportsMessengerPolls(stream) &&
+    composerReadOnlyReason == null &&
+    Boolean(stream.name || conversation?.title) &&
+    !isTopicClosed &&
+    resolveSendTarget().status === "ready";
+  const handleCreatePoll = useCallback(
+    async (draft: PollDraft) => {
+      if (
+        !canCreatePoll ||
+        runtimeContext == null ||
+        !isWorkspaceRuntimeRequestContextCurrent(runtimeContext, () =>
+          useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
+        )
+      )
+        throw new Error("Poll unavailable");
+      const catalog = useMessengerStore.getState();
+      const currentStream =
+        catalog.ownerKey === ownerKey && selection.status === "conversation"
+          ? catalog.streamsById[selection.streamUuid]
+          : undefined;
+      if (
+        currentStream?.userUuid !== runtimeContext.userUuid ||
+        currentStream.projectId !== runtimeContext.projectId ||
+        !supportsMessengerPolls(currentStream)
+      )
+        throw new Error("Poll unavailable");
+      const target = resolveSendTarget();
+      if (target.status !== "ready") throw new Error(target.error);
+      let attempt = pollAttemptRef.current;
+      if (attempt?.draft !== draft) {
+        attempt = preparePollSend(draft, target);
+        pollAttemptRef.current = attempt;
+      }
+      const isCurrent = captureWorkspaceChatUiAction();
+      const result = await runMessengerRuntimeMutation(runtimeContext, (signal) =>
+        sendMessengerMessage({
+          runtimeContext,
+          getRuntimeContext: () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
+          signal,
+          streamUuid: attempt.target.streamUuid,
+          topicUuid: attempt.target.topicUuid,
+          includeStreamConversation: attempt.target.includeStreamConversation,
+          canonicalMessageUuid: attempt.uuid,
+          pollPayload: attempt.payload,
+        }),
+      );
+      if (!isCurrent() || result.status !== "applied") throw new Error("Poll send unavailable");
+      pollAttemptRef.current = null;
+      takeOpeningControl();
+      setScrollToBottomAfterSendNonce((value) => value + 1);
+    },
+    [
+      canCreatePoll,
+      captureWorkspaceChatUiAction,
+      ownerKey,
+      resolveSendTarget,
+      runtimeContext,
+      selection,
+      takeOpeningControl,
+    ],
+  );
+
+  useEffect(() => {
+    setPollDialogOpen(false);
+    pollAttemptRef.current = null;
+  }, [conversationId, ownerKey, runtimeContext?.runtimeGeneration]);
 
   const deliverOutgoingMessage = useCallback(
     (placementUuid: MessengerUuid) =>
@@ -2641,9 +2725,23 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
       }
 
       const message = selectWorkspaceMessageById(useWorkspaceMessageStore.getState(), messageUuid);
-      if (message?.payload.kind !== "markdown") {
+      if (message?.payload.kind !== "markdown" && message?.payload.kind !== "poll") {
         setActionError(t("workspaceMessenger.messageActionTargetMissing"));
         return null;
+      }
+      if (message.payload.kind === "poll") {
+        const content = summarizeMessengerPoll(message.payload, message.pollState);
+        if (!content.trim()) return null;
+        return {
+          message,
+          quote: {
+            messageUuid: message.uuid,
+            senderUuid: message.authorUuid,
+            senderName: resolveAuthorLabel(message.authorUuid) ?? t("message.replyTo"),
+            quotedContent: content,
+            selectedText: content,
+          },
+        };
       }
 
       const selectedQuoteText =
@@ -3147,6 +3245,8 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
           : selectedText;
       if (text == null && message.payload.kind === "markdown") {
         text = formatWorkspaceMessageTimesForCopy(message.payload.content);
+      } else if (text == null && message.payload.kind === "poll") {
+        text = summarizeMessengerPoll(message.payload, message.pollState);
       } else if (text == null && message.payload.kind === "e2ee") {
         if (runtimeContext == null || ownerKey == null) {
           setActionError(t("message.copyFailed"));
@@ -4544,6 +4644,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
     (controlledProps: WorkspaceComposerControlledProps) => {
       return (
         <ChatPageComposerSection
+          onCreatePoll={canCreatePoll ? () => setPollDialogOpen(true) : undefined}
           {...controlledProps}
           attachments={[...restoredAttachments, ...controlledProps.attachments]}
           onRemoveAttachment={(localId) =>
@@ -4602,6 +4703,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
       activeWorkspaceReplyTab?.answer,
       activeWorkspaceReplyTab?.id,
       composerReadOnlyReason,
+      canCreatePoll,
       restoredAttachments,
       composerJoinedTop,
       conversation?.title,
@@ -4818,6 +4920,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
           />
         ) : (
           <ChatPageComposerSection
+            onCreatePoll={canCreatePoll ? () => setPollDialogOpen(true) : undefined}
             isDmView={false}
             activeDmUserIds={null}
             activeStream={stream?.name ?? conversation?.title}
@@ -4854,6 +4957,15 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
             joinedTop={composerJoinedTop}
           />
         )}
+        <CreatePollDialog
+          key={`${ownerKey}:${conversationId}:${runtimeContext?.runtimeGeneration}`}
+          open={pollDialogOpen && canCreatePoll}
+          onOpenChange={(open) => {
+            setPollDialogOpen(open);
+            if (!open) pollAttemptRef.current = null;
+          }}
+          onCreate={handleCreatePoll}
+        />
       </section>
     </div>
   );

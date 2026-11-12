@@ -26,7 +26,12 @@ function EncryptedSidebarMessagePreview({
   );
   let text =
     document === null ? t("e2ee.lockedTitle") : summarizeWorkspaceMessageBody(document).text;
-  if (message !== null && message.payload.kind !== "e2ee" && message.payload.kind !== "markdown") {
+  if (
+    message !== null &&
+    message.payload.kind !== "e2ee" &&
+    message.payload.kind !== "markdown" &&
+    message.payload.kind !== "poll"
+  ) {
     text = encryptedMessageLabel(message.payload);
   } else if (presentation?.status === "preparing") {
     text = t("e2ee.messageDecrypting");

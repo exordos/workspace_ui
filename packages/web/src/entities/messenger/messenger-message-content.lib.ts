@@ -8,10 +8,14 @@ import type { MessengerMessage, MessengerStream } from "./messenger.types";
 
 export type MessengerMessageContent =
   | { readonly status: "ready"; readonly kind: "markdown"; readonly markdown: string }
+  | { readonly status: "ready"; readonly kind: "poll" }
   | {
       readonly status: "ready";
       readonly kind: "service";
-      readonly payload: Exclude<MessengerMessage["payload"], { kind: "markdown" | "e2ee" }>;
+      readonly payload: Exclude<
+        MessengerMessage["payload"],
+        { kind: "markdown" | "e2ee" | "poll" }
+      >;
     }
   | { readonly status: "missing-key" }
   | { readonly status: "error"; readonly canRequestKey?: boolean };
@@ -28,6 +32,8 @@ export function getImmediateMessengerMessageContent(
   switch (payload.kind) {
     case "markdown":
       return { status: "ready", kind: "markdown", markdown: payload.content };
+    case "poll":
+      return { status: "ready", kind: "poll" };
     case "e2ee":
       return null;
     case "key_announced":

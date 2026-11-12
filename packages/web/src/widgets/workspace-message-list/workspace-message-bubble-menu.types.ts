@@ -9,6 +9,8 @@ export interface WorkspaceMessageBubbleMenuAnchor {
 }
 
 export interface WorkspaceMessageBubbleMenuProps {
+  onPollSettings?: () => void;
+  onPollClose?: () => void;
   message: MessengerMessage;
   isOwn: boolean;
   open: boolean;

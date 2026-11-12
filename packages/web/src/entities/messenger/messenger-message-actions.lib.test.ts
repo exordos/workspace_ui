@@ -261,6 +261,7 @@ describe("messenger message actions", () => {
         messages: [expect.objectContaining({ uuid: MESSAGE_A })],
         source: "message-action",
       },
+      expect.any(Function),
     );
     expect(cache.writeConversationMessagePage).toHaveBeenNthCalledWith(
       2,
@@ -270,6 +271,7 @@ describe("messenger message actions", () => {
         messages: [expect.objectContaining({ uuid: MESSAGE_A })],
         source: "message-action",
       },
+      expect.any(Function),
     );
     expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]).toEqual(
       expect.objectContaining({ uuid: MESSAGE_A }),
@@ -1722,3 +1724,52 @@ it("rejects editor-only secret fences before ordinary send or edit transport", a
   expect(createMessage).not.toHaveBeenCalled();
   expect(editMessage).not.toHaveBeenCalled();
 });
+
+it.each(["native", "zulip"] as const)(
+  "sends a standalone %s poll with an idempotent canonical UUID and checks its placement",
+  async (sourceName) => {
+    const runtimeContext = createRuntimeContext();
+    const ownerKey = prepareStoreOwner(runtimeContext);
+    useMessengerStore
+      .getState()
+      .upsertStream(ownerKey, adaptMessengerStream(createStreamDto({ source_name: sourceName })));
+    const pollPayload = {
+      kind: "poll" as const,
+      questions: [{ uuid: MESSAGE_B, text: "Q", options: [{ uuid: MESSAGE_C, text: "A" }] }],
+      multiple_answers: false,
+      is_anonymous: true,
+      allow_revote: false,
+      results_visibility: "always" as const,
+    };
+    const createMessage = vi.fn(() =>
+      Promise.resolve(
+        createMessageDto({
+          uuid: createMessengerPlacementUuid(TOPIC_A, MESSAGE_A),
+          payload: pollPayload,
+          poll_state: {
+            revision: 1,
+            is_closed: false,
+            voter_count: 0,
+            questions: [],
+            my_votes: [],
+          },
+        }),
+      ),
+    );
+    const result = await sendMessengerMessage({
+      runtimeContext,
+      getRuntimeContext: () => runtimeContext,
+      streamUuid: STREAM_A,
+      topicUuid: TOPIC_A,
+      canonicalMessageUuid: MESSAGE_A,
+      pollPayload,
+      client: { createMessage },
+      cache: {},
+    });
+    expect(result.status).toBe("applied");
+    expect(createMessage).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ uuid: MESSAGE_A, payload: pollPayload }),
+    );
+  },
+);

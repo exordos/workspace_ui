@@ -300,6 +300,7 @@ const WorkspaceMessageReactionRow = React.memo(function WorkspaceMessageReaction
 
 interface WorkspaceMessageBubbleFooterProps {
   isJitsiCall: boolean;
+  pollBody: boolean;
   useInlineMeta: boolean;
   metaRef: React.RefObject<HTMLSpanElement | null>;
   time: string;
@@ -313,6 +314,7 @@ interface WorkspaceMessageBubbleFooterProps {
 
 function WorkspaceMessageBubbleFooter({
   isJitsiCall,
+  pollBody,
   useInlineMeta,
   metaRef,
   time,
@@ -324,6 +326,18 @@ function WorkspaceMessageBubbleFooter({
   onToggleMessageReaction,
 }: Readonly<WorkspaceMessageBubbleFooterProps>): React.ReactElement | null {
   if (isJitsiCall) return null;
+
+  if (pollBody && (serverMessage == null || !hasWorkspaceReactions(serverMessage))) {
+    return (
+      <WorkspaceMessageBubbleMeta
+        time={time}
+        createdAt={createdAt}
+        placement="inline"
+        className="workspace-poll-message-time"
+        after={deliveryIndicator}
+      />
+    );
+  }
 
   if (useInlineMeta) {
     return (
@@ -429,6 +443,9 @@ function getWorkspaceMessageQuickActions(
 }
 
 interface WorkspaceMessageBubblePresentationProps extends WorkspaceMessageBubbleProps {
+  readonly onPollSettings?: () => void;
+  readonly onPollClose?: () => void;
+  readonly pollBody?: boolean;
   /** Decrypted text lives only in this scoped render, never in a synthetic message payload. */
   readonly bodyMarkdown?: string;
   readonly bodyOverride?: React.ReactNode;
@@ -459,6 +476,9 @@ export const WorkspaceMessageBubblePresentation: React.FC<WorkspaceMessageBubble
     locked = false,
     authorOutside = false,
     requestMessageKeyAvailable = false,
+    onPollSettings,
+    onPollClose,
+    pollBody = false,
   }): React.ReactElement {
     const [quickActionsHoverRetained, setQuickActionsHoverRetained] = useState(false);
     const quickActionsHideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -545,13 +565,10 @@ export const WorkspaceMessageBubblePresentation: React.FC<WorkspaceMessageBubble
       resolveAuthorLabel?.(displayMessage.authorUuid),
     );
     const isFailedOutgoing = outgoingMessage?.status === "failed";
-    const bubbleClassName = resolveBubbleClassName(
-      owner,
-      isLastInGroup,
-      isJitsiCall,
-      isSelected,
-      isFailedOutgoing,
-    );
+    const pollBubbleBackground = isSelected ? "bg-card-bg-active" : "bg-bg-elevated";
+    const bubbleClassName = pollBody
+      ? `workspace-poll-message-bubble w-[360px] max-w-[88%] rounded-lg px-3 py-2 text-sm text-text-primary ${pollBubbleBackground}`
+      : resolveBubbleClassName(owner, isLastInGroup, isJitsiCall, isSelected, isFailedOutgoing);
     const bodyRef = useRef<HTMLDivElement>(null);
     const metaRef = useRef<HTMLSpanElement>(null);
     const renderedBody = useMemo(() => {
@@ -680,7 +697,7 @@ export const WorkspaceMessageBubblePresentation: React.FC<WorkspaceMessageBubble
       preferInline: preferInlineMeta,
       contentKey: renderedBody.structureKey,
     });
-    const useInlineMeta = bodyOverride != null || measuredInlineMeta;
+    const useInlineMeta = !pollBody && (bodyOverride != null || measuredInlineMeta);
     const renderQuote = useCallback(
       (segment: WorkspaceMessageBodyQuoteSegment): React.ReactNode =>
         isPreview && segment.reference.snapshotMarkdown != null ? (
@@ -747,11 +764,14 @@ export const WorkspaceMessageBubblePresentation: React.FC<WorkspaceMessageBubble
 
     const authorHeader =
       peerAuthorLabel.length > 0 || normalizedTopicLabel.length > 0 ? (
-        <div className="mb-1 flex min-w-0 items-baseline gap-1.5 text-xs font-medium">
+        <div
+          className={`flex min-w-0 items-baseline gap-1.5 text-xs font-medium ${pollBody ? "mb-1.5 gap-[3px] leading-[15px]" : "mb-1"}`}
+          style={pollBody ? { fontFamily: '"Helvetica Neue", Arial, sans-serif' } : undefined}
+        >
           {peerAuthorLabel.length > 0 && interactiveActions?.onOpenAuthorProfile != null ? (
             <button
               type="button"
-              className="min-w-0 truncate rounded-sm text-text-muted transition-colors hover:text-text-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft"
+              className={`min-w-0 truncate rounded-sm transition-colors hover:text-text-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft ${pollBody ? "text-accent" : "text-text-muted"}`}
               data-peer-author-label="true"
               aria-label={t("a11y.openUserProfile", { name: peerAuthorLabel })}
               onClick={() => interactiveActions.onOpenAuthorProfile?.(displayMessage.authorUuid)}
@@ -759,8 +779,16 @@ export const WorkspaceMessageBubblePresentation: React.FC<WorkspaceMessageBubble
               {peerAuthorLabel}
             </button>
           ) : peerAuthorLabel.length > 0 ? (
-            <span className="min-w-0 truncate text-text-muted" data-peer-author-label="true">
+            <span
+              className={`min-w-0 truncate ${pollBody ? "text-accent" : "text-text-muted"}`}
+              data-peer-author-label="true"
+            >
               {peerAuthorLabel}
+            </span>
+          ) : null}
+          {pollBody && peerAuthorLabel.length > 0 && normalizedTopicLabel.length > 0 ? (
+            <span className="text-accent" aria-hidden="true">
+              ·
             </span>
           ) : null}
           {normalizedTopicLabel.length > 0 ? (
@@ -832,6 +860,8 @@ export const WorkspaceMessageBubblePresentation: React.FC<WorkspaceMessageBubble
         {interactiveServerMessage != null ? (
           <WorkspaceMessageBubbleMenu
             message={interactiveServerMessage}
+            onPollSettings={onPollSettings}
+            onPollClose={onPollClose}
             isOwn={isOwn}
             open={menuOpen}
             contextAnchor={contextMenuAnchor}
@@ -903,6 +933,7 @@ export const WorkspaceMessageBubblePresentation: React.FC<WorkspaceMessageBubble
           ))}
         <WorkspaceMessageBubbleFooter
           isJitsiCall={isJitsiCall}
+          pollBody={pollBody}
           useInlineMeta={useInlineMeta}
           metaRef={metaRef}
           time={time}

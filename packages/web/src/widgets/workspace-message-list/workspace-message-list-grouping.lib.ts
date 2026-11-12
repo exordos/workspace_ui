@@ -111,7 +111,8 @@ export function isWorkspaceServiceMessage(message: WorkspaceMessageListItem): bo
   return (
     message.kind === "server" &&
     message.message.payload.kind !== "markdown" &&
-    message.message.payload.kind !== "e2ee"
+    message.message.payload.kind !== "e2ee" &&
+    message.message.payload.kind !== "poll"
   );
 }
 

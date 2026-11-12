@@ -92,6 +92,51 @@ describe("WorkspaceMessageQuote", () => {
     vi.restoreAllMocks();
   });
 
+  it("keeps a poll reply snapshot as plain text with the original message UUID", () => {
+    mocked.resolve.mockReturnValue({
+      status: "ready",
+      message: {
+        ...messageA,
+        payload: {
+          kind: "poll",
+          questions: [
+            {
+              uuid: "q",
+              text: "Question",
+              options: [
+                { uuid: "a", text: "Alpha" },
+                { uuid: "b", text: "Beta" },
+              ],
+              correctOptionUuids: [],
+            },
+          ],
+          multipleAnswers: false,
+          isAnonymous: false,
+          allowRevote: false,
+          resultsVisibility: "after_vote",
+          allowAddingOptions: false,
+          closesAt: null,
+          closedAt: null,
+        },
+      },
+    });
+    const onOpenMessage = vi.fn();
+    render(
+      <WorkspaceMessageQuote
+        reference={{
+          messageUuid: MESSAGE_A,
+          fallbackAuthorLabel: "Alice",
+          selectedText: "Question\n• <b>Alpha</b>",
+        }}
+        onOpenMessage={onOpenMessage}
+      />,
+    );
+    expect(screen.getByText(/<b>Alpha<\/b>/)).toBeInTheDocument();
+    expect(document.querySelector("b")).toBeNull();
+    fireEvent.click(screen.getByRole("link"));
+    expect(onOpenMessage).toHaveBeenCalledWith(MESSAGE_A);
+  });
+
   it("renders nested references only in full-history mode", () => {
     const { rerender } = render(
       <WorkspaceMessageQuote

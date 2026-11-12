@@ -22,6 +22,7 @@ import { isWebView } from "~/shared/lib/webview";
 import { hasWorkspaceSecretDraft } from "~/shared/lib/workspace-secret-draft.lib";
 import { DropdownMenu, type DropdownMenuItem } from "~/shared/ui/dropdown-menu";
 import { WidgetErrorBoundary } from "~/shared/ui/error-boundary";
+import { Icon } from "~/shared/ui/icon";
 import { ScrollArea } from "~/shared/ui/scroll-area";
 import {
   MessageComposerAiActionMenuLayer,
@@ -127,6 +128,21 @@ const ENABLE_SCHEDULED_SEND_UI = false;
 
 const DEFAULT_ACTION_CAPABILITY: MessageComposerActionCapability = { mode: "enabled" };
 
+function PollButton({ onClick, disabled }: Readonly<{ onClick: () => void; disabled: boolean }>) {
+  return (
+    <button
+      type="button"
+      className={TOOLBAR_BTN}
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={t("pollForm.title")}
+      title={t("pollForm.title")}
+    >
+      <Icon name="poll" size={24} />
+    </button>
+  );
+}
+
 type ComposerTextEditingCommand = "cut" | "copy" | "paste" | "selectAll";
 
 function resolveActionCapability(
@@ -150,6 +166,7 @@ function resolveToolbarActionLabel(
 }
 
 interface MessageComposerToolbarRowProps {
+  onCreatePoll?: () => void;
   expanded: boolean;
   onExpandedChange: (expanded: boolean) => void;
   mode: ComposerMode;
@@ -290,6 +307,7 @@ const MessageComposerCompactSecondaryActionControls =
 
 const MessageComposerToolbarRow = React.memo<MessageComposerToolbarRowProps>(
   function MessageComposerToolbarRow({
+    onCreatePoll,
     expanded,
     onExpandedChange,
     mode,
@@ -449,6 +467,11 @@ const MessageComposerToolbarRow = React.memo<MessageComposerToolbarRowProps>(
               scheduleTrigger={scheduleTrigger}
               snippetsTrigger={snippetsTrigger}
               aiTrigger={aiTrigger}
+              pollTrigger={
+                !isEditing && onCreatePoll ? (
+                  <PollButton onClick={onCreatePoll} disabled={disabled} />
+                ) : undefined
+              }
             />
           )}
         </div>
@@ -458,6 +481,7 @@ const MessageComposerToolbarRow = React.memo<MessageComposerToolbarRowProps>(
 );
 
 export const MessageComposerInner: React.FC<MessageComposerProps> = ({
+  onCreatePoll,
   onSend,
   optimisticClearOnSend = false,
   attachments,
@@ -1849,6 +1873,7 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
   const compactControlRailVisible = isCompactWriteMode && heightButtonVisible;
   const toolbarRow = (
     <MessageComposerToolbarRow
+      onCreatePoll={onCreatePoll}
       expanded={isToolbarExpanded}
       onExpandedChange={setToolbarExpanded}
       mode={mode}

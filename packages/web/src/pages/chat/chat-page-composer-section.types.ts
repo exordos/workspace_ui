@@ -21,6 +21,7 @@ export interface ComposerUploadProgressState {
 }
 
 export interface ChatPageComposerSectionProps {
+  onCreatePoll?: () => void;
   isDmView: boolean;
   activeDmUserIds: number[] | null;
   /** 1:1 DM with a deactivated legacy partner, so the composer is disabled. */

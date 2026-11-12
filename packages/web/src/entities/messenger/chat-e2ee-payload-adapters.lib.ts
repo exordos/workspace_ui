@@ -76,12 +76,13 @@ export function decodeChatE2eePayload(
   dto: WorkspaceMessengerE2eePayloadDto,
 ): ChatE2eePayloadDecodeResult {
   const payload = adaptMessengerMessagePayload(dto);
-  if (payload.kind === "markdown") throw new TypeError("Expected encrypted payload");
+  if (payload.kind === "markdown" || payload.kind === "poll")
+    throw new TypeError("Expected encrypted payload");
   return decodeMessengerE2eePayload(payload);
 }
 
 export function decodeMessengerE2eePayload(
-  payload: Exclude<MessengerMessagePayload, { kind: "markdown" }>,
+  payload: Exclude<MessengerMessagePayload, { kind: "markdown" | "poll" }>,
 ): ChatE2eePayloadDecodeResult {
   if (payload.kind === "key_reject" || payload.kind === "key_announced")
     return { ok: true, value: payload };

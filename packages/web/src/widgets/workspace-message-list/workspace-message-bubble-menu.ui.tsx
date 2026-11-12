@@ -175,6 +175,8 @@ export const WorkspaceMessageBubbleMenu = React.memo(function WorkspaceMessageBu
   onToggleMessageReaction,
   onLoadWorkspaceFilePreview,
   getSelectedText,
+  onPollSettings,
+  onPollClose,
 }: WorkspaceMessageBubbleMenuProps): React.ReactElement | null {
   const quickReactions = React.useSyncExternalStore(
     open ? subscribeWorkspaceMessageQuickReactionUsage : subscribeToNoQuickReactionUpdates,
@@ -239,7 +241,7 @@ export const WorkspaceMessageBubbleMenu = React.memo(function WorkspaceMessageBu
         appendCopyMessageLink(items);
         return items;
       }
-    } else {
+    } else if (message.payload.kind !== "poll") {
       appendCopyMessageLink(items);
       return items;
     }
@@ -393,7 +395,29 @@ export const WorkspaceMessageBubbleMenu = React.memo(function WorkspaceMessageBu
     pushActionSection(secondaryActionItems);
 
     const ownItems: DropdownMenuItem[] = [];
-    if (isOwn && onEditMessage != null) {
+    if (onPollSettings)
+      ownItems.push({
+        type: "action",
+        key: "poll-settings",
+        icon: "settings",
+        label: t("pollBubble.settings"),
+        onSelect: () => {
+          closeMenu();
+          onPollSettings();
+        },
+      });
+    if (onPollClose)
+      ownItems.push({
+        type: "action",
+        key: "poll-close",
+        icon: "block",
+        label: t("pollBubble.close"),
+        onSelect: () => {
+          closeMenu();
+          onPollClose();
+        },
+      });
+    if (isOwn && message.payload.kind !== "poll" && onEditMessage != null) {
       ownItems.push({
         type: "action",
         key: "edit",
@@ -443,6 +467,8 @@ export const WorkspaceMessageBubbleMenu = React.memo(function WorkspaceMessageBu
     onRequestDeleteMessage,
     onToggleMessageSelection,
     onToggleMessageReaction,
+    onPollSettings,
+    onPollClose,
     quickReactions,
   ]);
 

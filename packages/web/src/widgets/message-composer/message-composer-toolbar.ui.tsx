@@ -30,6 +30,7 @@ export const FormattingToolbar = React.memo<FormattingToolbarProps>(function For
   scheduleTrigger,
   snippetsTrigger,
   aiTrigger,
+  pollTrigger,
   secretFragmentsEnabled = false,
   disabled = false,
 }) {
@@ -147,6 +148,7 @@ export const FormattingToolbar = React.memo<FormattingToolbarProps>(function For
         <span className="h-7 w-px flex-shrink-0 bg-border-subtle" aria-hidden />
       )}
       {emojiTrigger}
+      {pollTrigger}
       <MessageComposerTimeInsert
         textareaRef={textareaRef}
         onValueChange={onValueChange}
