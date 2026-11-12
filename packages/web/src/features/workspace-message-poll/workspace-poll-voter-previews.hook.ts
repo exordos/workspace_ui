@@ -8,6 +8,7 @@ import {
 import type { WorkspacePollQuestion } from "./workspace-message-poll.types";
 
 const getRuntimeContext = () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
+const MAX_FALLBACK_OPTIONS = 5;
 
 export function pollVoterOptionKey(questionUuid: string, optionUuid: string) {
   return `${questionUuid}:${optionUuid}`;
@@ -26,11 +27,13 @@ export function usePollVoterPreviews(
   }>();
 
   useEffect(() => {
-    const jobs = questions.flatMap((question) =>
-      question.options
-        .filter((option) => option.votes > 0 && !option.previewVoterUuids?.length)
-        .map((option) => ({ questionUuid: question.id, optionUuid: option.id })),
-    );
+    const jobs = questions
+      .flatMap((question) =>
+        question.options
+          .filter((option) => option.votes > 0 && !option.previewVoterUuids?.length)
+          .map((option) => ({ questionUuid: question.id, optionUuid: option.id })),
+      )
+      .slice(0, MAX_FALLBACK_OPTIONS);
     if (jobs.length === 0) return;
     const context = getRuntimeContext();
     if (!context) return;
@@ -66,7 +69,7 @@ export function usePollVoterPreviews(
         }
       }
     };
-    // Bound per-bubble requests even for polls with many questions and options.
+    // The total budget above also bounds work restarted by a new poll revision.
     const workers = Math.min(3, jobs.length);
     for (let index = 0; index < workers; index++) void load();
     return () => controller.abort();

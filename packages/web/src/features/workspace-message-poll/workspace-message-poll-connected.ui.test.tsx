@@ -142,6 +142,38 @@ describe("connected poll", () => {
     expect(screen.queryByTitle("#recent")).not.toBeInTheDocument();
     expect(await screen.findByTitle("#newest")).toBeInTheDocument();
   });
+  it("caps legacy fallback requests for a 400-option poll while keeping explicit lists available", async () => {
+    if (message.payload.kind !== "poll") throw new Error("Expected poll");
+    const questions = Array.from({ length: 20 }, (_, q) => ({
+      uuid: `q${q}`,
+      text: `Question ${q}`,
+      options: Array.from({ length: 20 }, (_, o) => ({ uuid: `o${o}`, text: `Answer ${o}` })),
+      correctOptionUuids: [],
+    }));
+    const large: MessengerMessage = {
+      ...message,
+      payload: { ...message.payload, questions },
+      pollState: {
+        ...message.pollState!,
+        questions: questions.map((q) => ({
+          questionUuid: q.uuid,
+          voterCount: 20,
+          optionCounts: Object.fromEntries(q.options.map((o) => [o.uuid, 1])),
+        })),
+      },
+    };
+    render(<WorkspaceMessagePollConnected {...props} message={large} />);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(mocks.voters).toHaveBeenCalledTimes(5);
+    fireEvent.click(screen.getAllByRole("button", { name: /Who chose .*Answer 19/ })[0]!);
+    await waitFor(() => expect(mocks.voters).toHaveBeenCalledTimes(6));
+    expect(mocks.voters.mock.calls[5]?.[0]).toMatchObject({
+      questionUuid: "q0",
+      optionUuid: "o19",
+    });
+  });
   it.each([
     { readOnly: true, isAnonymous: false, resultsVisibility: "always" },
     { readOnly: false, isAnonymous: true, resultsVisibility: "always" },
