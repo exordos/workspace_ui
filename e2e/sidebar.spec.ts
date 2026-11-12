@@ -125,6 +125,50 @@ test.describe("Sidebar", () => {
     });
   });
 
+  test("toggles chat search from the composer with a hidden sidebar @mock", async ({
+    authenticated: page,
+  }) => {
+    const topicPath = `${e2eOrgBasePath()}/stream/${E2E_STREAM_UUID}/topic/${E2E_TOPIC_UUID}`;
+    await page.goto(topicPath);
+    const sidebar = page.getByRole("navigation", { name: "Chat list" });
+    const chat = sidebar.getByRole("link", { name: "General", exact: true });
+    await expect(chat).toBeVisible();
+
+    await chat.focus();
+    await page.keyboard.press("ControlOrMeta+Backslash");
+    await expect(sidebar).toHaveCount(0);
+    const composer = page.locator('[data-focus-zone="composer"] textarea').first();
+    await composer.fill("Draft message");
+    await page.keyboard.press("ControlOrMeta+K");
+
+    const search = sidebar.getByRole("searchbox");
+    await expect(search).toBeFocused();
+    await page.keyboard.type("missing-chat");
+    await expect(search).toHaveValue("missing-chat");
+    await expect(chat).toHaveCount(0);
+    await page.keyboard.press("ControlOrMeta+K");
+    await expect(search).toHaveValue("");
+    await expect(chat).toBeVisible();
+    await expect(composer).toBeFocused();
+    await expect(composer).toHaveValue("Draft message");
+
+    await page.keyboard.press("ControlOrMeta+K");
+    await expect(search).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(composer).toBeFocused();
+
+    await page.keyboard.press("ControlOrMeta+K");
+    await expect(search).toBeFocused();
+    await search.fill("missing-chat");
+    const newChat = sidebar.getByRole("button", { name: /новый чат|new chat/i });
+    await newChat.focus();
+    await page.keyboard.press("Escape");
+    await expect(search).toHaveValue("");
+    await expect(chat).toBeVisible();
+    await expect(newChat).toBeFocused();
+    await expect(page).toHaveURL((url) => url.pathname === topicPath);
+  });
+
   test("shows sidebar navigation when authenticated", async ({ authenticated }) => {
     await expect(
       authenticated

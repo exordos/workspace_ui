@@ -77,6 +77,7 @@ function buildProps(overrides: Partial<LayoutMainWorkspaceProps> = {}): LayoutMa
     shouldShowChatShell: true,
     pathname: "/",
     sidebarOpen: true,
+    sidebarSearchRef: { current: null },
     rightDrawerOpen: false,
     rightDrawerMode: "info",
     rightDrawerAccountScreen: null,

@@ -63,6 +63,7 @@ import {
   projectWorkspaceSidebarSearch,
   type WorkspaceSidebarSearchProjection,
 } from "./sidebar-workspace-search.lib";
+import type { SidebarSearchHandle } from "./sidebar.types";
 
 const WORKSPACE_CREATE_CHAT_VISIBLE_TABS = ["dm", "channel", "topic", "archived"] as const;
 const SidebarCalendarContext = React.createContext(0);
@@ -95,6 +96,7 @@ function useSidebarCalendarDay(): number {
 }
 
 export interface WorkspaceSidebarProps {
+  searchRef?: React.Ref<SidebarSearchHandle>;
   streams: MessengerSidebarStreamItem[];
   allStreams?: MessengerSidebarStreamItem[];
   loading: boolean;
@@ -626,6 +628,7 @@ function renderWorkspaceSidebarStreamLists(input: {
 }
 
 export const WorkspaceSidebar: React.FC<WorkspaceSidebarProps> = ({
+  searchRef,
   streams,
   allStreams = streams,
   loading,
@@ -804,6 +807,7 @@ export const WorkspaceSidebar: React.FC<WorkspaceSidebarProps> = ({
       >
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           <SidebarSearchHeader
+            searchRef={searchRef}
             searchQuery={searchQuery}
             onSearchQueryChange={setSearchQuery}
             onOpenCreateChat={onOpenCreateChat ?? handleOpenCreateChat}

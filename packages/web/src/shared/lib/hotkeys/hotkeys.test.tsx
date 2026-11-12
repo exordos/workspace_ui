@@ -54,6 +54,15 @@ describe("hotkey policy", () => {
     };
     expect(normalizeHotkeyOverrides(overrides)).toEqual(overrides);
   });
+  it.each(["Control+K", "Meta+K", "Mod+K"])(
+    "preserves a saved %s assignment when adding chat search",
+    (binding) => {
+      expect(normalizeHotkeyOverrides({ "interface.theme": binding })).toEqual({
+        "interface.theme": binding,
+        "navigation.chatSearch": null,
+      });
+    },
+  );
   it("detects conflicts between shifted glyphs and physical positions on both platforms", () => {
     expect(
       validateHotkeyBinding("interface.theme", "Control+?", {

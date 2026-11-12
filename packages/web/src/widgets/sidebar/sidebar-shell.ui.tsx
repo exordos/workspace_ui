@@ -21,16 +21,19 @@ import { normalizeSidebarSearchQuery } from "./sidebar-filtering.lib";
 import { useSidebarProjectionSnapshot } from "./sidebar-projection.hook";
 import { useSidebarStreamOrder } from "./sidebar-stream-order.hook";
 import { WorkspaceSidebar } from "./sidebar-workspace.ui";
+import type { SidebarSearchHandle } from "./sidebar.types";
 
 const EMPTY_WORKSPACE_STREAMS: MessengerSidebarStreamItem[] = [];
 
 interface SidebarShellProps {
+  searchRef?: React.Ref<SidebarSearchHandle>;
   sidebarStyle?: React.CSSProperties;
   sidebarResizeControl?: React.ReactNode;
   pathname?: string;
 }
 
 export const SidebarShell: React.FC<SidebarShellProps> = ({
+  searchRef,
   sidebarStyle,
   sidebarResizeControl,
   pathname = "",
@@ -261,6 +264,7 @@ export const SidebarShell: React.FC<SidebarShellProps> = ({
         <div className="flex min-h-0 flex-shrink-0 self-stretch">{workspaceFolderRail}</div>
         {sidebarFrame(
           <WorkspaceSidebar
+            searchRef={searchRef}
             streams={workspaceStreams}
             allStreams={workspaceAllStreams}
             loading={workspaceLoading}
@@ -276,6 +280,7 @@ export const SidebarShell: React.FC<SidebarShellProps> = ({
 
   return sidebarFrame(
     <WorkspaceSidebar
+      searchRef={searchRef}
       streams={workspaceStreams}
       allStreams={workspaceAllStreams}
       loading={workspaceLoading}

@@ -1046,7 +1046,8 @@
         "mail": "Почта",
         "calls": "Звонки",
         "activity": "Активность",
-        "folderList": "Список папок"
+        "folderList": "Список папок",
+        "chatSearch": "Поиск чатов"
       },
       "interface": {
         "theme": "Сменить тему",

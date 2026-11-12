@@ -1034,7 +1034,8 @@
         "mail": "Mail",
         "calls": "Calls",
         "activity": "Activity",
-        "folderList": "Folder list"
+        "folderList": "Folder list",
+        "chatSearch": "Search chats"
       },
       "interface": {
         "theme": "Change theme",
