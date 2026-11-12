@@ -37,7 +37,12 @@ function syncSessionMessages(
       message.payload.kind !== "e2ee",
   );
   const signature = JSON.stringify(
-    serviceMessages.map((message) => [message.uuid, message.authorUuid, message.payload]),
+    serviceMessages.map((message) => [
+      message.uuid,
+      message.topicUuid,
+      message.authorUuid,
+      message.payload,
+    ]),
   );
   if (entry.lastIngest?.signature === signature) return entry.lastIngest.promise;
   const ingestion = {

@@ -478,6 +478,7 @@ export class IndexedDbChatKeyStorage implements ChatKeyStorage {
           (old !== undefined &&
             (!equalBytes(old.privateKey, capturedPending.privateKey) ||
               !equalBytes(old.publicKey.bytes, capturedPending.publicKey.bytes) ||
+              old.topicUuid !== capturedPending.topicUuid ||
               old.requestMessageUuid !== capturedPending.requestMessageUuid))
         ) {
           fail(new ChatKeyStorageError("conflict"));

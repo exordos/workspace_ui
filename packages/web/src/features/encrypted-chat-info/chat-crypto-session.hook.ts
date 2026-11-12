@@ -32,7 +32,7 @@ interface SessionView {
 }
 
 /** Coordinates existing domain operations; presentation components receive only state and callbacks. */
-export function useChatCryptoSession(streamUuid: string | null) {
+export function useChatCryptoSession(streamUuid: string | null, topicUuid?: string) {
   const sessions = useWorkspaceAuthStore((state) => state.sessions);
   const currentAccountId = useWorkspaceAuthStore((state) => state.currentAccountId);
   const runtime = useMemo(
@@ -187,7 +187,7 @@ export function useChatCryptoSession(streamUuid: string | null) {
     [current?.session, scopeKey, clearActionError, isActionCurrent],
   );
   const requestKey = useCallback(
-    (keyUuid?: string, recoveryMessage?: MessengerMessage) =>
+    (keyUuid?: string, recoveryMessage?: MessengerMessage, requestTopicUuid = topicUuid) =>
       perform(
         async (active) => {
           const catalog = useWorkspaceMessageStore.getState();
@@ -202,18 +202,25 @@ export function useChatCryptoSession(streamUuid: string | null) {
                 )
               : undefined;
           if (recoveryMessage) await active.requestKey(keyUuid, recoveryMessage);
-          else if (probe) await active.requestKey(keyUuid, probe, true);
+          else if (probe) await active.requestKey(keyUuid, probe, true, requestTopicUuid);
+          else if (requestTopicUuid)
+            await active.requestKey(keyUuid, undefined, false, requestTopicUuid);
           else await active.requestKey(keyUuid);
         },
         t("e2ee.requestKeyFailed"),
         true,
       ),
-    [perform, ownerKey, streamUuid, runtime?.projectId],
+    [perform, ownerKey, streamUuid, runtime?.projectId, topicUuid],
   );
   const requestEnvelopeKey = useCallback(
-    (keyUuid: string, envelope: ChatCryptoEnvelope, allowUsableKey = false) =>
+    (
+      keyUuid: string,
+      envelope: ChatCryptoEnvelope,
+      allowUsableKey = false,
+      sourceTopicUuid?: string,
+    ) =>
       perform(
-        (active) => active.requestEnvelopeKey(keyUuid, envelope, allowUsableKey),
+        (active) => active.requestEnvelopeKey(keyUuid, envelope, allowUsableKey, sourceTopicUuid),
         t("e2ee.requestKeyFailed"),
         true,
       ),
@@ -271,8 +278,8 @@ export function useChatCryptoSession(streamUuid: string | null) {
     [perform],
   );
   const reissueKey = useCallback(
-    () => perform((active) => active.reissueKey(), t("e2ee.rotateKeyFailed")),
-    [perform],
+    () => perform((active) => active.reissueKey(topicUuid), t("e2ee.rotateKeyFailed")),
+    [perform, topicUuid],
   );
   const grantAllKeys = useCallback(
     () =>

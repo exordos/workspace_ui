@@ -224,6 +224,7 @@ function currentKeyInfo(
 
 export function EncryptedChatInfoConnected({
   streamUuid,
+  topicUuid,
   onClose,
   onCall,
   renderAvatar,
@@ -238,6 +239,7 @@ export function EncryptedChatInfoConnected({
   removeMemberError,
 }: {
   readonly streamUuid: string;
+  readonly topicUuid?: string;
   readonly screen?: EncryptedChatInfoProps["screen"];
   readonly onScreenChange?: EncryptedChatInfoProps["onScreenChange"];
   readonly selectedLocalKeyUuid?: string;
@@ -251,11 +253,12 @@ export function EncryptedChatInfoConnected({
   readonly onCall?: () => void;
   readonly renderAvatar?: EncryptedChatInfoProps["renderAvatar"];
 }) {
-  const crypto = useChatCryptoSession(streamUuid);
+  const crypto = useChatCryptoSession(streamUuid, topicUuid);
   const { projection, onCopyKey } = useEncryptedChatInfo(streamUuid, crypto.sendKeyUuid ?? null);
-  // Scope transient presentation to the exact session so navigation cannot carry a confirmation.
+  // A confirmation belongs to the session and the topic where rotation was opened.
   const [confirmation, setConfirmation] = useState<{
     session: typeof crypto.session;
+    topicUuid: string | undefined;
     keyUuid: string;
     failed?: boolean;
   } | null>(null);
@@ -314,7 +317,9 @@ export function EncryptedChatInfoConnected({
   };
   const requests = requestsFor("pending");
   const confirmationOpen =
-    confirmation?.session === crypto.session && confirmation.keyUuid === currentKey?.keyUuid;
+    confirmation?.session === crypto.session &&
+    confirmation.topicUuid === topicUuid &&
+    confirmation.keyUuid === currentKey?.keyUuid;
   return (
     <>
       <EncryptedChatInfo
@@ -362,7 +367,8 @@ export function EncryptedChatInfoConnected({
         onRotateKey={
           currentKey == null
             ? undefined
-            : () => setConfirmation({ session: crypto.session, keyUuid: currentKey.keyUuid })
+            : () =>
+                setConfirmation({ session: crypto.session, topicUuid, keyUuid: currentKey.keyUuid })
         }
         canGrantAll={requests.some((request) => request.canGrant)}
         onGrantAll={() => {

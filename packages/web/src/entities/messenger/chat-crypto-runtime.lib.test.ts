@@ -1423,7 +1423,9 @@ describe("real ordinary chat orchestration", () => {
       return response;
     });
     const generate = vi.spyOn(realChatCryptoProvider, "createGroupKey");
-    await expect(session.reissueKey()).rejects.toThrow("response lost");
+    const topicUuid = crypto.randomUUID();
+    await expect(session.reissueKey(topicUuid)).rejects.toThrow("response lost");
+    expect(f.wire[0]?.topic_uuid).toBe(topicUuid);
     expect(session.scope.keyUuid).toBe(f.metadata.keyUuid);
     const pendingStages = await realChatKeyStorage.listStagedCreations({
       owner: f.admin,
@@ -1431,7 +1433,7 @@ describe("real ordinary chat orchestration", () => {
     });
     const staged = pendingStages[0];
     if (!staged) throw new Error("Missing durable rotation fixture");
-    const retried = await session.reissueKey();
+    const retried = await session.reissueKey(TOPIC);
     expect(retried.status).toBe("applied");
     expect(session.getState()).toMatchObject({ access: "ready", sendKeyUuid: staged.keyUuid });
     expect(session.scope.keyUuid).toBe(staged.keyUuid);
@@ -2170,6 +2172,62 @@ describe("real ordinary chat orchestration", () => {
       conversationIdForStream(STREAM),
     ]);
     session.dispose();
+  });
+
+  it.each(["key_grant", "key_reject"] as const)(
+    "sends the key request and %s to the encrypted message's topic",
+    async (kind) => {
+      const f = await setup();
+      const admin = await openSessionFor(f.admin);
+      const member = await openSessionFor(f.member);
+      await admin.load();
+      await member.load();
+      const topicUuid = crypto.randomUUID();
+      await admin.send({ text: "protected topic message", topicUuid });
+      const message = adaptMessengerMessage(f.wire.at(-1)!);
+      await member.requestKey(f.metadata.keyUuid, message);
+      const request = f.wire.at(-1)!;
+      expect(request).toMatchObject({ topic_uuid: topicUuid, payload: { kind: "key_request" } });
+
+      await admin.ingest([adaptMessengerMessage(request)]);
+      if (kind === "key_grant") await admin.grantAllKeys();
+      else await admin.rejectKey(request.uuid);
+      const response = f.wire.at(-1)!;
+      expect(response).toMatchObject({
+        topic_uuid: topicUuid,
+        payload: { kind, request_message_uuid: request.uuid },
+      });
+      await member.ingest([adaptMessengerMessage(response)]);
+      expect(member.getState().requestStatus).toBe(
+        kind === "key_grant" ? "grant-received" : "rejected",
+      );
+    },
+  );
+
+  it("keeps key request retries scoped to their original topic across session reloads", async () => {
+    const f = await setup();
+    let member = await openSessionFor(f.member);
+    await member.load();
+    const topicUuid = crypto.randomUUID();
+    const create = vi.mocked(createMessage).getMockImplementation()!;
+    vi.mocked(createMessage).mockImplementationOnce(async (options, body) => {
+      await create(options, body);
+      throw new Error("response lost");
+    });
+    const envelope = { bytes: new Uint8Array([1]) };
+    await expect(
+      member.requestEnvelopeKey(f.metadata.keyUuid, envelope, false, topicUuid),
+    ).rejects.toThrow("send-failed");
+
+    member.dispose();
+    member = await openSessionFor(f.member);
+    await member.load();
+    await member.requestKey();
+    await member.requestEnvelopeKey(f.metadata.keyUuid, envelope, false, topicUuid);
+    expect(f.wire.map((message) => message.topic_uuid)).toEqual([topicUuid, TOPIC, topicUuid]);
+    const [first, otherTopic, retry] = vi.mocked(createMessage).mock.calls;
+    expect(retry?.[1]).toEqual(first?.[1]);
+    expect(otherTopic?.[1].uuid).not.toBe(first?.[1].uuid);
   });
 
   it("completes a grant received before request history for a legacy unbound pending request after reload", async () => {

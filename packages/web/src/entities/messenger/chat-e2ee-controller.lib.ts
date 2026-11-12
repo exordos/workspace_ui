@@ -141,11 +141,12 @@ export class ChatE2eeController {
     payload: ChatE2eePayload,
     allowed: () => boolean,
     canonicalMessageUuid?: string,
+    topicUuid?: string,
   ): Promise<ChatE2eeControllerResult<ChatE2eeMessage>> {
     const guard = () => this.isCurrent() && allowed();
     if (!guard()) return failure(this.isCurrent() ? "forbidden" : "stale");
     try {
-      const message = await this.deps.sendPayload(payload, guard, canonicalMessageUuid);
+      const message = await this.deps.sendPayload(payload, guard, canonicalMessageUuid, topicUuid);
       if (!guard()) return failure(this.isCurrent() ? "forbidden" : "stale");
       if (
         message.streamUuid !== this.deps.scope.streamUuid ||
@@ -185,6 +186,7 @@ export class ChatE2eeController {
   requestKey(
     recoveryEnvelope?: ChatCryptoEnvelope,
     allowUsableKey = false,
+    { topicUuid, defaultTopicUuid }: { topicUuid?: string; defaultTopicUuid?: string } = {},
   ): Promise<ChatE2eeControllerResult<ChatE2eeMessage>> {
     const next = this.requestQueue.then(() =>
       this.run(async () => {
@@ -228,13 +230,14 @@ export class ChatE2eeController {
           const oldest = existing
             .filter(
               (item) =>
-                !recovery ||
-                (item.recovery !== undefined &&
-                  equalBytes(item.recovery.envelope.bytes, recovery.envelope.bytes) &&
-                  equalBytes(
-                    item.recovery.previousGroupKey.bytes,
-                    recovery.previousGroupKey.bytes,
-                  )),
+                (item.topicUuid ?? defaultTopicUuid) === topicUuid &&
+                (!recovery ||
+                  (item.recovery !== undefined &&
+                    equalBytes(item.recovery.envelope.bytes, recovery.envelope.bytes) &&
+                    equalBytes(
+                      item.recovery.previousGroupKey.bytes,
+                      recovery.previousGroupKey.bytes,
+                    ))),
             )
             .sort(
               (left, right) =>
@@ -254,6 +257,7 @@ export class ChatE2eeController {
             pending = {
               localRequestId: uuid,
               requestMessageUuid: null,
+              topicUuid,
               deviceName,
               publicKey: pair.value.publicKey,
               privateKey: pair.value.privateKey,
@@ -287,6 +291,7 @@ export class ChatE2eeController {
           },
           allowed,
           uuid,
+          pending.topicUuid ?? topicUuid,
         );
         if (!result.ok || result.value.payload.kind !== "key_request") return result;
         if (
@@ -373,6 +378,8 @@ export class ChatE2eeController {
           content: envelope.value,
         },
         () => this.canRespond("grant", request),
+        undefined,
+        request.topicUuid,
       );
     });
   }
@@ -391,6 +398,8 @@ export class ChatE2eeController {
           recipientDeviceId: request.payload.deviceId,
         },
         () => this.canRespond("reject", request),
+        undefined,
+        request.topicUuid,
       );
     });
   }

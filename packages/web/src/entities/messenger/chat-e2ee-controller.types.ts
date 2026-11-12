@@ -53,5 +53,6 @@ export interface ChatE2eeControllerDependencies {
     payload: ChatE2eePayload,
     isCurrent: () => boolean,
     canonicalMessageUuid?: string,
+    topicUuid?: string,
   ) => Promise<ChatE2eeMessage>;
 }
