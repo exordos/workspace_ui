@@ -6,7 +6,12 @@ import { invokePollAction } from "~/shared/api/messenger-messages.api";
 import type { WorkspaceMessengerMessageDto } from "~/shared/api/messenger.types";
 import { adaptMessengerMessage } from "./messenger-adapters.lib";
 import { messengerMessageActionCache } from "./messenger-cache.lib";
-import { mutateMessengerPoll, supportsMessengerPolls } from "./messenger-poll-actions.lib";
+import {
+  mutateMessengerPoll,
+  supportsMessengerPolls,
+  supportsMessengerPollManagement,
+} from "./messenger-poll-actions.lib";
+import type { MessengerPollPayload } from "./messenger.types";
 
 vi.mock("~/shared/api/messenger-messages.api", () => ({
   invokePollAction: vi.fn(),
@@ -51,6 +56,119 @@ afterEach(() => {
   vi.resetAllMocks();
   useWorkspaceMessageStore.getState().clear();
 });
+
+function compatiblePoll(): MessengerPollPayload {
+  return {
+    kind: "poll",
+    multipleAnswers: true,
+    isAnonymous: false,
+    allowRevote: true,
+    resultsVisibility: "always",
+    allowAddingOptions: true,
+    closesAt: null,
+    closedAt: null,
+    questions: [
+      {
+        uuid: "question",
+        text: "When?",
+        correctOptionUuids: [],
+        options: [
+          { uuid: "first", text: "Today" },
+          { uuid: "second", text: "Tomorrow" },
+        ],
+      },
+    ],
+  };
+}
+
+it("keeps Zulip widgets fixed while allowing native poll management", () => {
+  const payload = compatiblePoll();
+  expect(
+    supportsMessengerPollManagement(
+      { sourceName: "native", encryption: false, isArchived: false },
+      payload,
+    ),
+  ).toBe(true);
+  expect(
+    supportsMessengerPollManagement(
+      { sourceName: "zulip", encryption: false, isArchived: false },
+      payload,
+    ),
+  ).toBe(false);
+  for (const sourceName of ["native", "zulip"] as const) {
+    expect(
+      supportsMessengerPollManagement({ sourceName, encryption: true, isArchived: false }, payload),
+    ).toBe(false);
+    expect(
+      supportsMessengerPollManagement({ sourceName, encryption: false, isArchived: true }, payload),
+    ).toBe(false);
+  }
+});
+
+it.each([
+  { multipleAnswers: false },
+  { isAnonymous: true },
+  { allowRevote: false },
+  { resultsVisibility: "after_vote" as const },
+  { allowAddingOptions: false },
+  { closesAt: "2099-01-01T00:00:00Z" },
+])("allows management of extended Workspace policies in Zulip: %j", (settings) => {
+  expect(
+    supportsMessengerPollManagement(
+      { sourceName: "zulip", encryption: false, isArchived: false },
+      { ...compatiblePoll(), ...settings },
+    ),
+  ).toBe(true);
+});
+
+it("allows management of multi-question and correct-answer previews", () => {
+  const payload = compatiblePoll();
+  const stream = { sourceName: "zulip" as const, encryption: false, isArchived: false };
+  payload.questions.push({ ...payload.questions[0]!, uuid: "other" });
+  expect(supportsMessengerPollManagement(stream, payload)).toBe(true);
+  payload.questions.pop();
+  payload.questions[0]!.correctOptionUuids = ["first"];
+  expect(supportsMessengerPollManagement(stream, payload)).toBe(true);
+});
+
+it.each([" Today", "Today\u0085", "Today\u001f", "Today\n", "@*group*"])(
+  "recognizes a text preview using the same literal-line rules as the bridge: %j",
+  (text) => {
+    const payload = compatiblePoll();
+    payload.questions[0]!.options[0]!.text = text;
+    expect(
+      supportsMessengerPollManagement(
+        { sourceName: "zulip", encryption: false, isArchived: false },
+        payload,
+      ),
+    ).toBe(true);
+  },
+);
+
+it("does not treat the literal BOM as Python strip whitespace", () => {
+  const payload = compatiblePoll();
+  payload.questions[0]!.text = "\ufeffWhen?";
+  expect(
+    supportsMessengerPollManagement(
+      { sourceName: "zulip", encryption: false, isArchived: false },
+      payload,
+    ),
+  ).toBe(false);
+});
+
+it.each(["contact@example.test", "literal * asterisk"])(
+  "keeps individual mention or emphasis characters compatible: %j",
+  (text) => {
+    const payload = compatiblePoll();
+    payload.questions[0]!.text = text;
+    expect(
+      supportsMessengerPollManagement(
+        { sourceName: "zulip", encryption: false, isArchived: false },
+        payload,
+      ),
+    ).toBe(false);
+  },
+);
 
 it("discards a poll response after switching runtime owners", async () => {
   const store = useWorkspaceMessageStore.getState();

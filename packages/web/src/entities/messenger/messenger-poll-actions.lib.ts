@@ -13,7 +13,7 @@ import { adaptMessengerMessage } from "./messenger-adapters.lib";
 import { messengerMessageActionCache } from "./messenger-cache.lib";
 import { buildMessengerRequestOptions } from "./messenger-request-options.lib";
 import { useMessengerStore } from "./messenger.model";
-import type { MessengerStream } from "./messenger.types";
+import type { MessengerPollPayload, MessengerStream } from "./messenger.types";
 
 export function supportsMessengerPolls(
   stream: Pick<MessengerStream, "sourceName" | "encryption" | "isArchived"> | undefined,
@@ -23,6 +23,42 @@ export function supportsMessengerPolls(
     stream.encryption !== true &&
     !stream.isArchived
   );
+}
+
+export function supportsMessengerPollManagement(
+  stream: Pick<MessengerStream, "sourceName" | "encryption" | "isArchived"> | undefined,
+  payload: MessengerPollPayload,
+): boolean {
+  if (!supportsMessengerPolls(stream)) return false;
+  if (stream?.sourceName === "native") return true;
+  const question = payload.questions[0];
+  if (
+    payload.questions.length !== 1 ||
+    !question ||
+    !payload.multipleAnswers ||
+    payload.isAnonymous ||
+    !payload.allowRevote ||
+    payload.resultsVisibility !== "always" ||
+    !payload.allowAddingOptions ||
+    payload.closesAt != null ||
+    payload.closedAt != null ||
+    question.correctOptionUuids.length > 0
+  )
+    return true;
+  const labels = question.options.map((option) => option.text);
+  // Match the bridge's literal-line rules, including Python strip whitespace.
+  const compatible =
+    new Set(labels).size === labels.length &&
+    [question.text, ...labels].every(
+      (text) =>
+        ![text.at(0), text.at(-1)].some(
+          (edge) =>
+            edge !== undefined &&
+            (/\p{White_Space}/u.test(edge) ||
+              (edge.charCodeAt(0) >= 28 && edge.charCodeAt(0) <= 31)),
+        ) && !/\n|\r|@\*/.test(text),
+    );
+  return !compatible;
 }
 
 interface PollOptions {

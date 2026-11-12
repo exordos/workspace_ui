@@ -1,5 +1,8 @@
 import { useEffect, useState } from "react";
-import { supportsMessengerPolls } from "~/entities/messenger/messenger-poll-actions.lib";
+import {
+  supportsMessengerPolls,
+  supportsMessengerPollManagement,
+} from "~/entities/messenger/messenger-poll-actions.lib";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import type { MessengerMessage } from "~/entities/messenger/messenger.types";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
@@ -45,7 +48,7 @@ function PollBubbleSession({
     !source.pollState.isClosed &&
     !expired &&
     participant &&
-    stream.sourceName === "native" &&
+    supportsMessengerPollManagement(stream, source.payload) &&
     (source.authorUuid === runtime.userUuid ||
       ["owner", "administrator", "moderator"].includes(stream.role)) &&
     props.presentationMode !== "preview";

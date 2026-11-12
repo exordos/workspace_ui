@@ -355,27 +355,42 @@ test("submits a poll in an unencrypted Zulip conversation @mock", async ({
   await expectReadyMessageComposer(page);
   await openPollComposer(page);
   let created: WorkspaceMessengerCreateMessageRequestBody | null = null;
+  let published: WorkspaceMessengerMessageDto | null = null;
+  let closed = false;
   await page.route(/\/messenger\/messages\/?(?:\?.*)?$/, async (route) => {
     if (route.request().method() !== "POST") return route.fallback();
     const body = route.request().postDataJSON() as WorkspaceMessengerCreateMessageRequestBody;
     created = body;
     if (!body.uuid || body.payload.kind !== "poll") throw new Error("Expected poll");
     const question = body.payload.questions[0]!;
-    await route.fulfill({
-      status: 201,
-      json: {
-        ...messageSuccess("", createMessengerPlacementUuid(E2E_TOPIC_UUID, body.uuid)),
-        payload: body.payload,
-        poll_state: {
-          revision: 1,
-          is_closed: false,
-          voter_count: 0,
-          questions: [{ question_uuid: question.uuid, voter_count: 0, option_counts: {} }],
-          my_votes: [],
-        },
+    published = {
+      ...messageSuccess("", createMessengerPlacementUuid(E2E_TOPIC_UUID, body.uuid)),
+      payload: body.payload,
+      poll_state: {
+        revision: 1,
+        is_closed: false,
+        voter_count: 0,
+        questions: [{ question_uuid: question.uuid, voter_count: 0, option_counts: {} }],
+        my_votes: [],
       },
-    });
+    };
+    await route.fulfill({ status: 201, json: published });
   });
+  await page.route(
+    /\/messenger\/messages\/[^/]+\/actions\/close_poll\/invoke\/?$/,
+    async (route) => {
+      if (!published || published.payload.kind !== "poll")
+        throw new Error("Expected published poll");
+      closed = true;
+      await route.fulfill({
+        json: {
+          ...published,
+          payload: { ...published.payload, closed_at: new Date().toISOString() },
+          poll_state: { ...published.poll_state!, revision: 2, is_closed: true },
+        },
+      });
+    },
+  );
   const dialog = page.getByRole("dialog");
   await dialog.getByPlaceholder(/введите вопрос|enter a question/i).fill("Zulip round trip?");
   const options = dialog.getByPlaceholder(/добавить ответ|add an answer/i);
@@ -390,5 +405,15 @@ test("submits a poll in an unencrypted Zulip conversation @mock", async ({
   });
   await expect(
     page.getByTestId("workspace-message-poll").getByText("Zulip round trip?"),
+  ).toBeVisible();
+  await page.getByTestId("workspace-message-poll").click({ button: "right" });
+  await page.getByRole("menuitem", { name: /завершить опрос|close poll/i }).click();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: /завершить опрос|close poll/i })
+    .click();
+  expect(closed).toBe(true);
+  await expect(
+    page.getByTestId("workspace-message-poll").getByText(/опрос завершён|poll closed/i),
   ).toBeVisible();
 });
