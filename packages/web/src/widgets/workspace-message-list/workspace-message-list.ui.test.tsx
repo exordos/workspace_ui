@@ -5210,6 +5210,37 @@ describe("WorkspaceMessageList", () => {
     openSpy.mockRestore();
   });
 
+  it.each(["svg", "svg path"])(
+    "downloads Workspace attachments when clicking the file icon %s",
+    (selector) => {
+      const onDownloadFile = vi.fn();
+      const fileUuid = "33333333-3333-4333-8333-333333333333";
+      render(
+        <WorkspaceMessageList
+          messages={[
+            createWorkspaceMessage({
+              uuid: "workspace-attachment-icon-message",
+              markdown: `[report.docx](urn:file:${fileUuid})`,
+            }),
+          ]}
+          currentUserUuid="current-user-uuid"
+          conversationId="topic:stream-uuid-1:topic-uuid-1"
+          actions={{ onDownloadFile }}
+        />,
+      );
+
+      const attachment = screen.getByRole("button", { name: "Файл: report.docx" });
+      const icon = attachment.querySelector(selector);
+      expect(icon).not.toBeNull();
+
+      fireEvent.click(icon!);
+
+      expect(onDownloadFile).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ kind: "attachment", fileUuid, name: "report.docx" }),
+      );
+    },
+  );
+
   it("renders video sent as a file as a card while keeping video media separate", () => {
     const videoUuid = "11111111-1111-4111-8111-111111111111";
     const fileUuid = "22222222-2222-4222-8222-222222222222";
