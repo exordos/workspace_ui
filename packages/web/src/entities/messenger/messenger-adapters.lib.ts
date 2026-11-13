@@ -49,6 +49,12 @@ export function adaptMessengerStream(dto: WorkspaceMessengerStreamDto): Messenge
     audience: streamAudience(dto),
     isPrivate: dto.private,
     encryption: dto.encryption ?? false,
+    ...(dto.allow_key_sharing_by_holders === undefined
+      ? {}
+      : {
+          allowKeySharingByHolders: dto.allow_key_sharing_by_holders,
+          keySharingUpdatedAt: dto.updated_at,
+        }),
     currentEncryptionKey:
       dto.current_encryption_key_uuid == null
         ? null

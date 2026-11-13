@@ -145,6 +145,8 @@ export interface MessengerStream {
   audience: MessengerAudience;
   isPrivate: boolean;
   encryption?: boolean;
+  allowKeySharingByHolders?: boolean;
+  keySharingUpdatedAt?: string;
   currentEncryptionKey?: { keyUuid: string } | null;
   inviteOnly: boolean;
   announce: boolean;

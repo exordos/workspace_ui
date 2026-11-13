@@ -2,6 +2,35 @@ import type {
   MessengerFolder,
   MessengerSidebarStreamItem,
 } from "~/entities/messenger/messenger.types";
+import type { KeyboardEvent } from "react";
+
+export function moveWorkspaceSidebarSearchFocus(event: KeyboardEvent<HTMLElement>): void {
+  const { key, currentTarget } = event;
+  if (key !== "ArrowDown" && key !== "ArrowUp") return;
+  if (
+    event.defaultPrevented ||
+    event.nativeEvent.isComposing ||
+    event.altKey ||
+    event.ctrlKey ||
+    event.metaKey ||
+    event.shiftKey
+  )
+    return;
+
+  const sidebar = currentTarget.closest('[data-focus-zone="sidebar"]');
+  const results = sidebar?.querySelector("[data-sidebar-search-results]");
+  if (results == null) return;
+
+  const items = Array.from(results.querySelectorAll<HTMLElement>("[data-sidebar-search-item]"));
+  if (items.length === 0) return;
+
+  const index = items.findIndex((item) => item.isSameNode(currentTarget));
+  const step = key === "ArrowDown" ? 1 : -1;
+  const nextItem = index === -1 && step === -1 ? items.at(-1) : items[index + step];
+
+  event.preventDefault();
+  nextItem?.focus();
+}
 
 export interface WorkspaceSidebarSearchProjection {
   localStreams: MessengerSidebarStreamItem[];

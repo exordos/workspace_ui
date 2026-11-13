@@ -1184,6 +1184,7 @@ describe("WorkspaceSidebar context menu", () => {
       }),
     );
     expect(screen.getByText("#Active 5")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /#Active 4/ })).toHaveFocus();
     expect(screen.queryByText("#Completed 1")).not.toBeInTheDocument();
 
     fireEvent.click(
@@ -1192,6 +1193,7 @@ describe("WorkspaceSidebar context menu", () => {
       }),
     );
     expect(screen.getByText("#Completed 1")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /#Completed 1/ })).toHaveFocus();
     expect(screen.getByText("#Completed 2")).toBeInTheDocument();
 
     fireEvent.click(

@@ -1,5 +1,5 @@
 // Root app layout: shell, store orchestration, background syncs for the active instance.
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { useActivityStore } from "~/entities/activity/activity.model";
 import { selectMessengerSidebarActivityCounts } from "~/entities/messenger/messenger-sidebar.lib";
@@ -21,7 +21,11 @@ import {
   type RightDrawerAccountScreen,
 } from "~/widgets/right-panel/right-drawer.model";
 import { useSearchModalStore } from "~/widgets/search-modal/search-modal.model";
-import type { SidebarChat, StreamWithLast } from "~/widgets/sidebar/sidebar.types";
+import type {
+  SidebarChat,
+  SidebarSearchHandle,
+  StreamWithLast,
+} from "~/widgets/sidebar/sidebar.types";
 import { getSectionFromPathname } from "~/widgets/top-bar/top-bar.lib";
 import { useLayoutAppIconBadge } from "./layout-app-icon-badge.hook";
 import { LayoutAppShell } from "./layout-app-shell.ui";
@@ -85,6 +89,7 @@ export const Layout: React.FC = () => {
   const unreadMentionsOwnerKey = useActivityStore((state) => state.unreadMentionsOwnerKey);
   const unreadMentionsCount = useActivityStore((state) => state.unreadMentionsCount);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const sidebarSearchRef = useRef<SidebarSearchHandle>(null);
   const [bootstrapRetryNonce, setBootstrapRetryNonce] = useState(0);
   const rightDrawerOpen = useRightDrawerStore((s) => s.open);
   const setRightDrawerOpen = useRightDrawerStore((s) => s.setOpen);
@@ -221,12 +226,15 @@ export const Layout: React.FC = () => {
     rightDrawerOpen,
     setRightDrawerOpen,
     setSidebarOpen,
+    sidebarOpen,
+    sidebarSearchRef,
   });
 
   useLayoutEscapeNavigation({
     enabled: shouldShowChatShell,
     pathname: location.pathname,
     navigate,
+    sidebarSearchRef,
   });
 
   const {
@@ -352,6 +360,7 @@ export const Layout: React.FC = () => {
             shouldShowChatShell={shouldShowChatShell}
             pathname={location.pathname}
             sidebarOpen={sidebarOpen}
+            sidebarSearchRef={sidebarSearchRef}
             rightDrawerMode={rightDrawerMode}
             rightDrawerAccountScreen={rightDrawerAccountScreen}
             rightDrawerChatScreen={scopedRightDrawerChatScreen}

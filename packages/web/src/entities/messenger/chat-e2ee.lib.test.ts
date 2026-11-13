@@ -9,6 +9,7 @@ import type {
 const request: ChatE2eeMessage<ChatKeyRequestPayload> = {
   uuid: "request-message",
   streamUuid: "chat-one",
+  topicUuid: "topic-one",
   authorUuid: "requesting-account",
   payload: {
     kind: "key_request",
@@ -22,6 +23,7 @@ const request: ChatE2eeMessage<ChatKeyRequestPayload> = {
 const grant: ChatE2eeMessage<ChatKeyResponsePayload> = {
   uuid: "response-message",
   streamUuid: request.streamUuid,
+  topicUuid: request.topicUuid,
   authorUuid: "issuing-account",
   payload: {
     kind: "key_grant",

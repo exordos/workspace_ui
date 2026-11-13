@@ -378,6 +378,7 @@ function RequestSection({
 }
 function ChannelSettings(props: EncryptedChatInfoProps) {
   const description = props.description?.trim();
+  const keySharing = props.keySharing;
   return (
     <div className="space-y-5">
       <dl className="space-y-3 px-4">
@@ -395,6 +396,29 @@ function ChannelSettings(props: EncryptedChatInfoProps) {
         </div>
       </dl>
       <p className="px-4 text-xs text-text-muted">{t("e2ee.channelSettingsReadOnly")}</p>
+      {keySharing == null ? null : (
+        <PanelMenuRow
+          label={t("channel.allowMembersToShareKeys")}
+          role="switch"
+          aria-checked={keySharing.checked}
+          disabled={keySharing.disabled}
+          onClick={keySharing.onToggle}
+          right={
+            <span
+              aria-hidden="true"
+              className={`relative block h-5 w-9 shrink-0 rounded-full transition-colors ${
+                keySharing.checked ? "bg-accent" : "bg-border-subtle"
+              }`}
+            >
+              <span
+                className={`absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${
+                  keySharing.checked ? "translate-x-4" : ""
+                }`}
+              />
+            </span>
+          }
+        />
+      )}
       <PanelMenuRow
         label={t("e2ee.keyTitle")}
         icon="chatLock"

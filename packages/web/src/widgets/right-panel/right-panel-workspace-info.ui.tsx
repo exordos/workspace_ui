@@ -854,6 +854,7 @@ export const RightPanelWorkspaceInfo: React.FC<RightPanelWorkspaceInfoProps> = (
     const renderEncryptedInfo = (actions?: WorkspaceChannelMemberActions) => (
       <EncryptedChatInfoConnected
         streamUuid={streamUuid}
+        topicUuid={info.kind === "channel" ? info.topicSummary?.topicUuid : undefined}
         screen={chatScreen}
         selectedLocalKeyUuid={selectedLocalKeyUuid}
         onOpenLocalKey={

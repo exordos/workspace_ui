@@ -792,6 +792,8 @@
     "encryptionUnavailable": "Encrypted chat creation is not available yet.",
     "encryptionMismatch": "The server did not confirm encrypted chat creation.",
     "createEncryptedChat": "Create encrypted chat",
+    "allowMembersToShareKeys": "Allow members to share keys",
+    "keySharingUpdateFailed": "Could not update key sharing.",
     "protectedChannelE2ee": "Protected channel (E2EE)",
     "channelSettings": "Channel settings",
     "createFailed": "Could not create chat. Try again.",
@@ -1074,7 +1076,8 @@
         "mail": "Mail",
         "calls": "Calls",
         "activity": "Activity",
-        "folderList": "Folder list"
+        "folderList": "Folder list",
+        "chatSearch": "Search chats"
       },
       "interface": {
         "theme": "Change theme",
@@ -1517,6 +1520,7 @@
     "emptySearchHint": "Try a different chat or topic name.",
     "noMatchesInFolder": "No matches in this folder",
     "allFoldersResults": "All folders",
+    "otherTopics": "Other topics",
     "partialLoadError": "Some sidebar data could not be refreshed",
     "markAsRead": "Mark as read",
     "markAllAsRead": "Mark all as read",
@@ -1775,7 +1779,7 @@
     "loadedRejectedTitle": "Rejected requests in loaded history ({{count}})",
     "grantAllFailed": "Could not send the key. Requests to retry: {{count}}.",
     "keyUuid": "Current key ID",
-    "channelSettingsReadOnly": "Channel details are currently read-only.",
+    "channelSettingsReadOnly": "The channel name and description are read-only.",
     "loadedHistoryHint": "Showing loaded history.",
     "incomingTitle": "Incoming requests ({{count}})",
     "grantedTitle": "Granted keys ({{count}})",

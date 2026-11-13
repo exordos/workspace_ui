@@ -5,6 +5,7 @@ import {
   SIDEBAR_TOPIC_BAR_SPACER_CLASS,
   sidebarTopicShowMoreButtonClass,
 } from "./sidebar-chat-row-layout.lib";
+import { moveWorkspaceSidebarSearchFocus } from "./sidebar-workspace-search.lib";
 import type { SidebarTopicToggleAction } from "./sidebar-topic-collapse.lib";
 
 export interface SidebarTopicShowMoreButtonProps {
@@ -44,6 +45,9 @@ export const SidebarTopicShowMoreButton = React.memo<SidebarTopicShowMoreButtonP
     return (
       <button
         type="button"
+        data-sidebar-conversation-row
+        data-sidebar-search-item
+        onKeyDown={moveWorkspaceSidebarSearchFocus}
         onClick={(e) => {
           e.preventDefault();
           e.stopPropagation();

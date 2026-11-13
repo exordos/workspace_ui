@@ -34,6 +34,8 @@ export interface WorkspaceMessengerCacheOwnerMetaRow {
 
 export interface WorkspaceMessengerCachedStream {
   uuid: string;
+  allowKeySharingByHolders?: boolean;
+  keySharingUpdatedAt?: string;
   color?: number | null;
   lastMessageUuid?: string | null;
   updatedAt?: string | null;

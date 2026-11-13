@@ -51,6 +51,7 @@ function domainMessage(message: MessengerMessage): ChatE2eeMessage | null {
     ? {
         uuid: message.uuid,
         streamUuid: message.streamUuid,
+        topicUuid: message.topicUuid,
         authorUuid: message.authorUuid,
         payload: decoded.value,
       }
@@ -125,6 +126,7 @@ export async function openRealChatSession({
       stream?.ownerUuid,
       stream?.userUuid,
       stream?.role,
+      stream?.allowKeySharingByHolders,
       catalog.streamBindingsLoadedByStreamId[streamUuid] === true,
       bindings,
     ]);
@@ -200,6 +202,24 @@ export async function openRealChatSession({
     isChannelEncrypted()
       ? managerAllowed(author)
       : participantAllowed(runtimeContext.userUuid) && participantAllowed(author);
+  const grantIssuerAllowed = (author: string): boolean => {
+    const stream = ownedStream();
+    if (stream?.encryption !== true || stream.allowKeySharingByHolders === undefined)
+      return issuerAllowed(author);
+    return stream.allowKeySharingByHolders
+      ? participantAllowed(runtimeContext.userUuid) && participantAllowed(author)
+      : stream.ownerUuid === author;
+  };
+  const responseIssuerAllowed = (author: string, kind: ChatKeyResponsePayload["kind"]): boolean =>
+    kind === "key_grant" ? grantIssuerAllowed(author) : issuerAllowed(author);
+  const requesterAllowed = (author: string): boolean =>
+    isChannelEncrypted() || participantAllowed(author);
+  const grantRequesterAllowed = (author: string): boolean => {
+    const stream = ownedStream();
+    return stream?.encryption === true && stream.allowKeySharingByHolders === true
+      ? participantAllowed(author)
+      : requesterAllowed(author);
+  };
   const rights = (): ChatE2eeControllerRights => {
     const stream = ownedStream();
     const member =
@@ -208,7 +228,8 @@ export async function openRealChatSession({
     return {
       canRequest: member,
       canSend: member,
-      canGrant: canManage,
+      canGrant:
+        member && isChannelEncrypted() ? grantIssuerAllowed(runtimeContext.userUuid) : canManage,
       canReject: canManage,
       canRotate: member && isChannelEncrypted() && stream.ownerUuid === runtimeContext.userUuid,
     };
@@ -230,6 +251,8 @@ export async function openRealChatSession({
     status: "pending" | "granted" | "rejected";
   }
   let requestOutcomes: Map<string, KeyRequestOutcome> | null = null;
+  const observedHolderGrants = new Map<string, ChatE2eeMessage<ChatKeyResponsePayload>>();
+  const completedLocalGrants = new Map<string, { responseUuid: string; keyUuid: string }>();
   const recordKeyMessage = (message: ChatE2eeMessage) => {
     if (message.payload.kind === "key_request")
       requests.set(message.uuid, { ...message, payload: message.payload });
@@ -254,6 +277,13 @@ export async function openRealChatSession({
     }
   };
   const keyRevisions = new Map<string, number>();
+  const defaultTopicUuid = () =>
+    Object.values(messengerStore.getState().topicsById).find(
+      (topic) =>
+        topic.streamUuid === streamUuid &&
+        topic.projectId === runtimeContext.projectId &&
+        topic.isDefault,
+    )?.uuid;
   const dispatchPayload = async (
     payload: ChatE2eePayload,
     guard: () => boolean,
@@ -266,14 +296,7 @@ export async function openRealChatSession({
   ) => {
     assertCurrent();
     const dispatchKey = operationDispatchKey ?? { keyUuid: currentKeyUuid() };
-    const topicUuid =
-      options.topicUuid ??
-      Object.values(messengerStore.getState().topicsById).find(
-        (topic) =>
-          topic.streamUuid === streamUuid &&
-          topic.projectId === runtimeContext.projectId &&
-          topic.isDefault,
-      )?.uuid;
+    const topicUuid = options.topicUuid ?? defaultTopicUuid();
     if (!topicUuid) throw new Error("missing-topic");
     const result = await sendMessengerE2eePayload({
       runtimeContext,
@@ -287,7 +310,8 @@ export async function openRealChatSession({
       allowHistoricalKey: payload.kind === "e2ee" && payload.keyUuid === sendingKeyUuid,
       isCurrent: () => current() && guard() && currentKeyUuid() === dispatchKey.keyUuid,
       canonicalMessageUuid: options.canonicalMessageUuid,
-      includeStreamConversation: options.includeStreamConversation ?? true,
+      includeStreamConversation:
+        options.includeStreamConversation ?? topicUuid === defaultTopicUuid(),
       markdownContent: options.markdownContent,
     });
     assertCurrent();
@@ -306,11 +330,12 @@ export async function openRealChatSession({
           ? generationScope
           : null,
       getRights: () => generationRights(generationScope.keyUuid),
-      isIssuerAllowed: issuerAllowed,
+      isIssuerAllowed: responseIssuerAllowed,
       isAnnouncerAllowed: managerAllowed,
-      isRequesterAllowed: (author) => isChannelEncrypted() || participantAllowed(author),
-      sendPayload: async (payload, guard, canonicalMessageUuid) => {
-        const result = await dispatchPayload(payload, guard, { canonicalMessageUuid });
+      isRequesterAllowed: (author, action) =>
+        action === "grant" ? grantRequesterAllowed(author) : requesterAllowed(author),
+      sendPayload: async (payload, guard, canonicalMessageUuid, topicUuid) => {
+        const result = await dispatchPayload(payload, guard, { canonicalMessageUuid, topicUuid });
         const mapped = domainMessage(result.message);
         if (!mapped) throw new Error("invalid-message");
         return mapped;
@@ -377,6 +402,29 @@ export async function openRealChatSession({
     if (keyMaterialChanged(before, after)) publishKeyUpdate(message.payload.keyUuid);
     if (!result.ok && result.reason !== "forbidden" && result.reason !== "invalid-message")
       throw new Error(result.reason);
+    const stream = ownedStream();
+    if (
+      result.ok &&
+      message.payload.kind === "key_grant" &&
+      stream?.encryption === true &&
+      stream.allowKeySharingByHolders === false &&
+      stream.ownerUuid !== message.authorUuid &&
+      completedLocalGrants.get(message.payload.requestMessageUuid)?.responseUuid !== message.uuid
+    ) {
+      // Only this device's verified receipt can establish a historical grant after reload.
+      const completion = await realChatKeyStorage.readRequestCompletionByMessageUuid(
+        address,
+        message.payload.requestMessageUuid,
+      );
+      assertCurrent();
+      if (completion?.outcome === "granted" && completion.responseMessageUuid === message.uuid) {
+        completedLocalGrants.set(completion.requestMessageUuid, {
+          responseUuid: completion.responseMessageUuid,
+          keyUuid: message.payload.keyUuid,
+        });
+        requestOutcomes = null;
+      }
+    }
   };
   const selectSendingKey = async (scope = currentScope()): Promise<boolean> => {
     if (!isChannelEncrypted()) {
@@ -582,17 +630,48 @@ export async function openRealChatSession({
     requestOutcomes = new Map(
       [...requests.values()].map((request) => [request.uuid, { request, status: "pending" }]),
     );
+    const stream = ownedStream();
+    const sharing = stream?.encryption === true ? stream.allowKeySharingByHolders : undefined;
+    if (sharing === false) {
+      for (const [requestUuid, completion] of completedLocalGrants) {
+        const outcome = requestOutcomes.get(requestUuid);
+        const response = responses.get(completion.responseUuid);
+        if (
+          outcome?.request.authorUuid === runtimeContext.userUuid &&
+          response?.payload.kind === "key_grant" &&
+          response.payload.recipientDeviceId === device.deviceId &&
+          response.payload.keyUuid === completion.keyUuid &&
+          correlateChatKeyResponse({ request: outcome.request, response, issuerCanGrantKey: true })
+            .status === "matched"
+        )
+          outcome.status = "granted";
+      }
+    }
     for (const response of responses.values()) {
       const outcome = requestOutcomes.get(response.payload.requestMessageUuid);
+      if (outcome?.status !== "pending") continue;
+      const previous = observedHolderGrants.get(response.uuid);
+      const wasObserved =
+        sharing === false &&
+        response.payload.kind === "key_grant" &&
+        previous?.authorUuid === response.authorUuid &&
+        previous.payload.requestMessageUuid === response.payload.requestMessageUuid &&
+        previous.payload.keyUuid === response.payload.keyUuid &&
+        previous.payload.recipientDeviceId === response.payload.recipientDeviceId &&
+        participantAllowed(response.authorUuid);
       if (
-        outcome?.status === "pending" &&
         correlateChatKeyResponse({
           request: outcome.request,
           response,
-          issuerCanGrantKey: issuerAllowed(response.authorUuid),
+          issuerCanGrantKey:
+            wasObserved || responseIssuerAllowed(response.authorUuid, response.payload.kind),
         }).status === "matched"
-      )
+      ) {
         outcome.status = response.payload.kind === "key_grant" ? "granted" : "rejected";
+        // Closing sharing affects new grants, but should not re-open a completed request in this session.
+        if (sharing === true && response.payload.kind === "key_grant")
+          observedHolderGrants.set(response.uuid, response);
+      }
     }
     return requestOutcomes;
   };
@@ -601,6 +680,15 @@ export async function openRealChatSession({
     const outcome = indexedRequestOutcomes().get(uuid);
     return outcome?.status === "pending" ? outcome.request : undefined;
   };
+  const canGrantKey = (uuid: string) => {
+    const request = pendingRequest(uuid);
+    return (
+      !!request &&
+      grantRequesterAllowed(request.authorUuid) &&
+      generationRights(request.payload.keyUuid).canGrant &&
+      generationControllers.get(request.payload.keyUuid)?.getState().access === "ready"
+    );
+  };
   const grantRequest = async (uuid: string) => {
     const request = pendingRequest(uuid);
     if (!request) throw new Error("invalid-message");
@@ -608,17 +696,25 @@ export async function openRealChatSession({
     const result = await controller.grantKey(request);
     if (!result.ok) throw new Error(result.reason);
     recordKeyMessage(result.value);
+    indexedRequestOutcomes();
     return result;
   };
   const requestGenerationKey = async (
     keyUuid: string,
     envelope?: ChatCryptoEnvelope,
     allowUsableKey = false,
+    topicUuid?: string,
   ) => {
+    const defaultUuid = defaultTopicUuid();
+    const requestTopicUuid = topicUuid ?? defaultUuid;
+    if (!requestTopicUuid) throw new Error("missing-topic");
     const controller = await generationController(keyUuid);
     const before = await realChatKeyStorage.readChatKey(scopeFor(keyUuid));
     assertCurrent();
-    const result = await controller.requestKey(envelope, allowUsableKey);
+    const result = await controller.requestKey(envelope, allowUsableKey, {
+      topicUuid: requestTopicUuid,
+      defaultTopicUuid: defaultUuid,
+    });
     assertCurrent();
     const after = await realChatKeyStorage.readChatKey(scopeFor(keyUuid));
     assertCurrent();
@@ -640,6 +736,8 @@ export async function openRealChatSession({
     generationControllers.clear();
     requests.clear();
     responses.clear();
+    observedHolderGrants.clear();
+    completedLocalGrants.clear();
     requestOutcomes = null;
     emit();
     listeners.clear();
@@ -700,25 +798,21 @@ export async function openRealChatSession({
         .map((item) => item.request),
     canRespondToKeyRequest: (uuid: string) => {
       const request = indexedRequestOutcomes().get(uuid)?.request;
-      if (!request || (!isChannelEncrypted() && !participantAllowed(request.authorUuid)))
-        return false;
+      if (!request) return false;
       const policy = generationRights(request.payload.keyUuid);
-      return policy.canGrant || policy.canReject;
-    },
-    canGrantKey: (uuid: string) => {
-      const request = pendingRequest(uuid);
       return (
-        !!request &&
-        (isChannelEncrypted() || participantAllowed(request.authorUuid)) &&
-        generationRights(request.payload.keyUuid).canGrant &&
-        generationControllers.get(request.payload.keyUuid)?.getState().access === "ready"
+        (policy.canReject && requesterAllowed(request.authorUuid)) ||
+        (policy.canGrant &&
+          grantRequesterAllowed(request.authorUuid) &&
+          generationControllers.get(request.payload.keyUuid)?.getState().access === "ready")
       );
     },
+    canGrantKey,
     canRejectKey: (uuid: string) => {
       const request = pendingRequest(uuid);
       return (
         !!request &&
-        (isChannelEncrypted() || participantAllowed(request.authorUuid)) &&
+        requesterAllowed(request.authorUuid) &&
         generationRights(request.payload.keyUuid).canReject
       );
     },
@@ -769,9 +863,15 @@ export async function openRealChatSession({
           recordKeyMessage(mapped);
           await ingestKeyMessage(mapped);
         }
+        indexedRequestOutcomes();
         await reconcileLocal();
       }),
-    requestKey: (keyUuid?: string, recoveryMessage?: MessengerMessage, allowUsableKey = false) =>
+    requestKey: (
+      keyUuid?: string,
+      recoveryMessage?: MessengerMessage,
+      allowUsableKey = false,
+      topicUuid?: string,
+    ) =>
       run(async () => {
         const requestedKeyUuid = keyUuid ?? currentScope().keyUuid;
         const mapped = recoveryMessage ? domainMessage(recoveryMessage) : null;
@@ -787,10 +887,15 @@ export async function openRealChatSession({
           requestedKeyUuid,
           mapped?.payload.kind === "e2ee" ? mapped.payload.content : undefined,
           allowUsableKey,
+          topicUuid ?? mapped?.topicUuid,
         );
       }),
-    requestEnvelopeKey: (keyUuid: string, envelope: ChatCryptoEnvelope, allowUsableKey = false) =>
-      run(() => requestGenerationKey(keyUuid, envelope, allowUsableKey)),
+    requestEnvelopeKey: (
+      keyUuid: string,
+      envelope: ChatCryptoEnvelope,
+      allowUsableKey = false,
+      topicUuid?: string,
+    ) => run(() => requestGenerationKey(keyUuid, envelope, allowUsableKey, topicUuid)),
     grantKey: (uuid: string) => run(() => grantRequest(uuid)),
     rejectKey: (uuid: string) =>
       run(async () => {
@@ -810,14 +915,15 @@ export async function openRealChatSession({
           status: "granted" | "failed";
           reason?: string;
         }[] = [];
-        for (const request of getKeyRequestOutcomes().filter((item) => item.status === "pending")) {
+        const eligibleRequests = [...indexedRequestOutcomes().keys()].filter(canGrantKey);
+        for (const requestMessageUuid of eligibleRequests) {
           try {
-            await grantRequest(request.request.uuid);
-            outcomes.push({ requestMessageUuid: request.request.uuid, status: "granted" });
+            await grantRequest(requestMessageUuid);
+            outcomes.push({ requestMessageUuid, status: "granted" });
           } catch (error) {
             assertCurrent();
             outcomes.push({
-              requestMessageUuid: request.request.uuid,
+              requestMessageUuid,
               status: "failed",
               reason: error instanceof Error ? error.message : "unavailable",
             });
@@ -826,7 +932,7 @@ export async function openRealChatSession({
         return outcomes;
       }),
     prepareFragmentKey: (createNew = false) => run(() => prepareFragmentKey(createNew)),
-    reissueKey: () =>
+    reissueKey: (topicUuid?: string) =>
       run(async () => {
         if (recoveredRotationKeyUuid !== null && recoveredRotationKeyUuid === currentKeyUuid()) {
           recoveredRotationKeyUuid = null;
@@ -854,18 +960,13 @@ export async function openRealChatSession({
           assertCurrent();
           if (!allowed()) throw new Error("forbidden");
           if (!groupKey.ok) throw new Error(groupKey.reason);
-          const topicUuid = Object.values(messengerStore.getState().topicsById).find(
-            (topic) =>
-              topic.streamUuid === streamUuid &&
-              topic.projectId === runtimeContext.projectId &&
-              topic.isDefault,
-          )?.uuid;
-          if (!topicUuid) throw new Error("missing-topic");
+          const rotationTopicUuid = topicUuid ?? defaultTopicUuid();
+          if (!rotationTopicUuid) throw new Error("missing-topic");
           stage = {
             creationId: crypto.randomUUID(),
             keyUuid: crypto.randomUUID(),
             groupKey: groupKey.value,
-            rotation: { streamUuid, previousKeyUuid, topicUuid },
+            rotation: { streamUuid, previousKeyUuid, topicUuid: rotationTopicUuid },
           };
           const persisted = await realChatKeyStorage.writeStagedCreation(
             { owner: runtimeContext, deviceId: device.deviceId },
@@ -885,6 +986,7 @@ export async function openRealChatSession({
           messengerStore,
           streamUuid,
           topicUuid: stage.rotation.topicUuid,
+          includeStreamConversation: stage.rotation.topicUuid === defaultTopicUuid(),
           expectedCurrentKey: { keyUuid: previousKeyUuid },
           isCurrent: allowed,
           rotateKey: true,

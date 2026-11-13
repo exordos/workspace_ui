@@ -275,6 +275,41 @@ describe("messenger realtime active applier", () => {
     useMessengerBackgroundProjectionStore.getState().clear();
   });
 
+  it("carries the newest stream key sharing policy into the catalog and cache", async () => {
+    const context = createContext();
+    const store = useMessengerStore.getState();
+    store.startBootstrap(context.ownerKey);
+    const upsertCachedStream = vi.fn();
+    const applier = createMessengerRealtimeActiveApplier({ cache: { upsertCachedStream } });
+    for (const [index, checked, timestamp, expected] of [
+      [10, false, "2026-06-22T10:10:00.000002Z", false],
+      [11, true, "2026-06-22T10:10:00.000001Z", false],
+      [12, undefined, "2026-06-22T10:10:00.000002Z", false],
+      [13, true, "2026-06-22T10:10:00.000003Z", true],
+    ] as const) {
+      await applier.applyEvent(
+        {
+          epoch_version: index,
+          type: "stream",
+          kind: "stream.updated",
+          stream: createStreamDto({
+            encryption: true,
+            allow_key_sharing_by_holders: checked,
+            updated_at: timestamp,
+          }),
+        },
+        context,
+      );
+      expect(useMessengerStore.getState().streamsById[STREAM_A]?.allowKeySharingByHolders).toBe(
+        expected,
+      );
+      expect(upsertCachedStream).toHaveBeenLastCalledWith(
+        context.ownerKey,
+        expect.objectContaining({ allowKeySharingByHolders: expected }),
+      );
+    }
+  });
+
   it("settles an outgoing message created outside the active chat route", () => {
     const context = createContext();
     const outgoing = useMessengerOutboxStore.getState().enqueueOutgoingMessage({

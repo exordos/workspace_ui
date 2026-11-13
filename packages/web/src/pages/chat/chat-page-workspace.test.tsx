@@ -2366,7 +2366,7 @@ describe("ChatPage Workspace route", () => {
       fireEvent.click(screen.getByRole("button", { name: t("e2ee.requestUpdatedKey") }));
       return Promise.resolve();
     });
-    expect(requestKey).toHaveBeenCalledOnce();
+    expect(requestKey).toHaveBeenCalledExactlyOnceWith(undefined, undefined, false, TOPIC_UUID);
     expect(within(notice).getByRole("button", { name: t("e2ee.statusWaiting") })).toBeDisabled();
     expect(textbox).not.toBeDisabled();
     expect(screen.getByRole("button", { name: t("chat.sendPlaceholder") })).not.toBeDisabled();

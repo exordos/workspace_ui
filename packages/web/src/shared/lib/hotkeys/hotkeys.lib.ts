@@ -12,6 +12,7 @@ import {
 
 // Mod means Command on Mac and Control on Windows and Linux.
 // A null default means the action has no shortcut until the user adds one.
+const chatSearchHotkey = ["navigation.chatSearch", "Mod+K"] as const;
 const definitions = [
   ["navigation.back", "Alt+ArrowLeft"],
   ["navigation.forward", "Alt+ArrowRight"],
@@ -20,6 +21,7 @@ const definitions = [
   ["navigation.mail", null],
   ["navigation.calls", null],
   ["navigation.activity", null],
+  chatSearchHotkey,
   ["navigation.folderList", null],
   ["interface.theme", null],
   ["interface.help", "Mod+/"],
@@ -221,6 +223,10 @@ export function normalizeHotkeyOverrides(value: unknown): HotkeyOverrides {
     if (binding === null || (typeof binding === "string" && validateHotkey(binding).valid))
       result[item.id] = binding;
   }
+  const [chatSearchId, chatSearchBinding] = chatSearchHotkey;
+  const useChatSearchDefault = result[chatSearchId] === undefined;
+  // Preserve existing assignments when introducing the chat search default.
+  if (useChatSearchDefault) result[chatSearchId] = null;
   // Removing one invalid shortcut can restore a default and reveal another conflict.
   let changed = true;
   while (changed) {
@@ -232,6 +238,12 @@ export function normalizeHotkeyOverrides(value: unknown): HotkeyOverrides {
         changed = true;
       }
     }
+  }
+  if (
+    useChatSearchDefault &&
+    validateHotkeyBinding(chatSearchId, chatSearchBinding, result) === null
+  ) {
+    delete result[chatSearchId];
   }
   return result;
 }

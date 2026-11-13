@@ -11,6 +11,7 @@ import type {
   RightDrawerMode,
 } from "~/widgets/right-panel/right-drawer.model";
 import type { WorkspaceRightPanelInfoView } from "~/widgets/right-panel/right-panel.types";
+import type { SidebarSearchHandle } from "~/widgets/sidebar/sidebar.types";
 import { TopBar } from "~/widgets/top-bar/top-bar.ui";
 import { LayoutMainWorkspace } from "./layout-main-workspace.ui";
 
@@ -27,6 +28,7 @@ export interface LayoutAppShellProps {
   shouldShowChatShell: boolean;
   pathname: string;
   sidebarOpen: boolean;
+  sidebarSearchRef: React.RefObject<SidebarSearchHandle | null>;
   rightDrawerMode: RightDrawerMode;
   rightDrawerAccountScreen: RightDrawerAccountScreen | null;
   rightDrawerChatScreen?: RightDrawerChatScreen | null;
@@ -60,6 +62,7 @@ export const LayoutAppShell = React.memo<LayoutAppShellProps>(function LayoutApp
   shouldShowChatShell,
   pathname,
   sidebarOpen,
+  sidebarSearchRef,
   rightDrawerMode,
   rightDrawerAccountScreen,
   rightDrawerChatScreen,
@@ -103,6 +106,7 @@ export const LayoutAppShell = React.memo<LayoutAppShellProps>(function LayoutApp
             shouldShowChatShell={shouldShowChatShell}
             pathname={pathname}
             sidebarOpen={sidebarOpen}
+            sidebarSearchRef={sidebarSearchRef}
             rightDrawerOpen={rightDrawerOpen}
             rightDrawerMode={rightDrawerMode}
             rightDrawerAccountScreen={rightDrawerAccountScreen}

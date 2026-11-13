@@ -9,6 +9,12 @@ import type { ReactNode } from "react";
 
 export type { TopicWithLast, SidebarChat, StreamWithLast, StreamEntryInternal, DmEntryInternal };
 
+export interface SidebarSearchHandle {
+  toggle: (options: { openOnly: boolean }) => void;
+  cancel: () => boolean;
+  isSearchInput: (element: HTMLElement) => boolean;
+}
+
 /**
  * Sidebar props.
  *

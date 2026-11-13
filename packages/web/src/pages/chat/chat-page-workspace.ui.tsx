@@ -873,10 +873,12 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
   );
   const conversationId = selection.status === "conversation" ? selection.conversationId : null;
   const streamUuid = selection.status === "conversation" ? selection.streamUuid : null;
+  const topicUuid =
+    selection.status === "conversation" && selection.kind === "topic" ? selection.topicUuid : null;
   const stream = useMessengerStore((state) =>
     streamUuid != null && state.ownerKey === ownerKey ? state.streamsById[streamUuid] : undefined,
   );
-  const encryptedChat = useChatCryptoSession(streamUuid);
+  const encryptedChat = useChatCryptoSession(streamUuid, topicUuid ?? undefined);
   useLayoutEffect(() => {
     const clear = () => {
       composerEditAttemptRef.current += 1;
@@ -1253,8 +1255,6 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
     [updateWorkspaceComposerDraft],
   );
   const selectionMode = selectedMessageUuids.size > 0;
-  const topicUuid =
-    selection.status === "conversation" && selection.kind === "topic" ? selection.topicUuid : null;
   const conversation = useMessengerStore((state) =>
     conversationId != null ? state.conversationsById[conversationId] : undefined,
   );
@@ -1357,6 +1357,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
       void encryptedChat.requestKey(
         message.payload.keyUuid,
         message.payload.kind === "e2ee" ? message : undefined,
+        message.topicUuid,
       );
     },
     [allWorkspaceMessagesById, streamUuid, encryptedChat.requestKey],
@@ -1371,7 +1372,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
         session: encryptedChat.session,
         pending: encryptedChat.loading || encryptedChat.state.pending,
         onRequestKey: (keyUuid) => {
-          void encryptedChat.requestKey(keyUuid);
+          void encryptedChat.requestKey(keyUuid, undefined, message.topicUuid);
         },
         onGrantKey: (uuid) => {
           void encryptedChat.grantKey(uuid);
@@ -1954,6 +1955,8 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
       )
         return;
       const isCurrent = captureWorkspaceChatUiAction();
+      const sourceTopicUuid =
+        message.streamUuid === reference.streamUuid ? message.topicUuid : undefined;
       if (!allowUsableKey) {
         const readable = await decryptRealChatEnvelopeResult(
           runtimeContext,
@@ -1973,6 +1976,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
             reference.keyUuid,
             reference.envelope,
             allowUsableKey,
+            sourceTopicUuid,
           );
         } catch {
           if (isCurrent()) setActionError(t("e2ee.requestKeyFailed"));
@@ -1988,7 +1992,12 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
           return;
         await lease.sync();
         if (!isCurrent()) return;
-        await session.requestEnvelopeKey(reference.keyUuid, reference.envelope, allowUsableKey);
+        await session.requestEnvelopeKey(
+          reference.keyUuid,
+          reference.envelope,
+          allowUsableKey,
+          sourceTopicUuid,
+        );
       } catch {
         if (isCurrent()) setActionError(t("e2ee.requestKeyFailed"));
       } finally {

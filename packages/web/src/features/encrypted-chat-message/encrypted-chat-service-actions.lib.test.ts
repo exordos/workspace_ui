@@ -113,6 +113,7 @@ describe("encrypted service actions", () => {
               request: {
                 uuid: "request",
                 streamUuid: "stream",
+                topicUuid: opts.message.topicUuid,
                 authorUuid: "member",
                 payload: {
                   kind: "key_request",

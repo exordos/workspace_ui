@@ -147,11 +147,13 @@ function fixture(initialKey: StoredChatKey | null = { ...chatPair, groupKey: nul
       payload: ChatE2eeMessage["payload"],
       isCurrent: () => boolean,
       canonicalMessageUuid?: string,
+      topicUuid = "topic",
     ): Promise<ChatE2eeMessage> => {
       if (!isCurrent()) throw new Error("stale");
       return Promise.resolve({
         uuid: canonicalMessageUuid ?? "sent",
         streamUuid: scope.streamUuid,
+        topicUuid,
         authorUuid: scope.owner.userUuid,
         payload,
       });
@@ -172,6 +174,7 @@ function fixture(initialKey: StoredChatKey | null = { ...chatPair, groupKey: nul
   const request: ChatE2eeMessage<ChatKeyRequestPayload> = {
     uuid: "request",
     streamUuid: scope.streamUuid,
+    topicUuid: "topic",
     authorUuid: scope.owner.userUuid,
     payload: {
       kind: "key_request",
@@ -184,6 +187,7 @@ function fixture(initialKey: StoredChatKey | null = { ...chatPair, groupKey: nul
   const grant: ChatE2eeMessage<ChatKeyGrantPayload> = {
     uuid: "grant",
     streamUuid: scope.streamUuid,
+    topicUuid: "topic",
     authorUuid: "issuer",
     payload: {
       kind: "key_grant",
@@ -450,6 +454,7 @@ describe("ChatE2eeController", () => {
     await f.controller.ingestKeyMessage({
       uuid: "announcement",
       streamUuid: "chat",
+      topicUuid: "topic",
       authorUuid: "issuer",
       payload: { kind: "key_announced", keyUuid: "generation" },
     });
@@ -615,6 +620,7 @@ describe("ChatE2eeController", () => {
     await f.controller.ingestKeyMessage({
       uuid: "announcement",
       streamUuid: "chat",
+      topicUuid: "topic",
       authorUuid: "issuer",
       payload: { kind: "key_announced", keyUuid: "generation" },
     });
@@ -776,6 +782,7 @@ describe("ChatE2eeController", () => {
       await f.controller.ingestKeyMessage({
         uuid: "announcement",
         streamUuid: "chat",
+        topicUuid: "topic",
         authorUuid: "issuer",
         payload: { kind: "key_announced", keyUuid: "generation" },
       }),
@@ -866,7 +873,13 @@ describe("ChatE2eeController", () => {
     const f = fixture();
     f.pending.clear();
     f.sendPayload.mockImplementation((payload) =>
-      Promise.resolve({ uuid: "public-request", streamUuid: "chat", authorUuid: "u", payload }),
+      Promise.resolve({
+        uuid: "public-request",
+        streamUuid: "chat",
+        topicUuid: "topic",
+        authorUuid: "u",
+        payload,
+      }),
     );
     const first = await f.controller.requestKey();
     expect(first).toMatchObject({ ok: true, value: { uuid: "public-request" } });
@@ -954,6 +967,7 @@ describe("ChatE2eeController", () => {
       await f.controller.ingestKeyMessage({
         uuid: "announcement",
         streamUuid: "chat",
+        topicUuid: "topic",
         authorUuid: "issuer",
         payload: { kind: "key_announced", keyUuid: "generation" },
       }),
@@ -1048,6 +1062,7 @@ describe("ChatE2eeController", () => {
       return Promise.resolve({
         uuid: uuid ?? "request",
         streamUuid: "chat",
+        topicUuid: "topic",
         authorUuid: "u",
         payload: { ...payload, deviceName: "tampered" },
       });

@@ -49,6 +49,7 @@ export type ChatKeyResponsePayload = ChatKeyGrantPayload | ChatKeyRejectPayload;
 export interface ChatE2eeMessage<TPayload extends ChatE2eePayload = ChatE2eePayload> {
   readonly uuid: string;
   readonly streamUuid: string;
+  readonly topicUuid: string;
   readonly authorUuid: string;
   readonly payload: TPayload;
 }

@@ -57,6 +57,11 @@ export interface EncryptedChatInfoProps {
   readonly screen?: EncryptedChatInfoScreen;
   readonly description?: string;
   readonly channelTypeLabel?: string;
+  readonly keySharing?: {
+    readonly checked: boolean;
+    readonly disabled: boolean;
+    readonly onToggle: () => void;
+  };
   readonly onScreenChange?: (screen: EncryptedChatInfoScreen) => void;
   readonly grantedRequests?: readonly EncryptedChatKeyRequestView[];
   readonly rejectedRequests?: readonly EncryptedChatKeyRequestView[];

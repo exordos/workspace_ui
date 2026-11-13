@@ -104,6 +104,7 @@ export function useEncryptedChatInfo(streamUuid: string, sendingKeyUuid: string 
   }, [ownerKey, runtime?.runtimeGeneration, scopeKey, streamUuid, sendingKeyUuid]);
   return {
     projection,
+    runtime,
     onCopyKey,
   };
 }

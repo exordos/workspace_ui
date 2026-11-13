@@ -21,6 +21,7 @@ export const LayoutMainWorkspace = React.memo(function LayoutMainWorkspace({
   shouldShowChatShell,
   pathname,
   sidebarOpen,
+  sidebarSearchRef,
   rightDrawerOpen,
   rightDrawerMode,
   rightDrawerAccountScreen,
@@ -170,6 +171,7 @@ export const LayoutMainWorkspace = React.memo(function LayoutMainWorkspace({
       <div className="flex min-h-0 w-full min-w-0 gap-1">
         {shouldShowChatShell && sidebarOpen && (
           <SidebarShell
+            searchRef={sidebarSearchRef}
             sidebarStyle={sidebarStyle}
             pathname={pathname}
             sidebarResizeControl={

@@ -798,6 +798,8 @@
     "encryptionUnavailable": "Создание шифрованных чатов пока недоступно.",
     "encryptionMismatch": "Сервер не подтвердил создание шифрованного чата.",
     "createEncryptedChat": "Создать шифрованный чат",
+    "allowMembersToShareKeys": "Разрешить участникам делиться ключами",
+    "keySharingUpdateFailed": "Не удалось изменить настройку передачи ключей.",
     "protectedChannelE2ee": "Защищенный канал (E2EE)",
     "channelSettings": "Настройки канала",
     "createFailed": "Не удалось создать чат. Попробуйте ещё раз.",
@@ -1086,7 +1088,8 @@
         "mail": "Почта",
         "calls": "Звонки",
         "activity": "Активность",
-        "folderList": "Список папок"
+        "folderList": "Список папок",
+        "chatSearch": "Поиск чатов"
       },
       "interface": {
         "theme": "Сменить тему",
@@ -1528,6 +1531,7 @@
     "emptySearchHint": "Попробуйте другое название чата или темы.",
     "noMatchesInFolder": "В этой папке совпадений нет",
     "allFoldersResults": "Все папки",
+    "otherTopics": "Остальные темы",
     "partialLoadError": "Часть данных боковой панели не обновилась",
     "markAsRead": "Отметить как прочитанное",
     "markAllAsRead": "Отметить всё как прочитанное",
@@ -1788,7 +1792,7 @@
     "loadedRejectedTitle": "Отклонённые запросы в загруженной истории ({{count}})",
     "grantAllFailed": "Не удалось отправить ключ. Запросов для повторной попытки: {{count}}.",
     "keyUuid": "ID текущего ключа",
-    "channelSettingsReadOnly": "Параметры канала пока доступны только для просмотра.",
+    "channelSettingsReadOnly": "Название и описание канала доступны только для просмотра.",
     "loadedHistoryHint": "Показаны данные из загруженной истории.",
     "incomingTitle": "Входящие запросы ({{count}})",
     "grantedTitle": "Выданные ключи ({{count}})",

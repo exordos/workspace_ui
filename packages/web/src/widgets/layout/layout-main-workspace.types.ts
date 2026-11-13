@@ -5,11 +5,14 @@ import type {
   RightDrawerMode,
 } from "~/widgets/right-panel/right-drawer.model";
 import type { WorkspaceRightPanelInfoView } from "~/widgets/right-panel/right-panel.types";
+import type { SidebarSearchHandle } from "~/widgets/sidebar/sidebar.types";
+import type { RefObject } from "react";
 
 export interface LayoutMainWorkspaceProps {
   shouldShowChatShell: boolean;
   pathname: string;
   sidebarOpen: boolean;
+  sidebarSearchRef: RefObject<SidebarSearchHandle | null>;
   rightDrawerOpen: boolean;
   rightDrawerMode: RightDrawerMode;
   rightDrawerAccountScreen: RightDrawerAccountScreen | null;
