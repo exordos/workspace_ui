@@ -1477,6 +1477,7 @@
     "emptySearchHint": "Try a different chat or topic name.",
     "noMatchesInFolder": "No matches in this folder",
     "allFoldersResults": "All folders",
+    "otherTopics": "Other topics",
     "partialLoadError": "Some sidebar data could not be refreshed",
     "markAsRead": "Mark as read",
     "markAllAsRead": "Mark all as read",

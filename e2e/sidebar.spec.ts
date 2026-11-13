@@ -1,6 +1,7 @@
 /**
  * E2E tests for the sidebar — chat list, folders, activity section.
  */
+import type { Locator } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { e2eOrgBasePath } from "./helpers/navigate-messenger";
 import {
@@ -11,6 +12,38 @@ import {
   topicsSuccess,
   usersSuccess,
 } from "./mocks/workspace-default-responses";
+
+async function expectConversationFocusStyle(item: Locator) {
+  const style = await item.evaluate((element) => {
+    const row = element.closest("[data-sidebar-conversation-row]")!;
+    const rowStyle = getComputedStyle(row);
+    const theme = document.createElement("span");
+    theme.style.color = "var(--color-accent)";
+    theme.style.backgroundColor = "var(--color-sidebar-item-hover)";
+    row.append(theme);
+    const themeStyle = getComputedStyle(theme);
+    const result = {
+      keyboardFocus: element.matches(":focus-visible"),
+      hoverFill: rowStyle.backgroundColor === themeStyle.backgroundColor,
+      accentOutline: rowStyle.outlineColor === themeStyle.color,
+      outline: rowStyle.outlineStyle,
+      outlineOffset: rowStyle.outlineOffset,
+      outlineWidth: rowStyle.outlineWidth,
+      transitions: row.getAnimations().length,
+    };
+    theme.remove();
+    return result;
+  });
+  expect(style).toEqual({
+    keyboardFocus: true,
+    hoverFill: true,
+    accentOutline: true,
+    outline: "solid",
+    outlineOffset: "-2px",
+    outlineWidth: "2px",
+    transitions: 0,
+  });
+}
 
 test.describe("Sidebar", () => {
   test("switches chat-card navigation to the latest topic and keeps avatar navigation @mock", async ({
@@ -167,6 +200,128 @@ test.describe("Sidebar", () => {
     await expect(chat).toBeVisible();
     await expect(newChat).toBeFocused();
     await expect(page).toHaveURL((url) => url.pathname === topicPath);
+  });
+
+  test("opens a chat or visible topic from search results with the keyboard @mock", async ({
+    authenticated: page,
+  }) => {
+    const streamPath = `${e2eOrgBasePath()}/stream/${E2E_STREAM_UUID}`;
+    const topicPath = `${streamPath}/topic/${E2E_TOPIC_UUID}`;
+    const [general] = streamsSuccess();
+    const [defaultTopic] = topicsSuccess();
+    await page.route(/\/messenger\/streams\/?(?:\?.*)?$/, (route) =>
+      route.fulfill({
+        json: [
+          general,
+          {
+            ...general,
+            uuid: "66666666-6666-4666-8666-666666666666",
+            name: "General Support",
+            last_message_uuid: null,
+          },
+        ],
+      }),
+    );
+    await page.route(/\/messenger\/stream_topics\/?(?:\?.*)?$/, (route) =>
+      route.fulfill({
+        json: [
+          defaultTopic,
+          {
+            ...defaultTopic,
+            uuid: "77777777-7777-4777-8777-777777777777",
+            name: "Archive",
+            is_default: false,
+            last_message_uuid: null,
+            updated_at: "2026-11-01T12:00:00Z",
+          },
+          {
+            ...defaultTopic,
+            uuid: "88888888-8888-4888-8888-888888888888",
+            name: "General Notes",
+            is_default: false,
+            last_message_uuid: null,
+            updated_at: "2025-01-01T12:00:00Z",
+          },
+        ],
+      }),
+    );
+    await page.goto(`${e2eOrgBasePath()}/messenger`);
+
+    const sidebar = page.getByRole("navigation", { name: "Chat list" });
+    const search = sidebar.getByRole("searchbox");
+    const chat = sidebar.getByRole("link", { name: "General", exact: true });
+    const topic = sidebar.getByRole("link", { name: /^#General(?! Notes)/ });
+    const extraTopic = sidebar.getByRole("link", { name: /^#Archive/ });
+    const matchingNotes = sidebar.getByRole("link", { name: /^#General Notes/ });
+    const otherTopics = sidebar.getByRole("separator", { name: "Остальные темы" });
+    const showMore = sidebar.getByRole("button", { name: /show more topics|показать ещё темы/i });
+    const hideExtra = sidebar.getByRole("button", { name: /hide extra topics|скрыть лишние темы/i });
+    const nextChat = sidebar.getByRole("link", { name: "General Support", exact: true });
+    await search.fill("General");
+    await expect(extraTopic).toHaveCount(0);
+    await expect(otherTopics).toHaveCount(0);
+    await search.press("ArrowDown");
+    await expect(chat).toBeFocused();
+    await expectConversationFocusStyle(chat);
+    await page.keyboard.press("ArrowDown");
+    await expect(topic).toBeFocused();
+    await expectConversationFocusStyle(topic);
+    await page.keyboard.press("ArrowDown");
+    await expect(matchingNotes).toBeFocused();
+    await page.keyboard.press("ArrowDown");
+    await expect(showMore).toBeFocused();
+    await expectConversationFocusStyle(showMore);
+    await page.keyboard.press("Enter");
+    await expect(extraTopic).toBeVisible();
+    await expect(extraTopic).toBeFocused();
+    await expect(extraTopic).toBeInViewport();
+    await expect(otherTopics).toBeVisible();
+    await expect(
+      sidebar.locator("[data-sidebar-topic-uuid], [aria-label='Остальные темы']"),
+    ).toHaveText([/^#General(?! Notes)/, /^#General Notes/, "Остальные темы", /^#Archive/]);
+    await page.keyboard.press("ArrowUp");
+    await expect(matchingNotes).toBeFocused();
+    await page.keyboard.press("ArrowDown");
+    await expect(extraTopic).toBeFocused();
+    await expect(hideExtra).toHaveAttribute("aria-expanded", "true");
+    await page.keyboard.press("ArrowDown");
+    await expect(hideExtra).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect(extraTopic).toHaveCount(0);
+    await expect(otherTopics).toHaveCount(0);
+    await expect(showMore).toBeFocused();
+    await expect(search).toHaveValue("General");
+    await page.keyboard.press("ArrowDown");
+    await expect(nextChat).toBeFocused();
+    await page.keyboard.press("ArrowUp");
+    await expect(showMore).toBeFocused();
+    await page.keyboard.press("ArrowUp");
+    await expect(matchingNotes).toBeFocused();
+    await page.keyboard.press("ArrowUp");
+    await expect(topic).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect(page).toHaveURL((url) => url.pathname === topicPath);
+    await expect(search).toHaveValue("General");
+    await expect(topic).toBeVisible();
+
+    await search.press("ArrowDown");
+    await expect(chat).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect(page).toHaveURL((url) => url.pathname === streamPath);
+    await expect(search).toHaveValue("General");
+    await expect(nextChat).toBeVisible();
+
+    await page.evaluate(() => window.__dev__?.theme.toggle());
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+    await search.press("ArrowUp");
+    await expect(nextChat).toBeFocused();
+    await expectConversationFocusStyle(nextChat);
+    await page.keyboard.press("ArrowUp");
+    await expect(showMore).toBeFocused();
+    await expectConversationFocusStyle(showMore);
+    await page.keyboard.press("Escape");
+    await expect(search).toHaveValue("");
+    await expect(page).toHaveURL((url) => url.pathname === streamPath);
   });
 
   test("shows sidebar navigation when authenticated", async ({ authenticated }) => {

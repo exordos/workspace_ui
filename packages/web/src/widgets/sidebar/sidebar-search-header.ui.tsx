@@ -2,6 +2,7 @@ import React, { useImperativeHandle, useRef } from "react";
 import { t } from "~/i18n/i18n";
 import { Icon } from "~/shared/ui/icon";
 import { SearchInput } from "~/shared/ui/search-input";
+import { moveWorkspaceSidebarSearchFocus } from "./sidebar-workspace-search.lib";
 import type { SidebarSearchHeaderProps } from "./sidebar-search-header.types";
 
 export const SidebarSearchHeader: React.FC<SidebarSearchHeaderProps> = ({
@@ -51,6 +52,7 @@ export const SidebarSearchHeader: React.FC<SidebarSearchHeaderProps> = ({
         ref={searchInputRef}
         value={searchQuery}
         onChange={onSearchQueryChange}
+        onKeyDown={moveWorkspaceSidebarSearchFocus}
         placeholder={t("search.find")}
         ariaLabel={t("search.search")}
         className="flex-1"

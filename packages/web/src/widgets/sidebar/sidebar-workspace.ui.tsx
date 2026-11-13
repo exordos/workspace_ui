@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   isWorkspaceStreamFullyMuted,
@@ -60,10 +60,13 @@ import { WorkspaceSidebarActivity } from "./sidebar-workspace-activity.ui";
 import { WorkspaceStreamContextMenu } from "./sidebar-workspace-context-menu.ui";
 import { WorkspaceSidebarMessagePreview } from "./sidebar-workspace-message-preview.ui";
 import {
+  moveWorkspaceSidebarSearchFocus,
   projectWorkspaceSidebarSearch,
   type WorkspaceSidebarSearchProjection,
 } from "./sidebar-workspace-search.lib";
+import type { SidebarTopicToggleAction } from "./sidebar-topic-collapse.lib";
 import type { SidebarSearchHandle } from "./sidebar.types";
+import "./sidebar-workspace.css";
 
 const WORKSPACE_CREATE_CHAT_VISIBLE_TABS = ["dm", "channel", "topic", "archived"] as const;
 const SidebarCalendarContext = React.createContext(0);
@@ -212,6 +215,10 @@ const WorkspaceSidebarTopicRow = React.memo(function WorkspaceSidebarTopicRow({
     >
       <Link
         to={topic.route}
+        data-sidebar-topic-uuid={topic.topicUuid}
+        data-sidebar-conversation-row
+        data-sidebar-search-item
+        onKeyDown={moveWorkspaceSidebarSearchFocus}
         className={`${sidebarTopicRowLinkClass(compact)} ${sidebarRowClass(isActive)} ${
           isMuted ? "opacity-70" : ""
         }`}
@@ -256,32 +263,90 @@ function WorkspaceSidebarTopicRows({
   topics,
   activeTopicUuid,
   compact,
+  toggleAction,
+  expanded,
+  hiddenCount,
+  onToggle,
+  dividerBeforeIndex,
 }: Readonly<{
   stream: MessengerSidebarStreamItem;
   topics: MessengerTopicListItem[];
   activeTopicUuid: string | null;
   compact: boolean;
-}>): React.ReactElement | null {
-  if (topics.length === 0) return null;
+  toggleAction: SidebarTopicToggleAction | null;
+  expanded: boolean;
+  hiddenCount: number;
+  onToggle: () => void;
+  dividerBeforeIndex?: number;
+}>): React.ReactElement {
+  const topicListRef = useRef<HTMLDivElement>(null);
+  const previouslyVisibleTopicsRef = useRef<Set<string> | null>(null);
+
+  useLayoutEffect(() => {
+    const previouslyVisible = previouslyVisibleTopicsRef.current;
+    if (previouslyVisible == null) return;
+    previouslyVisibleTopicsRef.current = null;
+
+    const links = topicListRef.current?.querySelectorAll<HTMLAnchorElement>(
+      "[data-sidebar-topic-uuid]",
+    );
+    if (links == null) return;
+    Array.from(links)
+      .find((link) => !previouslyVisible.has(link.dataset.sidebarTopicUuid ?? ""))
+      ?.focus();
+  }, [topics]);
+
+  const handleToggle = () => {
+    if (toggleAction !== "collapse") {
+      previouslyVisibleTopicsRef.current = new Set(topics.map((topic) => topic.topicUuid));
+    }
+    onToggle();
+  };
 
   return (
-    <div className={SIDEBAR_TOPIC_LIST_CLASS}>
-      {topics.map((topic) => {
-        const barColor = resolveSidebarTopicBarColor({ color: topic.color });
-        return (
-          <WorkspaceSidebarTopicRow
-            key={topic.id}
-            topic={topic}
-            streamNotificationMode={stream.notificationMode}
-            streamTitle={stream.title}
-            isDirectPrivate={stream.uiKind === "directPrivate"}
-            activeTopicUuid={activeTopicUuid}
-            compact={compact}
-            barColor={barColor}
-          />
-        );
-      })}
-    </div>
+    <>
+      {topics.length > 0 && (
+        <div ref={topicListRef} className={SIDEBAR_TOPIC_LIST_CLASS}>
+          {topics.map((topic, index) => {
+            const barColor = resolveSidebarTopicBarColor({ color: topic.color });
+            return (
+              <React.Fragment key={topic.id}>
+                {index === dividerBeforeIndex && (
+                  <div
+                    className="flex items-center gap-2 px-2 py-1.5"
+                    role="separator"
+                    aria-label={t("sidebar.otherTopics")}
+                  >
+                    <SectionLabel tone="muted" as="span">
+                      {t("sidebar.otherTopics")}
+                    </SectionLabel>
+                    <div className="bg-border-subtle/70 h-px flex-1" />
+                  </div>
+                )}
+                <WorkspaceSidebarTopicRow
+                  topic={topic}
+                  streamNotificationMode={stream.notificationMode}
+                  streamTitle={stream.title}
+                  isDirectPrivate={stream.uiKind === "directPrivate"}
+                  activeTopicUuid={activeTopicUuid}
+                  compact={compact}
+                  barColor={barColor}
+                />
+              </React.Fragment>
+            );
+          })}
+        </div>
+      )}
+      {toggleAction != null && (
+        <SidebarTopicShowMoreButton
+          action={toggleAction}
+          expanded={expanded}
+          hiddenCount={hiddenCount}
+          onToggle={handleToggle}
+          compact={compact}
+        />
+      )}
+    </>
   );
 }
 
@@ -298,26 +363,28 @@ const WorkspaceSidebarSearchTopics = React.memo(function WorkspaceSidebarSearchT
 }): React.ReactElement {
   const [expanded, setExpanded] = useState(false);
   const hiddenCount = stream.topics.length - matchingTopics.length;
-  const visibleTopics = expanded ? stream.topics : matchingTopics;
+  const visibleTopics = useMemo(() => {
+    if (!expanded || hiddenCount === 0) return matchingTopics;
+    const matchingIds = new Set(matchingTopics.map((topic) => topic.topicUuid));
+    return [
+      ...matchingTopics,
+      ...stream.topics.filter((topic) => !matchingIds.has(topic.topicUuid)),
+    ];
+  }, [expanded, hiddenCount, matchingTopics, stream.topics]);
+  const toggleAction = expanded ? "collapse" : "showMore";
 
   return (
-    <>
-      <WorkspaceSidebarTopicRows
-        stream={stream}
-        topics={visibleTopics}
-        activeTopicUuid={activeTopicUuid}
-        compact={compact}
-      />
-      {hiddenCount > 0 && (
-        <SidebarTopicShowMoreButton
-          action={expanded ? "collapse" : "showMore"}
-          expanded={expanded}
-          hiddenCount={expanded ? 0 : hiddenCount}
-          onToggle={() => setExpanded((current) => !current)}
-          compact={compact}
-        />
-      )}
-    </>
+    <WorkspaceSidebarTopicRows
+      stream={stream}
+      topics={visibleTopics}
+      activeTopicUuid={activeTopicUuid}
+      compact={compact}
+      toggleAction={hiddenCount > 0 ? toggleAction : null}
+      expanded={expanded}
+      hiddenCount={expanded ? 0 : hiddenCount}
+      onToggle={() => setExpanded((current) => !current)}
+      dividerBeforeIndex={expanded && matchingTopics.length > 0 ? matchingTopics.length : undefined}
+    />
   );
 });
 
@@ -359,23 +426,16 @@ const WorkspaceSidebarTopics = React.memo(function WorkspaceSidebarTopics({
   const visibleTopics = stream.topics.slice(0, visibleCount);
 
   return (
-    <>
-      <WorkspaceSidebarTopicRows
-        stream={stream}
-        topics={visibleTopics}
-        activeTopicUuid={activeTopicUuid}
-        compact={compact}
-      />
-      {toggleAction != null && (
-        <SidebarTopicShowMoreButton
-          action={toggleAction}
-          expanded={expanded}
-          hiddenCount={hiddenCount}
-          onToggle={toggleTopics}
-          compact={compact}
-        />
-      )}
-    </>
+    <WorkspaceSidebarTopicRows
+      stream={stream}
+      topics={visibleTopics}
+      activeTopicUuid={activeTopicUuid}
+      compact={compact}
+      toggleAction={toggleAction}
+      expanded={expanded}
+      hiddenCount={hiddenCount}
+      onToggle={toggleTopics}
+    />
   );
 });
 
@@ -492,6 +552,7 @@ const WorkspaceSidebarStreamRow = React.memo(function WorkspaceSidebarStreamRow(
         }
       >
         <div
+          data-sidebar-conversation-row
           className={`relative isolate ${rowClass} w-full ${rowSurfaceClass} ${isMuted ? "opacity-70" : ""}`}
         >
           {config.showAvatar && (
@@ -527,7 +588,9 @@ const WorkspaceSidebarStreamRow = React.memo(function WorkspaceSidebarStreamRow(
             <Link
               to={config.to}
               onClick={config.onClick}
-              className={`focus-visible:ring-border-strong block min-w-0 rounded-md focus-visible:outline-none focus-visible:ring-1 ${config.linkClass}`}
+              data-sidebar-search-item
+              onKeyDown={moveWorkspaceSidebarSearchFocus}
+              className={`block min-w-0 rounded-md ${config.linkClass}`}
             >
               <SidebarChatTitleWithStatus
                 title={title}
@@ -593,7 +656,7 @@ function renderWorkspaceSidebarStreamLists(input: {
   if (input.displayedStreamCount === 0) return null;
 
   return (
-    <div className="space-y-0.5 px-2">
+    <div className="space-y-0.5 px-2" data-sidebar-search-results>
       {input.searchProjection.localStreams.length > 0
         ? input.renderStreams(input.searchProjection.localStreams, true, "selected")
         : null}
