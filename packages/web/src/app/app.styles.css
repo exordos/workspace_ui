@@ -300,6 +300,7 @@ html[data-window-activity] [data-workspace-message-anchor-highlight="true"]::bef
   --color-card-bg: #eef5fb;
   --color-card-bg-active: #cde6ff;
   --color-text-field-bg: #eef5fb;
+  --color-compact-field-bg: #e4edf5;
   --color-text-primary: #1b1b1d;
   --color-text-secondary: #787878;
   --color-text-muted: #989898;

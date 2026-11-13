@@ -872,3 +872,40 @@ describe("workspace message store", () => {
 function readMarkdownPayload(payload: MessengerMessagePayload | undefined): string | undefined {
   return payload?.kind === "markdown" ? payload.content : undefined;
 }
+
+describe("poll revision ordering", () => {
+  it("keeps newer poll payload and votes while accepting independent fields", () => {
+    useWorkspaceMessageStore.getState().clear();
+    const poll: MessengerMessage["payload"] = {
+      kind: "poll",
+      questions: [{ uuid: "q", text: "Question", options: [], correctOptionUuids: [] }],
+      multipleAnswers: false,
+      isAnonymous: true,
+      allowRevote: false,
+      resultsVisibility: "always",
+      allowAddingOptions: false,
+      closesAt: null,
+      closedAt: null,
+    };
+    const state = { revision: 2, isClosed: true, voterCount: 1, questions: [], myVotes: [] };
+    const current = createMessage({ uuid: MESSAGE_A, payload: poll, pollState: state });
+    useWorkspaceMessageStore.getState().applyLiveCreatedMessage(current);
+    useWorkspaceMessageStore.getState().applyLiveKnownBodyMutation({
+      ...current,
+      read: true,
+      payload: { ...poll, questions: [] },
+      pollState: { ...state, revision: 1, isClosed: false },
+    });
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]).toMatchObject({
+      read: true,
+      payload: poll,
+      pollState: state,
+    });
+    useWorkspaceMessageStore
+      .getState()
+      .applyLiveKnownBodyMutation({ ...current, pollState: { ...state, isClosed: false } });
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.pollState?.isClosed).toBe(
+      true,
+    );
+  });
+});

@@ -1,7 +1,7 @@
 /**
  * Tests for the theme system: palette registry, token completeness, and mode resolution.
  *
- * Verifies that all registered palettes define the full set of 44 design tokens
+ * Verifies that all registered palettes define the full set of design tokens
  * for both light and dark modes, that palette lookup works with fallbacks, and
  * that the "system" mode correctly resolves to light/dark. These tests protect
  * against missing tokens that would cause CSS variables to be undefined,
@@ -18,6 +18,7 @@ const ALL_TOKEN_KEYS: (keyof PaletteTokens)[] = [
   "card-bg",
   "card-bg-active",
   "text-field-bg",
+  "compact-field-bg",
   "text-primary",
   "text-secondary",
   "text-muted",
@@ -59,6 +60,37 @@ const ALL_TOKEN_KEYS: (keyof PaletteTokens)[] = [
   "indicator-blue",
   "indicator-red",
 ];
+
+function contrast(first: string, second: string): number {
+  const luminance = (color: string) => {
+    const channels = [1, 3, 5].map((offset) => parseInt(color.slice(offset, offset + 2), 16) / 255);
+    const linear = channels.map((value) =>
+      value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4,
+    );
+    return (linear[0] ?? 0) * 0.2126 + (linear[1] ?? 0) * 0.7152 + (linear[2] ?? 0) * 0.0722;
+  };
+  const values = [luminance(first), luminance(second)].sort((a, b) => a - b);
+  return ((values[1] ?? 0) + 0.05) / ((values[0] ?? 0) + 0.05);
+}
+
+describe("compact field colors", () => {
+  it("keeps fields visible on dialog surfaces and text readable in every palette", () => {
+    for (const palette of palettes)
+      for (const tokens of [palette.light, palette.dark]) {
+        expect(contrast(tokens["compact-field-bg"], tokens["bg-elevated"])).toBeGreaterThan(1.15);
+        expect(contrast(tokens["compact-field-bg"], tokens["text-primary"])).toBeGreaterThan(4.5);
+        const mix = (offset: number) => {
+          const secondary = parseInt(tokens["text-secondary"].slice(offset, offset + 2), 16);
+          const primary = parseInt(tokens["text-primary"].slice(offset, offset + 2), 16);
+          return Math.round(secondary * 0.55 + primary * 0.45)
+            .toString(16)
+            .padStart(2, "0");
+        };
+        const placeholder = `#${mix(1)}${mix(3)}${mix(5)}`;
+        expect(contrast(tokens["compact-field-bg"], placeholder)).toBeGreaterThan(4.5);
+      }
+  });
+});
 
 // Validates the palette registry and token completeness for all palettes
 describe("theme palettes", () => {

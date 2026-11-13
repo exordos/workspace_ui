@@ -45,7 +45,7 @@ import type { MessengerMessage } from "./messenger.types";
 
 function domainMessage(message: MessengerMessage): ChatE2eeMessage | null {
   const payload = message.payload;
-  if (payload.kind === "markdown") return null;
+  if (payload.kind === "markdown" || payload.kind === "poll") return null;
   const decoded = decodeMessengerE2eePayload(payload);
   return decoded.ok
     ? {
@@ -760,6 +760,7 @@ export async function openRealChatSession({
             message.projectId !== runtimeContext.projectId ||
             message.streamUuid !== streamUuid ||
             message.payload.kind === "markdown" ||
+            message.payload.kind === "poll" ||
             message.payload.kind === "e2ee"
           )
             continue;

@@ -83,7 +83,11 @@ export interface MessengerRealtimeActiveCacheWriter {
     ownerKey: string,
     messageUuids: readonly MessengerUuid[],
   ) => Promise<void> | void;
-  patchCachedMessage?: (ownerKey: string, message: MessengerMessage) => Promise<void> | void;
+  patchCachedMessage?: (
+    ownerKey: string,
+    message: MessengerMessage,
+    isWriteCurrent?: () => boolean,
+  ) => Promise<void> | void;
   deleteCachedMessage?: (
     ownerKey: string,
     messageUuid: MessengerUuid,
@@ -380,7 +384,9 @@ function applyMessageRealtimeEvent(
     let messageWrite: Promise<void> | void = undefined;
     if (previousMessage != null && activeCache.patchCachedMessage != null) {
       messageWrite = writeRealtimeCacheBestEffort(() =>
-        activeCache.patchCachedMessage?.(ownerKey, { ...message, read: true }),
+        activeCache.patchCachedMessage?.(ownerKey, { ...message, read: true }, () =>
+          isActiveCurrentOwner(context, options),
+        ),
       );
     }
     return settleRealtimeCacheWrites([boundaryWrite, messageWrite]);
@@ -390,7 +396,9 @@ function applyMessageRealtimeEvent(
     let cacheWrite: Promise<void> | void = undefined;
     if (previousMessage != null && activeCache.patchCachedMessage != null) {
       cacheWrite = writeRealtimeCacheBestEffort(() =>
-        activeCache.patchCachedMessage?.(ownerKey, message),
+        activeCache.patchCachedMessage?.(ownerKey, message, () =>
+          isActiveCurrentOwner(context, options),
+        ),
       );
     }
     if (

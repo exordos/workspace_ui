@@ -10,6 +10,7 @@ import {
   parseStrictDtoList,
 } from "./messenger-transport.internal";
 import {
+  isUuid,
   isWorkspaceMessengerMessageDto,
   isWorkspaceMessengerMessageReactionDto,
 } from "./messenger.types";
@@ -290,4 +291,78 @@ export function getActivityUnsupported(..._args: unknown[]): Promise<never> {
 
 export function getLinkPreviewUnsupported(..._args: unknown[]): Promise<never> {
   return rejectUnsupportedAction("get_link_preview");
+}
+
+export type MessengerPollAction =
+  | { kind: "vote"; questionUuid: string; optionUuid: string; selected: boolean }
+  | { kind: "close" }
+  | { kind: "settings"; closesAt: string | null; allowAddingOptions: boolean }
+  | { kind: "addOption"; questionUuid: string; option: { uuid: string; text: string } };
+
+export async function invokePollAction(
+  options: MessengerClientOptions,
+  messageUuid: string,
+  action: MessengerPollAction,
+): Promise<WorkspaceMessengerMessageDto> {
+  let name: string;
+  let body: object;
+  switch (action.kind) {
+    case "vote":
+      name = "vote";
+      body = {
+        question_uuid: action.questionUuid,
+        option_uuid: action.optionUuid,
+        selected: action.selected,
+      };
+      break;
+    case "close":
+      name = "close_poll";
+      body = {};
+      break;
+    case "settings":
+      name = "update_settings";
+      body = {
+        settings: { closes_at: action.closesAt, allow_adding_options: action.allowAddingOptions },
+      };
+      break;
+    case "addOption":
+      name = "add_poll_option";
+      body = { question_uuid: action.questionUuid, option: action.option };
+      break;
+  }
+  const data = await messengerPostJson(
+    `/messages/${messageUuid}/actions/${name}/invoke`,
+    options,
+    body,
+  );
+  return parseDto(data, isWorkspaceMessengerMessageDto, "messenger poll action response");
+}
+
+export async function getPollVoters(
+  options: MessengerClientOptions,
+  messageUuid: string,
+  query: {
+    questionUuid: string;
+    optionUuid: string;
+    pageMarker?: string;
+    pageLimit?: number;
+  },
+): Promise<MessengerCollectionPage<{ uuid: string }>> {
+  const { data, headers } = await messengerRequestJsonResult(
+    "GET",
+    `/messages/${messageUuid}/poll_voters/`,
+    options,
+    {
+      question_uuid: query.questionUuid,
+      option_uuid: query.optionUuid,
+      page_marker: query.pageMarker,
+      page_limit: query.pageLimit,
+    },
+  );
+  const isVoter = (value: unknown): value is { uuid: string } =>
+    value != null && typeof value === "object" && "uuid" in value && isUuid(value.uuid);
+  return {
+    items: parseStrictDtoList(data, isVoter, "poll voters response"),
+    ...parsePaginationHeaders(headers),
+  };
 }

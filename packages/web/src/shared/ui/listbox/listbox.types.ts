@@ -5,6 +5,7 @@ export interface ListboxOption {
   label: string;
   description?: string;
   disabled?: boolean;
+  group?: { id: string; label: string };
 }
 
 export type ListboxSize = "default" | "compact";

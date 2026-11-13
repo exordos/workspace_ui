@@ -112,6 +112,7 @@ jobs:
   e2e:
     name: E2E (Playwright)
     needs: check
+    # Playwright 1.60 supports Ubuntu 24.04; ubuntu-latest can select 26.04.
     runs-on: ubuntu-24.04
     timeout-minutes: 20
 

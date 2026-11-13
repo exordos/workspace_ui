@@ -1,4 +1,5 @@
 import React, { useCallback, useMemo, useState } from "react";
+import { summarizeMessengerPoll } from "~/entities/messenger/messenger-poll-text.lib";
 import {
   useResolvedMessengerQuoteMessage,
   type ResolvedMessengerQuoteMessage,
@@ -461,11 +462,18 @@ function WorkspaceMessageQuotePresentation({
       onClick={onOpenMessage == null ? undefined : handleBlockClick}
       onKeyDown={onOpenMessage == null ? undefined : handleBlockKeyDown}
     >
-      {sourceMessage != null &&
-      sourceMessage.payload.kind !== "markdown" &&
-      sourceMessage.payload.kind !== "e2ee"
-        ? encryptedMessageLabel(sourceMessage.payload)
-        : messageContent}
+      {sourceMessage?.payload.kind === "poll" && reference.selectedText == null ? (
+        <div className="whitespace-pre-wrap break-words text-sm">
+          {summarizeMessengerPoll(sourceMessage.payload, sourceMessage.pollState)}
+        </div>
+      ) : sourceMessage != null &&
+        sourceMessage.payload.kind !== "markdown" &&
+        sourceMessage.payload.kind !== "e2ee" &&
+        sourceMessage.payload.kind !== "poll" ? (
+        encryptedMessageLabel(sourceMessage.payload)
+      ) : (
+        messageContent
+      )}
     </WorkspaceMessageQuoteFrame>
   );
 }

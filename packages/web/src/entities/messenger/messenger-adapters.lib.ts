@@ -167,6 +167,32 @@ export function adaptMessengerMessage(dto: WorkspaceMessengerMessageDto): Messen
     authorUuid: dto.author_uuid,
     userUuid: dto.user_uuid,
     payload: adaptMessengerMessagePayload(dto.payload),
+    ...(dto.poll_state == null
+      ? {}
+      : {
+          pollState: {
+            revision: dto.poll_state.revision,
+            isClosed: dto.poll_state.is_closed,
+            voterCount: dto.poll_state.voter_count,
+            questions: dto.poll_state.questions.map((q) => ({
+              questionUuid: q.question_uuid,
+              voterCount: q.voter_count,
+              optionCounts: { ...q.option_counts },
+              ...(q.option_voter_previews && {
+                optionVoterPreviews: Object.fromEntries(
+                  Object.entries(q.option_voter_previews).map(([option, users]) => [
+                    option,
+                    [...users],
+                  ]),
+                ),
+              }),
+            })),
+            myVotes: dto.poll_state.my_votes.map((v) => ({
+              questionUuid: v.question_uuid,
+              optionUuids: [...v.option_uuids],
+            })),
+          },
+        }),
     read: dto.read,
     pinned: dto.pinned,
     starred: dto.starred,
@@ -199,6 +225,23 @@ export function adaptMessengerMessagePayload(
   switch (dto.kind) {
     case "markdown":
       return { kind: "markdown", content: dto.content };
+    case "poll":
+      return {
+        kind: "poll",
+        questions: dto.questions.map((q) => ({
+          uuid: q.uuid,
+          text: q.text,
+          options: q.options.map((o) => ({ ...o })),
+          correctOptionUuids: [...(q.correct_option_uuids ?? [])],
+        })),
+        multipleAnswers: dto.multiple_answers,
+        isAnonymous: dto.is_anonymous,
+        allowRevote: dto.allow_revote,
+        resultsVisibility: dto.results_visibility,
+        allowAddingOptions: dto.allow_adding_options ?? false,
+        closesAt: dto.closes_at ?? null,
+        closedAt: dto.closed_at ?? null,
+      };
     case "e2ee":
       return { kind: dto.kind, keyUuid: dto.key_uuid, content: dto.content };
     case "key_request":

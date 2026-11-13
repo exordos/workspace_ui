@@ -5,6 +5,7 @@ import {
 } from "~/entities/message/message.model";
 import { useMessengerBackgroundProjectionStore } from "~/entities/messenger/messenger-background-projection.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
+import { isWorkspaceMessengerMessageDto } from "~/shared/api/messenger.types";
 import type {
   WorkspaceMessengerFolderDto,
   WorkspaceMessengerMessageDto,
@@ -965,6 +966,7 @@ describe("messenger realtime active applier", () => {
         uuid: MESSAGE_A,
         payload: { kind: "markdown", content: "Edited workspace message" },
       }),
+      expect.any(Function),
     );
     expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]).toEqual(
       expect.objectContaining({
@@ -1282,6 +1284,7 @@ describe("messenger realtime active applier", () => {
         reactions: { thumbs_up: 2, eyes: 1 },
         reactionUserUuidsByEmojiName: { eyes: [USER_B] },
       }),
+      expect.any(Function),
     );
     expect(onMessageReactionAggregateUpdated).toHaveBeenCalledWith(
       ownerKey,
@@ -3081,4 +3084,68 @@ describe("messenger realtime active applier", () => {
       expect.any(Function),
     );
   });
+});
+
+it("applies a personalized poll update through the message guard and realtime applier", async () => {
+  useMessengerStore.getState().clear();
+  useWorkspaceMessageStore.getState().clear();
+  const context = createContext();
+  useMessengerStore.getState().startBootstrap(context.ownerKey);
+  const payload = {
+    kind: "poll" as const,
+    questions: [{ uuid: MESSAGE_B, text: "Q", options: [{ uuid: MESSAGE_C, text: "A" }] }],
+    multiple_answers: false,
+    is_anonymous: false,
+    allow_revote: true,
+    results_visibility: "after_vote" as const,
+  };
+  const initial = createMessageDto({
+    payload,
+    poll_state: { revision: 1, is_closed: false, voter_count: 0, questions: [], my_votes: [] },
+  });
+  const update = {
+    ...initial,
+    poll_state: {
+      revision: 2,
+      is_closed: false,
+      voter_count: 1,
+      questions: [
+        {
+          question_uuid: MESSAGE_B,
+          voter_count: 1,
+          option_counts: { [MESSAGE_C]: 1 },
+          option_voter_previews: { [MESSAGE_C]: [initial.user_uuid] },
+        },
+      ],
+      my_votes: [{ question_uuid: MESSAGE_B, option_uuids: [MESSAGE_C] }],
+    },
+  };
+  expect(isWorkspaceMessengerMessageDto(update)).toBe(true);
+  const cache = { writeConversationMessagePage: vi.fn(), patchCachedMessage: vi.fn() };
+  const applier = createMessengerRealtimeActiveApplier({ cache });
+  await applier.applyEvent(
+    { epoch_version: 1, type: "message", kind: "message.created", message: initial },
+    context,
+  );
+  await applier.applyEvent(
+    { epoch_version: 2, type: "message", kind: "message.updated", message: update },
+    context,
+  );
+  expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.pollState).toMatchObject({
+    revision: 2,
+    myVotes: [{ questionUuid: MESSAGE_B, optionUuids: [MESSAGE_C] }],
+    questions: [{ optionVoterPreviews: { [MESSAGE_C]: [initial.user_uuid] } }],
+  });
+  expect(cache.patchCachedMessage).toHaveBeenCalledWith(
+    context.ownerKey,
+    expect.objectContaining({
+      pollState: expect.objectContaining({
+        revision: 2,
+        questions: [
+          expect.objectContaining({ optionVoterPreviews: { [MESSAGE_C]: [initial.user_uuid] } }),
+        ],
+      }),
+    }),
+    expect.any(Function),
+  );
 });

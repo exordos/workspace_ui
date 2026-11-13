@@ -35,7 +35,11 @@ export interface MessengerRealtimeCacheWriter {
     ownerKey: string,
     messageUuids: readonly MessengerUuid[],
   ) => Promise<void> | void;
-  patchCachedMessage: (ownerKey: string, message: MessengerMessage) => Promise<void> | void;
+  patchCachedMessage: (
+    ownerKey: string,
+    message: MessengerMessage,
+    isWriteCurrent?: () => boolean,
+  ) => Promise<void> | void;
   deleteCachedMessage: (
     ownerKey: string,
     messageUuid: MessengerUuid,
@@ -93,12 +97,12 @@ async function applyMessageEvent(
 
   const message = adaptMessengerMessage(event.message);
   if (event.kind === "message.updated") {
-    await writer.patchCachedMessage(ownerKey, message);
+    await writer.patchCachedMessage(ownerKey, message, isWriteCurrent);
     return isWriteCurrent() ? "applied" : "deferred";
   }
   if (event.kind === "message.read") {
     const readMessage = { ...message, read: true };
-    await writer.patchCachedMessage(ownerKey, readMessage);
+    await writer.patchCachedMessage(ownerKey, readMessage, isWriteCurrent);
     if (!isWriteCurrent()) return "deferred";
     await writer.advanceReadBoundary({
       ownerKey,

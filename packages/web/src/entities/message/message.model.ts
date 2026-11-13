@@ -98,6 +98,23 @@ function mergeWorkspaceMessageSnapshot(
   };
   if (previousMessage == null) return incomingSnapshot;
 
+  if (
+    previousMessage.payload.kind === "poll" &&
+    incomingSnapshot.payload.kind === "poll" &&
+    previousMessage.pollState &&
+    incomingSnapshot.pollState
+  ) {
+    if (previousMessage.pollState.revision > incomingSnapshot.pollState.revision) {
+      incomingSnapshot.payload = previousMessage.payload;
+      incomingSnapshot.pollState = previousMessage.pollState;
+    } else if (
+      previousMessage.pollState.revision === incomingSnapshot.pollState.revision &&
+      previousMessage.pollState.isClosed &&
+      !incomingSnapshot.pollState.isClosed
+    ) {
+      incomingSnapshot.pollState = { ...incomingSnapshot.pollState, isClosed: true };
+    }
+  }
   const incomingOwnProjection = incomingSnapshot.ownReactionUuidsByEmojiName;
   if (Object.keys(incomingOwnProjection).length > 0) return incomingSnapshot;
 

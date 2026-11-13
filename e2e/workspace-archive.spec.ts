@@ -189,17 +189,17 @@ test("direct and channel archives open history, confirm archiving for everyone, 
   ] as const) {
     const row = sidebar.getByRole("link", { name, exact: true });
     const confirmation = page.getByRole("dialog", {
-      name: /^(archive chat\?|архивировать чат\?)$/i,
+      name: /^(archive chat for everyone\?|архивировать чат для всех\?)$/i,
     });
     const openConfirmation = async () => {
       await row.click({ button: "right" });
-      await page.getByRole("menuitem", { name: /^(archive|архивировать)$/i }).click();
+      await page.getByRole("menuitem", { name: /^(archive for everyone|архивировать для всех)$/i }).click();
       await expect(confirmation).toBeVisible();
       await expect(confirmation).toContainText(name);
       await expect(confirmation).toContainText(
         uuid === DIRECT_UUID
           ? /for both of you|у вас обоих/i
-          : /for all participants|для всех участников/i,
+          : /for all participants|у всех участников/i,
       );
     };
 
@@ -215,7 +215,7 @@ test("direct and channel archives open history, confirm archiving for everyone, 
     expect(archived).toEqual(archivedBeforeCancel);
 
     await openConfirmation();
-    await confirmation.getByRole("button", { name: /^(archive|архивировать)$/i }).click();
+    await confirmation.getByRole("button", { name: /^(archive for everyone|архивировать для всех)$/i }).click();
     await expect(confirmation).toBeHidden();
     await expect(row).toHaveCount(0);
     expect(archived).toEqual([...archivedBeforeCancel, uuid]);

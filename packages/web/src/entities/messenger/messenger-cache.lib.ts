@@ -563,10 +563,11 @@ export async function writeMessengerLiveMessageCache(
   ownerKey: string,
   conversationId: MessengerConversationId,
   page: { messages: readonly MessengerMessage[] },
+  isWriteCurrent: () => boolean = () => true,
 ): Promise<void> {
   const parsed = parseMessengerConversationId(conversationId);
   if (parsed != null && isStreamCacheRemoved(ownerKey, parsed.streamUuid)) return;
-  await writeMessengerRealtimeMessagesCache(ownerKey, page.messages);
+  await writeMessengerRealtimeMessagesCache(ownerKey, page.messages, undefined, isWriteCurrent);
 }
 
 export async function writeMessengerRealtimeMessagesCache(
@@ -592,9 +593,14 @@ export async function writeMessengerRealtimeMessagesCache(
 export async function patchMessengerCachedMessage(
   ownerKey: string,
   message: MessengerMessage,
+  isWriteCurrent: () => boolean = () => true,
 ): Promise<void> {
   if (isStreamCacheRemoved(ownerKey, message.streamUuid)) return;
-  await patchCachedMessage(ownerKey, withoutRuntimeReactionState(message));
+  await patchCachedMessage(
+    ownerKey,
+    withoutRuntimeReactionState(message),
+    () => isWriteCurrent() && !isStreamCacheRemoved(ownerKey, message.streamUuid),
+  );
   if (isStreamCacheRemoved(ownerKey, message.streamUuid)) {
     await purgeRemovedStreamCaches(ownerKey, [message.streamUuid]);
   }

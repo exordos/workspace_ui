@@ -47,6 +47,35 @@ export interface MessengerMarkdownPayload {
   content: string;
 }
 
+export interface MessengerPollPayload {
+  kind: "poll";
+  questions: {
+    uuid: string;
+    text: string;
+    options: { uuid: string; text: string }[];
+    correctOptionUuids: string[];
+  }[];
+  multipleAnswers: boolean;
+  isAnonymous: boolean;
+  allowRevote: boolean;
+  resultsVisibility: "always" | "after_vote";
+  allowAddingOptions: boolean;
+  closesAt: string | null;
+  closedAt: string | null;
+}
+export interface MessengerPollState {
+  revision: number;
+  isClosed: boolean;
+  voterCount: number;
+  questions: {
+    questionUuid: string;
+    voterCount: number;
+    optionCounts: Record<string, number>;
+    optionVoterPreviews?: Record<string, string[]>;
+  }[];
+  myVotes: { questionUuid: string; optionUuids: string[] }[];
+}
+
 export interface MessengerEncryptedPayload {
   kind: "e2ee";
   keyUuid: string;
@@ -85,7 +114,10 @@ export type MessengerE2eePayload =
   | MessengerKeyAnnouncedPayload
   | MessengerKeyRejectPayload;
 // Encoded payloads are preserved in store/cache; decoding belongs at the crypto boundary.
-export type MessengerMessagePayload = MessengerMarkdownPayload | MessengerE2eePayload;
+export type MessengerMessagePayload =
+  | MessengerMarkdownPayload
+  | MessengerPollPayload
+  | MessengerE2eePayload;
 
 // Минимальная строка собственной реакции для обогащения message store из cache
 // или SWR. Store не зависит от IndexedDB-типа и принимает только доменные поля,
@@ -190,6 +222,7 @@ export interface MessengerMessage {
   authorUuid: MessengerUuid;
   userUuid: MessengerUuid;
   payload: MessengerMessagePayload;
+  pollState?: MessengerPollState | null;
   read: boolean;
   pinned: boolean;
   starred: boolean;

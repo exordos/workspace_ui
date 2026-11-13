@@ -5,6 +5,7 @@ import {
   createWorkspaceMessageListOutgoingItem,
   createWorkspaceMessageListServerItem,
   groupWorkspaceMessagesByDayAndAuthor,
+  isWorkspaceServiceMessage,
 } from "./workspace-message-list-grouping.lib";
 
 type MessageOverrides = Omit<Partial<MessengerMessage>, "payload"> & {
@@ -71,6 +72,24 @@ function createIsoStringFromLocalTime(
 }
 
 describe("groupWorkspaceMessagesByDayAndAuthor", () => {
+  it("renders polls as messages, not service event groups", () => {
+    const payload: MessengerMessage["payload"] = {
+      kind: "poll",
+      questions: [],
+      multipleAnswers: false,
+      isAnonymous: false,
+      allowRevote: false,
+      resultsVisibility: "always",
+      allowAddingOptions: false,
+      closesAt: null,
+      closedAt: null,
+    };
+    expect(
+      isWorkspaceServiceMessage(
+        createWorkspaceMessageListServerItem(createWorkspaceMessage({ payload })),
+      ),
+    ).toBe(false);
+  });
   it("groups adjacent service events across authors and separates them from text and encrypted text", () => {
     const payloads: MessengerMessage["payload"][] = [
       { kind: "key_announced", keyUuid: "generation" },

@@ -34,6 +34,7 @@ function syncSessionMessages(
       message.streamUuid === streamUuid &&
       message.projectId === runtime.projectId &&
       message.payload.kind !== "markdown" &&
+      message.payload.kind !== "poll" &&
       message.payload.kind !== "e2ee",
   );
   const signature = JSON.stringify(
