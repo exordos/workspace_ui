@@ -49,6 +49,11 @@ import {
   buildMessengerRequestOptions,
   type MessengerRequestOptionsOverrides,
 } from "./messenger-request-options.lib";
+import {
+  editableStreamKeySharing,
+  isNewerStreamKeySharingSnapshot,
+  preserveConfirmedStreamKeySharing,
+} from "./messenger-stream-key-sharing.lib";
 import { useMessengerStore } from "./messenger.model";
 import type { MessengerStoreState } from "./messenger.model";
 import type {
@@ -159,6 +164,11 @@ export interface UpdateMessengerStreamNotificationModeOptions extends MessengerS
 export interface RenameMessengerStreamOptions extends MessengerSidebarActionBaseOptions {
   streamUuid: MessengerUuid;
   name: string;
+}
+
+interface StreamKeySharingUpdate {
+  streamUuid: MessengerUuid;
+  allowKeySharingByHolders: boolean;
 }
 
 export interface ArchiveMessengerStreamOptions extends MessengerSidebarActionBaseOptions {
@@ -523,7 +533,10 @@ export async function updateMessengerStreamNotificationMode({
     return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
   }
 
-  const stream = adaptMessengerStream(dto);
+  const stream = preserveConfirmedStreamKeySharing(
+    adaptMessengerStream(dto),
+    store.getState().streamsById[streamUuid],
+  );
   if (optimisticRequest == null) {
     store.getState().upsertStream(action.ownerKey, stream);
   } else {
@@ -560,6 +573,96 @@ export async function renameMessengerStream({
 
   const stream = applyStreamRenameResponse(store, action.ownerKey, adaptMessengerStream(dto));
   return { status: "applied", ownerKey: action.ownerKey, stream };
+}
+
+export async function updateMessengerStreamKeySharing({
+  runtimeContext,
+  getRuntimeContext = () => runtimeContext,
+  clientOptions,
+  client = {},
+  signal,
+  store = useMessengerStore,
+  streamUuid,
+  allowKeySharingByHolders,
+}: MessengerSidebarActionBaseOptions &
+  StreamKeySharingUpdate): Promise<MessengerStreamActionResult> {
+  const action = captureSidebarAction(runtimeContext, getRuntimeContext, signal);
+  if (action.ownerKey == null) return skippedMissingContext();
+  const ownerKey = action.ownerKey;
+  const isStale = () => action.isStale() || store.getState().ownerKey !== ownerKey;
+  const skipped = (): MessengerSidebarActionSkippedResult => ({
+    status: "skipped",
+    ownerKey,
+    reason: "stale-owner",
+  });
+  if (isStale()) return skipped();
+
+  const current = store.getState().streamsById[streamUuid];
+  if (editableStreamKeySharing(current, runtimeContext.userUuid) === undefined) {
+    throw new Error("Stream key sharing setting is unavailable");
+  }
+
+  const dto = await (client.updateStream ?? defaultUpdateStream)(
+    buildMessengerRequestOptions(runtimeContext, clientOptions, signal),
+    streamUuid,
+    { allow_key_sharing_by_holders: allowKeySharingByHolders },
+  );
+  if (isStale()) return skipped();
+
+  const latest = store.getState().streamsById[streamUuid];
+  if (latest == null) return skipped();
+  if (
+    dto.uuid !== streamUuid ||
+    dto.project_id !== runtimeContext.projectId ||
+    dto.user_uuid !== runtimeContext.userUuid ||
+    dto.allow_key_sharing_by_holders !== allowKeySharingByHolders
+  ) {
+    throw new Error("Invalid stream key sharing response");
+  }
+  if (isNewerStreamKeySharingSnapshot(latest, dto.updated_at)) {
+    return { status: "applied", ownerKey, stream: latest };
+  }
+
+  const changes = {
+    allowKeySharingByHolders,
+    keySharingUpdatedAt: dto.updated_at,
+    updatedAt:
+      Date.parse(latest.updatedAt) > Date.parse(dto.updated_at) ? latest.updatedAt : dto.updated_at,
+  };
+  const stream = { ...latest, ...changes };
+  const notificationEntry = streamNotificationOptimisticEntries.get(
+    streamNotificationOptimisticKey(ownerKey, streamUuid),
+  );
+  let cachedStream: MessengerStream = stream;
+  if (notificationEntry?.latestProjectedStream === latest) {
+    notificationEntry.confirmedStream = { ...notificationEntry.confirmedStream, ...changes };
+    notificationEntry.latestProjectedStream = stream;
+    cachedStream = notificationEntry.confirmedStream;
+  }
+
+  store.getState().upsertStream(ownerKey, stream);
+  const shouldApply = () => {
+    const activeStream = store.getState().streamsById[streamUuid];
+    return (
+      !isStale() &&
+      activeStream?.allowKeySharingByHolders === allowKeySharingByHolders &&
+      activeStream.keySharingUpdatedAt === dto.updated_at
+    );
+  };
+  try {
+    await upsertMessengerStreamCache(
+      ownerKey,
+      { ...cachedStream, updatedAt: dto.updated_at },
+      {
+        shouldApply,
+      },
+    );
+  } catch (error) {
+    log.warn("Could not persist stream key sharing setting", {
+      error: error instanceof Error ? error.name : "unknown",
+    });
+  }
+  return isStale() ? skipped() : { status: "applied", ownerKey, stream };
 }
 
 export function archiveMessengerStream(
@@ -938,6 +1041,14 @@ export async function runWorkspaceStreamRenameRequest(
     streamUuid: options.streamUuid,
     name,
   });
+}
+
+export async function runWorkspaceStreamKeySharingUpdate(
+  options: StreamKeySharingUpdate,
+): Promise<MessengerStreamActionResult> {
+  const runtimeOptions = currentRuntimeActionOptions();
+  if (runtimeOptions == null) return skippedMissingContext();
+  return updateMessengerStreamKeySharing({ ...runtimeOptions, ...options });
 }
 
 export async function runWorkspaceStreamArchive(

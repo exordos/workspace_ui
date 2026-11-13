@@ -35,6 +35,7 @@ import {
   toggleMessengerTopicDone,
   unarchiveMessengerStream,
   unpinMessengerFolderItem,
+  updateMessengerStreamKeySharing,
   updateMessengerStreamNotificationMode,
 } from "./messenger-sidebar-actions.lib";
 import { useMessengerStore } from "./messenger.model";
@@ -206,6 +207,87 @@ describe("messenger sidebar actions", () => {
     await deleteWorkspaceMessengerCacheDatabase();
     resetWorkspaceMessengerCacheDbSingletonForTests();
     useWorkspaceAuthStore.setState({ sessions: [], currentAccountId: null });
+  });
+
+  describe("stream key sharing", () => {
+    it("persists the confirmed policy while preserving newer message activity", async () => {
+      const runtimeContext = createRuntimeContext();
+      const ownerKey = prepareStoreOwner(runtimeContext);
+      seedStream(
+        ownerKey,
+        createStreamDto({ encryption: true, allow_key_sharing_by_holders: false }),
+      );
+      const pending = createDeferred<WorkspaceMessengerStreamDto>();
+      const updateStream = vi.fn(() => pending.promise);
+      const result = updateMessengerStreamKeySharing({
+        runtimeContext,
+        streamUuid: STREAM_A,
+        allowKeySharingByHolders: true,
+        client: { updateStream },
+      });
+
+      expect(updateStream).toHaveBeenCalledWith(expect.anything(), STREAM_A, {
+        allow_key_sharing_by_holders: true,
+      });
+      const store = useMessengerStore.getState();
+      const stream = store.streamsById[STREAM_A]!;
+      expect(stream.allowKeySharingByHolders).toBe(false);
+      store.upsertStream(ownerKey, {
+        ...stream,
+        lastMessageUuid: TOPIC_A,
+        updatedAt: "2026-06-22T10:20:00Z",
+      });
+      pending.resolve(
+        createStreamDto({
+          encryption: true,
+          allow_key_sharing_by_holders: true,
+          updated_at: "2026-06-22T10:15:00Z",
+        }),
+      );
+
+      await expect(result).resolves.toMatchObject({ status: "applied" });
+      const expectedStream = {
+        allowKeySharingByHolders: true,
+        lastMessageUuid: TOPIC_A,
+        updatedAt: "2026-06-22T10:20:00Z",
+      };
+      expect(useMessengerStore.getState().streamsById[STREAM_A]).toMatchObject(expectedStream);
+      const cached = await readMessengerCatalogCache(ownerKey);
+      expect(cached.streams[0]).toMatchObject({
+        ...expectedStream,
+        updatedAt: "2026-06-22T10:15:00Z",
+      });
+    });
+
+    it("does not write the response to the store or cache after returning to the same owner", async () => {
+      const runtimeContext = createRuntimeContext();
+      const ownerKey = prepareStoreOwner(runtimeContext);
+      seedStream(
+        ownerKey,
+        createStreamDto({ encryption: true, allow_key_sharing_by_holders: false }),
+      );
+      const pending = createDeferred<WorkspaceMessengerStreamDto>();
+      let currentRuntime = runtimeContext;
+      const result = updateMessengerStreamKeySharing({
+        runtimeContext,
+        getRuntimeContext: () => currentRuntime,
+        streamUuid: STREAM_A,
+        allowKeySharingByHolders: true,
+        client: { updateStream: () => pending.promise },
+      });
+      currentRuntime = {
+        ...runtimeContext,
+        runtimeGeneration: runtimeContext.runtimeGeneration + 2,
+      };
+      pending.resolve(createStreamDto({ encryption: true, allow_key_sharing_by_holders: true }));
+
+      await expect(result).resolves.toMatchObject({ status: "skipped", reason: "stale-owner" });
+      expect(useMessengerStore.getState().streamsById[STREAM_A]?.allowKeySharingByHolders).toBe(
+        false,
+      );
+      const cached = await readMessengerCatalogCache(ownerKey);
+      expect(cached.streams).toEqual([]);
+    });
   });
 
   describe.each([true, false])("archive state %s", (isArchived) => {

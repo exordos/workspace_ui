@@ -678,6 +678,19 @@ describe("Workspace messenger DTO guards", () => {
     }
   });
 
+  it("distinguishes absent stream key sharing settings from either boolean", () => {
+    for (const value of [undefined, false, true]) {
+      expect(
+        isWorkspaceMessengerStreamDto({ ...streamDto, allow_key_sharing_by_holders: value }),
+      ).toBe(true);
+    }
+    for (const value of [null, "false", 1]) {
+      expect(
+        isWorkspaceMessengerStreamDto({ ...streamDto, allow_key_sharing_by_holders: value }),
+      ).toBe(false);
+    }
+  });
+
   it("accepts optional topic last message uuid", () => {
     expect(isWorkspaceMessengerTopicDto({ ...topicDto, last_message_uuid: undefined })).toBe(true);
     expect(isWorkspaceMessengerTopicDto({ ...topicDto, last_message_uuid: null })).toBe(true);

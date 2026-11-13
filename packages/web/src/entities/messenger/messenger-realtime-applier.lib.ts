@@ -40,6 +40,7 @@ import {
   applyMessengerRealtimeEventToCache,
   type MessengerRealtimeCacheWriter,
 } from "./messenger-realtime-cache.lib";
+import { preserveConfirmedStreamKeySharing } from "./messenger-stream-key-sharing.lib";
 import { removeMessengerStreamProjection } from "./messenger-stream-projection-cleanup.lib";
 import { restoreMessengerStream, useMessengerStore } from "./messenger.model";
 import type {
@@ -454,7 +455,11 @@ function applyStreamRealtimeEvent(
     restoreMessengerStreamCache(ownerKey, event.stream.uuid);
     restoreWorkspaceComposerDraftsForStream(ownerKey, event.stream.uuid);
   }
-  const stream = adaptMessengerStream(event.stream);
+  const snapshot = adaptMessengerStream(event.stream);
+  const stream =
+    event.kind === "stream.created"
+      ? snapshot
+      : preserveConfirmedStreamKeySharing(snapshot, store.streamsById[snapshot.uuid]);
   const previousFoldersById = store.foldersById;
   store.upsertStream(ownerKey, stream);
   const writes: (Promise<void> | void)[] = [];

@@ -2435,6 +2435,165 @@ describe("real ordinary chat orchestration", () => {
     expect(getStreamBindingsPage).not.toHaveBeenCalled();
   });
 
+  async function sharingFixture() {
+    const f = await setup();
+    const recipient = runtime(crypto.randomUUID());
+    deviceCatalogs.set(
+      workspaceRuntimeOwnerKey(recipient),
+      createDeviceCatalog(recipient, f.stream(recipient.userUuid)),
+    );
+    const recipientBinding = {
+      ...memberBinding(),
+      uuid: crypto.randomUUID(),
+      userUuid: recipient.userUuid,
+    };
+    const setSharing = (enabled: boolean) => {
+      for (const account of [f.admin, f.member, recipient]) {
+        const catalog = f.catalog(account).getState();
+        catalog.upsertStream(workspaceRuntimeOwnerKey(account), {
+          ...adaptMessengerStream(f.stream(account.userUuid)),
+          allowKeySharingByHolders: enabled,
+        });
+      }
+    };
+    for (const account of [f.admin, f.member, recipient])
+      f.catalog(account)
+        .getState()
+        .upsertStreamBindings(workspaceRuntimeOwnerKey(account), [recipientBinding]);
+    setSharing(false);
+
+    const owner = await openSessionFor(f.admin);
+    const holder = await openSessionFor(f.member);
+    const requester = await openSessionFor(recipient);
+    await owner.load();
+    await holder.load();
+    await requester.load();
+    await holder.requestKey();
+    const initial = f.wire.at(-1)!;
+    await owner.ingest([adaptMessengerMessage(initial)]);
+    await owner.grantKey(initial.uuid);
+    await holder.ingest(f.wire.map(adaptMessengerMessage));
+
+    await requester.requestKey();
+    const request = f.wire.at(-1)!;
+    await holder.ingest([adaptMessengerMessage(request)]);
+    return { f, recipient, owner, holder, requester, request, setSharing };
+  }
+
+  it("limits individual and bulk grants to available keys and rechecks permission before sending", async () => {
+    const { f, holder, requester, request, setSharing } = await sharingFixture();
+    await requester.requestKey(crypto.randomUUID());
+    const otherGeneration = f.wire.at(-1)!;
+    await holder.ingest([adaptMessengerMessage(otherGeneration)]);
+    expect(holder.canGrantKey(request.uuid)).toBe(false);
+    await expect(holder.grantKey(request.uuid)).rejects.toThrow("forbidden");
+
+    const changed = vi.fn();
+    holder.subscribe(changed);
+    setSharing(true);
+    expect(changed).toHaveBeenCalled();
+    expect(holder.canGrantKey(request.uuid)).toBe(true);
+    expect(holder.canGrantKey(otherGeneration.uuid)).toBe(false);
+    expect(holder.canRejectKey(request.uuid)).toBe(false);
+    const started = deferred<void>();
+    const gate = deferred<void>();
+    const encrypt = realChatCryptoProvider.encryptGroupKeyGrant;
+    vi.spyOn(realChatCryptoProvider, "encryptGroupKeyGrant").mockImplementationOnce(
+      async (input) => {
+        started.resolve();
+        await gate.promise;
+        return encrypt(input);
+      },
+    );
+    const refused = expect(holder.grantKey(request.uuid)).rejects.toThrow("forbidden");
+    await started.promise;
+    setSharing(false);
+    gate.resolve();
+    await refused;
+    expect(f.wire.at(-1)?.uuid).toBe(otherGeneration.uuid);
+
+    setSharing(true);
+    expect(await holder.grantAllKeys()).toEqual([
+      { requestMessageUuid: request.uuid, status: "granted" },
+    ]);
+  });
+
+  it("accepts a member grant only when allowed and restores its confirmed outcome after reload", async () => {
+    const { f, recipient, owner, holder, requester, request, setSharing } = await sharingFixture();
+    setSharing(true);
+    await holder.grantKey(request.uuid);
+    const grant = f.wire.at(-1)!;
+    expect(grant.author_uuid).toBe(f.member.userUuid);
+    await requester.ingest([adaptMessengerMessage({ ...grant, author_uuid: crypto.randomUUID() })]);
+    expect(requester.getState().access).toBe("metadata-only");
+    await owner.ingest([request, grant].map(adaptMessengerMessage));
+    setSharing(false);
+    await requester.ingest([request, grant].map(adaptMessengerMessage));
+    expect(requester.getState().access).toBe("metadata-only");
+    expect(owner.getKeyRequestOutcome(request.uuid)?.status).toBe("granted");
+    expect(requester.getKeyRequestOutcome(request.uuid)?.status).toBe("pending");
+    setSharing(true);
+    await vi.waitFor(() =>
+      expect(requester.getState()).toMatchObject({
+        access: "ready",
+        requestStatus: "grant-received",
+      }),
+    );
+
+    setSharing(false);
+    requester.dispose();
+    const restoredRequester = await openSessionFor(recipient);
+    await restoredRequester.load();
+    const unconfirmed = { ...grant, uuid: crypto.randomUUID() };
+    await restoredRequester.ingest([request, unconfirmed].map(adaptMessengerMessage));
+    expect(restoredRequester.getKeyRequestOutcome(request.uuid)?.status).toBe("pending");
+    const lateReject: WorkspaceMessengerMessageDto = {
+      ...grant,
+      uuid: crypto.randomUUID(),
+      author_uuid: ADMIN,
+      payload: {
+        kind: "key_reject",
+        key_uuid: f.metadata.keyUuid,
+        request_message_uuid: request.uuid,
+        sender_device_id: owner.device.deviceId,
+        recipient_device_id: restoredRequester.device.deviceId,
+      },
+    };
+    await restoredRequester.ingest([adaptMessengerMessage(lateReject)]);
+    expect(restoredRequester.getKeyRequestOutcome(request.uuid)?.status).toBe("rejected");
+    await restoredRequester.ingest([adaptMessengerMessage(grant)]);
+    expect(restoredRequester.getKeyRequestOutcome(request.uuid)?.status).toBe("granted");
+  });
+
+  it("keeps an administrator's rejection right but denies granting in owner-only mode", async () => {
+    const f = await setup();
+    const owner = await openSessionFor(f.admin);
+    const admin = await openSessionFor(f.member);
+    await owner.load();
+    await admin.load();
+    await admin.requestKey();
+    const initial = f.wire.at(-1)!;
+    await owner.ingest([adaptMessengerMessage(initial)]);
+    await owner.grantKey(initial.uuid);
+    await admin.ingest(f.wire.map(adaptMessengerMessage));
+
+    const ownerKey = workspaceRuntimeOwnerKey(f.member);
+    const catalog = f.catalog(f.member).getState();
+    catalog.upsertStream(ownerKey, {
+      ...adaptMessengerStream(f.stream(MEMBER)),
+      allowKeySharingByHolders: false,
+    });
+    catalog.upsertStreamBindings(ownerKey, [memberBinding("administrator")]);
+    await owner.requestKey(f.metadata.keyUuid, undefined, true);
+    const request = f.wire.at(-1)!;
+    await admin.ingest([adaptMessengerMessage(request)]);
+    expect(admin.canGrantKey(request.uuid)).toBe(false);
+    await expect(admin.grantKey(request.uuid)).rejects.toThrow("forbidden");
+    expect(admin.canRejectKey(request.uuid)).toBe(true);
+    await admin.rejectKey(request.uuid);
+    expect(f.wire.at(-1)?.payload.kind).toBe("key_reject");
+  });
+
   it("reprocesses a previously unauthorized HPKE grant when a new administrator binding arrives", async () => {
     const f = await setup();
     const admin = await openSessionFor(f.admin);

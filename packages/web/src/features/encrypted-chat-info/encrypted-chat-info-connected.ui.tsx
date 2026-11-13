@@ -2,9 +2,15 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { subscribeRealChatKeyChanges } from "~/entities/messenger/chat-crypto-resources.lib";
 import type { RealChatSession } from "~/entities/messenger/chat-crypto-runtime.lib";
 import type { StoredChatKeyMetadata } from "~/entities/messenger/chat-key-storage.types";
+import { updateMessengerStreamKeySharing } from "~/entities/messenger/messenger-sidebar-actions.lib";
+import { editableStreamKeySharing } from "~/entities/messenger/messenger-stream-key-sharing.lib";
+import type { MessengerStream } from "~/entities/messenger/messenger.types";
+import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
+import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import { t } from "~/i18n/i18n";
 import { formatDateJoined } from "~/shared/lib/datetime.lib";
+import { toast } from "~/shared/lib/toast/toast";
 import { AppDialog, AppDialogFormFooter } from "~/shared/ui/app-dialog";
 import { useChatCryptoSession } from "./chat-crypto-session.hook";
 import { useEncryptedChatInfo } from "./encrypted-chat-info.hook";
@@ -222,6 +228,52 @@ function currentKeyInfo(
   };
 }
 
+function useChannelKeySharing(
+  streamUuid: string,
+  stream: MessengerStream | undefined,
+  runtime: WorkspaceRuntimeContext | null,
+): EncryptedChatInfoProps["keySharing"] {
+  const scope =
+    runtime == null
+      ? null
+      : `${workspaceRuntimeOwnerKey(runtime)}:${runtime.runtimeGeneration}:${streamUuid}`;
+  const activeScope = useRef<string | null>(null);
+  useLayoutEffect(() => {
+    activeScope.current = scope;
+    return () => {
+      activeScope.current = null;
+    };
+  }, [scope]);
+  const [pendingScopes, setPendingScopes] = useState<ReadonlySet<string>>(() => new Set());
+  const pendingRequests = useRef(new Set<string>());
+  if (stream?.encryption !== true || runtime == null || scope == null) return undefined;
+
+  const editableValue = editableStreamKeySharing(stream, runtime.userUuid);
+  return {
+    checked: stream.allowKeySharingByHolders ?? false,
+    disabled: editableValue === undefined || pendingScopes.has(scope),
+    onToggle: () => {
+      if (editableValue === undefined) return;
+      if (activeScope.current !== scope || pendingRequests.current.has(scope)) return;
+      pendingRequests.current.add(scope);
+      setPendingScopes(new Set(pendingRequests.current));
+      void updateMessengerStreamKeySharing({
+        runtimeContext: runtime,
+        getRuntimeContext: useWorkspaceAuthStore.getState().getCurrentRuntimeContext,
+        streamUuid,
+        allowKeySharingByHolders: !editableValue,
+      })
+        .catch(() => {
+          if (activeScope.current === scope) toast.error(t("channel.keySharingUpdateFailed"));
+        })
+        .finally(() => {
+          pendingRequests.current.delete(scope);
+          setPendingScopes(new Set(pendingRequests.current));
+        });
+    },
+  };
+}
+
 export function EncryptedChatInfoConnected({
   streamUuid,
   topicUuid,
@@ -254,7 +306,15 @@ export function EncryptedChatInfoConnected({
   readonly renderAvatar?: EncryptedChatInfoProps["renderAvatar"];
 }) {
   const crypto = useChatCryptoSession(streamUuid, topicUuid);
-  const { projection, onCopyKey } = useEncryptedChatInfo(streamUuid, crypto.sendKeyUuid ?? null);
+  const { projection, runtime, onCopyKey } = useEncryptedChatInfo(
+    streamUuid,
+    crypto.sendKeyUuid ?? null,
+  );
+  const keySharing = useChannelKeySharing(
+    streamUuid,
+    screen === "settings" ? projection?.stream : undefined,
+    runtime,
+  );
   // A confirmation belongs to the session and the topic where rotation was opened.
   const [confirmation, setConfirmation] = useState<{
     session: typeof crypto.session;
@@ -328,6 +388,7 @@ export function EncryptedChatInfoConnected({
         screen={screen}
         description={stream.description}
         channelTypeLabel={t(stream.isPrivate ? "channel.typeClosedProtected" : "channel.typeOpen")}
+        keySharing={keySharing}
         onScreenChange={onScreenChange}
         onOpenSettings={onScreenChange == null ? undefined : () => onScreenChange("settings")}
         participantsCount={members.length}

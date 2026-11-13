@@ -46,6 +46,7 @@ export interface WorkspaceMessengerStreamDto {
   announce: boolean;
   private: boolean;
   encryption?: boolean;
+  allow_key_sharing_by_holders?: boolean;
   current_encryption_key_uuid?: WorkspaceMessengerUuid | null;
   is_archived: boolean;
   color?: number | null;
@@ -350,6 +351,7 @@ export interface WorkspaceMessengerCreateStreamRequestBody {
 }
 
 export interface WorkspaceMessengerUpdateStreamRequestBody {
+  allow_key_sharing_by_holders?: boolean;
   name?: string;
   description?: string;
   invite_only?: boolean;
@@ -1165,6 +1167,8 @@ export function isWorkspaceMessengerStreamDto(
     typeof value.announce === "boolean" &&
     typeof value.private === "boolean" &&
     (value.encryption === undefined || typeof value.encryption === "boolean") &&
+    (value.allow_key_sharing_by_holders === undefined ||
+      typeof value.allow_key_sharing_by_holders === "boolean") &&
     (value.current_encryption_key_uuid === undefined ||
       value.current_encryption_key_uuid === null ||
       isUuid(value.current_encryption_key_uuid)) &&

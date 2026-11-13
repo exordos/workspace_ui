@@ -7,7 +7,11 @@ import { EncryptedChatInfoConnected } from "./encrypted-chat-info-connected.ui";
 const mocks = vi.hoisted(() => ({
   info: vi.fn(),
   crypto: vi.fn(),
+  updateKeySharing: vi.fn(),
   keyChanges: vi.fn<(listener: (change?: RealChatKeyChange) => void) => () => void>(),
+}));
+vi.mock("~/entities/messenger/messenger-sidebar-actions.lib", () => ({
+  updateMessengerStreamKeySharing: mocks.updateKeySharing,
 }));
 vi.mock("./encrypted-chat-info.hook", () => ({ useEncryptedChatInfo: mocks.info }));
 vi.mock("./chat-crypto-session.hook", () => ({ useChatCryptoSession: mocks.crypto }));
@@ -70,10 +74,19 @@ function fixture() {
     grantKey: vi.fn().mockResolvedValue(undefined),
     rejectKey: vi.fn().mockResolvedValue(undefined),
   };
+  const runtime = {
+    ...session.scope.owner,
+    accessToken: "synthetic",
+    organizationOrigin: "https://workspace.example.invalid",
+    runtimeGeneration: 1,
+  };
   const info = {
+    runtime,
     projection: {
       stream: {
         name: "Protected",
+        ownerUuid: runtime.userUuid,
+        allowKeySharingByHolders: undefined as boolean | undefined,
         encryption: true,
         currentEncryptionKey: { keyUuid: "current" },
       },
@@ -92,6 +105,7 @@ function fixture() {
 beforeEach(() => {
   mocks.crypto.mockReset();
   mocks.info.mockReset();
+  mocks.updateKeySharing.mockReset();
   mocks.keyChanges.mockReset().mockReturnValue(() => undefined);
 });
 afterEach(cleanup);
@@ -406,12 +420,90 @@ describe("encrypted chat sidebar actions", () => {
     expect(crypto.rejectKey).not.toHaveBeenCalled();
     expect(crypto.grantAllKeys).not.toHaveBeenCalled();
   });
+  it("updates key sharing on the owner's settings screen after the server confirms it", async () => {
+    const { info } = fixture();
+    info.projection.stream.allowKeySharingByHolders = false;
+    const { promise, resolve } = Promise.withResolvers<void>();
+    mocks.updateKeySharing.mockReturnValue(promise);
+    const view = render(<EncryptedChatInfoConnected streamUuid="stream" screen="settings" />);
+    const toggle = screen.getByRole("switch", { name: "Allow members to share keys" });
+    expect(toggle).toHaveAttribute("aria-checked", "false");
+    fireEvent.click(toggle);
+    fireEvent.click(toggle);
+    expect(mocks.updateKeySharing).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        streamUuid: "stream",
+        runtimeContext: info.runtime,
+        allowKeySharingByHolders: true,
+      }),
+    );
+    expect(toggle).toBeDisabled();
+    expect(toggle).toHaveAttribute("aria-checked", "false");
+    info.projection.stream.allowKeySharingByHolders = true;
+    await act(() => {
+      resolve();
+      return promise;
+    });
+    view.rerender(<EncryptedChatInfoConnected streamUuid="stream" screen="settings" />);
+    expect(toggle).not.toBeDisabled();
+    expect(toggle).toHaveAttribute("aria-checked", "true");
+  });
+
+  it("keeps pending saves scoped to their channels when the panel changes streams", async () => {
+    const { info } = fixture();
+    info.projection.stream.allowKeySharingByHolders = false;
+    const first = Promise.withResolvers<void>();
+    const second = Promise.withResolvers<void>();
+    mocks.updateKeySharing.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+    const view = render(<EncryptedChatInfoConnected streamUuid="first" screen="settings" />);
+    const toggle = () => screen.getByRole("switch", { name: "Allow members to share keys" });
+    fireEvent.click(toggle());
+    view.rerender(<EncryptedChatInfoConnected streamUuid="second" screen="settings" />);
+    expect(toggle()).toBeEnabled();
+    fireEvent.click(toggle());
+    view.rerender(<EncryptedChatInfoConnected streamUuid="first" screen="settings" />);
+    expect(toggle()).toBeDisabled();
+    expect(mocks.updateKeySharing).toHaveBeenCalledTimes(2);
+
+    await act(() => {
+      second.resolve();
+      return second.promise;
+    });
+    expect(toggle()).toBeDisabled();
+    await act(() => {
+      first.resolve();
+      return first.promise;
+    });
+    expect(toggle()).toBeEnabled();
+  });
+
+  it("shows the enabled setting read-only to a member", () => {
+    const { info } = fixture();
+    info.projection.stream.ownerUuid = "different-user";
+    info.projection.stream.allowKeySharingByHolders = true;
+    render(<EncryptedChatInfoConnected streamUuid="stream" screen="settings" />);
+    const toggle = screen.getByRole("switch", { name: "Allow members to share keys" });
+    expect(toggle).toHaveAttribute("aria-checked", "true");
+    expect(toggle).toBeDisabled();
+    fireEvent.click(toggle);
+    expect(mocks.updateKeySharing).not.toHaveBeenCalled();
+  });
+
+  it("hides key sharing in settings for an unencrypted channel", () => {
+    const { info } = fixture();
+    info.projection.stream.encryption = false;
+    info.projection.stream.allowKeySharingByHolders = false;
+    render(<EncryptedChatInfoConnected streamUuid="stream" screen="settings" />);
+    expect(screen.queryByRole("switch")).not.toBeInTheDocument();
+  });
+
   it("reports settings/key navigation to its drawer owner and renders only the active body", async () => {
     fixture();
     const navigate = vi.fn();
     const view = render(
       <EncryptedChatInfoConnected streamUuid="stream" onScreenChange={navigate} />,
     );
+    expect(screen.queryByRole("switch")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Settings" }));
     expect(navigate).toHaveBeenCalledWith("settings");
     view.rerender(
@@ -421,8 +513,11 @@ describe("encrypted chat sidebar actions", () => {
         onScreenChange={navigate}
       />,
     );
-    expect(screen.getByText("Channel details are currently read-only.")).toBeInTheDocument();
+    expect(screen.getByText("The channel name and description are read-only.")).toBeInTheDocument();
     expect(screen.queryByRole("textbox")).toBeNull();
+    const unsupportedToggle = screen.getByRole("switch", { name: "Allow members to share keys" });
+    expect(unsupportedToggle).toHaveAttribute("aria-checked", "false");
+    expect(unsupportedToggle).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: "Encryption keys" }));
     expect(navigate).toHaveBeenLastCalledWith("key");
     view.rerender(

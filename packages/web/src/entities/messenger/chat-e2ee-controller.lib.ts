@@ -336,7 +336,7 @@ export class ChatE2eeController {
     const rights = this.deps.getRights();
     return (
       (action === "grant" ? rights.canGrant : rights.canReject) &&
-      (this.deps.isRequesterAllowed?.(request.authorUuid) ?? true)
+      (this.deps.isRequesterAllowed?.(request.authorUuid, action) ?? true)
     );
   }
 
@@ -547,7 +547,7 @@ export class ChatE2eeController {
     response: ChatE2eeMessage<ChatKeyResponsePayload>,
   ): Promise<ChatE2eeControllerResult<void>> {
     if (this.processed.has(response.uuid)) return success(undefined);
-    const allowed = () => this.deps.isIssuerAllowed(response.authorUuid);
+    const allowed = () => this.deps.isIssuerAllowed(response.authorUuid, response.payload.kind);
     if (response.payload.recipientDeviceId !== this.deps.scope.deviceId) {
       this.waiting.delete(response.uuid);
       return failure("invalid-message");
