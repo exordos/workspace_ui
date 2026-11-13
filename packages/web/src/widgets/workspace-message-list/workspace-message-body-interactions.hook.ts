@@ -238,7 +238,7 @@ function teardownCodeCopyButtons(mounts: WorkspaceCodeCopyButtonMount[]): void {
   }
 }
 
-function toggleWorkspaceSpoiler(target: HTMLElement, bodyElement: HTMLElement): boolean {
+function toggleWorkspaceSpoiler(target: Element, bodyElement: HTMLElement): boolean {
   const spoilerHeader = target.closest<HTMLElement>(".spoiler-header");
   if (spoilerHeader != null && bodyElement.contains(spoilerHeader)) {
     spoilerHeader.closest(".spoiler-block")?.classList.toggle("open");
@@ -280,7 +280,7 @@ function resolveContextLinkUrl(
 }
 
 function resolveWorkspaceFileReferenceFromClick(
-  target: HTMLElement,
+  target: Element,
   bodyElement: HTMLDivElement,
   fileReferences: readonly WorkspaceMessageFileReference[],
 ): WorkspaceMessageFileReference | null {
@@ -553,7 +553,7 @@ export function useWorkspaceMessageBodyInteractions({
   const handleBodyClick = useCallback(
     (event: ReactMouseEvent<HTMLDivElement>) => {
       const target = event.target;
-      if (!(target instanceof HTMLElement)) {
+      if (!(target instanceof Element)) {
         return;
       }
       if (target.closest("[data-workspace-preview-retry='true']") != null) {
