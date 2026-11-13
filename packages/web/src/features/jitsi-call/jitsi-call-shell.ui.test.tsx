@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { IncomingDmCallInvite } from "./jitsi-call.model";
 
@@ -16,6 +16,42 @@ function buildInvite(messageId = 777): IncomingDmCallInvite {
     locationName: "Fox",
     avatarUrl: undefined,
     timestamp: 1_700_000_000,
+  };
+}
+
+const activeCallPayload = {
+  meetingUrl: "https://meet.workspace.example.com/active-room",
+  locationName: "Active room",
+};
+
+function mockCallWindow() {
+  let notifyClosed: ((callId: string) => void) | undefined;
+  let notifyParticipants:
+    | ((event: { callId: string; participants: JitsiCallWindowParticipant[] }) => void)
+    | undefined;
+  const bridge = {
+    open: vi.fn<JitsiCallWindowHostBridge["open"]>().mockResolvedValue(true),
+    close: vi.fn<JitsiCallWindowHostBridge["close"]>(),
+    focus: vi.fn<JitsiCallWindowHostBridge["focus"]>(),
+    onClosed: vi.fn<JitsiCallWindowHostBridge["onClosed"]>((listener) => {
+      notifyClosed = listener;
+      return () => {
+        notifyClosed = undefined;
+      };
+    }),
+    onParticipants: vi.fn<JitsiCallWindowHostBridge["onParticipants"]>((listener) => {
+      notifyParticipants = listener;
+      return () => {
+        notifyParticipants = undefined;
+      };
+    }),
+  };
+  vi.stubGlobal("electronAPI", { callWindow: bridge });
+  return {
+    bridge,
+    notifyClosed: (callId: string) => notifyClosed?.(callId),
+    notifyParticipants: (callId: string, participants: JitsiCallWindowParticipant[]) =>
+      notifyParticipants?.({ callId, participants }),
   };
 }
 
@@ -39,6 +75,7 @@ describe("Jitsi call hosts", () => {
     const { useJitsiCallStore } = await import("./jitsi-call.model");
     useJitsiCallStore.getState().clear();
     vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
     vi.useRealTimers();
   });
 
@@ -58,6 +95,129 @@ describe("Jitsi call hosts", () => {
       "data-start-with-video-muted",
       "false",
     );
+  });
+
+  it("keeps a desktop call in its launch mode and applies the setting to the next call", async () => {
+    const { useJitsiCallStore, JitsiActiveCallHost } = await loadShell();
+    const { bridge, notifyClosed } = mockCallWindow();
+    const { rerender } = render(<JitsiActiveCallHost />);
+
+    act(() => {
+      useJitsiCallStore.getState().requestOpenCall(activeCallPayload);
+    });
+    await waitFor(() => expect(bridge.open).toHaveBeenCalledOnce());
+    const call = useJitsiCallStore.getState().activeCall!;
+    expect(bridge.open).toHaveBeenCalledWith(
+      expect.objectContaining({
+        callId: call.callId,
+        meetingUrl: call.meetingUrl,
+        startWithVideoMuted: true,
+      }),
+    );
+    expect(screen.queryByTestId("jitsi-call-modal")).not.toBeInTheDocument();
+
+    rerender(<JitsiActiveCallHost openInSeparateWindow={false} />);
+    act(() => {
+      useJitsiCallStore.getState().requestOpenCall(activeCallPayload);
+    });
+    expect(bridge.focus).toHaveBeenCalledExactlyOnceWith(call.callId);
+    expect(bridge.open).toHaveBeenCalledOnce();
+    expect(bridge.close).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("jitsi-call-modal")).not.toBeInTheDocument();
+
+    act(() => notifyClosed(call.callId));
+    expect(useJitsiCallStore.getState().activeCall).toBeNull();
+    act(() => {
+      useJitsiCallStore.getState().requestOpenCall(activeCallPayload);
+    });
+    expect(screen.getByTestId("jitsi-call-modal")).toBeInTheDocument();
+    expect(bridge.open).toHaveBeenCalledOnce();
+  });
+
+  it("falls back to embedded only when the native launch reports that it failed safely", async () => {
+    const { useJitsiCallStore, JitsiActiveCallHost } = await loadShell();
+    const { bridge } = mockCallWindow();
+    bridge.open.mockResolvedValue(false);
+    const { rerender } = render(<JitsiActiveCallHost />);
+
+    act(() => {
+      useJitsiCallStore.getState().requestOpenCall(activeCallPayload);
+    });
+    expect(screen.queryByTestId("jitsi-call-modal")).not.toBeInTheDocument();
+    expect(await screen.findByTestId("jitsi-call-modal")).toBeInTheDocument();
+
+    rerender(<JitsiActiveCallHost openInSeparateWindow={false} />);
+    rerender(<JitsiActiveCallHost />);
+    expect(screen.getByTestId("jitsi-call-modal")).toBeInTheDocument();
+    expect(bridge.open).toHaveBeenCalledOnce();
+  });
+
+  it("abandons a pending call on workspace change and ignores its late events", async () => {
+    const { useJitsiCallStore, JitsiActiveCallHost } = await loadShell();
+    const { useCallParticipantsStore } = await import("~/entities/call/call.model");
+    const { bridge, notifyClosed, notifyParticipants } = mockCallWindow();
+    let finishOpening: ((loaded: boolean) => void) | undefined;
+    bridge.open.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishOpening = resolve;
+        }),
+    );
+    const { rerender } = render(<JitsiActiveCallHost ownerKey="owner-a" />);
+
+    act(() => {
+      useJitsiCallStore.getState().requestOpenCall({
+        ...activeCallPayload,
+        ownerKey: "owner-a",
+      });
+    });
+    await waitFor(() => expect(bridge.open).toHaveBeenCalledOnce());
+    const previousId = useJitsiCallStore.getState().activeCall!.callId;
+    rerender(<JitsiActiveCallHost ownerKey="owner-b" />);
+    expect(useJitsiCallStore.getState().activeCall).toBeNull();
+    expect(bridge.close).toHaveBeenCalledWith(previousId);
+
+    act(() => {
+      useJitsiCallStore.getState().requestOpenCall({
+        ...activeCallPayload,
+        ownerKey: "owner-b",
+      });
+    });
+    await waitFor(() => expect(bridge.open).toHaveBeenCalledTimes(2));
+    const currentId = useJitsiCallStore.getState().activeCall!.callId;
+    await act(async () => {
+      finishOpening?.(false);
+      await Promise.resolve();
+      notifyClosed(previousId);
+      notifyParticipants(previousId, [{ displayName: "Previous" }]);
+    });
+
+    expect(screen.queryByTestId("jitsi-call-modal")).not.toBeInTheDocument();
+    expect(useJitsiCallStore.getState().activeCall?.callId).toBe(currentId);
+    expect(
+      useCallParticipantsStore.getState().getParticipants(activeCallPayload.meetingUrl),
+    ).toEqual([]);
+    const participants = [{ displayName: "Current" }];
+    act(() => notifyParticipants(currentId, participants));
+    expect(
+      useCallParticipantsStore.getState().getParticipants(activeCallPayload.meetingUrl),
+    ).toEqual(participants);
+  });
+
+  it("does not open the embedded call if the native launch has an unconfirmed outcome", async () => {
+    const { useJitsiCallStore, JitsiActiveCallHost } = await loadShell();
+    const { bridge } = mockCallWindow();
+    bridge.open.mockRejectedValue(new Error("Launch outcome unknown"));
+    render(<JitsiActiveCallHost />);
+
+    act(() => {
+      useJitsiCallStore.getState().requestOpenCall(activeCallPayload);
+    });
+    const callId = useJitsiCallStore.getState().activeCall!.callId;
+    await waitFor(() => expect(bridge.close).toHaveBeenCalledWith(callId));
+
+    expect(useJitsiCallStore.getState().activeCall).toBeNull();
+    expect(screen.queryByTestId("jitsi-call-modal")).not.toBeInTheDocument();
   });
 
   it("renders large incoming modal by default", async () => {

@@ -1,28 +1,16 @@
 // Jitsi call UI shell: stable embed host, expanded/PiP modes — shell re-renders must not remount the session.
 
-import { JitsiMeeting } from "@jitsi/react-sdk";
 import * as Dialog from "@radix-ui/react-dialog";
-import React, { useMemo } from "react";
 import { Rnd } from "react-rnd";
 import { t } from "~/i18n/i18n";
 import { AppDialogShell, APP_DIALOG_OVERLAY_CLASS } from "~/shared/ui/app-dialog";
 import { Icon } from "~/shared/ui/icon";
-import { Spinner } from "~/shared/ui/loading";
-import { useJitsiExternalApiLoader } from "./jitsi-call-api-loader.hook";
+import { JitsiCallContent } from "./jitsi-call-content.ui";
 import { useJitsiCallModalShell } from "./jitsi-call-modal-shell.hook";
-import type { JitsiCallModalProps, JitsiExternalApiWithParticipants } from "./jitsi-call.types";
+import type { JitsiCallProps } from "./jitsi-call.types";
 
 const MIN_WINDOW_WIDTH = 280;
 const MIN_WINDOW_HEIGHT = 180;
-// Session-level Jitsi config — stable across minimize/expand.
-const JITSI_CONFIG_OVERWRITE_BASE = {
-  startWithAudioMuted: true,
-  prejoinConfig: { enabled: false },
-} as const;
-// Jitsi UI settings independent of modal shell state.
-const JITSI_INTERFACE_CONFIG_OVERWRITE = {
-  DISABLE_JOIN_LEAVE_NOTIFICATIONS: false,
-} as const;
 // Dialog.Content fills viewport; Rnd controls the inner window bounds.
 const OUTER_DIALOG_CLASS_NAME =
   "fixed inset-0 z-modal border-0 bg-transparent p-0 shadow-none outline-none pointer-events-none";
@@ -30,59 +18,8 @@ const OUTER_DIALOG_CLASS_NAME =
 const WINDOW_CLASS_NAME =
   "pointer-events-auto flex h-full w-full min-h-0 flex-col overflow-hidden rounded-xl border border-border-subtle bg-bg-elevated shadow-xl";
 
-// Session-level embed props only — shell state (minimized, bounds) stays outside.
-interface JitsiCallEmbedProps {
-  displayName: string;
-  domain: string | null;
-  roomName: string | null;
-  startWithVideoMuted: boolean;
-  onApiReady: (api: JitsiExternalApiWithParticipants) => void;
-  onIframeReady: (ref: HTMLElement | null) => void;
-  onReadyToClose: () => void;
-}
-
-// Isolates Jitsi embed from shell re-renders — minimize/expand/resize must not remount.
-const JitsiCallEmbed: React.FC<JitsiCallEmbedProps> = React.memo(function JitsiCallEmbed({
-  displayName,
-  domain,
-  roomName,
-  startWithVideoMuted,
-  onApiReady,
-  onIframeReady,
-  onReadyToClose,
-}) {
-  const configOverwrite = useMemo(
-    () => ({
-      ...JITSI_CONFIG_OVERWRITE_BASE,
-      startWithVideoMuted,
-    }),
-    [startWithVideoMuted],
-  );
-
-  if (domain == null || roomName == null) {
-    return (
-      <div className="absolute inset-0 flex items-center justify-center text-sm text-text-muted">
-        {t("call.invalidLink")}
-      </div>
-    );
-  }
-
-  return (
-    <JitsiMeeting
-      domain={domain}
-      roomName={roomName}
-      onApiReady={onApiReady}
-      getIFrameRef={onIframeReady}
-      onReadyToClose={onReadyToClose}
-      userInfo={{ displayName, email: "" }}
-      configOverwrite={configOverwrite}
-      interfaceConfigOverwrite={JITSI_INTERFACE_CONFIG_OVERWRITE}
-    />
-  );
-});
-
 // Call window shell — manages layout around embed without remounting Jitsi on UI toggles.
-export const JitsiCallModal: React.FC<JitsiCallModalProps> = (props) => {
+export function JitsiCallModal(props: Readonly<JitsiCallProps>) {
   const {
     open,
     handleOpenChange,
@@ -96,16 +33,8 @@ export const JitsiCallModal: React.FC<JitsiCallModalProps> = (props) => {
     toggleNativeFullscreen,
     toggleMinimized,
     onClose,
-    parsedDomain,
-    parsedRoomName,
-    displayName,
-    startWithVideoMuted,
-    handleApiReady,
-    handleIframeReady,
-    handleReadyToClose,
+    embedProps,
   } = useJitsiCallModalShell(props);
-  const { loadState: jitsiApiLoadState, retry: retryJitsiApiLoad } =
-    useJitsiExternalApiLoader(open);
 
   // Keep Dialog.Root and Rnd mounted — minimize/expand only change bounds, not the Jitsi host.
   return (
@@ -218,42 +147,9 @@ export const JitsiCallModal: React.FC<JitsiCallModalProps> = (props) => {
               </button>
             </div>
           </div>
-          <div className="relative min-h-0 flex-1 overflow-hidden">
-            {jitsiApiLoadState === "loading" ? (
-              <div
-                className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-sm text-text-muted"
-                aria-busy="true"
-              >
-                <Spinner size="lg" />
-                <span>{t("call.apiLoading")}</span>
-              </div>
-            ) : null}
-            {jitsiApiLoadState === "error" ? (
-              <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 p-4 text-center">
-                <p className="text-sm text-notice-base">{t("call.apiLoadFailed")}</p>
-                <button
-                  type="button"
-                  onClick={retryJitsiApiLoad}
-                  className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-black"
-                >
-                  {t("app.retry")}
-                </button>
-              </div>
-            ) : null}
-            {jitsiApiLoadState === "ready" ? (
-              <JitsiCallEmbed
-                displayName={displayName}
-                domain={parsedDomain}
-                roomName={parsedRoomName}
-                startWithVideoMuted={startWithVideoMuted}
-                onApiReady={handleApiReady}
-                onIframeReady={handleIframeReady}
-                onReadyToClose={handleReadyToClose}
-              />
-            ) : null}
-          </div>
+          <JitsiCallContent open={open} {...embedProps} />
         </div>
       </Rnd>
     </AppDialogShell>
   );
-};
+}

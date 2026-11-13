@@ -335,6 +335,12 @@ export default defineConfig(({ mode }) => {
       sourcemap: true,
       chunkSizeWarningLimit: 400,
       rollupOptions: {
+        input: isElectron
+          ? {
+              app: path.resolve(import.meta.dirname, "index.html"),
+              jitsiCall: path.resolve(import.meta.dirname, "jitsi-call.html"),
+            }
+          : undefined,
         output: {
           // Vite 8 / Rolldown: manualChunks must be a function (object form removed).
           manualChunks(id) {

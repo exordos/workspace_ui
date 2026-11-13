@@ -66,6 +66,7 @@ function createDefaultSettings(): AppSettings {
     messengerSidebarSortMode: "last_message",
     notificationSound: "default",
     dockBounceEnabled: true,
+    openCallsInSeparateWindow: true,
     language: resolveBrowserLanguage(),
     folderRailLayout: "vertical",
     showSystemFolders: true,
@@ -86,6 +87,7 @@ const FALLBACK_SETTINGS: Omit<AppSettings, "language"> = {
   messengerSidebarSortMode: "last_message",
   notificationSound: "default",
   dockBounceEnabled: true,
+  openCallsInSeparateWindow: DEFAULT_SETTINGS.openCallsInSeparateWindow,
   folderRailLayout: "horizontal",
   showSystemFolders: true,
   chatListDensity: "standard",
@@ -166,6 +168,10 @@ function loadSettings(
         typeof parsed.dockBounceEnabled === "boolean"
           ? parsed.dockBounceEnabled
           : DEFAULT_SETTINGS.dockBounceEnabled,
+      openCallsInSeparateWindow:
+        typeof parsed.openCallsInSeparateWindow === "boolean"
+          ? parsed.openCallsInSeparateWindow
+          : DEFAULT_SETTINGS.openCallsInSeparateWindow,
       language,
       folderRailLayout: resolveFolderRailLayout(parsed.folderRailLayout),
       showSystemFolders: resolveShowSystemFolders(parsed.showSystemFolders),
@@ -202,6 +208,7 @@ interface SettingsState extends AppSettings {
   setMessengerSidebarSortMode: (sortMode: MessengerSidebarSortMode) => void;
   setNotificationSound: (sound: NotificationSound) => void;
   setDockBounceEnabled: (enabled: boolean) => void;
+  setOpenCallsInSeparateWindow: (enabled: boolean) => void;
   setLanguage: (language: AppLanguage) => void;
   setFolderRailLayout: (layout: FolderRailLayout) => void;
   setShowSystemFolders: (enabled: boolean) => void;
@@ -247,6 +254,12 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     logStoreAction("settings", "setDockBounceEnabled", { dockBounceEnabled });
     set({ dockBounceEnabled });
     persistSettings({ ...get(), dockBounceEnabled });
+  },
+
+  setOpenCallsInSeparateWindow(openCallsInSeparateWindow) {
+    logStoreAction("settings", "setOpenCallsInSeparateWindow", { openCallsInSeparateWindow });
+    set({ openCallsInSeparateWindow });
+    persistSettings(get());
   },
 
   setLanguage(language) {

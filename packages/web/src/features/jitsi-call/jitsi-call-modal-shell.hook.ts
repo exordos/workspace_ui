@@ -1,24 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useCallParticipantsStore } from "~/entities/call/call.model";
-import { t } from "~/i18n/i18n";
-import {
-  JITSI_PARTICIPANTS_POLL_MS,
-  JITSI_PARTICIPANTS_POLL_UNFOCUSED_MS,
-} from "~/shared/config/constants";
-import { callState } from "~/shared/lib/call-state";
-import { parseJitsiUrl } from "~/shared/lib/jitsi";
 import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
-import { createActivityAwareInterval, type ActivityAwareInterval } from "~/shared/lib/visibility";
 import {
   resolveJitsiCallHeaderSubtitle,
   resolveJitsiCallHeaderTitle,
 } from "./jitsi-call-header.lib";
-import { configureJitsiIframe } from "./jitsi-call-permissions.lib";
 import { getDefaultPipWindowBounds, type PipWindowBounds } from "./jitsi-call-pip.lib";
-import { setupJitsiScreenSharing } from "./jitsi-call-screen-sharing.lib";
-import { parseJitsiMeetingUrlLoose } from "./jitsi-call-url.lib";
-import { useJitsiParticipantCount } from "./jitsi-participant-count.hook";
-import type { JitsiCallModalProps, JitsiExternalApiWithParticipants } from "./jitsi-call.types";
+import { useJitsiCallSession } from "./jitsi-call-session.hook";
+import type { JitsiCallProps } from "./jitsi-call.types";
 
 const DESKTOP_INSET = 32;
 const MOBILE_INSET = 16;
@@ -51,55 +39,18 @@ function getExpandedWindowBounds(viewportSize: ViewportSize): PipWindowBounds {
   };
 }
 
-export function useJitsiCallModalShell({
-  open,
-  meetingUrl,
-  locationName,
-  displayName: displayNameFromCall,
-  startWithVideoMuted = true,
-  onClose,
-}: JitsiCallModalProps) {
+export function useJitsiCallModalShell(props: JitsiCallProps) {
+  const { open, onClose } = props;
+  const { callName, participantCount, embedProps } = useJitsiCallSession(props);
   const fullscreenRef = useRef<HTMLDivElement>(null);
-  const onCloseRef = useRef(onClose);
-  const callLocationNameRef = useRef(locationName?.trim() ?? "");
-  const participantPollRef = useRef<ActivityAwareInterval | null>(null);
   const [isMinimized, setIsMinimized] = useState(false);
   const [isNativeFullscreen, setIsNativeFullscreen] = useState(false);
   const [pipWindowBounds, setPipWindowBounds] =
     useState<PipWindowBounds>(getDefaultPipWindowBounds);
   const [viewportSize, setViewportSize] = useState<ViewportSize>(getViewportSize);
 
-  const parsedMeeting = useMemo(
-    () =>
-      meetingUrl ? (parseJitsiUrl(meetingUrl) ?? parseJitsiMeetingUrlLoose(meetingUrl)) : null,
-    [meetingUrl],
-  );
-  const parsedDomain = parsedMeeting?.domain ?? null;
-  const parsedRoomName = parsedMeeting?.roomName ?? null;
-  const { participantCount, onApiReady: onParticipantCountApiReady } =
-    useJitsiParticipantCount(open);
-  const setParticipants = useCallParticipantsStore((s) => s.setParticipants);
-  const clearParticipants = useCallParticipantsStore((s) => s.clearParticipants);
-  const trimmedDisplayName = displayNameFromCall?.trim() ?? "";
-  const displayName = trimmedDisplayName.length > 0 ? trimmedDisplayName : t("call.participant");
-  const callLocationName = locationName?.trim() ?? "";
   const expandedWindowBounds = useMemo(() => getExpandedWindowBounds(viewportSize), [viewportSize]);
   const windowBounds = isMinimized ? pipWindowBounds : expandedWindowBounds;
-
-  useEffect(() => {
-    onCloseRef.current = onClose;
-  }, [onClose]);
-
-  useEffect(() => {
-    callLocationNameRef.current = callLocationName;
-  }, [callLocationName]);
-
-  const clearParticipantPolling = useCallback(() => {
-    if (participantPollRef.current != null) {
-      participantPollRef.current.stop();
-      participantPollRef.current = null;
-    }
-  }, []);
 
   useEffect(() => {
     const handleResize = () => setViewportSize(getViewportSize());
@@ -108,25 +59,7 @@ export function useJitsiCallModalShell({
   }, []);
 
   useEffect(() => {
-    if (open && parsedRoomName != null) {
-      const activeDisplayName = callLocationNameRef.current;
-      callState.start({
-        roomName: parsedRoomName,
-        participants: 1,
-        displayName: activeDisplayName.length > 0 ? activeDisplayName : undefined,
-      });
-      return () => {
-        callState.end();
-        clearParticipantPolling();
-        clearParticipants(meetingUrl);
-      };
-    }
-
-    callState.end();
-    clearParticipantPolling();
-    if (meetingUrl.length > 0) {
-      clearParticipants(meetingUrl);
-    }
+    if (open && embedProps.roomName != null) return;
     void Promise.resolve().then(() => {
       setIsMinimized(false);
       setIsNativeFullscreen(false);
@@ -140,8 +73,7 @@ export function useJitsiCallModalShell({
         );
       }
     }
-    return undefined;
-  }, [open, meetingUrl, parsedRoomName, clearParticipants, clearParticipantPolling]);
+  }, [open, embedProps.roomName]);
 
   useEffect(() => {
     const onFullscreenChange = () => {
@@ -158,58 +90,6 @@ export function useJitsiCallModalShell({
       }
     },
     [isMinimized],
-  );
-
-  const handleIframeReady = useCallback((ref: HTMLElement | null) => {
-    configureJitsiIframe(ref);
-  }, []);
-
-  const handleReadyToClose = useCallback(() => {
-    onCloseRef.current();
-  }, []);
-
-  const handleApiReady = useCallback(
-    (api: JitsiExternalApiWithParticipants) => {
-      setupJitsiScreenSharing(api);
-      clearParticipantPolling();
-      onParticipantCountApiReady(api);
-
-      const updateParticipants = () => {
-        try {
-          const list = api.getParticipantsInfo?.() ?? [];
-          const participants = list.map(
-            (participant: { displayName?: string; displayname?: string }) => ({
-              displayName:
-                participant.displayName ?? participant.displayname ?? t("call.participant"),
-            }),
-          );
-          setParticipants(meetingUrl, participants);
-        } catch {
-          // ignore
-        }
-      };
-
-      updateParticipants();
-      // Joins and leaves already arrive as Jitsi callbacks below; this poll only
-      // reconciles them, so it can back off hard while nobody is watching.
-      participantPollRef.current = createActivityAwareInterval(updateParticipants, {
-        delayFor: (state) =>
-          state === "active" ? JITSI_PARTICIPANTS_POLL_MS : JITSI_PARTICIPANTS_POLL_UNFOCUSED_MS,
-        runOnFocus: true,
-      });
-
-      const syncCallState = () => {
-        const nextParticipantCount = api.getNumberOfParticipants?.();
-        if (typeof nextParticipantCount === "number") {
-          callState.updateParticipants(nextParticipantCount);
-        }
-      };
-
-      syncCallState();
-      api.on("participantJoined", syncCallState);
-      api.on("participantLeft", syncCallState);
-    },
-    [clearParticipantPolling, meetingUrl, onParticipantCountApiReady, setParticipants],
   );
 
   const toggleNativeFullscreen = useCallback(async () => {
@@ -241,7 +121,6 @@ export function useJitsiCallModalShell({
     }
   }, [isMinimized]);
 
-  const callName = callLocationName.length > 0 ? callLocationName : (parsedRoomName ?? "");
   const headerTitle = resolveJitsiCallHeaderTitle(callName, participantCount);
   const headerSubtitle = resolveJitsiCallHeaderSubtitle(participantCount);
 
@@ -250,16 +129,10 @@ export function useJitsiCallModalShell({
     isMinimized,
     isNativeFullscreen,
     windowBounds,
-    parsedDomain,
-    parsedRoomName,
-    displayName,
-    startWithVideoMuted,
+    embedProps,
     headerTitle,
     headerSubtitle,
     handleOpenChange,
-    handleIframeReady,
-    handleReadyToClose,
-    handleApiReady,
     toggleNativeFullscreen,
     toggleMinimized,
     setPipWindowBounds,

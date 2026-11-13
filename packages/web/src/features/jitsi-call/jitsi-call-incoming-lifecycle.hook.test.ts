@@ -22,6 +22,7 @@ function buildInvite(messageId = 777): IncomingDmCallInvite {
 
 function buildActiveCall(): ActiveJitsiCall {
   return {
+    callId: "1",
     callKey: ":https://meet.jit.si/active-room",
     meetingUrl: "https://meet.jit.si/active-room",
     locationName: "Active",

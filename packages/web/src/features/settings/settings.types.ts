@@ -21,6 +21,7 @@ export interface AppSettings {
   messengerSidebarSortMode: MessengerSidebarSortMode;
   notificationSound: NotificationSound;
   dockBounceEnabled: boolean;
+  openCallsInSeparateWindow: boolean;
   language: AppLanguage;
   folderRailLayout: FolderRailLayout;
   showSystemFolders: boolean;

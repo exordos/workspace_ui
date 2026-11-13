@@ -15,7 +15,7 @@ import {
 } from "~/features/theme-picker/theme-picker.model";
 import type { AvailablePalette } from "~/features/theme-picker/theme-picker.types";
 import { useTranslation } from "~/i18n/i18n";
-import { isElectronDarwin } from "~/shared/lib/electron";
+import { isElectron, isElectronDarwin } from "~/shared/lib/electron";
 import { playNotificationSound } from "~/shared/lib/notification-sound";
 import type { ThemeMode } from "~/shared/lib/themes/tokens";
 import type { IconName } from "~/shared/ui/icon";
@@ -117,6 +117,42 @@ function SettingsOptionRow({
   );
 }
 
+function SettingsSwitchRow({
+  label,
+  icon,
+  checked,
+  onChange,
+  testId,
+}: Readonly<{
+  label: string;
+  icon: IconName;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  testId?: string;
+}>): React.ReactElement {
+  return (
+    <PanelMenuRow
+      label={label}
+      icon={icon}
+      variant="nested"
+      role="switch"
+      aria-checked={checked}
+      onClick={() => onChange(!checked)}
+      testId={testId}
+      right={
+        <span
+          aria-hidden="true"
+          className={`relative block h-5 w-9 shrink-0 rounded-full transition-colors ${checked ? "bg-accent" : "bg-border-subtle"}`}
+        >
+          <span
+            className={`absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${checked ? "translate-x-4" : ""}`}
+          />
+        </span>
+      }
+    />
+  );
+}
+
 type SettingsSection = "sound" | "language" | "timeout" | "chatClick";
 
 const DEFAULT_SETTINGS_SECTIONS: Record<SettingsSection, boolean> = {
@@ -142,6 +178,8 @@ export function RightPanelUserSettings({
   const setNotificationSound = useSettingsStore((s) => s.setNotificationSound);
   const dockBounceEnabled = useSettingsStore((s) => s.dockBounceEnabled);
   const setDockBounceEnabled = useSettingsStore((s) => s.setDockBounceEnabled);
+  const openCallsInSeparateWindow = useSettingsStore((s) => s.openCallsInSeparateWindow);
+  const setOpenCallsInSeparateWindow = useSettingsStore((s) => s.setOpenCallsInSeparateWindow);
   const setLanguage = useSettingsStore((s) => s.setLanguage);
   const authIdleTimeout = useSettingsStore((s) => s.authIdleTimeout);
   const setAuthIdleTimeout = useSettingsStore((s) => s.setAuthIdleTimeout);
@@ -175,9 +213,6 @@ export function RightPanelUserSettings({
     },
     [setLanguage],
   );
-  const toggleDockBounce = useCallback(() => {
-    setDockBounceEnabled(!dockBounceEnabled);
-  }, [dockBounceEnabled, setDockBounceEnabled]);
   const selectTimeout = useCallback(
     (timeout: AuthIdleTimeout) => {
       setAuthIdleTimeout(timeout);
@@ -271,24 +306,21 @@ export function RightPanelUserSettings({
           ) : null}
 
           {isElectronDarwin() ? (
-            <PanelMenuRow
+            <SettingsSwitchRow
               label={t("settings.dockBounce")}
               icon="desktop_windows"
-              variant="nested"
-              role="switch"
-              aria-checked={dockBounceEnabled}
-              onClick={toggleDockBounce}
+              checked={dockBounceEnabled}
+              onChange={setDockBounceEnabled}
               testId="right-panel-settings-dock-bounce"
-              right={
-                <span
-                  aria-hidden="true"
-                  className={`relative block h-5 w-9 shrink-0 rounded-full transition-colors ${dockBounceEnabled ? "bg-accent" : "bg-border-subtle"}`}
-                >
-                  <span
-                    className={`absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${dockBounceEnabled ? "translate-x-4" : ""}`}
-                  />
-                </span>
-              }
+            />
+          ) : null}
+
+          {isElectron() ? (
+            <SettingsSwitchRow
+              label={t("settings.openCallsInSeparateWindow")}
+              icon="phone"
+              checked={openCallsInSeparateWindow}
+              onChange={setOpenCallsInSeparateWindow}
             />
           ) : null}
 

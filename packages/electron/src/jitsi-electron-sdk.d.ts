@@ -3,6 +3,7 @@ declare module "@jitsi/electron-sdk/main" {
 
   interface ScreenSharingMainHook {
     cleanup: () => void;
+    _screenShareTracker?: BrowserWindow;
   }
 
   export function setupScreenSharingMain(

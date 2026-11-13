@@ -29,6 +29,7 @@ import {
   isSafeDeeplinkRoute,
   resolveNotificationClickRoute,
 } from "./deeplink-route.lib";
+import { registerJitsiCallWindow } from "./jitsi-call-window";
 import { getShellContentSecurityPolicy } from "./security-policy.lib";
 import { createUnreadDotOverlaySvg } from "./unread-indicator.lib";
 import {
@@ -108,6 +109,8 @@ let dockIconNormal: Electron.NativeImage | null = null;
 let dockIconUnread: Electron.NativeImage | null = null;
 let callPowerSaveBlockerId: number | null = null;
 let activeCallRoom: string | null = null;
+let activeCallSource: Electron.WebContents | null = null;
+let jitsiCallWindow: ReturnType<typeof registerJitsiCallWindow> | null = null;
 
 const LOG_DIR_NAME = "workspace_logs";
 const LOG_FILE_NAME = "workspace.log";
@@ -377,10 +380,18 @@ function createWindow(): void {
     mainWindow.maximize();
   }
 
+  const contents = mainWindow.webContents;
+  const endRendererCall = () => {
+    jitsiCallWindow?.close();
+    endCallOsState(contents);
+  };
   deepLinkDelivery.setReady(false);
-  mainWindow.webContents.on("did-start-navigation", (_event, _url, isInPlace, isMainFrame) => {
-    if (isMainFrame && !isInPlace) deepLinkDelivery.setReady(false);
+  contents.on("did-start-navigation", (_event, _url, isInPlace, isMainFrame) => {
+    if (!isMainFrame || isInPlace) return;
+    deepLinkDelivery.setReady(false);
+    endRendererCall();
   });
+  contents.on("render-process-gone", endRendererCall);
 
   mainWindow.once("ready-to-show", () => {
     mainWindow?.show();
@@ -453,6 +464,7 @@ function createWindow(): void {
   }
 
   mainWindow.on("closed", () => {
+    endRendererCall();
     mainWindow = null;
   });
 }
@@ -789,6 +801,7 @@ function quitApplication(): void {
 
 app.on("before-quit", () => {
   isQuitting = true;
+  jitsiCallWindow?.close();
 });
 
 app.on("activate", () => {
@@ -1032,6 +1045,22 @@ function getUrlOrigin(value: string): string | null {
 // ---------------------------------------------------------------------------
 
 function registerIpcHandlers(): void {
+  jitsiCallWindow = registerJitsiCallWindow({
+    getMainWebContents: () => (isQuitting ? null : (mainWindow?.webContents ?? null)),
+    pageUrl: IS_DEV
+      ? new URL("/jitsi-call.html", DEV_SERVER_URL).href
+      : pathToFileURL(path.join(getWebRoot(), "jitsi-call.html")).href,
+    mainPageUrl: IS_DEV
+      ? new URL(DEV_SERVER_URL).href
+      : pathToFileURL(path.join(getWebRoot(), "index.html")).href,
+    preloadPath: path.join(__dirname, "jitsi-call-window-preload.js"),
+    appName: APP_DISPLAY_NAME,
+    isDev: IS_DEV,
+    icon: process.platform === "linux" ? getIconPath("icon.png") : undefined,
+    isSafeExternalUrl,
+    onWindowDestroyed: endCallOsState,
+  });
+
   ipcMain.on("deeplink:ready", (event, ready: unknown) => {
     if (event.sender !== mainWindow?.webContents) return;
     deepLinkDelivery.setReady(ready === true);
@@ -1264,60 +1293,7 @@ function registerIpcHandlers(): void {
     };
   });
 
-  // Call state — OS awareness
-  const MAX_ROOM_LENGTH = 128;
-  ipcMain.on("call:start", (_event, data?: { room?: string; participants?: number }) => {
-    const room =
-      typeof data?.room === "string"
-        ? data.room.replace(/[\x00-\x1f\x7f]/g, "").slice(0, MAX_ROOM_LENGTH) || "Call"
-        : "Call";
-    activeCallRoom = room;
-
-    // Prevent system sleep during call
-    if (callPowerSaveBlockerId == null) {
-      const { powerSaveBlocker } = require("electron") as typeof import("electron");
-      callPowerSaveBlockerId = powerSaveBlocker.start("prevent-display-sleep");
-    }
-
-    // Update tray tooltip
-    if (tray) {
-      tray.setToolTip(`${app.getName()} — In call: ${activeCallRoom}`);
-    }
-
-    if (process.platform === "darwin") {
-      if (dockIconNormal != null) {
-        app.dock?.setIcon(dockIconNormal);
-      }
-      app.dock?.setBadge("📞");
-    }
-  });
-
-  ipcMain.on("call:end", () => {
-    activeCallRoom = null;
-
-    // Release power save blocker
-    if (callPowerSaveBlockerId != null) {
-      const { powerSaveBlocker } = require("electron") as typeof import("electron");
-      powerSaveBlocker.stop(callPowerSaveBlockerId);
-      callPowerSaveBlockerId = null;
-    }
-
-    // Restore tray tooltip
-    if (tray) {
-      tray.setToolTip(app.getName());
-    }
-
-    if (process.platform === "darwin") {
-      updateDarwinDockUnread(currentBadgeCount > 0);
-    }
-  });
-
-  ipcMain.on("call:update", (_event, data?: { participants?: number }) => {
-    if (activeCallRoom && tray) {
-      const p = data?.participants ?? 0;
-      tray.setToolTip(`${app.getName()} — In call: ${activeCallRoom} (${p} participants)`);
-    }
-  });
+  registerCallOsStateHandlers();
 
   // Updater (skipped when built with ELECTRON_DISABLE_AUTO_UPDATE=1)
   ipcMain.on("updater:check", () => {
@@ -1331,6 +1307,77 @@ function registerIpcHandlers(): void {
     isQuitting = true;
     autoUpdater.quitAndInstall(false, true);
   });
+}
+
+// ---------------------------------------------------------------------------
+// Call state — OS awareness
+// ---------------------------------------------------------------------------
+
+function registerCallOsStateHandlers(): void {
+  ipcMain.on("call:start", (event, data?: { room?: string; participants?: number }) => {
+    if (isQuitting || !jitsiCallWindow) return;
+    if (!jitsiCallWindow.isMainSender(event) && !jitsiCallWindow.isCallSender(event)) return;
+
+    const room =
+      typeof data?.room === "string"
+        ? data.room.replace(/[\x00-\x1f\x7f]/g, "").slice(0, 128) || "Call"
+        : "Call";
+    activeCallRoom = room;
+    activeCallSource = event.sender;
+
+    if (callPowerSaveBlockerId == null) {
+      const { powerSaveBlocker } = require("electron") as typeof import("electron");
+      callPowerSaveBlockerId = powerSaveBlocker.start("prevent-display-sleep");
+    }
+
+    tray?.setToolTip(`${app.getName()} — In call: ${activeCallRoom}`);
+
+    if (process.platform === "darwin") {
+      if (dockIconNormal != null) {
+        app.dock?.setIcon(dockIconNormal);
+      }
+      app.dock?.setBadge("📞");
+    }
+  });
+
+  ipcMain.on("call:end", (event) => {
+    if (event.senderFrame === event.sender.mainFrame) endCallOsState(event.sender);
+  });
+
+  ipcMain.on("call:update", (event, data?: { participants?: number }) => {
+    if (
+      event.sender !== activeCallSource ||
+      event.senderFrame !== event.sender.mainFrame ||
+      activeCallRoom == null
+    ) {
+      return;
+    }
+    const participants =
+      typeof data?.participants === "number" && Number.isFinite(data.participants)
+        ? Math.max(0, Math.floor(data.participants))
+        : 0;
+    tray?.setToolTip(
+      `${app.getName()} — In call: ${activeCallRoom} (${participants} participants)`,
+    );
+  });
+}
+
+function endCallOsState(source: Electron.WebContents): void {
+  if (source !== activeCallSource) return;
+  activeCallSource = null;
+  activeCallRoom = null;
+
+  if (callPowerSaveBlockerId != null) {
+    const { powerSaveBlocker } = require("electron") as typeof import("electron");
+    powerSaveBlocker.stop(callPowerSaveBlockerId);
+    callPowerSaveBlockerId = null;
+  }
+
+  tray?.setToolTip(app.getName());
+
+  if (process.platform === "darwin") {
+    updateDarwinDockUnread(currentBadgeCount > 0);
+  }
 }
 
 // ---------------------------------------------------------------------------

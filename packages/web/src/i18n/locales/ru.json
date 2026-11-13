@@ -1129,6 +1129,7 @@
     "chatClickActionHint": "Что открывать при клике на чат",
     "chatClickActionAvatarHint": "Клик по аватару откроет общий чат",
     "dockBounce": "Прыжок значка в Dock",
+    "openCallsInSeparateWindow": "Открывать звонки в отдельном окне",
     "language": "Язык",
     "authIdleTimeout": "Автовыход",
     "authIdleTimeoutHint": "После неактивности",
