@@ -1,4 +1,5 @@
 import React, { useCallback } from "react";
+import { ChatBackground } from "~/features/chat-background/chat-background.ui";
 import { t } from "~/i18n/i18n";
 import { FloatingLoadingOverlay, Spinner } from "~/shared/ui/loading";
 import { WorkspaceMessageList } from "~/widgets/workspace-message-list/workspace-message-list.ui";
@@ -185,7 +186,7 @@ export const ChatPageWorkspaceMessageListSection = React.memo(
     }
 
     return (
-      <div className="relative isolate flex min-h-0 flex-1 flex-col overflow-hidden">
+      <ChatBackground conversationId={conversationId}>
         {showRefreshLoadError ? (
           <div
             className="bg-bg-elevated/50 mx-3 mt-2 flex shrink-0 items-center justify-between gap-2 rounded-lg border border-border-subtle px-3 py-2 text-sm text-notice-base"
@@ -270,7 +271,7 @@ export const ChatPageWorkspaceMessageListSection = React.memo(
             actions={messageActions}
           />
         </div>
-      </div>
+      </ChatBackground>
     );
   },
 );

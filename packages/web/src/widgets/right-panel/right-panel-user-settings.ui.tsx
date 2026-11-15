@@ -1,5 +1,6 @@
 import React, { useCallback, useMemo, useState } from "react";
 import { useThemeStore } from "~/entities/theme/theme.model";
+import { ChatBackgroundSettings } from "~/features/chat-background/chat-background.ui";
 import { AUTH_IDLE_TIMEOUT_PRESETS } from "~/features/settings/auth-idle-timeout.lib";
 import { useSettingsStore } from "~/features/settings/settings.model";
 import type {
@@ -407,7 +408,7 @@ export function RightPanelUserSettings({
   );
 }
 
-type AppearanceSection = "theme" | "sorting" | "folders" | "density";
+type AppearanceSection = "theme" | "sorting" | "folders" | "density" | "background";
 
 const APPEARANCE_SECTION_LIST_CLASS =
   "space-y-0 px-2 [&>div+div]:relative [&>div+div]:before:pointer-events-none [&>div+div]:before:absolute [&>div+div]:before:inset-x-0 [&>div+div]:before:top-0 [&>div+div]:before:h-px [&>div+div]:before:bg-border-subtle";
@@ -417,6 +418,7 @@ const DEFAULT_APPEARANCE_SECTIONS: Record<AppearanceSection, boolean> = {
   sorting: false,
   folders: false,
   density: false,
+  background: false,
 };
 
 const THEME_MODE_ICONS: Record<ThemeMode, IconName> = {
@@ -667,6 +669,36 @@ export function RightPanelUserAppearance({
                     onClick={() => setChatListDensity(density)}
                   />
                 ))}
+              </OptionSurface>
+            ) : null}
+          </div>
+          <div>
+            <PanelMenuRow
+              ariaLabel={t("chatBackground.title")}
+              label={t("chatBackground.title")}
+              icon="images"
+              variant="nested"
+              onClick={() => toggleSection("background")}
+              id="right-panel-appearance-background-trigger"
+              testId="right-panel-appearance-background-trigger"
+              aria-expanded={expandedSections.background}
+              aria-controls="right-panel-appearance-background-options"
+              right={
+                <Icon
+                  name={expandedSections.background ? "chevron-up" : "chevron-right"}
+                  size={16}
+                />
+              }
+            />
+            {expandedSections.background ? (
+              <OptionSurface
+                panelId="right-panel-appearance-background-options"
+                testId="right-panel-appearance-background-options"
+                triggerId="right-panel-appearance-background-trigger"
+              >
+                <li>
+                  <ChatBackgroundSettings />
+                </li>
               </OptionSurface>
             ) : null}
           </div>

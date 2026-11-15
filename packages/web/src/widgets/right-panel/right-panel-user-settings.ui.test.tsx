@@ -316,7 +316,7 @@ describe("RightPanelUserAppearance", () => {
       "[&>div+div]:before:top-0",
       "[&>div+div]:before:inset-x-0",
     );
-    expect(appearanceSections.children).toHaveLength(4);
+    expect(appearanceSections.children).toHaveLength(5);
 
     expect(screen.getByTestId("right-panel-appearance-theme-trigger")).toHaveClass(
       "-mx-2",
@@ -330,6 +330,7 @@ describe("RightPanelUserAppearance", () => {
       ["sorting", "right-panel-appearance-sorting-options"],
       ["folder", "right-panel-appearance-folder-options"],
       ["density", "right-panel-appearance-density-options"],
+      ["background", "right-panel-appearance-background-options"],
     ] as const;
 
     for (const [section, panelId] of sections) {
