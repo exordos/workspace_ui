@@ -13,6 +13,10 @@ export interface WorkspaceMessageBodyProps {
   segments?: readonly WorkspaceMessageBodySegment[];
   renderQuote?: (segment: WorkspaceMessageBodyQuoteSegment, index: number) => React.ReactNode;
   renderSecret?: (reference: WorkspaceSecretUrnReference) => React.ReactNode;
+  renderAttachment?: (
+    reference: WorkspaceMessageFileReference,
+    host: HTMLElement,
+  ) => React.ReactNode;
   metadata: WorkspaceMessageBodyMetadata;
   useInlineMeta: boolean;
   bodyRef?: React.Ref<HTMLDivElement>;

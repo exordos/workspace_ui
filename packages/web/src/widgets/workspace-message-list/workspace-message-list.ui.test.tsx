@@ -5,6 +5,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import userEvent from "@testing-library/user-event";
 import { StrictMode, useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useDownloadStore } from "~/entities/download/download.model";
 import { useWorkspaceMessageStore } from "~/entities/message/message.model";
 import type { MessengerOutgoingMessage } from "~/entities/messenger/messenger-outbox.types";
 import type { MessengerMessage } from "~/entities/messenger/messenger.types";
@@ -317,6 +318,7 @@ describe("WorkspaceMessageList", () => {
 
   afterEach(async () => {
     cleanup();
+    useDownloadStore.getState().clearDownloads();
     // Radix restores focus on a deferred task; run it before replacing the jsdom globals.
     await act(async () => {
       if (vi.isFakeTimers()) await vi.runOnlyPendingTimersAsync();
@@ -5240,6 +5242,108 @@ describe("WorkspaceMessageList", () => {
       );
     },
   );
+
+  it("shows native attachment progress and opens the saved file with the original focused target", () => {
+    const fileUuid = "33333333-3333-4333-8333-333333333333";
+    const ownerKey = "attachment-owner";
+    const open = vi.fn().mockResolvedValue({ ok: true });
+    vi.stubGlobal("electronAPI", { downloads: { open } });
+    const download = {
+      id: "native-download",
+      fileUuid,
+      ownerKey,
+      accountId: "account",
+      fileName: "report.pdf",
+    };
+    const onDownloadFile = vi.fn(() => {
+      useDownloadStore.getState().startDownload(download);
+    });
+
+    render(
+      <WorkspaceMessageList
+        messages={[createWorkspaceMessage({ markdown: `[report.pdf](urn:file:${fileUuid})` })]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onDownloadFile, downloadOwnerKey: ownerKey }}
+      />,
+    );
+
+    const attachment = screen.getByRole("button", { name: "Файл: report.pdf" });
+    act(() => {
+      useDownloadStore
+        .getState()
+        .startDownload({ ...download, id: "other-download", ownerKey: "other-owner" });
+      useDownloadStore
+        .getState()
+        .setProgress("other-download", { receivedBytes: 90, totalBytes: 100 });
+      attachment.focus();
+    });
+    expect(attachment).not.toHaveTextContent("90%");
+
+    fireEvent.keyDown(attachment, { key: "Enter" });
+    expect(attachment).toHaveAttribute("aria-disabled", "true");
+    expect(attachment).toHaveAttribute("aria-busy", "true");
+    expect(attachment).toHaveTextContent("Downloading…");
+
+    act(() => {
+      useDownloadStore.getState().setProgress(download.id, { receivedBytes: 45, totalBytes: 100 });
+    });
+    expect(attachment).toHaveTextContent("45%");
+    fireEvent.click(attachment);
+    expect(onDownloadFile).toHaveBeenCalledOnce();
+
+    act(() => {
+      useDownloadStore.getState().finishDownload(download.id, true);
+    });
+    expect(screen.getByRole("button", { name: "report.pdf. Open" })).toBe(attachment);
+    expect(attachment).toHaveFocus();
+    expect(attachment).not.toHaveAttribute("aria-disabled");
+    expect(attachment).not.toHaveAttribute("aria-busy");
+    fireEvent.keyDown(attachment, { key: " " });
+    expect(open).toHaveBeenCalledExactlyOnceWith(download.id);
+    expect(onDownloadFile).toHaveBeenCalledOnce();
+  });
+
+  it("retries a failed browser attachment and shows browser handoff with an explicit repeat action", () => {
+    const fileUuid = "33333333-3333-4333-8333-333333333333";
+    const ownerKey = "attachment-owner";
+    const onDownloadFile = vi.fn(() => {
+      const id = `download-${onDownloadFile.mock.calls.length}`;
+      useDownloadStore
+        .getState()
+        .startDownload({ id, ownerKey, fileUuid, accountId: "account", fileName: "report.pdf" });
+    });
+
+    render(
+      <WorkspaceMessageList
+        messages={[createWorkspaceMessage({ markdown: `[report.pdf](urn:file:${fileUuid})` })]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onDownloadFile, downloadOwnerKey: ownerKey }}
+      />,
+    );
+    const attachment = screen.getByRole("button", { name: "Файл: report.pdf" });
+    fireEvent.click(attachment);
+    act(() => {
+      useDownloadStore.getState().setProgress("download-1", { receivedBytes: 45, totalBytes: 100 });
+    });
+    expect(attachment).toHaveTextContent("Downloading…");
+    expect(attachment).not.toHaveTextContent("%");
+    act(() => {
+      useDownloadStore.getState().finishDownload("download-1", false, "interrupted");
+    });
+    expect(screen.getByRole("button", { name: "report.pdf. Failed. Retry" })).toBe(attachment);
+    fireEvent.click(screen.getByText("Retry", { exact: true }));
+    expect(onDownloadFile).toHaveBeenCalledTimes(2);
+
+    act(() => {
+      useDownloadStore.getState().finishDownload("download-2", true);
+    });
+    expect(attachment).toHaveTextContent("Handed off to browser");
+    fireEvent.click(screen.getByText("Download again", { exact: true }));
+    expect(onDownloadFile).toHaveBeenCalledTimes(3);
+    expect(attachment).toHaveTextContent("Downloading…");
+  });
 
   it("renders video sent as a file as a card while keeping video media separate", () => {
     const videoUuid = "11111111-1111-4111-8111-111111111111";

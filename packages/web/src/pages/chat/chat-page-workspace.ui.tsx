@@ -3380,7 +3380,8 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
         return;
       }
 
-      void startWorkspaceFileDownload({
+      const isUiActionCurrent = captureWorkspaceChatUiAction();
+      return startWorkspaceFileDownload({
         runtimeContext,
         fileUuid: file.fileUuid,
         fileNameHint: file.name,
@@ -3395,14 +3396,17 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
             }),
           ),
       }).catch((error) => {
-        if (!(error instanceof DOMException && error.name === "AbortError")) {
+        if (
+          isUiActionCurrent() &&
+          !(error instanceof DOMException && error.name === "AbortError")
+        ) {
           setActionError(
             normalizeWorkspaceActionError(error, t("workspaceMessenger.fileDownloadFailed")),
           );
         }
       });
     },
-    [runChatScopedAction, runtimeContext, workspaceFileResourceCache],
+    [captureWorkspaceChatUiAction, runChatScopedAction, runtimeContext, workspaceFileResourceCache],
   );
 
   const handleLoadWorkspaceFileResource = useCallback(
@@ -4407,6 +4411,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
             onCopyMessageText={handleCopyMessageText}
             onToggleMessageReaction={handleToggleMessageReaction}
             onDownloadFile={handleDownloadFile}
+            downloadOwnerKey={ownerKey}
             onLoadWorkspaceFilePreview={handleLoadWorkspaceFilePreview}
             onOpenWorkspaceMedia={handleOpenWorkspaceMedia}
             onOpenUnsupportedFilePreview={handleOpenUnsupportedFilePreview}

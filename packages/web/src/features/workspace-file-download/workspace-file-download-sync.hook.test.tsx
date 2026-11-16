@@ -23,7 +23,7 @@ describe("useWorkspaceDownloadSync", () => {
     useDownloadStore.setState({ entries: [], duplicateRequestTick: 0 });
   });
 
-  it("replays events received while the initial snapshot is pending", async () => {
+  it("merges local attempts and replays events received while the initial snapshot is pending", async () => {
     let resolveSnapshot: ((entries: ElectronDownloadEntry[]) => void) | undefined;
     const snapshot = new Promise<ElectronDownloadEntry[]>((resolve) => {
       resolveSnapshot = resolve;
@@ -54,6 +54,14 @@ describe("useWorkspaceDownloadSync", () => {
       fileName: "local.txt",
       status: "starting",
     });
+    useDownloadStore.getState().startDownload({
+      id: "local-failure",
+      ownerKey: "owner-local",
+      accountId: "account-local",
+      fileUuid: "file-local-failure",
+      fileName: "local-failure.txt",
+    });
+    useDownloadStore.getState().finishDownload("local-failure", false, "start-failed");
     act(() => onChanged?.({ type: "upsert", entry: createEntry("new", "downloading") }));
     await act(() => {
       resolveSnapshot?.([createEntry("old", "downloaded")]);
@@ -63,6 +71,7 @@ describe("useWorkspaceDownloadSync", () => {
     expect(useDownloadStore.getState().entries.map((entry) => entry.id)).toEqual([
       "new",
       "old",
+      "local-failure",
       "local",
     ]);
     unmount();

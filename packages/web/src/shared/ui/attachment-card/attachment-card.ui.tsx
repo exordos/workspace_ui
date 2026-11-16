@@ -4,9 +4,11 @@ import AttachmentRetryIcon from "~/shared/assets/icons/attachment-retry.svg?reac
 import AttachmentUploadErrorIcon from "~/shared/assets/icons/attachment-upload-error.svg?react";
 import { getAttachmentCardMetadata } from "~/shared/lib/attachment-card-meta.lib";
 import { Icon } from "~/shared/ui/icon";
+import { Spinner } from "~/shared/ui/loading";
 import type {
   AttachmentCardListProps,
   AttachmentCardProps,
+  AttachmentDownloadState,
   AttachmentErrorCardProps,
   AttachmentPendingCardProps,
   AttachmentReadyCardProps,
@@ -115,25 +117,93 @@ function AttachmentFilePreview({
   );
 }
 
+function AttachmentDownloadPreview({ download }: Readonly<{ download: AttachmentDownloadState }>) {
+  let indicator: React.ReactNode;
+  if (download.status === "downloading") {
+    indicator =
+      download.percent == null ? (
+        <Spinner size="sm" className="motion-reduce:animate-none" />
+      ) : (
+        <AttachmentProgressRing progress={download.percent} />
+      );
+  } else if (download.status === "downloaded") {
+    indicator = <Icon name="check" size={18} className="text-accent" />;
+  } else {
+    indicator = <AttachmentUploadErrorIcon className="h-[18px] w-[18px]" />;
+  }
+  return (
+    <span
+      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-bg"
+      aria-hidden
+    >
+      {indicator}
+    </span>
+  );
+}
+
+function AttachmentDownloadDetails({ download }: Readonly<{ download: AttachmentDownloadState }>) {
+  if (download.status === "downloading") {
+    return (
+      <span className="text-text-primary">
+        {download.percent == null
+          ? t("downloads.attachmentDownloading")
+          : t("downloads.attachmentDownloadingWithPercent", { percent: download.percent })}
+      </span>
+    );
+  }
+  if (download.status === "downloaded" && download.isNative) {
+    return <span className="text-accent">{t("downloads.attachmentOpen")}</span>;
+  }
+  const handoff = download.status === "downloaded";
+  const statusKey =
+    download.status === "error" && download.cancelled ? "downloads.cancelled" : "downloads.failed";
+  const statusLabel = t(handoff ? "downloads.browserHandoff" : statusKey);
+  const actionLabel = t(
+    handoff ? "downloads.attachmentDownloadAgain" : "downloads.attachmentRetry",
+  );
+  return (
+    <>
+      <span className="block truncate leading-3 text-text-primary">{statusLabel}</span>
+      <span className="block truncate leading-3 text-accent">{actionLabel}</span>
+    </>
+  );
+}
+
 export const AttachmentReadyCard = React.memo<AttachmentReadyCardProps>(
-  ({ fileName, contentType, sizeBytes, previewUrl, onRemove, appearance, role, className }) => {
+  ({
+    fileName,
+    contentType,
+    sizeBytes,
+    previewUrl,
+    onRemove,
+    appearance,
+    role,
+    className,
+    download,
+  }) => {
     const metadata = getAttachmentCardMetadata(fileName, contentType, sizeBytes);
+    const filePreview =
+      previewUrl == null ? (
+        <AttachmentFilePreview iconName={metadata.iconName} />
+      ) : (
+        <img
+          src={previewUrl}
+          alt={fileName}
+          className="h-10 w-10 shrink-0 rounded-lg object-cover"
+          loading="lazy"
+        />
+      );
     return (
       <AttachmentCardFrame
         fileName={fileName}
-        preview={
-          previewUrl == null ? (
-            <AttachmentFilePreview iconName={metadata.iconName} />
+        preview={download == null ? filePreview : <AttachmentDownloadPreview download={download} />}
+        details={
+          download == null ? (
+            <AttachmentMetadataText {...metadata} />
           ) : (
-            <img
-              src={previewUrl}
-              alt={fileName}
-              className="h-10 w-10 shrink-0 rounded-lg object-cover"
-              loading="lazy"
-            />
+            <AttachmentDownloadDetails download={download} />
           )
         }
-        details={<AttachmentMetadataText {...metadata} />}
         action={
           onRemove == null ? null : (
             <AttachmentActionButton
@@ -159,6 +229,20 @@ function clampProgress(progress: number): number {
   return Math.min(100, Math.max(0, Math.round(progress)));
 }
 
+function AttachmentProgressRing({ progress }: Readonly<{ progress: number }>) {
+  return (
+    <span
+      className="relative h-[18px] w-[18px] rounded-full"
+      style={{
+        background: `conic-gradient(var(--color-accent) ${progress}%, color-mix(in srgb, var(--color-text-muted) 24%, transparent) 0)`,
+      }}
+      aria-hidden
+    >
+      <span className="absolute inset-[3px] rounded-full bg-bg" />
+    </span>
+  );
+}
+
 function AttachmentProgressPreview({
   fileName,
   progress,
@@ -176,15 +260,7 @@ function AttachmentProgressPreview({
       aria-valuemax={100}
       aria-valuenow={safeProgress}
     >
-      <span
-        className="relative h-[18px] w-[18px] rounded-full"
-        style={{
-          background: `conic-gradient(var(--color-accent) ${safeProgress}%, color-mix(in srgb, var(--color-text-muted) 24%, transparent) 0)`,
-        }}
-        aria-hidden
-      >
-        <span className="absolute inset-[3px] rounded-full bg-bg" />
-      </span>
+      <AttachmentProgressRing progress={safeProgress} />
     </span>
   );
 }

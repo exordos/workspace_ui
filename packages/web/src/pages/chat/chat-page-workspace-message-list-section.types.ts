@@ -75,6 +75,7 @@ export interface ChatPageWorkspaceMessageListSectionProps {
   onCopyMessageText?: (messageUuid: MessengerUuid, selectedText?: string) => void | Promise<void>;
   onToggleMessageReaction?: (messageUuid: MessengerUuid, emojiName: string) => void | Promise<void>;
   onDownloadFile?: (file: WorkspaceMessageFileReference) => void | Promise<void>;
+  downloadOwnerKey?: string | null;
   onLoadWorkspaceFilePreview?: (
     file: WorkspaceMessageFileReference,
     signal: AbortSignal,

@@ -26,6 +26,8 @@ import {
 } from "~/shared/lib/workspace-message-render/workspace-message-render.lib";
 import type { WorkspaceSecretUrnReference } from "~/shared/lib/workspace-reference-urn.lib";
 import { WorkspaceMessageQuoteFrame } from "~/shared/ui/workspace-message-quote-frame";
+import { handleCurrentAttachmentDownload } from "./workspace-message-attachment-download.lib";
+import { WorkspaceMessageAttachmentDownload } from "./workspace-message-attachment-download.ui";
 import { useWorkspaceMessageBodyInteractions } from "./workspace-message-body-interactions.hook";
 import { useWorkspaceMessageInlineMeta } from "./workspace-message-bubble-inline-meta.hook";
 import { WorkspaceMessageBubbleJitsiCard } from "./workspace-message-bubble-jitsi-card.ui";
@@ -605,6 +607,32 @@ export const WorkspaceMessageBubblePresentation: React.FC<WorkspaceMessageBubble
     const fileReferences = passiveContentEnabled
       ? renderedBody.fileReferences
       : EMPTY_FILE_REFERENCES;
+    const downloadOwnerKey = interactiveActions?.downloadOwnerKey;
+    const onDownloadFile = interactiveActions?.onDownloadFile;
+    const handleDownloadFile = useCallback(
+      (file: WorkspaceMessageFileReference) => {
+        if (
+          file.kind === "attachment" &&
+          downloadOwnerKey != null &&
+          handleCurrentAttachmentDownload(downloadOwnerKey, file.fileUuid)
+        ) {
+          return;
+        }
+        return onDownloadFile?.(file);
+      },
+      [downloadOwnerKey, onDownloadFile],
+    );
+    const renderAttachment = useCallback(
+      (reference: WorkspaceMessageFileReference, host: HTMLElement) =>
+        downloadOwnerKey != null && onDownloadFile != null ? (
+          <WorkspaceMessageAttachmentDownload
+            reference={reference}
+            host={host}
+            ownerKey={downloadOwnerKey}
+          />
+        ) : null,
+      [downloadOwnerKey, onDownloadFile],
+    );
     const {
       menuOpen,
       contextMenuAnchor,
@@ -628,7 +656,7 @@ export const WorkspaceMessageBubblePresentation: React.FC<WorkspaceMessageBubble
       onOpenMessagePermalink: interactiveActions?.onOpenMessagePermalink,
       messageWebOrigin: interactiveActions?.messageWebOrigin,
       onOpenWorkspaceReference: interactiveActions?.onOpenWorkspaceReference,
-      onDownloadFile: interactiveActions?.onDownloadFile,
+      onDownloadFile: onDownloadFile == null ? undefined : handleDownloadFile,
       onOpenWorkspaceMedia: interactiveActions?.onOpenWorkspaceMedia,
       onOpenUnsupportedFilePreview: interactiveActions?.onOpenUnsupportedFilePreview,
     });
@@ -926,6 +954,9 @@ export const WorkspaceMessageBubblePresentation: React.FC<WorkspaceMessageBubble
               segments={renderedBody.hasQuoteSegments ? renderedBody.segments : undefined}
               renderQuote={renderQuote}
               renderSecret={!isPreview && serverMessage != null ? renderSecret : undefined}
+              renderAttachment={
+                downloadOwnerKey != null && onDownloadFile != null ? renderAttachment : undefined
+              }
               metadata={renderedBody.metadata}
               onBodyClick={isPreview ? undefined : handleBodyClick}
               useInlineMeta={useInlineMeta}

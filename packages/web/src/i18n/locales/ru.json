@@ -1377,6 +1377,12 @@
     "starting": "Начинаем загрузку…",
     "cancelled": "Отменено",
     "ready": "Готово",
+    "browserHandoff": "Передано браузеру",
+    "attachmentDownloading": "Скачивание…",
+    "attachmentDownloadingWithPercent": "Скачивание… {{percent}}%",
+    "attachmentOpen": "Открыть",
+    "attachmentRetry": "Повторить",
+    "attachmentDownloadAgain": "Скачать снова",
     "failed": "Ошибка",
     "downloadingWithTotal": "{{percent}}% • {{received}} / {{total}}",
     "downloadingWithoutTotal": "Загрузка… {{received}}"

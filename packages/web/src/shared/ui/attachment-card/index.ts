@@ -9,6 +9,7 @@ export {
 export type {
   AttachmentCardListProps,
   AttachmentCardProps,
+  AttachmentDownloadState,
   AttachmentErrorCardProps,
   AttachmentPendingCardProps,
   AttachmentReadyCardProps,
