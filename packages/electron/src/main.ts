@@ -2,6 +2,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import {
   app,
+  autoUpdater as nativeAutoUpdater,
   BrowserWindow,
   clipboard,
   Menu,
@@ -15,7 +16,7 @@ import {
   powerMonitor,
 } from "electron";
 import { setupScreenSharingMain } from "@jitsi/electron-sdk/main";
-import { autoUpdater } from "electron-updater";
+import { autoUpdater, DebUpdater } from "electron-updater";
 import {
   APP_DISPLAY_NAME,
   APP_ID,
@@ -23,6 +24,7 @@ import {
   getUserDataDirName,
   pickLegacyUserDataDirName,
 } from "./app-identity.lib";
+import { relaunchDebAppAfterExit } from "./deb-update-relaunch.lib";
 import {
   createDeepLinkDelivery,
   parseExternalDeepLink,
@@ -1389,7 +1391,14 @@ function configureAutoUpdater(): void {
 
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
-  autoUpdater.autoRunAppAfterInstall = true;
+  const isDebUpdate = autoUpdater instanceof DebUpdater;
+  autoUpdater.autoRunAppAfterInstall = !isDebUpdate;
+
+  if (isDebUpdate) {
+    nativeAutoUpdater.once("before-quit-for-update", () => {
+      app.once("quit", () => relaunchDebAppAfterExit(process.execPath, process.argv.slice(1)));
+    });
+  }
 
   function send(channel: string, data?: Record<string, unknown>) {
     mainWindow?.webContents.send(channel, data);
