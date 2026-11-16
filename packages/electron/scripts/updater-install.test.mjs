@@ -28,15 +28,16 @@ test("a second launch does not reopen the window during update installation", ()
 });
 
 test(
-  "Debian relaunch waits for exit and passes arguments literally",
+  "Linux package update relaunch waits for exit and passes arguments literally",
   { skip: process.platform === "win32", timeout: 5000 },
   async (t) => {
-    const directory = mkdtempSync(path.join(tmpdir(), "workspace-deb-relaunch-test-"));
+    const directory = mkdtempSync(path.join(tmpdir(), "workspace-update-relaunch-test-"));
     const output = path.join(directory, "launcher output");
+    const parentExitMarker = path.join(directory, "parent exiting");
     t.after(() => rmSync(directory, { recursive: true, force: true }));
 
     const source = readFileSync(
-      path.join(__dirname, "..", "src", "deb-update-relaunch.lib.ts"),
+      path.join(__dirname, "..", "src", "linux-package-update-relaunch.lib.ts"),
       "utf8",
     );
     const { code } = await transform(source, { loader: "ts", format: "esm" });
@@ -48,12 +49,22 @@ test(
         "--input-type=module",
         "-e",
         `
-      import { relaunchDebAppAfterExit } from ${JSON.stringify(library)};
-      relaunchDebAppAfterExit(process.execPath, [
+      import { writeFileSync } from "node:fs";
+      import { relaunchAfterLinuxPackageUpdate } from ${JSON.stringify(library)};
+      process.once("exit", () => writeFileSync(${JSON.stringify(parentExitMarker)}, ""));
+      relaunchAfterLinuxPackageUpdate(process.execPath, [
         "-e",
-        "require('node:fs').writeFileSync(process.argv[1], process.argv[2])",
+        ${JSON.stringify(`
+          const { existsSync, writeFileSync } = require("node:fs");
+          const [output, argument, parentExitMarker] = process.argv.slice(1);
+          writeFileSync(output, JSON.stringify({
+            argument,
+            parentExiting: existsSync(parentExitMarker),
+          }));
+        `)},
         ${JSON.stringify(output)},
         ${JSON.stringify(argument)},
+        ${JSON.stringify(parentExitMarker)},
       ]);
       process.stdin.resume();
       process.stdout.write("scheduled");
@@ -65,6 +76,7 @@ test(
     const exited = once(parent, "exit");
 
     await once(parent.stdout, "data");
+    await delay(200);
     assert.equal(existsSync(output), false);
     parent.stdin.end();
     assert.deepEqual(await exited, [0, null]);
@@ -72,6 +84,6 @@ test(
     for (let attempt = 0; attempt < 100 && !existsSync(output); attempt++) {
       await delay(20);
     }
-    assert.equal(readFileSync(output, "utf8"), argument);
+    assert.deepEqual(JSON.parse(readFileSync(output, "utf8")), { argument, parentExiting: true });
   },
 );
