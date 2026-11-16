@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { selectMessengerConversationFromWorkspaceRoute } from "~/entities/messenger/messenger-ids.lib";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
@@ -75,6 +75,7 @@ function BackgroundOptions({ conversationId }: { readonly conversationId: string
   const [working, setWorking] = useState(false);
   const [pending, setPending] = useState<{ value: ChatBackgroundValue } | null>(null);
   const input = useRef<HTMLInputElement>(null);
+  const fileHintId = useId();
   const focusTarget = useRef<HTMLElement | null>(null);
   const alive = useRef(false);
   const request = useRef(0);
@@ -117,7 +118,9 @@ function BackgroundOptions({ conversationId }: { readonly conversationId: string
   };
   return (
     <div className="space-y-3 p-2" data-testid="chat-background-options">
-      <p className="text-xs text-text-secondary">{t("chatBackground.description")}</p>
+      <p id={fileHintId} className="text-xs leading-5 text-text-secondary">
+        {t("chatBackground.fileHint")}
+      </p>
       <div className="grid grid-cols-2 gap-2">
         {CHAT_BACKGROUNDS.map((item) => (
           <button
@@ -128,14 +131,24 @@ function BackgroundOptions({ conversationId }: { readonly conversationId: string
               background != null && "preset" in background && background.preset === item.id
             }
             onClick={(event) => choose({ preset: item.id }, event.currentTarget)}
-            className="min-w-0 overflow-hidden rounded-lg border border-border-subtle bg-bg text-sm text-text-primary outline-offset-2 aria-pressed:border-accent aria-pressed:ring-2 aria-pressed:ring-accent"
+            className="relative min-w-0 overflow-hidden rounded-lg border border-border-subtle bg-bg text-text-primary outline-offset-2 transition-colors hover:border-accent focus-visible:outline-accent aria-pressed:border-accent aria-pressed:ring-2 aria-pressed:ring-accent"
           >
-            <img src={item.image} alt="" className="h-20 w-full object-cover" />
-            <span className="block truncate p-2">{t(item.label)}</span>
+            <img src={item.image} alt="" className="aspect-[8/5] w-full object-cover" />
+            <span className="block truncate px-2 py-1.5 text-xs leading-4">{t(item.label)}</span>
+            {background != null && "preset" in background && background.preset === item.id ? (
+              <span
+                className="absolute right-1.5 top-1.5 rounded-full bg-accent p-0.5 text-on-accent"
+                aria-hidden="true"
+              >
+                <Icon name="check" size={14} />
+              </span>
+            ) : null}
           </button>
         ))}
         <button
           type="button"
+          aria-label={t(working ? "chatBackground.processing" : "chatBackground.add")}
+          aria-describedby={fileHintId}
           disabled={working || !available}
           onClick={(event) => {
             focusTarget.current = event.currentTarget;
@@ -143,11 +156,11 @@ function BackgroundOptions({ conversationId }: { readonly conversationId: string
           }}
           className="min-w-0 overflow-hidden rounded-lg border border-border-subtle bg-bg text-sm text-text-primary outline-offset-2 hover:border-accent hover:bg-bg-elevated focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-50"
         >
-          <span className="flex h-20 items-center justify-center">
-            <Icon name="plus" size={36} />
+          <span className="flex aspect-[8/5] items-center justify-center">
+            <Icon name="plus" size={28} />
           </span>
-          <span className="block p-2">
-            {t(working ? "chatBackground.processing" : "chatBackground.add")}
+          <span className="block truncate px-2 py-1.5 text-xs leading-4" aria-live="polite">
+            {t(working ? "chatBackground.processing" : "chatBackground.addShort")}
           </span>
         </button>
       </div>
@@ -156,9 +169,9 @@ function BackgroundOptions({ conversationId }: { readonly conversationId: string
           <img
             src={background.image}
             alt={t("chatBackground.custom")}
-            className="h-16 w-24 rounded object-cover"
+            className="h-10 w-16 shrink-0 rounded object-cover"
           />
-          <span className="text-sm text-text-primary">{t("chatBackground.custom")}</span>
+          <span className="min-w-0 text-xs text-text-primary">{t("chatBackground.custom")}</span>
         </div>
       ) : null}
       <div className="flex flex-wrap gap-2">
@@ -181,13 +194,13 @@ function BackgroundOptions({ conversationId }: { readonly conversationId: string
         className="sr-only"
         tabIndex={-1}
         aria-label={t("chatBackground.file")}
+        aria-describedby={fileHintId}
         onChange={(event) => {
           const file = event.currentTarget.files?.[0];
           event.currentTarget.value = "";
           if (file) void upload(file);
         }}
       />
-      <p className="text-xs text-text-secondary">{t("chatBackground.fileHint")}</p>
       {error && pending == null ? (
         <p className="text-sm text-danger" role="alert">
           {t(`chatBackground.errors.${error}`)}
@@ -210,11 +223,12 @@ function BackgroundOptions({ conversationId }: { readonly conversationId: string
         maxWidthClassName="max-w-md"
         positionClassName="top-1/2 -translate-y-1/2"
         footer={
-          <div className="flex flex-wrap justify-end gap-2">
+          <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-[auto_1fr_1fr]">
             <Button
               type="button"
               variant="neutral"
               appearance="ghost"
+              className="min-w-0 whitespace-nowrap"
               onClick={() => {
                 setPending(null);
                 setError(null);
@@ -226,12 +240,13 @@ function BackgroundOptions({ conversationId }: { readonly conversationId: string
               type="button"
               variant="neutral"
               appearance="outline"
+              className="min-w-0 whitespace-nowrap"
               disabled={conversationId == null}
               onClick={() => save("chat")}
             >
               {t("chatBackground.applyChat")}
             </Button>
-            <Button type="button" onClick={() => save("all")}>
+            <Button type="button" className="min-w-0 whitespace-nowrap" onClick={() => save("all")}>
               {t("chatBackground.applyAll")}
             </Button>
           </div>

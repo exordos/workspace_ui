@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { MemoryRouter } from "react-router-dom";
+import { expect, userEvent, waitFor, within } from "storybook/test";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { ChatBackground } from "~/features/chat-background/chat-background.ui";
 import { t } from "~/i18n/i18n";
@@ -69,3 +70,31 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 export const Appearance: Story = {};
+
+/** Exercises the footer geometry that previously wrapped the primary action in Russian. */
+export const Confirmation: Story = {
+  globals: { locale: "ru", mode: "dark" },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: t("chatBackground.title") }));
+    await userEvent.click(canvas.getByRole("button", { name: t("chatBackground.sea") }));
+    const body = within(canvasElement.ownerDocument.body);
+    const dialog = body.getByRole("dialog", { name: t("chatBackground.applyTitle") });
+    const actions = ["common.cancel", "chatBackground.applyChat", "chatBackground.applyAll"].map(
+      (key) => within(dialog).getByRole("button", { name: t(key) }),
+    );
+    await waitFor(async () => {
+      const rects = actions.map((button) => button.getBoundingClientRect());
+      await expect(rects.every((rect) => rect.height >= 32 && rect.width > 0)).toBe(true);
+      const tops = rects.map((rect) => rect.top);
+      if (canvasElement.ownerDocument.defaultView!.innerWidth >= 640) {
+        await expect(Math.max(...tops) - Math.min(...tops)).toBeLessThanOrEqual(1);
+      } else {
+        await expect(tops[1]).toBeGreaterThan(tops[0]!);
+        await expect(tops[2]).toBeGreaterThan(tops[1]!);
+      }
+      for (const button of actions)
+        await expect(button.scrollWidth).toBeLessThanOrEqual(button.clientWidth);
+    });
+  },
+};

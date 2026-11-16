@@ -1868,7 +1868,6 @@
     "answer": "Answer"
   },
   "chatBackground": {
-    "description": "Choose an image, then apply it to all chats or only the current chat. It is saved on this device.",
     "mountains": "Mountains",
     "sea": "Sea",
     "forest": "Forest",
@@ -1877,7 +1876,7 @@
     "file": "Choose a background image file",
     "processing": "Processing image…",
     "reset": "Default background",
-    "fileHint": "JPEG, PNG or WebP up to 8 MB. The image stays on this device.",
+    "fileHint": "JPEG, PNG, WebP — up to 8 MB. Backgrounds stay on this device.",
     "errors": {
       "type": "Choose a JPEG, PNG or WebP image.",
       "size": "The image is too large or empty. Choose a file up to 8 MB and 24 megapixels.",
@@ -1891,6 +1890,7 @@
     "applyAll": "For all chats",
     "selectedPreview": "Selected background preview",
     "resetPreview": "The default background will be restored.",
-    "noChat": "Open a chat to apply a background only to that chat."
+    "noChat": "Open a chat to apply a background only to that chat.",
+    "addShort": "Add your own"
   }
 }
