@@ -619,6 +619,37 @@ describe("workspace composer attachments", () => {
     expect(deleteRequest).not.toHaveBeenCalled();
   });
 
+  it("releases an edit preview instead of restoring it after changing scope", async () => {
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:previous-edit");
+    const revokeObjectUrl = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    const deleteRequest = vi.fn(() => Promise.resolve());
+    const controller = createWorkspaceComposerAttachmentsController({
+      scope: SCOPE,
+      transport: transport(
+        (uploadFile) => Promise.resolve(metadata(uploadFile.name)),
+        deleteRequest,
+      ),
+    });
+    controller.add([pngFile("edit.png")]);
+    await vi.waitFor(() =>
+      expect(controller.store.getState().attachments[0]?.status).toBe("ready"),
+    );
+
+    const request = deferred<void>();
+    const result = controller.commitReady(() => request.promise);
+    controller.updateScope({ ...SCOPE, scopeKey: "topic-b" });
+    controller.updateScope(SCOPE);
+    request.reject(new Error("edit failed"));
+
+    await expect(result).rejects.toThrow("edit failed");
+    expect(controller.store.getState().attachments).toEqual([]);
+    expect(revokeObjectUrl).toHaveBeenCalledExactlyOnceWith("blob:previous-edit");
+    expect(deleteRequest).toHaveBeenCalledWith(
+      metadata("edit.png"),
+      expect.objectContaining({ scope: SCOPE }),
+    );
+  });
+
   it("revokes image previews on transfer, scope discard, and dispose exactly once", async () => {
     const createObjectUrl = vi
       .spyOn(URL, "createObjectURL")

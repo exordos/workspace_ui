@@ -528,6 +528,7 @@ export function createWorkspaceComposerAttachmentsController({
       if (disposed) return null;
       const attachments = store.getState().attachments;
       if (attachments.length === 0) return await consume([]);
+      const transactionScope = scope;
       const transfer: WorkspaceComposerReadyAttachmentTransfer[] = [];
       for (const attachment of attachments) {
         if (attachment.status !== "ready" || attachment.serverMetadata == null) return null;
@@ -550,7 +551,7 @@ export function createWorkspaceComposerAttachmentsController({
         }
         return result;
       } catch (error) {
-        if (!disposed) {
+        if (!disposed && transactionScope === scope) {
           store.setState((state) => ({ attachments: [...attachments, ...state.attachments] }));
         } else {
           for (const attachment of attachments) {
