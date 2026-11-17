@@ -9,7 +9,7 @@ import { useChatBackground } from "./chat-background.hook";
 import {
   CHAT_BACKGROUNDS,
   chatBackgroundStorageKey,
-  parseChatBackground,
+  parseChatBackgroundPreferences,
 } from "./chat-background.lib";
 import { ChatBackground, ChatBackgroundSettings } from "./chat-background.ui";
 import type { ReactNode } from "react";
@@ -312,8 +312,11 @@ describe("local background restoration boundary", () => {
       JSON.stringify({ preset: "unknown" }),
       "x".repeat(2_000_001),
     ])
-      expect(parseChatBackground(raw)).toBeNull();
-    expect(parseChatBackground(JSON.stringify({ image: jpeg }))).toEqual({ image: jpeg });
+      expect(parseChatBackgroundPreferences(raw)).toEqual({ global: null, chats: {} });
+    expect(parseChatBackgroundPreferences(JSON.stringify({ image: jpeg }))).toEqual({
+      global: { image: jpeg },
+      chats: {},
+    });
     expect(chatBackgroundStorageKey("owner-a")).not.toBe(chatBackgroundStorageKey("owner-b"));
   });
 });

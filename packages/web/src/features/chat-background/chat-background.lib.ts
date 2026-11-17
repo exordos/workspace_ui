@@ -10,6 +10,7 @@ export const CHAT_BACKGROUNDS = [
 ] as const;
 export type ChatBackgroundValue = { preset: string } | { image: string } | null;
 const MAX_STORED_LENGTH = 2_000_000;
+const MAX_STORED_IMAGE_LENGTH = MAX_STORED_LENGTH - '{"image":""}'.length;
 export const chatBackgroundStorageKey = (scope: string) => `workspace-chat-background-v1:${scope}`;
 
 export function chatBackgroundUrl(value: ChatBackgroundValue): string | undefined {
@@ -18,22 +19,17 @@ export function chatBackgroundUrl(value: ChatBackgroundValue): string | undefine
     ? value.image
     : CHAT_BACKGROUNDS.find((item) => item.id === value.preset)?.image;
 }
-export function parseChatBackground(raw: string | null): ChatBackgroundValue {
-  try {
-    if (!raw || raw.length > MAX_STORED_LENGTH) return null;
-    const value: unknown = JSON.parse(raw);
-    if (value == null || typeof value !== "object") return null;
-    if ("preset" in value && CHAT_BACKGROUNDS.some((item) => item.id === value.preset))
-      return { preset: String(value.preset) };
-    if (
-      "image" in value &&
-      typeof value.image === "string" &&
-      /^data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}$/.test(value.image)
-    )
-      return { image: value.image };
-  } catch {
-    /* An unavailable or damaged local preference leaves the default background. */
-  }
+function validateChatBackground(value: unknown): ChatBackgroundValue {
+  if (value == null || typeof value !== "object") return null;
+  if ("preset" in value && CHAT_BACKGROUNDS.some((item) => item.id === value.preset))
+    return { preset: String(value.preset) };
+  if (
+    "image" in value &&
+    typeof value.image === "string" &&
+    value.image.length <= MAX_STORED_IMAGE_LENGTH &&
+    /^data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}$/.test(value.image)
+  )
+    return { image: value.image };
   return null;
 }
 export interface ChatBackgroundPreferences {
@@ -57,12 +53,15 @@ export function parseChatBackgroundPreferences(raw: string | null): ChatBackgrou
       const chats: Record<string, ChatBackgroundValue> = {};
       for (const [id, background] of Object.entries(value.chats)) {
         if (!/^(stream|topic):[0-9a-f:-]+$/i.test(id)) continue;
-        const parsed = parseChatBackground(JSON.stringify(background));
+        const parsed = validateChatBackground(background);
         if (background === null || parsed != null) chats[id] = parsed;
       }
-      return { global: parseChatBackground(JSON.stringify(value.global)), chats };
+      return { global: validateChatBackground(value.global), chats };
     }
-    return { global: parseChatBackground(raw), chats: {} };
+    return {
+      global: raw.length <= MAX_STORED_LENGTH ? validateChatBackground(value) : null,
+      chats: {},
+    };
   } catch {
     return empty;
   }
