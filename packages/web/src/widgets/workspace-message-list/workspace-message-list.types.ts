@@ -64,6 +64,7 @@ export interface WorkspaceMessageListActions {
   onToggleMessageReaction?: (messageUuid: MessengerUuid, emojiName: string) => void | Promise<void>;
   onOpenMentionUser?: (userUuid: MessengerUuid) => void;
   onDownloadFile?: (file: WorkspaceMessageFileReference) => void | Promise<void>;
+  downloadOwnerKey?: string | null;
   onLoadWorkspaceFilePreview?: (
     file: WorkspaceMessageFileReference,
     signal: AbortSignal,

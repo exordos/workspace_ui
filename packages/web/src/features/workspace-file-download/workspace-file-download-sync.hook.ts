@@ -8,6 +8,7 @@ export function useWorkspaceDownloadSync(): void {
 
     let disposed = false;
     let snapshotApplied = false;
+    const initialIds = new Set(useDownloadStore.getState().entries.map((entry) => entry.id));
     const pendingEvents: Parameters<Parameters<typeof downloads.onChanged>[0]>[0][] = [];
 
     const applyEvent = (event: Parameters<Parameters<typeof downloads.onChanged>[0]>[0]) => {
@@ -31,14 +32,16 @@ export function useWorkspaceDownloadSync(): void {
       if (disposed) return;
       if (entries != null) {
         const snapshotIds = new Set(entries.map((entry) => entry.id));
-        const localPending = useDownloadStore
+        const localEntries = useDownloadStore
           .getState()
           .entries.filter(
             (entry) =>
-              (entry.status === "starting" || entry.status === "downloading") &&
-              !snapshotIds.has(entry.id),
+              !snapshotIds.has(entry.id) &&
+              (entry.status === "starting" ||
+                entry.status === "downloading" ||
+                !initialIds.has(entry.id)),
           );
-        useDownloadStore.getState().replaceDownloads([...entries, ...localPending]);
+        useDownloadStore.getState().replaceDownloads([...entries, ...localEntries]);
       }
       snapshotApplied = true;
       for (const event of pendingEvents) applyEvent(event);

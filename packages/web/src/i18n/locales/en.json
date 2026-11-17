@@ -1363,6 +1363,12 @@
     "starting": "Starting…",
     "cancelled": "Cancelled",
     "ready": "Ready",
+    "browserHandoff": "Handed off to browser",
+    "attachmentDownloading": "Downloading…",
+    "attachmentDownloadingWithPercent": "Downloading… {{percent}}%",
+    "attachmentOpen": "Open",
+    "attachmentRetry": "Retry",
+    "attachmentDownloadAgain": "Download again",
     "failed": "Failed",
     "downloadingWithTotal": "{{percent}}% • {{received}} / {{total}}",
     "downloadingWithoutTotal": "Downloading… {{received}}"

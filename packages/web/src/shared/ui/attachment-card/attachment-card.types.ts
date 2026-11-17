@@ -9,6 +9,11 @@ interface AttachmentCardRemovableProps {
   onRemove?: () => void;
 }
 
+export type AttachmentDownloadState =
+  | { status: "downloading"; percent: number | null }
+  | { status: "downloaded"; isNative: boolean; showConfirmation: boolean }
+  | { status: "error"; cancelled: boolean };
+
 export interface AttachmentReadyCardProps
   extends AttachmentCardBaseProps, AttachmentCardRemovableProps {
   contentType?: string;
@@ -16,6 +21,7 @@ export interface AttachmentReadyCardProps
   previewUrl?: string;
   appearance?: "default" | "embedded";
   role?: "listitem" | "presentation";
+  download?: AttachmentDownloadState;
 }
 
 export interface AttachmentUploadingCardProps extends AttachmentCardBaseProps {

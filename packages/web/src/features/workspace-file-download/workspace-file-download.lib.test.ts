@@ -166,7 +166,7 @@ describe("workspace file download", () => {
     );
   });
 
-  it("waits for a fresh session before creating an Electron entry", async () => {
+  it("shows the Electron download starting while its session refreshes", async () => {
     const refreshResponse = new Response(
       JSON.stringify({
         access_token: "fresh-access-token",
@@ -179,12 +179,7 @@ describe("workspace file download", () => {
     useWorkspaceAuthStore.setState((state) => ({
       sessions: state.sessions.map((session) => ({ ...session, expiresAtMs: 0 })),
     }));
-    let resolveSnapshot: ((entries: ElectronDownloadEntry[]) => void) | undefined;
-    const snapshot = new Promise<ElectronDownloadEntry[]>((resolve) => {
-      resolveSnapshot = resolve;
-    });
     const downloads = installElectronDownloads({
-      getSnapshot: vi.fn(() => snapshot),
       start: vi.fn().mockImplementation((input: ElectronDownloadStartInput) =>
         Promise.resolve({
           ok: true as const,
@@ -210,7 +205,8 @@ describe("workspace file download", () => {
       fileNameHint: "report.txt",
       loadBrowserResource: vi.fn(),
     });
-    resolveSnapshot?.([]);
+    expect(useDownloadStore.getState().entries[0]?.status).toBe("starting");
+    expect(downloads.start).not.toHaveBeenCalled();
     await startPromise;
 
     expect(downloads.start).toHaveBeenCalledWith(
@@ -220,49 +216,120 @@ describe("workspace file download", () => {
     fetchMock.mockRestore();
   });
 
-  it("dismisses the old failed entry before retrying", async () => {
-    useDownloadStore.getState().replaceDownloads([
-      {
-        id: "failed-download",
-        ownerKey: workspaceRuntimeOwnerKey(runtimeContext),
-        accountId: runtimeContext.accountId,
-        fileUuid: "123e4567-e89b-42d3-a456-426614174000",
-        fileName: "report.txt",
-        status: "error",
-        receivedBytes: 0,
-        totalBytes: null,
-        startedAt: 1,
-        errorCode: "interrupted",
-      },
-    ]);
-    const dismiss = vi.fn(() => Promise.resolve({ ok: true as const }));
-    const start = vi.fn().mockImplementation((input: ElectronDownloadStartInput) =>
-      Promise.resolve({
-        ok: true as const,
-        reused: false,
-        entry: {
+  it("keeps native progress received before the start response", async () => {
+    const downloads = installElectronDownloads({
+      start: vi.fn((input: ElectronDownloadStartInput) => {
+        const entry: ElectronDownloadEntry = {
           id: input.id,
           ownerKey: input.ownerKey,
           accountId: input.accountId,
           fileUuid: input.fileUuid,
           fileName: input.fileName,
-          status: "starting" as const,
+          status: "starting",
           receivedBytes: 0,
           totalBytes: null,
-          startedAt: 2,
-        },
+          startedAt: 1,
+        };
+        useDownloadStore.getState().upsertDownload({
+          ...entry,
+          status: "downloading",
+          receivedBytes: 50,
+          totalBytes: 100,
+        });
+        return Promise.resolve({ ok: true as const, reused: false, entry });
       }),
-    );
-    installElectronDownloads({ dismiss, start });
+    });
 
-    await retryWorkspaceDownload("failed-download");
+    await startWorkspaceFileDownload({
+      runtimeContext,
+      fileUuid: "file-uuid",
+      loadBrowserResource: vi.fn(),
+    });
 
-    expect(dismiss).toHaveBeenCalledWith(["failed-download"]);
-    expect(start).toHaveBeenCalledOnce();
-    expect(useDownloadStore.getState().entries).toHaveLength(1);
-    expect(useDownloadStore.getState().entries[0]).toMatchObject({ status: "starting" });
-    expect(useDownloadStore.getState().entries[0]?.id).not.toBe("failed-download");
+    expect(downloads.start).toHaveBeenCalledOnce();
+    expect(useDownloadStore.getState().entries[0]).toMatchObject({
+      status: "downloading",
+      receivedBytes: 50,
+      totalBytes: 100,
+    });
   });
+
+  it("cancels a pending native download before starting the transfer", async () => {
+    const downloads = installElectronDownloads();
+    const started = startWorkspaceFileDownload({
+      runtimeContext,
+      fileUuid: "file-uuid",
+      loadBrowserResource: vi.fn(),
+    });
+    const entry = useDownloadStore.getState().entries[0];
+    expect(entry?.status).toBe("starting");
+
+    await cancelWorkspaceDownload(entry!.id);
+    await started;
+
+    expect(downloads.start).not.toHaveBeenCalled();
+    expect(downloads.cancel).not.toHaveBeenCalled();
+    expect(useDownloadStore.getState().entries[0]).toMatchObject({
+      status: "error",
+      errorCode: "cancelled",
+    });
+  });
+
+  it.each(["panel", "attachment"])(
+    "dismisses the old failed entry before retrying from the %s",
+    async (source) => {
+      useDownloadStore.getState().replaceDownloads([
+        {
+          id: "failed-download",
+          ownerKey: workspaceRuntimeOwnerKey(runtimeContext),
+          accountId: runtimeContext.accountId,
+          fileUuid: "123e4567-e89b-42d3-a456-426614174000",
+          fileName: "report.txt",
+          status: "error",
+          receivedBytes: 0,
+          totalBytes: null,
+          startedAt: 1,
+          errorCode: "interrupted",
+        },
+      ]);
+      const dismiss = vi.fn(() => Promise.resolve({ ok: true as const }));
+      const start = vi.fn().mockImplementation((input: ElectronDownloadStartInput) =>
+        Promise.resolve({
+          ok: true as const,
+          reused: false,
+          entry: {
+            id: input.id,
+            ownerKey: input.ownerKey,
+            accountId: input.accountId,
+            fileUuid: input.fileUuid,
+            fileName: input.fileName,
+            status: "starting" as const,
+            receivedBytes: 0,
+            totalBytes: null,
+            startedAt: 2,
+          },
+        }),
+      );
+      installElectronDownloads({ dismiss, start });
+
+      if (source === "panel") {
+        await retryWorkspaceDownload("failed-download");
+      } else {
+        await startWorkspaceFileDownload({
+          runtimeContext,
+          fileUuid: "123e4567-e89b-42d3-a456-426614174000",
+          fileNameHint: "report.txt",
+          loadBrowserResource: vi.fn(),
+        });
+      }
+
+      expect(dismiss).toHaveBeenCalledWith(["failed-download"]);
+      expect(start).toHaveBeenCalledOnce();
+      expect(useDownloadStore.getState().entries).toHaveLength(1);
+      expect(useDownloadStore.getState().entries[0]).toMatchObject({ status: "starting" });
+      expect(useDownloadStore.getState().entries[0]?.id).not.toBe("failed-download");
+    },
+  );
 
   it("keeps the old error and shows feedback when dismiss before retry fails", async () => {
     useDownloadStore.getState().replaceDownloads([

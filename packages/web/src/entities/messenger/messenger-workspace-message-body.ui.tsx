@@ -75,6 +75,7 @@ const BASE_BODY_CLASS_NAME = [
   "[&_.workspace-message-attachment-host]:max-w-full",
   "[&_.workspace-message-attachment-host]:align-middle",
   "[&_.workspace-message-attachment-host]:cursor-pointer",
+  "[&_.workspace-message-attachment-host[aria-disabled='true']]:cursor-default",
   "[&_.workspace-message-attachment-host--static]:cursor-default",
   "[&_.workspace-message-attachment-host]:rounded-lg",
   "[&_.workspace-message-attachment-host]:focus-visible:outline-none",
@@ -163,6 +164,7 @@ function areWorkspaceMessageBodyPropsEqual(
     prev.fileReferences === next.fileReferences &&
     prev.renderQuote === next.renderQuote &&
     prev.renderSecret === next.renderSecret &&
+    prev.renderAttachment === next.renderAttachment &&
     prev.useInlineMeta === next.useInlineMeta &&
     prev.bodyRef === next.bodyRef &&
     prev.onBodyClick === next.onBodyClick &&
@@ -203,6 +205,7 @@ export const WorkspaceMessageBody: React.FC<WorkspaceMessageBodyProps> = React.m
     segments,
     renderQuote,
     renderSecret,
+    renderAttachment,
     metadata,
     useInlineMeta,
     bodyRef,
@@ -376,13 +379,15 @@ export const WorkspaceMessageBody: React.FC<WorkspaceMessageBodyProps> = React.m
         )}
         {attachmentCards.map(({ host, reference }, index) =>
           createPortal(
-            <AttachmentReadyCard
-              fileName={reference.name ?? t("attachmentCard.unnamedFile")}
-              contentType={reference.contentType}
-              sizeBytes={reference.sizeBytes}
-              appearance="embedded"
-              role="presentation"
-            />,
+            renderAttachment?.(reference, host) ?? (
+              <AttachmentReadyCard
+                fileName={reference.name ?? t("attachmentCard.unnamedFile")}
+                contentType={reference.contentType}
+                sizeBytes={reference.sizeBytes}
+                appearance="embedded"
+                role="presentation"
+              />
+            ),
             host,
             `${reference.fileUuid}:${index}`,
           ),

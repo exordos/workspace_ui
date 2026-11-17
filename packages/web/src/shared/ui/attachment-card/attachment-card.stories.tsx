@@ -73,3 +73,40 @@ export const States: Story = {
 export const LongFileName: Story = {
   args: { fileName: "Workspace design review with a very long filename and many revisions.pdf" },
 };
+
+export const DownloadStates: Story = {
+  render: () => (
+    <AttachmentCardList ariaLabel={t("downloads.title")}>
+      <AttachmentReadyCard
+        fileName="roadmap.pdf"
+        appearance="embedded"
+        download={{ status: "downloading", percent: 48 }}
+      />
+      <AttachmentReadyCard
+        fileName="report.pdf"
+        appearance="embedded"
+        download={{ status: "downloading", percent: null }}
+      />
+      <AttachmentReadyCard
+        fileName="notes.txt"
+        appearance="embedded"
+        download={{ status: "downloaded", isNative: true, showConfirmation: false }}
+      />
+      <AttachmentReadyCard
+        fileName="browser-handoff.zip"
+        appearance="embedded"
+        download={{ status: "downloaded", isNative: false, showConfirmation: true }}
+      />
+      <AttachmentReadyCard
+        fileName="saved-in-browser.zip"
+        appearance="embedded"
+        download={{ status: "downloaded", isNative: false, showConfirmation: false }}
+      />
+      <AttachmentReadyCard
+        fileName="archive.zip"
+        appearance="embedded"
+        download={{ status: "error", cancelled: false }}
+      />
+    </AttachmentCardList>
+  ),
+};

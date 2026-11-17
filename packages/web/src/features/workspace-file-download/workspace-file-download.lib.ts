@@ -27,6 +27,8 @@ export interface StartWorkspaceFileDownloadInput {
   ) => Promise<WorkspaceBrowserDownloadResource>;
 }
 
+const preparingNativeDownloads = new Set<string>();
+
 function createDownloadId(): string {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
     return crypto.randomUUID();
@@ -123,10 +125,22 @@ async function startNativeWorkspaceDownload(
     accessToken: runtimeContext.accessToken,
   });
   if (!result.ok) {
-    useDownloadStore.getState().finishDownload(id, false, "start-failed");
     throw new Error(`Workspace download failed to start: ${result.errorCode}`);
   }
-  useDownloadStore.getState().upsertDownload(result.entry);
+  const store = useDownloadStore.getState();
+  if (result.entry.id !== id) store.removeDownload(id);
+
+  // The native change event can arrive before the command response.
+  const current = findDownload(result.entry.id);
+  if (current?.status === "downloaded" || current?.status === "error") return;
+  if (
+    current?.status === "downloading" &&
+    (result.entry.status === "starting" ||
+      (result.entry.status === "downloading" && current.receivedBytes > result.entry.receivedBytes))
+  ) {
+    return;
+  }
+  store.upsertDownload(result.entry);
 }
 
 async function startBrowserWorkspaceDownload(
@@ -138,6 +152,7 @@ async function startBrowserWorkspaceDownload(
     runtimeContext: WorkspaceRuntimeContext,
   ) => Promise<WorkspaceBrowserDownloadResource>,
 ): Promise<void> {
+  useDownloadStore.getState().setProgress(id, { receivedBytes: 0, totalBytes: null });
   try {
     const result = await loadResource(runtimeContext);
     const fileName = deriveWorkspaceDownloadFileName({
@@ -158,7 +173,8 @@ async function startBrowserWorkspaceDownload(
     triggerWorkspaceBrowserDownload(result.blob, fileName);
     useDownloadStore.getState().finishDownload(id, true);
   } catch (error) {
-    useDownloadStore.getState().finishDownload(id, false, "interrupted");
+    const cancelled = error instanceof DOMException && error.name === "AbortError";
+    useDownloadStore.getState().finishDownload(id, false, cancelled ? "cancelled" : "interrupted");
     throw error;
   }
 }
@@ -173,40 +189,63 @@ export async function startWorkspaceFileDownload(
     fileUuid,
     fileNameHint: input.fileNameHint,
   });
-  const runtimeContext = await ensureFreshWorkspaceSession(input.runtimeContext.accountId);
+  const { accountId } = input.runtimeContext;
+  const ownerKey = workspaceRuntimeOwnerKey(input.runtimeContext);
+  const downloads = window.electronAPI?.downloads;
+  const store = useDownloadStore.getState();
+  const previousFailure =
+    downloads == null
+      ? undefined
+      : store.entries.find(
+          (entry) =>
+            entry.ownerKey === ownerKey && entry.fileUuid === fileUuid && entry.status === "error",
+        );
   const id = createDownloadId();
-  const started = useDownloadStore.getState().startDownload({
-    id,
-    ownerKey: workspaceRuntimeOwnerKey(runtimeContext),
-    accountId: runtimeContext.accountId,
-    fileUuid,
-    fileName,
-    status: window.electronAPI?.downloads == null ? "downloading" : "starting",
-  });
+  const started = store.startDownload({ id, ownerKey, accountId, fileUuid, fileName });
   if (!started) return;
 
-  if (window.electronAPI?.downloads != null) {
-    try {
-      await startNativeWorkspaceDownload(runtimeContext, fileUuid, fileName, id);
-    } catch (error) {
-      useDownloadStore.getState().finishDownload(id, false, "start-failed");
-      throw error;
+  if (downloads != null) preparingNativeDownloads.add(id);
+  try {
+    const runtimeContext = await ensureFreshWorkspaceSession(accountId);
+    if (workspaceRuntimeOwnerKey(runtimeContext) !== ownerKey) {
+      throw new Error("Workspace download session owner has changed");
     }
-    return;
-  }
+    if (findDownload(id)?.status !== "starting") return;
 
-  await startBrowserWorkspaceDownload(
-    id,
-    fileUuid,
-    input.fileNameHint,
-    runtimeContext,
-    input.loadBrowserResource,
-  );
+    if (downloads != null) {
+      if (previousFailure != null) await downloads.dismiss([previousFailure.id]);
+      if (findDownload(id)?.status !== "starting") return;
+      preparingNativeDownloads.delete(id);
+      await startNativeWorkspaceDownload(runtimeContext, fileUuid, fileName, id);
+      return;
+    }
+
+    await startBrowserWorkspaceDownload(
+      id,
+      fileUuid,
+      input.fileNameHint,
+      runtimeContext,
+      input.loadBrowserResource,
+    );
+  } catch (error) {
+    const current = findDownload(id);
+    if (downloads != null && current?.errorCode === "cancelled") return;
+    if (current?.status === "starting") {
+      store.finishDownload(id, false, "start-failed");
+    }
+    throw error;
+  } finally {
+    preparingNativeDownloads.delete(id);
+  }
 }
 
 export async function cancelWorkspaceDownload(id: string): Promise<void> {
   const downloads = window.electronAPI?.downloads;
   if (downloads == null) return;
+  if (preparingNativeDownloads.has(id)) {
+    useDownloadStore.getState().finishDownload(id, false, "cancelled");
+    return;
+  }
   try {
     const result = await downloads.cancel(id);
     if (!result.ok) applyCommandFailure(id, result.errorCode);
@@ -261,6 +300,9 @@ export async function retryWorkspaceDownload(id: string): Promise<void> {
   let session: Awaited<ReturnType<typeof ensureFreshWorkspaceSession>>;
   try {
     session = await ensureFreshWorkspaceSession(entry.accountId);
+    if (workspaceRuntimeOwnerKey(session) !== entry.ownerKey) {
+      throw new Error("Workspace download session owner has changed");
+    }
   } catch {
     toast.error(t("app.error"));
     return;
@@ -288,24 +330,11 @@ export async function retryWorkspaceDownload(id: string): Promise<void> {
     return;
   }
 
-  let result: Awaited<ReturnType<typeof downloads.start>>;
   try {
-    result = await downloads.start({
-      id: nextId,
-      ownerKey: entry.ownerKey,
-      accountId: entry.accountId,
-      fileUuid: entry.fileUuid,
-      fileName: entry.fileName,
-      organizationOrigin: session.organizationOrigin,
-      accessToken: session.accessToken,
-    });
+    await startNativeWorkspaceDownload(session, entry.fileUuid, entry.fileName, nextId);
   } catch {
-    useDownloadStore.getState().finishDownload(nextId, false, "start-failed");
-    return;
+    if (findDownload(nextId)?.status === "starting") {
+      useDownloadStore.getState().finishDownload(nextId, false, "start-failed");
+    }
   }
-  if (!result.ok) {
-    useDownloadStore.getState().finishDownload(nextId, false, "start-failed");
-    return;
-  }
-  useDownloadStore.getState().upsertDownload(result.entry);
 }

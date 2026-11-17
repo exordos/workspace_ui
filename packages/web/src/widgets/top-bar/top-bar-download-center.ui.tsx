@@ -36,24 +36,29 @@ export const TopBarDownloadCenter = React.memo(function TopBarDownloadCenter() {
     [downloads],
   );
 
-  const getStatusLabel = useCallback((entry: DownloadEntry): string => {
-    if (entry.status === "downloaded") return t("downloads.ready");
-    if (entry.status === "error") {
-      return entry.errorCode === "cancelled" ? t("downloads.cancelled") : t("downloads.failed");
-    }
-    if (entry.status === "starting") return t("downloads.starting");
-    if (entry.totalBytes != null && entry.totalBytes > 0) {
-      const percent = Math.min(100, Math.round((entry.receivedBytes / entry.totalBytes) * 100));
-      return t("downloads.downloadingWithTotal", {
-        percent,
+  const getStatusLabel = useCallback(
+    (entry: DownloadEntry): string => {
+      if (entry.status === "downloaded") {
+        return t(nativeActionsAvailable ? "downloads.ready" : "downloads.browserHandoff");
+      }
+      if (entry.status === "error") {
+        return entry.errorCode === "cancelled" ? t("downloads.cancelled") : t("downloads.failed");
+      }
+      if (entry.status === "starting") return t("downloads.starting");
+      if (entry.totalBytes != null && entry.totalBytes > 0) {
+        const percent = Math.min(100, Math.round((entry.receivedBytes / entry.totalBytes) * 100));
+        return t("downloads.downloadingWithTotal", {
+          percent,
+          received: formatDownloadBytes(entry.receivedBytes),
+          total: formatDownloadBytes(entry.totalBytes),
+        });
+      }
+      return t("downloads.downloadingWithoutTotal", {
         received: formatDownloadBytes(entry.receivedBytes),
-        total: formatDownloadBytes(entry.totalBytes),
       });
-    }
-    return t("downloads.downloadingWithoutTotal", {
-      received: formatDownloadBytes(entry.receivedBytes),
-    });
-  }, []);
+    },
+    [nativeActionsAvailable],
+  );
 
   const handleToggle = useCallback(() => setPanelOpen((open) => !open), []);
   const handleDismissPanel = useCallback(() => setPanelOpen(false), []);
