@@ -90,12 +90,17 @@ export const DownloadStates: Story = {
       <AttachmentReadyCard
         fileName="notes.txt"
         appearance="embedded"
-        download={{ status: "downloaded", isNative: true }}
+        download={{ status: "downloaded", isNative: true, showConfirmation: false }}
       />
       <AttachmentReadyCard
         fileName="browser-handoff.zip"
         appearance="embedded"
-        download={{ status: "downloaded", isNative: false }}
+        download={{ status: "downloaded", isNative: false, showConfirmation: true }}
+      />
+      <AttachmentReadyCard
+        fileName="saved-in-browser.zip"
+        appearance="embedded"
+        download={{ status: "downloaded", isNative: false, showConfirmation: false }}
       />
       <AttachmentReadyCard
         fileName="archive.zip"

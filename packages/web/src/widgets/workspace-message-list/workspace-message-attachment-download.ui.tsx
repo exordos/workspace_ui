@@ -1,4 +1,4 @@
-import { useLayoutEffect } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
 import { useDownloadStore } from "~/entities/download/download.model";
 import type { DownloadEntry } from "~/entities/download/download.types";
 import { t } from "~/i18n/i18n";
@@ -6,12 +6,15 @@ import type { WorkspaceMessageFileReference } from "~/shared/lib/workspace-messa
 import { AttachmentReadyCard, type AttachmentDownloadState } from "~/shared/ui/attachment-card";
 import { findAttachmentDownload } from "./workspace-message-attachment-download.lib";
 
+const DOWNLOAD_CONFIRMATION_MS = 2_000;
+
 function describeDownload(
   entry: DownloadEntry | undefined,
   isNative: boolean,
+  showConfirmation: boolean,
 ): AttachmentDownloadState | undefined {
   if (entry == null) return;
-  if (entry.status === "downloaded") return { status: "downloaded", isNative };
+  if (entry.status === "downloaded") return { status: "downloaded", isNative, showConfirmation };
   if (entry.status === "error")
     return { status: "error", cancelled: entry.errorCode === "cancelled" };
   const total = entry.totalBytes;
@@ -28,10 +31,12 @@ function attachmentDownloadLabel(download: AttachmentDownloadState): string {
       return download.percent == null
         ? t("downloads.attachmentDownloading")
         : t("downloads.attachmentDownloadingWithPercent", { percent: download.percent });
-    case "downloaded":
-      return download.isNative
-        ? t("downloads.attachmentOpen")
-        : `${t("downloads.browserHandoff")}. ${t("downloads.attachmentDownloadAgain")}`;
+    case "downloaded": {
+      if (download.isNative) return t("downloads.attachmentOpen");
+      return download.showConfirmation
+        ? `${t("downloads.browserHandoff")}. ${t("downloads.attachmentDownloadAgain")}`
+        : t("downloads.attachmentDownloadAgain");
+    }
     case "error":
       return `${t(download.cancelled ? "downloads.cancelled" : "downloads.failed")}. ${t("downloads.attachmentRetry")}`;
   }
@@ -49,8 +54,26 @@ export function WorkspaceMessageAttachmentDownload({
   const entry = useDownloadStore((state) =>
     findAttachmentDownload(state.entries, ownerKey, reference.fileUuid),
   );
+  const completedId = entry?.status === "downloaded" ? entry.id : null;
+  const [completion, setCompletion] = useState({ id: completedId, visible: false });
+  if (completedId !== completion.id) {
+    setCompletion({ id: completedId, visible: completedId != null });
+  }
+
+  useEffect(() => {
+    if (!completion.visible) return;
+    const timer = setTimeout(() => {
+      setCompletion({ id: completion.id, visible: false });
+    }, DOWNLOAD_CONFIRMATION_MS);
+    return () => clearTimeout(timer);
+  }, [completion.id, completion.visible]);
+
   const fileName = reference.name ?? t("attachmentCard.unnamedFile");
-  const download = describeDownload(entry, window.electronAPI?.downloads != null);
+  const download = describeDownload(
+    entry,
+    window.electronAPI?.downloads != null,
+    completion.visible,
+  );
   const label = download == null ? null : `${fileName}. ${attachmentDownloadLabel(download)}`;
   const active = download?.status === "downloading";
 

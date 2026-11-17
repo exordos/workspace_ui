@@ -11,7 +11,7 @@ interface AttachmentCardRemovableProps {
 
 export type AttachmentDownloadState =
   | { status: "downloading"; percent: number | null }
-  | { status: "downloaded"; isNative: boolean }
+  | { status: "downloaded"; isNative: boolean; showConfirmation: boolean }
   | { status: "error"; cancelled: boolean };
 
 export interface AttachmentReadyCardProps

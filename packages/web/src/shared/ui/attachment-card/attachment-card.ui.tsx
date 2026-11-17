@@ -141,7 +141,10 @@ function AttachmentDownloadPreview({ download }: Readonly<{ download: Attachment
   );
 }
 
-function AttachmentDownloadDetails({ download }: Readonly<{ download: AttachmentDownloadState }>) {
+function AttachmentDownloadDetails({
+  download,
+  metadata,
+}: Readonly<{ download: AttachmentDownloadState; metadata: React.ReactNode }>) {
   if (download.status === "downloading") {
     return (
       <span className="text-text-primary">
@@ -151,20 +154,30 @@ function AttachmentDownloadDetails({ download }: Readonly<{ download: Attachment
       </span>
     );
   }
-  if (download.status === "downloaded" && download.isNative) {
-    return <span className="text-accent">{t("downloads.attachmentOpen")}</span>;
+  if (download.status === "downloaded") {
+    const actionLabel = t(
+      download.isNative ? "downloads.attachmentOpen" : "downloads.attachmentDownloadAgain",
+    );
+    const showHandoff = download.showConfirmation && !download.isNative;
+    return (
+      <>
+        <span className="block truncate leading-3">
+          {showHandoff ? (
+            <span className="text-text-primary">{t("downloads.browserHandoff")}</span>
+          ) : (
+            metadata
+          )}
+        </span>
+        <span className="block truncate leading-3 text-accent">{actionLabel}</span>
+      </>
+    );
   }
-  const handoff = download.status === "downloaded";
-  const statusKey =
-    download.status === "error" && download.cancelled ? "downloads.cancelled" : "downloads.failed";
-  const statusLabel = t(handoff ? "downloads.browserHandoff" : statusKey);
-  const actionLabel = t(
-    handoff ? "downloads.attachmentDownloadAgain" : "downloads.attachmentRetry",
-  );
   return (
     <>
-      <span className="block truncate leading-3 text-text-primary">{statusLabel}</span>
-      <span className="block truncate leading-3 text-accent">{actionLabel}</span>
+      <span className="block truncate leading-3 text-text-primary">
+        {t(download.cancelled ? "downloads.cancelled" : "downloads.failed")}
+      </span>
+      <span className="block truncate leading-3 text-accent">{t("downloads.attachmentRetry")}</span>
     </>
   );
 }
@@ -182,6 +195,9 @@ export const AttachmentReadyCard = React.memo<AttachmentReadyCardProps>(
     download,
   }) => {
     const metadata = getAttachmentCardMetadata(fileName, contentType, sizeBytes);
+    const metadataText = <AttachmentMetadataText {...metadata} />;
+    const showDownloadPreview =
+      download != null && (download.status !== "downloaded" || download.showConfirmation);
     const filePreview =
       previewUrl == null ? (
         <AttachmentFilePreview iconName={metadata.iconName} />
@@ -196,12 +212,14 @@ export const AttachmentReadyCard = React.memo<AttachmentReadyCardProps>(
     return (
       <AttachmentCardFrame
         fileName={fileName}
-        preview={download == null ? filePreview : <AttachmentDownloadPreview download={download} />}
+        preview={
+          showDownloadPreview ? <AttachmentDownloadPreview download={download} /> : filePreview
+        }
         details={
           download == null ? (
-            <AttachmentMetadataText {...metadata} />
+            metadataText
           ) : (
-            <AttachmentDownloadDetails download={download} />
+            <AttachmentDownloadDetails download={download} metadata={metadataText} />
           )
         }
         action={

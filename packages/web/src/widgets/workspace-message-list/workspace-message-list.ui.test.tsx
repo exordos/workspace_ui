@@ -5244,6 +5244,7 @@ describe("WorkspaceMessageList", () => {
   );
 
   it("shows native attachment progress and opens the saved file with the original focused target", () => {
+    vi.useFakeTimers();
     const fileUuid = "33333333-3333-4333-8333-333333333333";
     const ownerKey = "attachment-owner";
     const open = vi.fn().mockResolvedValue({ ok: true });
@@ -5299,12 +5300,16 @@ describe("WorkspaceMessageList", () => {
     expect(attachment).toHaveFocus();
     expect(attachment).not.toHaveAttribute("aria-disabled");
     expect(attachment).not.toHaveAttribute("aria-busy");
+    act(() => vi.advanceTimersByTime(2_000));
+    expect(attachment).toHaveTextContent("PDF");
+    expect(attachment).toHaveFocus();
     fireEvent.keyDown(attachment, { key: " " });
     expect(open).toHaveBeenCalledExactlyOnceWith(download.id);
     expect(onDownloadFile).toHaveBeenCalledOnce();
   });
 
-  it("retries a failed browser attachment and shows browser handoff with an explicit repeat action", () => {
+  it("retries a failed browser attachment and restores the file preview after handoff", () => {
+    vi.useFakeTimers();
     const fileUuid = "33333333-3333-4333-8333-333333333333";
     const ownerKey = "attachment-owner";
     const onDownloadFile = vi.fn(() => {
@@ -5323,6 +5328,8 @@ describe("WorkspaceMessageList", () => {
       />,
     );
     const attachment = screen.getByRole("button", { name: "Файл: report.pdf" });
+    const fileIcon = attachment.querySelector("svg")?.outerHTML;
+    expect(fileIcon).toBeDefined();
     fireEvent.click(attachment);
     act(() => {
       useDownloadStore.getState().setProgress("download-1", { receivedBytes: 45, totalBytes: 100 });
@@ -5340,6 +5347,12 @@ describe("WorkspaceMessageList", () => {
       useDownloadStore.getState().finishDownload("download-2", true);
     });
     expect(attachment).toHaveTextContent("Handed off to browser");
+    expect(attachment.querySelector("svg")?.outerHTML).not.toBe(fileIcon);
+    act(() => vi.advanceTimersByTime(2_000));
+    expect(attachment).not.toHaveTextContent("Handed off to browser");
+    expect(screen.getByRole("button", { name: "report.pdf. Download again" })).toBe(attachment);
+    expect(attachment).toHaveTextContent("PDF");
+    expect(attachment.querySelector("svg")?.outerHTML).toBe(fileIcon);
     fireEvent.click(screen.getByText("Download again", { exact: true }));
     expect(onDownloadFile).toHaveBeenCalledTimes(3);
     expect(attachment).toHaveTextContent("Downloading…");
