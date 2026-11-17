@@ -2,6 +2,7 @@
  * Outgoing message body and attachment label helpers for the composer.
  */
 import { t } from "~/i18n/i18n";
+import { isHeicAttachment } from "~/shared/lib/heic-preview.lib";
 import { buildZulipQuoteBlock } from "~/shared/lib/message-zulip-quote.lib";
 import {
   buildWorkspaceQuoteReference,
@@ -222,6 +223,8 @@ const EXTENSION_TO_IMAGE_MIME: Record<string, string> = {
   gif: "image/gif",
   webp: "image/webp",
   bmp: "image/bmp",
+  heic: "image/heic",
+  heif: "image/heif",
 };
 
 const MIME_TO_FILE_EXTENSION: Record<string, string> = {
@@ -229,6 +232,10 @@ const MIME_TO_FILE_EXTENSION: Record<string, string> = {
   "application/pdf": "pdf",
   "image/bmp": "bmp",
   "image/gif": "gif",
+  "image/heic": "heic",
+  "image/heic-sequence": "heic",
+  "image/heif": "heif",
+  "image/heif-sequence": "heif",
   "image/jpeg": "jpg",
   "image/png": "png",
   "image/svg+xml": "svg",
@@ -338,7 +345,7 @@ function renameFile(file: File, name: string): File {
 
 /** True when the file is an image by MIME type or by common image extension. */
 export function isLikelyImageAttachment(file: File): boolean {
-  if (file.type.startsWith("image/")) return true;
+  if (file.type.startsWith("image/") || isHeicAttachment(file.name, file.type)) return true;
   const extension = file.name.split(".").pop()?.trim().toLowerCase() ?? "";
   return IMAGE_ATTACHMENT_EXTENSIONS.has(extension);
 }
@@ -350,10 +357,18 @@ export function normalizeImageAttachmentFile(file: File, fallbackMime?: string):
     if (file.type === currentType) return file;
     return new File([file], file.name, { type: currentType, lastModified: file.lastModified });
   }
-  if (currentType.length > 0) return file;
-
   const fallback = fallbackMime != null ? normalizeImageMime(fallbackMime) : "";
-  const resolvedMime = fallback || imageMimeFromFileName(file.name) || "";
+  const extensionMime = imageMimeFromFileName(file.name) ?? "";
+  const resolvedMime =
+    fallback === "application/octet-stream" && isHeicAttachment(undefined, extensionMime)
+      ? extensionMime
+      : fallback || extensionMime;
+  if (
+    currentType.length > 0 &&
+    (currentType !== "application/octet-stream" || !isHeicAttachment(undefined, resolvedMime))
+  ) {
+    return file;
+  }
   if (resolvedMime.length === 0) return file;
 
   const name =

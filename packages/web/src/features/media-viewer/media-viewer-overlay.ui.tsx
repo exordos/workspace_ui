@@ -61,6 +61,11 @@ export const MediaViewerOverlay: React.FC = () => {
       : "loading");
 
   const actionsEnabled = useMemo(() => canUseMediaViewerDisplayUrl(displayUrl), [displayUrl]);
+  const downloadEnabled =
+    actionsEnabled ||
+    (resourceState === "display-error" &&
+      item?.type === "image" &&
+      item.workspaceFile?.onDownload != null);
   const imageSrc = useMemo(() => {
     if (canUseMediaViewerDisplayUrl(displayUrl)) {
       return displayUrl;
@@ -115,6 +120,7 @@ export const MediaViewerOverlay: React.FC = () => {
       <div className="relative flex min-h-0 w-full flex-1 flex-col">
         <MediaViewerToolbar
           actionsEnabled={actionsEnabled}
+          downloadEnabled={downloadEnabled}
           showCopy={item.type === "image"}
           copyKey={`${currentIndex}:${displayUrl ?? ""}`}
           showOpenInNewTab={showOpenInNewTab}

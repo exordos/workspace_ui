@@ -1,11 +1,14 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createHeicPreview } from "~/shared/lib/heic-preview.lib";
 import type { WorkspaceMessageFileReference } from "~/shared/lib/workspace-message-render/workspace-message-document.types";
 import { useMediaViewerStore } from "./media-viewer.model";
 import {
   useWorkspaceMediaViewer,
   type WorkspaceMediaViewerResource,
 } from "./workspace-media-viewer.hook";
+
+vi.mock("~/shared/lib/heic-preview.lib", { spy: true });
 
 const IMAGE_FILE: WorkspaceMessageFileReference = {
   kind: "media",
@@ -23,6 +26,15 @@ const VIDEO_FILE: WorkspaceMessageFileReference = {
   name: "video.mp4",
   contentType: "video/mp4",
   mediaKind: "video",
+};
+
+const HEIC_FILE: WorkspaceMessageFileReference = {
+  kind: "media",
+  href: "urn:image:33333333-3333-4333-8333-333333333333?name=photo.HEIC",
+  fileUuid: "33333333-3333-4333-8333-333333333333",
+  name: "photo.HEIC",
+  contentType: "image/heic",
+  mediaKind: "image",
 };
 
 function resource(file: WorkspaceMessageFileReference): WorkspaceMediaViewerResource {
@@ -181,6 +193,70 @@ describe("useWorkspaceMediaViewer", () => {
     expect(useMediaViewerStore.getState().isOpen).toBe(false);
     expect(URL.createObjectURL).toHaveBeenCalledTimes(1);
   });
+
+  it.each(["closing", "opening another file in"] as const)(
+    "aborts a pending HEIC decode when %s the gallery in the same chat",
+    async (action) => {
+      const createObjectURL = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:preview");
+      const pendingPreview = createDeferred<Blob>();
+      const onLoadError = vi.fn();
+      const decode = vi.mocked(createHeicPreview);
+      decode.mockClear();
+      decode.mockReturnValueOnce(pendingPreview.promise);
+      const { result } = renderHook(() =>
+        useWorkspaceMediaViewer({
+          scope: { ownerKey: "owner", runtimeGeneration: 1, conversationId: "conversation" },
+          enabled: true,
+          loadResource: (file) => Promise.resolve(resource(file)),
+          runAction: (load) => load(new AbortController().signal),
+          onDownload: vi.fn(),
+          deriveDownloadFileName: ({ fileNameHint, fileUuid }) => fileNameHint ?? fileUuid,
+          onOpenStart: vi.fn(),
+          onRuntimeUnavailable: vi.fn(),
+          onUnsupported: vi.fn(),
+          onLoadError,
+        }),
+      );
+
+      act(() => {
+        result.current.openWorkspaceMedia(IMAGE_FILE, {
+          startIndex: 0,
+          items: [{ file: IMAGE_FILE }, { file: HEIC_FILE }],
+        });
+      });
+      await waitFor(() =>
+        expect(useMediaViewerStore.getState().currentItem()?.workspaceFile?.fileUuid).toBe(
+          IMAGE_FILE.fileUuid,
+        ),
+      );
+
+      act(() => {
+        useMediaViewerStore.getState().goTo(1);
+      });
+      await waitFor(() => expect(decode).toHaveBeenCalledTimes(1));
+      const signal = decode.mock.calls[0]?.[1]?.signal;
+      expect(signal?.aborted).toBe(false);
+
+      act(() => {
+        if (action === "closing") {
+          useMediaViewerStore.getState().close();
+        } else {
+          result.current.openWorkspaceMedia(VIDEO_FILE);
+        }
+      });
+      expect(signal?.aborted).toBe(true);
+
+      await act(async () => {
+        pendingPreview.resolve(new Blob(["obsolete JPEG preview"], { type: "image/jpeg" }));
+        await pendingPreview.promise;
+      });
+      expect(createObjectURL).toHaveBeenCalledTimes(action === "closing" ? 1 : 2);
+      expect(useMediaViewerStore.getState().currentItem()?.workspaceFile?.fileUuid).toBe(
+        action === "closing" ? undefined : VIDEO_FILE.fileUuid,
+      );
+      expect(onLoadError).not.toHaveBeenCalled();
+    },
+  );
 
   it("marks an eager image preload as failed when it rejects after navigation", async () => {
     vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:selected-image");

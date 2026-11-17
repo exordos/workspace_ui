@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { isHeicAttachment } from "~/shared/lib/heic-preview-format.lib";
 import {
   isLikelyImageAttachment,
   normalizeImageAttachmentFile,
@@ -31,6 +32,7 @@ function createAttachmentPreviewUrl(file: File): string | null {
   try {
     if (!isLikelyImageAttachment(file)) return null;
     const normalized = normalizeImageAttachmentFile(file);
+    if (isHeicAttachment(normalized.name, normalized.type)) return null;
     if (typeof URL === "undefined" || typeof URL.createObjectURL !== "function") return null;
     return URL.createObjectURL(normalized);
   } catch {

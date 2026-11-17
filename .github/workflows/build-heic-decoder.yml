@@ -1,0 +1,28 @@
+name: Build HEIC decoder
+
+on:
+  workflow_call:
+
+jobs:
+  build:
+    name: Compile libheif to WebAssembly
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Build decoder
+        run: bash packages/web/vendor/heic/build-libheif.sh --install-sdk
+
+      - name: Upload decoder
+        uses: actions/upload-artifact@v7
+        with:
+          name: heic-decoder
+          path: packages/web/vendor/heic/libheif.js
+          if-no-files-found: error
+          retention-days: 7

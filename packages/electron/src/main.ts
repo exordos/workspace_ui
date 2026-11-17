@@ -977,7 +977,7 @@ function configureSecurityPolicy(): void {
       return;
     }
 
-    const csp = getShellContentSecurityPolicy(IS_DEV);
+    const csp = getShellContentSecurityPolicy(IS_DEV, { allowWasm: true });
 
     callback({
       responseHeaders: {

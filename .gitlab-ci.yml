@@ -6,6 +6,7 @@
 ##
 
 stages:
+  - prepare
   - check
   - e2e
   - build
@@ -24,8 +25,21 @@ default:
       - .npm-cache/
     policy: pull-push
 
+build-heic-decoder:
+  stage: prepare
+  cache: []
+  script:
+    - apt-get update
+    - apt-get install -y --no-install-recommends cmake python3
+    - bash packages/web/vendor/heic/build-libheif.sh --install-sdk
+  artifacts:
+    paths:
+      - packages/web/vendor/heic/libheif.js
+    expire_in: 7 days
+
 check-web:
   stage: check
+  needs: [build-heic-decoder]
   script: |
     npm install
     npm run typecheck
@@ -37,7 +51,7 @@ check-web:
 
 e2e-web:
   stage: e2e
-  needs: [check-web]
+  needs: [check-web, build-heic-decoder]
   script: |
     npm install
     npx playwright install --with-deps chromium
@@ -52,7 +66,7 @@ e2e-web:
 
 build-web:
   stage: build
-  needs: [check-web]
+  needs: [check-web, build-heic-decoder]
   script: |
     echo "$WEB_ENVS" | base64 -d > packages/web/.env.production
     npm install

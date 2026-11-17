@@ -20,7 +20,12 @@ env:
   EXORDOS_CFG: exordos/exordos.yaml
 
 jobs:
+  build-heic-decoder:
+    if: ${{ github.actor != 'dependabot[bot]' }}
+    uses: ./.github/workflows/build-heic-decoder.yml
+
   build:
+    needs: build-heic-decoder
     runs-on: [self-hosted, vm]
     if: ${{ github.actor != 'dependabot[bot]' }}
     permissions:
@@ -30,6 +35,12 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
+
+      - name: Download HEIC decoder
+        uses: actions/download-artifact@v4
+        with:
+          name: heic-decoder
+          path: packages/web/vendor/heic
 
       - uses: actions/setup-node@v6
         with:

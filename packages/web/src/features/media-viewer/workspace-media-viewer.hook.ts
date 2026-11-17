@@ -1,4 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import {
+  buildWorkspaceMediaDisplayBlob,
+  isWorkspaceHeicMedia,
+} from "~/entities/messenger/messenger-workspace-message-preview-blob.lib";
 import type { WorkspaceMessageFileReference } from "~/shared/lib/workspace-message-render/workspace-message-document.types";
 import { useMediaViewerStore } from "./media-viewer.model";
 import {
@@ -45,8 +49,13 @@ interface UseWorkspaceMediaViewerInput {
   onLoadError: (error: unknown) => void;
 }
 
+interface WorkspaceMediaDisplayResource {
+  original: WorkspaceMediaViewerResource;
+  displayBlob: Blob | null;
+}
+
 type WorkspaceMediaLoadResult =
-  | { file: WorkspaceMessageFileReference; resource: WorkspaceMediaViewerResource }
+  | { file: WorkspaceMessageFileReference; resource: WorkspaceMediaDisplayResource }
   | { file: WorkspaceMessageFileReference; error: unknown };
 
 function isSupportedMedia(file: WorkspaceMessageFileReference): boolean {
@@ -110,7 +119,7 @@ export function useWorkspaceMediaViewer({
     gallery?: WorkspaceMediaGalleryOpenRequest,
   ) => void;
 } {
-  const openGenerationRef = useRef(0);
+  const galleryControllerRef = useRef<AbortController | null>(null);
   const lazyLoadRef = useRef<((index: number) => void) | null>(null);
   const scopeRef = useRef(scope);
   const stableScope = useMemo<WorkspaceMediaViewerScope>(
@@ -126,19 +135,24 @@ export function useWorkspaceMediaViewer({
     scopeRef.current = stableScope;
   }, [stableScope]);
 
+  const cancelGalleryLoads = useCallback(() => {
+    const controller = galleryControllerRef.current;
+    galleryControllerRef.current = null;
+    lazyLoadRef.current = null;
+    controller?.abort();
+  }, []);
+
   useEffect(() => {
     return () => {
-      openGenerationRef.current += 1;
-      lazyLoadRef.current = null;
+      cancelGalleryLoads();
       closeWorkspaceViewer();
     };
-  }, [stableScope]);
+  }, [cancelGalleryLoads, stableScope]);
 
   useEffect(() => {
     return useMediaViewerStore.subscribe((state, previousState) => {
       if (!state.isOpen && previousState.isOpen) {
-        openGenerationRef.current += 1;
-        lazyLoadRef.current = null;
+        cancelGalleryLoads();
         return;
       }
       if (
@@ -148,7 +162,7 @@ export function useWorkspaceMediaViewer({
         lazyLoadRef.current?.(state.currentIndex);
       }
     });
-  }, []);
+  }, [cancelGalleryLoads]);
 
   const buildViewerItem = useCallback(
     (
@@ -178,6 +192,31 @@ export function useWorkspaceMediaViewer({
     [deriveDownloadFileName, onDownload],
   );
 
+  const loadDisplayResource = useCallback(
+    async (
+      file: WorkspaceMessageFileReference,
+      signal: AbortSignal,
+    ): Promise<WorkspaceMediaDisplayResource> => {
+      const original = await loadResource(file, signal);
+      try {
+        const displayBlob = await buildWorkspaceMediaDisplayBlob(original.blob, file, signal);
+        return { original, displayBlob };
+      } catch {
+        signal.throwIfAborted();
+        return { original, displayBlob: null };
+      }
+    },
+    [loadResource],
+  );
+
+  const buildLoadedViewerItem = useCallback(
+    (file: WorkspaceMessageFileReference, resource: WorkspaceMediaDisplayResource): MediaItem =>
+      resource.displayBlob == null
+        ? buildViewerItem(file, resource.original, undefined, "display-error")
+        : buildViewerItem(file, resource.original, URL.createObjectURL(resource.displayBlob)),
+    [buildViewerItem],
+  );
+
   const openWorkspaceMedia = useCallback(
     (file: WorkspaceMessageFileReference, gallery?: WorkspaceMediaGalleryOpenRequest): void => {
       onOpenStart();
@@ -192,21 +231,35 @@ export function useWorkspaceMediaViewer({
         return;
       }
 
-      const openGeneration = openGenerationRef.current + 1;
-      openGenerationRef.current = openGeneration;
-      lazyLoadRef.current = null;
-      const requestScope = stableScope;
-      const isCurrentOpen = (signal?: AbortSignal): boolean =>
-        signal?.aborted !== true &&
-        openGenerationRef.current === openGeneration &&
-        isSameScope(scopeRef.current, requestScope);
+      cancelGalleryLoads();
+      const galleryController = new AbortController();
+      galleryControllerRef.current = galleryController;
+      const { signal } = galleryController;
+      const isCurrentOpen = (): boolean =>
+        !signal.aborted && isSameScope(scopeRef.current, stableScope);
+      const loadForGallery = (mediaFile: WorkspaceMessageFileReference) =>
+        runAction(async (chatSignal) => {
+          chatSignal.throwIfAborted();
+          signal.throwIfAborted();
+          // Every load belongs to this gallery and to the same chat scope.
+          const abortGallery = () => galleryController.abort(chatSignal.reason);
+          chatSignal.addEventListener("abort", abortGallery, { once: true });
+          try {
+            return await loadDisplayResource(mediaFile, signal);
+          } finally {
+            chatSignal.removeEventListener("abort", abortGallery);
+          }
+        });
 
-      void runAction(async (signal) => {
+      const openGallery = async () => {
         const initialLoads = mediaOpen.files.map((mediaFile, index) => {
-          if (mediaFile.mediaKind === "video" && index !== mediaOpen.startIndex) {
+          if (
+            index !== mediaOpen.startIndex &&
+            (mediaFile.mediaKind === "video" || isWorkspaceHeicMedia(mediaFile))
+          ) {
             return undefined;
           }
-          return loadResource(mediaFile, signal)
+          return loadForGallery(mediaFile)
             .then((resource): WorkspaceMediaLoadResult => ({ file: mediaFile, resource }))
             .catch((error: unknown): WorkspaceMediaLoadResult => ({ file: mediaFile, error }));
         });
@@ -216,26 +269,20 @@ export function useWorkspaceMediaViewer({
             ? selectedResult.error
             : new Error("Unsupported Workspace media");
         }
-        if (!isCurrentOpen(signal)) return;
+        if (!isCurrentOpen()) return;
 
         const pendingItems = mediaOpen.files.map((mediaFile) => buildViewerItem(mediaFile));
-        const selectedObjectUrl = URL.createObjectURL(selectedResult.resource.blob);
-        pendingItems[mediaOpen.startIndex] = buildViewerItem(
+        pendingItems[mediaOpen.startIndex] = buildLoadedViewerItem(
           selectedResult.file,
           selectedResult.resource,
-          selectedObjectUrl,
         );
-        if (!isCurrentOpen(signal)) {
-          URL.revokeObjectURL(selectedObjectUrl);
-          return;
-        }
         useMediaViewerStore.getState().open(pendingItems, mediaOpen.startIndex);
 
         const loadingIndexes = new Set<number>();
         const isActiveSlot = (index: number, fileUuid: string): boolean => {
           const viewer = useMediaViewerStore.getState();
           return (
-            isCurrentOpen(signal) &&
+            isCurrentOpen() &&
             viewer.isOpen &&
             viewer.items[index]?.workspaceFile?.fileUuid === fileUuid
           );
@@ -244,17 +291,12 @@ export function useWorkspaceMediaViewer({
         const replaceLoadedSlot = (
           index: number,
           mediaFile: WorkspaceMessageFileReference,
-          resource: WorkspaceMediaViewerResource,
+          resource: WorkspaceMediaDisplayResource,
         ): void => {
           if (!isActiveSlot(index, mediaFile.fileUuid)) return;
-          const objectUrl = URL.createObjectURL(resource.blob);
-          if (!isActiveSlot(index, mediaFile.fileUuid)) {
-            URL.revokeObjectURL(objectUrl);
-            return;
-          }
           useMediaViewerStore
             .getState()
-            .replaceItem(index, buildViewerItem(mediaFile, resource, objectUrl));
+            .replaceItem(index, buildLoadedViewerItem(mediaFile, resource));
         };
 
         const loadSlot = (index: number): void => {
@@ -264,7 +306,7 @@ export function useWorkspaceMediaViewer({
           if (useMediaViewerStore.getState().items[index]?.resourceState !== "loading") return;
 
           loadingIndexes.add(index);
-          void runAction((loadSignal) => loadResource(mediaFile, loadSignal))
+          void loadForGallery(mediaFile)
             .then((resource) => replaceLoadedSlot(index, mediaFile, resource))
             .catch((error: unknown) => {
               if (
@@ -307,16 +349,21 @@ export function useWorkspaceMediaViewer({
               loadingIndexes.delete(index);
             });
         });
-      }).catch((error: unknown) => {
+      };
+
+      void openGallery().catch((error: unknown) => {
         if (isCurrentOpen() && !(error instanceof DOMException && error.name === "AbortError")) {
+          cancelGalleryLoads();
           onLoadError(error);
         }
       });
     },
     [
+      buildLoadedViewerItem,
       buildViewerItem,
+      cancelGalleryLoads,
       enabled,
-      loadResource,
+      loadDisplayResource,
       onLoadError,
       onOpenStart,
       onRuntimeUnavailable,

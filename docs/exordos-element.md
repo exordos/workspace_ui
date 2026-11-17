@@ -9,7 +9,8 @@ independent versions and can be upgraded separately.
 The backend element must be installed first because the UI manifest imports its
 `backend_node` resource. Exordos Core `0.2.3` or newer is required.
 
-Build the artifact and element locally with:
+On a fresh checkout, [build the HEIC decoder](../packages/web/vendor/heic/LICENSES.md).
+Then build the artifact and element locally with the following commands.
 
 ```bash
 npm ci --include=dev

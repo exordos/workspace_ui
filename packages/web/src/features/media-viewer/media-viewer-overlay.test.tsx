@@ -346,6 +346,27 @@ describe("MediaViewerOverlay", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("keeps the Workspace original download enabled when an image cannot be displayed", () => {
+    const onDownload = vi.fn();
+    const original = { fileUuid: "44444444-4444-4444-8444-444444444444", name: "photo.heic" };
+    useMediaViewerStore.getState().open(
+      [
+        {
+          url: "",
+          type: "image",
+          resourceState: "display-error",
+          workspaceFile: { ...original, onDownload },
+        },
+      ],
+      0,
+    );
+
+    render(<MediaViewerOverlay />);
+    expect(screen.getByRole("button", { name: /copy image/i })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: /download/i }));
+    expect(onDownload).toHaveBeenCalledExactlyOnceWith(expect.objectContaining(original));
+  });
+
   it("navigates to next and previous items with ArrowRight and ArrowLeft", () => {
     useMediaViewerStore.getState().open(GALLERY_ITEMS, 0);
 

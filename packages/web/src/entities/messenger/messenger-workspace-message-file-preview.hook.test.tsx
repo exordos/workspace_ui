@@ -7,6 +7,7 @@ import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace
 import { setLocale } from "~/i18n/i18n";
 import { downloadWorkspaceFile } from "~/shared/api/messenger-files.api";
 import type { MessengerBinaryResult } from "~/shared/api/messenger-transport.internal";
+import { createHeicPreview } from "~/shared/lib/heic-preview.lib";
 import { AUTH_IMAGE_PLACEHOLDER_SRC } from "~/shared/lib/media-display-url.lib";
 import {
   createWorkspaceFileResourceCache,
@@ -19,6 +20,7 @@ import {
 } from "./messenger-workspace-message-file-preview.hook";
 
 vi.mock("~/shared/api/messenger-files.api", () => ({ downloadWorkspaceFile: vi.fn() }));
+vi.mock("~/shared/lib/heic-preview.lib", { spy: true });
 
 const IMAGE: WorkspaceMessageFileReference = {
   kind: "media",
@@ -54,9 +56,11 @@ const SESSION: Omit<WorkspaceAuthSession, "runtimeGeneration"> = {
 
 function Preview({
   load,
+  onDownload,
   reference = IMAGE,
 }: Readonly<{
   load: LoadWorkspaceFilePreview;
+  onDownload?: (reference: WorkspaceMessageFileReference) => void;
   reference?: WorkspaceMessageFileReference;
 }>) {
   const bodyRef = useRef<HTMLDivElement>(null);
@@ -65,6 +69,7 @@ function Preview({
     renderedHtml: reference.href,
     fileReferences: [reference],
     onLoadWorkspaceFilePreview: load,
+    ...(onDownload == null ? {} : { onDownloadWorkspaceFile: onDownload }),
   });
   return (
     <div ref={bodyRef}>
@@ -107,6 +112,19 @@ afterEach(() => {
 });
 
 describe("Workspace message preview recovery", () => {
+  it("offers the original download after HEIC decoding fails", async () => {
+    const reference = { ...IMAGE, name: "photo.heic", contentType: "image/heic" };
+    const source = new Blob(["invalid image"], { type: "image/heic" });
+    const load = vi.fn<LoadWorkspaceFilePreview>().mockResolvedValue(source);
+    const onDownload = vi.fn();
+    vi.mocked(createHeicPreview).mockRejectedValueOnce(new Error("Invalid HEIC file"));
+
+    render(<Preview load={load} onDownload={onDownload} reference={reference} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Download" }));
+    await waitFor(() => expect(onDownload).toHaveBeenCalledExactlyOnceWith(reference));
+    expect(URL.createObjectURL).not.toHaveBeenCalled();
+  });
+
   it.each([IMAGE, VIDEO])(
     "recovers a failed $mediaKind after a matching file event",
     async (reference) => {

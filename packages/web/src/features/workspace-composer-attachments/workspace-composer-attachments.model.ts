@@ -1,4 +1,5 @@
 import { createStore, type StoreApi } from "zustand/vanilla";
+import { createHeicPreview, isHeicAttachment } from "~/shared/lib/heic-preview.lib";
 import { detectImageMime, validateFileUpload } from "~/shared/lib/validation";
 import type {
   WorkspaceComposerAttachment,
@@ -33,11 +34,10 @@ function normalizeImageMime(mime: string): string {
   return normalized === "image/jpg" ? "image/jpeg" : normalized;
 }
 
-function createPersistentImagePreviewUrl(file: File): string | null {
-  if (!normalizeImageMime(file.type).startsWith("image/")) return null;
+function createPersistentImagePreviewUrl(image: Blob): string | null {
   if (typeof URL === "undefined" || typeof URL.createObjectURL !== "function") return null;
   try {
-    return URL.createObjectURL(file);
+    return URL.createObjectURL(image);
   } catch {
     return null;
   }
@@ -171,6 +171,7 @@ export function createWorkspaceComposerAttachmentsController({
   const store = createStore<WorkspaceComposerAttachmentsState>(() => ({ attachments: [] }));
   const uploadControllers = new Map<string, AbortController>();
   const deleteControllers = new Set<AbortController>();
+  const previewControllers = new Map<string, AbortController>();
   const activePreviewUrlsByLocalId = new Map<string, string>();
   const deleteTransportByLocalId = new Map<
     string,
@@ -181,11 +182,15 @@ export function createWorkspaceComposerAttachmentsController({
   let attemptSequence = 0;
   let disposed = false;
 
-  const revokeAttachmentPreview = (attachment: WorkspaceComposerAttachment): void => {
-    if (attachment.previewUrl == null) return;
-    if (activePreviewUrlsByLocalId.get(attachment.localId) !== attachment.previewUrl) return;
-    activePreviewUrlsByLocalId.delete(attachment.localId);
-    revokePersistentImagePreviewUrl(attachment.previewUrl);
+  const abortAttachmentPreview = (localId: string): void => {
+    previewControllers.get(localId)?.abort();
+    previewControllers.delete(localId);
+  };
+
+  const revokeAttachmentPreview = (localId: string): void => {
+    abortAttachmentPreview(localId);
+    revokePersistentImagePreviewUrl(activePreviewUrlsByLocalId.get(localId) ?? null);
+    activePreviewUrlsByLocalId.delete(localId);
   };
 
   const nextAttemptToken = (): number => {
@@ -206,6 +211,26 @@ export function createWorkspaceComposerAttachmentsController({
       }),
     }));
     return updated;
+  };
+
+  const startHeicPreview = (attachment: WorkspaceComposerAttachment): void => {
+    const { file, localId } = attachment;
+    if (attachment.previewUrl != null || !isHeicAttachment(file.name, file.type)) return;
+    const controller = new AbortController();
+    previewControllers.set(localId, controller);
+    void createHeicPreview(file, { signal: controller.signal })
+      .then((image) => {
+        if (controller.signal.aborted || previewControllers.get(localId) !== controller) return;
+        const previewUrl = createPersistentImagePreviewUrl(image);
+        if (previewUrl == null) return;
+        activePreviewUrlsByLocalId.set(localId, previewUrl);
+        const updated = updateAttachment(localId, (current) => ({ ...current, previewUrl }));
+        if (updated == null) revokeAttachmentPreview(localId);
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        if (previewControllers.get(localId) === controller) previewControllers.delete(localId);
+      });
   };
 
   const isCurrentAttempt = (
@@ -243,6 +268,20 @@ export function createWorkspaceComposerAttachmentsController({
       )
       .catch(() => undefined)
       .finally(() => deleteControllers.delete(deleteController));
+  };
+
+  const discardAttachment = (attachment: WorkspaceComposerAttachment): void => {
+    const { localId, serverMetadata } = attachment;
+    revokeAttachmentPreview(localId);
+    if (attachment.status === "ready" && serverMetadata != null) {
+      deleteBestEffort(
+        localId,
+        attachment.scope,
+        serverMetadata,
+        deleteTransportByLocalId.get(localId) ?? currentTransport.delete,
+      );
+    }
+    deleteTransportByLocalId.delete(localId);
   };
 
   const pumpQueue = (): void => {
@@ -369,18 +408,7 @@ export function createWorkspaceComposerAttachmentsController({
     const discarded = store.getState().attachments;
     abortUploads();
     store.setState({ attachments: [] });
-    for (const attachment of discarded) {
-      revokeAttachmentPreview(attachment);
-      if (attachment.status === "ready" && attachment.serverMetadata != null) {
-        deleteBestEffort(
-          attachment.localId,
-          attachment.scope,
-          attachment.serverMetadata,
-          deleteTransportByLocalId.get(attachment.localId) ?? currentTransport.delete,
-        );
-      }
-      deleteTransportByLocalId.delete(attachment.localId);
-    }
+    for (const attachment of discarded) discardAttachment(attachment);
   };
 
   const controller: WorkspaceComposerAttachmentsController = {
@@ -393,7 +421,11 @@ export function createWorkspaceComposerAttachmentsController({
         const localId = createAttachmentLocalId();
         const attemptToken = nextAttemptToken();
         const initialValidation = validateFileUpload(file);
-        const previewUrl = createPersistentImagePreviewUrl(file);
+        const previewUrl =
+          normalizeImageMime(file.type).startsWith("image/") &&
+          !isHeicAttachment(file.name, file.type)
+            ? createPersistentImagePreviewUrl(file)
+            : null;
         if (previewUrl != null) activePreviewUrlsByLocalId.set(localId, previewUrl);
         localIds.push(localId);
         return {
@@ -415,6 +447,7 @@ export function createWorkspaceComposerAttachmentsController({
       store.setState((state) => ({ attachments: [...state.attachments, ...additions] }));
       for (const attachment of additions) {
         if (attachment.status === "validating") {
+          startHeicPreview(attachment);
           validateAndQueue(attachment.localId, attachment.attemptToken);
         }
       }
@@ -468,17 +501,8 @@ export function createWorkspaceComposerAttachmentsController({
       store.setState((state) => ({
         attachments: state.attachments.filter((candidate) => candidate.localId !== localId),
       }));
-      revokeAttachmentPreview(attachment);
+      discardAttachment(attachment);
       pumpQueue();
-      if (attachment.status === "ready" && attachment.serverMetadata != null) {
-        deleteBestEffort(
-          localId,
-          attachment.scope,
-          attachment.serverMetadata,
-          deleteTransportByLocalId.get(localId) ?? currentTransport.delete,
-        );
-      }
-      deleteTransportByLocalId.delete(localId);
     },
 
     updateTransport(nextTransport) {
@@ -516,7 +540,7 @@ export function createWorkspaceComposerAttachmentsController({
       }));
       for (const attachment of attachments) {
         if (!transferredLocalIds.has(attachment.localId)) continue;
-        revokeAttachmentPreview(attachment);
+        revokeAttachmentPreview(attachment.localId);
         deleteTransportByLocalId.delete(attachment.localId);
       }
       return result;
@@ -538,6 +562,7 @@ export function createWorkspaceComposerAttachmentsController({
         });
       }
       const committedLocalIds = new Set(transfer.map((attachment) => attachment.localId));
+      for (const localId of committedLocalIds) abortAttachmentPreview(localId);
       store.setState((state) => ({
         attachments: state.attachments.filter(
           (attachment) => !committedLocalIds.has(attachment.localId),
@@ -546,26 +571,16 @@ export function createWorkspaceComposerAttachmentsController({
       try {
         const result = await consume(transfer);
         for (const attachment of attachments) {
-          revokeAttachmentPreview(attachment);
+          revokeAttachmentPreview(attachment.localId);
           deleteTransportByLocalId.delete(attachment.localId);
         }
         return result;
       } catch (error) {
         if (!disposed && transactionScope === scope) {
           store.setState((state) => ({ attachments: [...attachments, ...state.attachments] }));
+          for (const attachment of attachments) startHeicPreview(attachment);
         } else {
-          for (const attachment of attachments) {
-            if (attachment.serverMetadata != null) {
-              deleteBestEffort(
-                attachment.localId,
-                attachment.scope,
-                attachment.serverMetadata,
-                deleteTransportByLocalId.get(attachment.localId) ?? currentTransport.delete,
-              );
-            }
-            revokeAttachmentPreview(attachment);
-            deleteTransportByLocalId.delete(attachment.localId);
-          }
+          for (const attachment of attachments) discardAttachment(attachment);
         }
         throw error;
       }

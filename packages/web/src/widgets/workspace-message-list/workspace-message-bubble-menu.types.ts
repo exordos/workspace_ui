@@ -30,6 +30,7 @@ export interface WorkspaceMessageBubbleMenuProps {
   onCopyMessageText?: (messageUuid: MessengerUuid, selectedText?: string) => void | Promise<void>;
   onToggleMessageReaction?: (messageUuid: MessengerUuid, emojiName: string) => void | Promise<void>;
   onLoadWorkspaceFilePreview?: LoadWorkspaceFilePreview;
+  onDownloadFile?: (file: WorkspaceMessageFileReference) => void | Promise<void>;
   getSelectedText: () => string | undefined;
 }
 

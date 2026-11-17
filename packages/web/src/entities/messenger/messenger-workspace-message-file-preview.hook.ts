@@ -1,5 +1,4 @@
 import { useLayoutEffect, useRef, type RefObject } from "react";
-import { normalizeWorkspacePreviewBlob } from "~/entities/messenger/messenger-workspace-message-preview-blob.lib";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import {
   captureWorkspaceRuntimeRequestContext,
@@ -27,6 +26,10 @@ import {
   deriveWorkspaceMediaPlaceholderLayout,
 } from "~/shared/lib/workspace-message-render/workspace-media-placeholder-layout.lib";
 import type { WorkspaceMessageFileReference } from "~/shared/lib/workspace-message-render/workspace-message-document.types";
+import {
+  buildWorkspaceMediaDisplayBlob,
+  isWorkspaceHeicMedia,
+} from "./messenger-workspace-message-preview-blob.lib";
 
 const previewLog = createLogger("workspace-message-preview");
 
@@ -40,6 +43,7 @@ interface UseWorkspaceMessageFilePreviewsParams {
   renderedHtml: string;
   fileReferences: readonly WorkspaceMessageFileReference[];
   onLoadWorkspaceFilePreview?: LoadWorkspaceFilePreview;
+  onDownloadWorkspaceFile?: (file: WorkspaceMessageFileReference) => void | Promise<void>;
 }
 
 interface MountedWorkspacePreview {
@@ -477,10 +481,12 @@ export function useWorkspaceMessageFilePreviews({
   renderedHtml,
   fileReferences,
   onLoadWorkspaceFilePreview,
+  onDownloadWorkspaceFile,
 }: UseWorkspaceMessageFilePreviewsParams): void {
   const { t } = useTranslation();
   const runtimeGeneration = useWorkspaceAuthStore((state) => state.runtimeGeneration);
   const retryLabel = t("common.retry");
+  const downloadLabel = t("mediaViewer.download");
   const openVideoViewerLabel = t("mediaViewer.openVideo");
   const videoQueuedLabel = t("mediaViewer.videoQueued");
   const videoLoadingLabel = t("mediaViewer.videoLoading");
@@ -488,6 +494,7 @@ export function useWorkspaceMessageFilePreviews({
   const videoDisplayFailedLabel = t("mediaViewer.videoDisplayFailed");
   const latestFileReferencesRef = useRef(fileReferences);
   const latestLoadWorkspaceFilePreviewRef = useRef(onLoadWorkspaceFilePreview);
+  const latestDownloadWorkspaceFileRef = useRef(onDownloadWorkspaceFile);
   const mediaPreviewKey = buildWorkspaceMediaPreviewKey(fileReferences);
   const hasPreviewLoader = onLoadWorkspaceFilePreview != null;
 
@@ -497,7 +504,8 @@ export function useWorkspaceMessageFilePreviews({
 
   useLayoutEffect(() => {
     latestLoadWorkspaceFilePreviewRef.current = onLoadWorkspaceFilePreview;
-  }, [onLoadWorkspaceFilePreview]);
+    latestDownloadWorkspaceFileRef.current = onDownloadWorkspaceFile;
+  }, [onDownloadWorkspaceFile, onLoadWorkspaceFilePreview]);
 
   useLayoutEffect(() => {
     if (!hasPreviewLoader) {
@@ -606,6 +614,8 @@ export function useWorkspaceMessageFilePreviews({
       reservePreviewLayout(placeholder, reference);
 
       let previewInFlight = false;
+      let isHeic = isWorkspaceHeicMedia(reference);
+      let downloadOnFallback = false;
       const readInvalidationVersion = () =>
         ownerKey == null ? 0 : getWorkspaceFileResourceInvalidationVersion(ownerKey, fileUuid);
       let latestInvalidationVersion = readInvalidationVersion();
@@ -623,6 +633,8 @@ export function useWorkspaceMessageFilePreviews({
           placeholder.focus({ preventScroll: true });
         }
         retryControl.remove();
+        retryControl.textContent = retryLabel;
+        downloadOnFallback = false;
         placeholder.style.position = mount.placeholderInitialPosition;
         if (mount.placeholderInitialRole != null) {
           placeholder.setAttribute("role", mount.placeholderInitialRole);
@@ -667,16 +679,14 @@ export function useWorkspaceMessageFilePreviews({
               return;
             }
 
-            const normalizedBlob = normalizeWorkspacePreviewBlob(blob, reference.contentType);
-            if (normalizedBlob.type !== blob.type) {
-              previewLog.debug("preview blob retyped", {
-                fileUuid,
-                fromType: blob.type || null,
-                toType: normalizedBlob.type,
-              });
-            }
-
-            const displayUrl = await createDisplayableBlobUrl(normalizedBlob, objectUrlRegistry);
+            isHeic = isWorkspaceHeicMedia(reference, blob.type);
+            const displayBlob = await buildWorkspaceMediaDisplayBlob(
+              blob,
+              reference,
+              abortController.signal,
+            );
+            if (!isCurrent()) return;
+            const displayUrl = await createDisplayableBlobUrl(displayBlob, objectUrlRegistry);
             if (!isCurrent()) {
               previewLog.debug("preview aborted before display", {
                 fileUuid,
@@ -718,6 +728,14 @@ export function useWorkspaceMessageFilePreviews({
       };
 
       mount.onFallback = () => {
+        if (
+          isHeic &&
+          placeholder.dataset.workspacePreviewStatus === "display-error" &&
+          latestDownloadWorkspaceFileRef.current != null
+        ) {
+          downloadOnFallback = true;
+          retryControl.textContent = downloadLabel;
+        }
         // An update can arrive before a previous 404 settles; consume it once,
         // without polling or starting a competing request.
         if (latestInvalidationVersion !== attemptedInvalidationVersion) {
@@ -728,6 +746,14 @@ export function useWorkspaceMessageFilePreviews({
       };
       mount.retryHandler = () => {
         if (!isCurrent()) return;
+        if (downloadOnFallback) {
+          void Promise.resolve()
+            .then(() => {
+              if (isCurrent()) return latestDownloadWorkspaceFileRef.current?.(reference);
+            })
+            .catch(() => undefined);
+          return;
+        }
         if (ownerKey != null) {
           invalidateWorkspaceFileResourceCache(ownerKey, fileUuid);
         }
@@ -778,6 +804,7 @@ export function useWorkspaceMessageFilePreviews({
     };
   }, [
     bodyRef,
+    downloadLabel,
     hasPreviewLoader,
     mediaPreviewKey,
     onLoadWorkspaceFilePreview,

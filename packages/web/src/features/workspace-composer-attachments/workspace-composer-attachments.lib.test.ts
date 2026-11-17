@@ -49,6 +49,26 @@ afterEach(() => {
 });
 
 describe("workspace composer attachment metadata", () => {
+  it("creates an image reference for HEIC even if the upload returns a generic MIME type", async () => {
+    const lastImage = installImage(1920, 1080);
+    const original = new File(["original"], "Photo.HEIC");
+    const uuid = "22222222-2222-4222-8222-222222222222";
+
+    const result = await buildWorkspaceComposerAttachmentMetadata(original, {
+      uuid,
+      content_type: "application/octet-stream",
+    });
+
+    expect(result).toMatchObject({
+      uuid,
+      name: original.name,
+      sizeBytes: original.size,
+      contentType: "application/octet-stream",
+      markdownLink: `![Photo.HEIC](urn:image:${uuid}?name=Photo.HEIC&content_type=application%2Foctet-stream&size=8)`,
+    });
+    expect(lastImage()).toBeNull();
+  });
+
   it.each(["", "Answer"])("keeps a quote card before uploaded images and %j", (answer) => {
     const quote = buildWorkspaceQuoteReference({
       senderName: "Отец [author]",
