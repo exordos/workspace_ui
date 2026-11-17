@@ -249,15 +249,20 @@ test.describe("Sidebar", () => {
 
     const sidebar = page.getByRole("navigation", { name: "Chat list" });
     const search = sidebar.getByRole("searchbox");
-    const chat = sidebar.getByRole("link", { name: "General", exact: true });
-    const topic = sidebar.getByRole("link", { name: /^#General(?! Notes)/ });
-    const extraTopic = sidebar.getByRole("link", { name: /^#Archive/ });
-    const matchingNotes = sidebar.getByRole("link", { name: /^#General Notes/ });
-    const otherTopics = sidebar.getByRole("separator", { name: "Остальные темы" });
-    const showMore = sidebar.getByRole("button", { name: /show more topics|показать ещё темы/i });
-    const hideExtra = sidebar.getByRole("button", { name: /hide extra topics|скрыть лишние темы/i });
-    const nextChat = sidebar.getByRole("link", { name: "General Support", exact: true });
+    const results = sidebar.locator("[data-sidebar-search-results]");
+    const chat = results.getByRole("link", { name: "General", exact: true });
+    const topic = results.getByRole("link", { name: /^#General(?! Notes)/ });
+    const extraTopic = results.getByRole("link", { name: /^#Archive/ });
+    const matchingNotes = results.getByRole("link", { name: /^#General Notes/ });
+    const otherTopics = results.getByRole("separator", { name: "Остальные темы" });
+    const showMore = results.getByRole("button", { name: /show more topics|показать ещё темы/i });
+    const hideExtra = results.getByRole("button", {
+      name: /hide extra topics|скрыть лишние темы/i,
+    });
+    const nextChat = results.getByRole("link", { name: "General Support", exact: true });
     await search.fill("General");
+    await expect(chat).toBeVisible();
+    await expect(matchingNotes).toBeVisible();
     await expect(extraTopic).toHaveCount(0);
     await expect(otherTopics).toHaveCount(0);
     await search.press("ArrowDown");
@@ -277,7 +282,7 @@ test.describe("Sidebar", () => {
     await expect(extraTopic).toBeInViewport();
     await expect(otherTopics).toBeVisible();
     await expect(
-      sidebar.locator("[data-sidebar-topic-uuid], [aria-label='Остальные темы']"),
+      results.locator("[data-sidebar-topic-uuid], [aria-label='Остальные темы']"),
     ).toHaveText([/^#General(?! Notes)/, /^#General Notes/, "Остальные темы", /^#Archive/]);
     await page.keyboard.press("ArrowUp");
     await expect(matchingNotes).toBeFocused();
