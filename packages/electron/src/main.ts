@@ -2,6 +2,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import {
   app,
+  autoUpdater as nativeAutoUpdater,
   BrowserWindow,
   clipboard,
   Menu,
@@ -15,7 +16,7 @@ import {
   powerMonitor,
 } from "electron";
 import { setupScreenSharingMain } from "@jitsi/electron-sdk/main";
-import { autoUpdater } from "electron-updater";
+import { autoUpdater, DebUpdater, RpmUpdater } from "electron-updater";
 import {
   APP_DISPLAY_NAME,
   APP_ID,
@@ -30,6 +31,7 @@ import {
   resolveNotificationClickRoute,
 } from "./deeplink-route.lib";
 import { registerJitsiCallWindow } from "./jitsi-call-window";
+import { relaunchAfterLinuxPackageUpdate } from "./linux-package-update-relaunch.lib";
 import { getShellContentSecurityPolicy } from "./security-policy.lib";
 import { createUnreadDotOverlaySvg } from "./unread-indicator.lib";
 import {
@@ -1389,7 +1391,17 @@ function configureAutoUpdater(): void {
 
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
-  autoUpdater.autoRunAppAfterInstall = true;
+  const isLinuxPackageUpdate =
+    autoUpdater instanceof DebUpdater || autoUpdater instanceof RpmUpdater;
+  autoUpdater.autoRunAppAfterInstall = !isLinuxPackageUpdate;
+
+  if (isLinuxPackageUpdate) {
+    nativeAutoUpdater.once("before-quit-for-update", () => {
+      app.once("quit", () =>
+        relaunchAfterLinuxPackageUpdate(process.execPath, process.argv.slice(1)),
+      );
+    });
+  }
 
   function send(channel: string, data?: Record<string, unknown>) {
     mainWindow?.webContents.send(channel, data);
