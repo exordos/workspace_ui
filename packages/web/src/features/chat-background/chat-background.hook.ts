@@ -33,7 +33,7 @@ export function useChatBackground(conversationId: string | null = null) {
     return runtime == null ? null : workspaceRuntimeOwnerKey(runtime);
   });
   // Refresh callbacks even when a new live runtime has the same durable owner.
-  useWorkspaceAuthStore((state) => state.runtimeGeneration);
+  const runtimeGeneration = useWorkspaceAuthStore((state) => state.runtimeGeneration);
   const request = captureWorkspaceRuntimeRequestContext(getRuntime);
   const key = owner == null ? null : chatBackgroundStorageKey(owner);
   const raw = useSyncExternalStore(
@@ -68,5 +68,5 @@ export function useChatBackground(conversationId: string | null = null) {
     window.dispatchEvent(new Event(CHANGED));
     return true;
   };
-  return { key, background, apply, available: owner != null, isCurrent };
+  return { key, runtimeGeneration, background, apply, available: owner != null, isCurrent };
 }

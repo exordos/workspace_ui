@@ -1,7 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { selectMessengerConversationFromWorkspaceRoute } from "~/entities/messenger/messenger-ids.lib";
-import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { useTranslation } from "~/i18n/i18n";
 import { parseWorkspaceMessengerRoute } from "~/shared/lib/workspace-messenger-route.lib";
 import { AppDialog } from "~/shared/ui/app-dialog";
@@ -59,18 +58,24 @@ export function ChatBackgroundSettings() {
     parseWorkspaceMessengerRoute(location.pathname),
   );
   const conversationId = selection.status === "conversation" ? selection.conversationId : null;
-  const generation = useWorkspaceAuthStore((state) => state.runtimeGeneration);
-  const { key } = useChatBackground();
+  const settings = useChatBackground(conversationId);
   return (
     <BackgroundOptions
-      key={`${key}:${generation}:${conversationId}`}
+      key={`${settings.key}:${settings.runtimeGeneration}:${conversationId}`}
       conversationId={conversationId}
+      settings={settings}
     />
   );
 }
-function BackgroundOptions({ conversationId }: { readonly conversationId: string | null }) {
+function BackgroundOptions({
+  conversationId,
+  settings,
+}: {
+  readonly conversationId: string | null;
+  readonly settings: ReturnType<typeof useChatBackground>;
+}) {
   const { t } = useTranslation();
-  const { background, apply, available, isCurrent } = useChatBackground(conversationId);
+  const { background, apply, available, isCurrent } = settings;
   const [error, setError] = useState<ChatBackgroundError | null>(null);
   const [working, setWorking] = useState(false);
   const [pending, setPending] = useState<{ value: ChatBackgroundValue } | null>(null);
