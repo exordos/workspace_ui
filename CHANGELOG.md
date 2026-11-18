@@ -6,6 +6,30 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.9.13] — 2026-11-18
+
+### Added
+
+- Preview HEIC/HEIF attachments in the composer, chat and media viewer while
+  preserving original uploads and downloads.
+- Show attachment download status, progress and retry actions in chat.
+- Add local chat backgrounds with global and per-conversation preferences.
+- Open desktop calls in a separate window by default, with an option to keep
+  embedded calls.
+- Expose channel key-sharing controls and improve keyboard chat navigation.
+
+### Fixed
+
+- Start attachment downloads when clicking SVG icons and nested icon paths.
+- Allow consecutive Linux DEB and RPM automatic updates.
+
+### Requirements and compatibility
+
+- Element minimum requirements are unchanged. This UI release adds no backend
+  migration; channel key-sharing controls require the matching backend field.
+- Chat backgrounds and the desktop call-window preference are local settings.
+- Reload browser tabs or update installed clients to use the new version.
+
 ## [0.9.12] — 2026-11-12
 
 ### Added
