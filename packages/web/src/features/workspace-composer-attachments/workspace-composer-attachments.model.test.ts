@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import * as heicPreview from "~/shared/lib/heic-preview.lib";
 import {
   createWorkspaceComposerAttachmentsController,
   selectWorkspaceComposerAttachmentViews,
@@ -175,6 +176,87 @@ describe("workspace composer attachments", () => {
 
     expect(controller.store.getState().attachments[0]?.previewUrl).toBeNull();
     expect(createObjectUrl).not.toHaveBeenCalled();
+  });
+
+  it("uploads the original HEIC independently of the JPEG preview", async () => {
+    const original = new File(["original bytes"], "Camera.HEIC");
+    const jpeg = new Blob(["preview bytes"], { type: "image/jpeg" });
+    const pendingPreview = deferred<Blob>();
+    const createHeicPreview = vi
+      .spyOn(heicPreview, "createHeicPreview")
+      .mockReturnValue(pendingPreview.promise);
+    const createObjectUrl = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:heic-preview");
+    const revokeObjectUrl = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    const upload = vi.fn((uploadFile: File) => Promise.resolve(metadata(uploadFile.name)));
+    const controller = createWorkspaceComposerAttachmentsController({
+      scope: SCOPE,
+      transport: transport(upload),
+    });
+
+    controller.add([original]);
+
+    await vi.waitFor(() =>
+      expect(selectWorkspaceComposerAttachmentsReady(controller.store.getState())).toBe(true),
+    );
+    expect(upload.mock.calls[0]?.[0]).toBe(original);
+    expect(createHeicPreview).toHaveBeenCalledWith(original, { signal: expect.any(AbortSignal) });
+    expect(createObjectUrl).not.toHaveBeenCalled();
+
+    pendingPreview.resolve(jpeg);
+    await vi.waitFor(() =>
+      expect(controller.store.getState().attachments[0]?.previewUrl).toBe("blob:heic-preview"),
+    );
+    expect(createObjectUrl).toHaveBeenCalledExactlyOnceWith(jpeg);
+    expect(controller.transferReady(() => true)).toBe(true);
+    expect(revokeObjectUrl).toHaveBeenCalledExactlyOnceWith("blob:heic-preview");
+  });
+
+  it("keeps the original HEIC sendable after preview decoding fails", async () => {
+    const original = new File(["invalid image"], "photo.heic", { type: "image/heic" });
+    const createHeicPreview = vi
+      .spyOn(heicPreview, "createHeicPreview")
+      .mockRejectedValue(new Error("Invalid HEIC"));
+    const createObjectUrl = vi.spyOn(URL, "createObjectURL");
+    const upload = vi.fn((uploadFile: File) => Promise.resolve(metadata(uploadFile.name)));
+    const controller = createWorkspaceComposerAttachmentsController({
+      scope: SCOPE,
+      transport: transport(upload),
+    });
+
+    controller.add([original]);
+
+    await vi.waitFor(() =>
+      expect(controller.store.getState().attachments[0]).toMatchObject({
+        status: "ready",
+        previewUrl: null,
+        error: null,
+      }),
+    );
+    expect(createHeicPreview).toHaveBeenCalledTimes(1);
+    expect(upload.mock.calls[0]?.[0]).toBe(original);
+    expect(createObjectUrl).not.toHaveBeenCalled();
+    expect(selectWorkspaceComposerAttachmentsBlockSend(controller.store.getState())).toBe(false);
+  });
+
+  it("aborts a pending HEIC preview when changing scope and ignores late output", async () => {
+    const pendingPreview = deferred<Blob>();
+    const createHeicPreview = vi
+      .spyOn(heicPreview, "createHeicPreview")
+      .mockReturnValue(pendingPreview.promise);
+    const createObjectUrl = vi.spyOn(URL, "createObjectURL");
+    const controller = createWorkspaceComposerAttachmentsController({
+      scope: SCOPE,
+      transport: transport((uploadFile) => Promise.resolve(metadata(uploadFile.name))),
+    });
+    controller.add([new File(["original"], "photo.heif", { type: "image/heif" })]);
+
+    controller.updateScope({ ...SCOPE, runtimeGeneration: 2 });
+    pendingPreview.resolve(new Blob(["preview"], { type: "image/jpeg" }));
+    await Promise.resolve();
+
+    expect(createHeicPreview.mock.calls[0]?.[1]?.signal?.aborted).toBe(true);
+    expect(createObjectUrl).not.toHaveBeenCalled();
+    expect(controller.store.getState().attachments).toEqual([]);
   });
 
   it("rejects empty, oversized, and invalid image files before transport upload", async () => {
@@ -617,6 +699,37 @@ describe("workspace composer attachments", () => {
       }),
     ]);
     expect(deleteRequest).not.toHaveBeenCalled();
+  });
+
+  it("releases an edit preview instead of restoring it after changing scope", async () => {
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:previous-edit");
+    const revokeObjectUrl = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    const deleteRequest = vi.fn(() => Promise.resolve());
+    const controller = createWorkspaceComposerAttachmentsController({
+      scope: SCOPE,
+      transport: transport(
+        (uploadFile) => Promise.resolve(metadata(uploadFile.name)),
+        deleteRequest,
+      ),
+    });
+    controller.add([pngFile("edit.png")]);
+    await vi.waitFor(() =>
+      expect(controller.store.getState().attachments[0]?.status).toBe("ready"),
+    );
+
+    const request = deferred<void>();
+    const result = controller.commitReady(() => request.promise);
+    controller.updateScope({ ...SCOPE, scopeKey: "topic-b" });
+    controller.updateScope(SCOPE);
+    request.reject(new Error("edit failed"));
+
+    await expect(result).rejects.toThrow("edit failed");
+    expect(controller.store.getState().attachments).toEqual([]);
+    expect(revokeObjectUrl).toHaveBeenCalledExactlyOnceWith("blob:previous-edit");
+    expect(deleteRequest).toHaveBeenCalledWith(
+      metadata("edit.png"),
+      expect.objectContaining({ scope: SCOPE }),
+    );
   });
 
   it("revokes image previews on transfer, scope discard, and dispose exactly once", async () => {

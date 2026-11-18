@@ -703,6 +703,7 @@ export const WorkspaceMessageBubblePresentation: React.FC<WorkspaceMessageBubble
       onLoadWorkspaceFilePreview: passiveContentEnabled
         ? interactiveActions?.onLoadWorkspaceFilePreview
         : undefined,
+      onDownloadWorkspaceFile: interactiveActions?.onDownloadFile,
     });
     useLayoutEffect(() => {
       if (!isPreview || bodyRef.current == null) return;
@@ -925,6 +926,7 @@ export const WorkspaceMessageBubblePresentation: React.FC<WorkspaceMessageBubble
             onLoadWorkspaceFilePreview={
               passiveContentEnabled ? interactiveActions?.onLoadWorkspaceFilePreview : undefined
             }
+            onDownloadFile={interactiveActions?.onDownloadFile}
             getSelectedText={getSelectedText}
           />
         ) : null}

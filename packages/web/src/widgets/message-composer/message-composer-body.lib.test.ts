@@ -333,6 +333,19 @@ describe("message-composer-body.lib", () => {
       const normalized = normalizeImageAttachmentFile(file);
       expect(normalized.type).toBe("image/webp");
     });
+
+    it("infers HEIC from its name and keeps the original data", async () => {
+      const file = new File(["original"], "IMG_001.HEIC", {
+        type: "application/octet-stream",
+        lastModified: 1234,
+      });
+      const normalized = normalizeImageAttachmentFile(file, "application/octet-stream");
+
+      expect(normalized.type).toBe("image/heic");
+      expect(normalized.name).toBe(file.name);
+      expect(normalized.lastModified).toBe(file.lastModified);
+      expect(await normalized.text()).toBe(await file.text());
+    });
   });
 
   describe("prepareAttachmentFiles", () => {

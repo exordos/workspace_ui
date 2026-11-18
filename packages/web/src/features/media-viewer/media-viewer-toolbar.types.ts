@@ -1,5 +1,6 @@
 export interface MediaViewerToolbarProps {
   actionsEnabled: boolean;
+  downloadEnabled?: boolean;
   showCopy: boolean;
   copyKey: string;
   showOpenInNewTab: boolean;

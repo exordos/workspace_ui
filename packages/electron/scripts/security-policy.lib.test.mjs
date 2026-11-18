@@ -46,4 +46,12 @@ describe("getShellContentSecurityPolicy", () => {
 
     assert.ok(csp.includes("media-src 'self' data: blob: https:"));
   });
+
+  it("allows WebAssembly compilation only when the app shell opts in", () => {
+    const appShell = securityPolicyLib.getShellContentSecurityPolicy(false, { allowWasm: true });
+    const callShell = securityPolicyLib.getShellContentSecurityPolicy(false);
+
+    assert.ok(appShell.includes("script-src 'self' 'wasm-unsafe-eval'"));
+    assert.ok(callShell.includes("script-src 'self'"));
+  });
 });

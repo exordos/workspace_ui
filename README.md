@@ -7,10 +7,12 @@ The independent `workspace_ui` Exordos element serves the web artifact and proxi
 ## Getting started
 
 Use the Node version in [.nvmrc](.nvmrc). Configure the Workspace backend origin and optional local settings using [the environment example](packages/web/.env.example).
+On a fresh checkout, [build the HEIC decoder](packages/web/vendor/heic/LICENSES.md) once before starting Vite.
 
 ```bash
 npm install
 cp packages/web/.env.example packages/web/.env
+bash packages/web/vendor/heic/build-libheif.sh --install-sdk
 npm run dev:web
 ```
 

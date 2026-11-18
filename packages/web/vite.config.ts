@@ -257,6 +257,8 @@ export default defineConfig(({ mode }) => {
               },
               workbox: {
                 globPatterns: ["**/*.{js,css,html,ico,png,svg,woff,woff2}"],
+                // The HEIC decoder is requested when a HEIC preview is needed.
+                globIgnores: ["**/heic-preview.worker-*.js"],
                 navigateFallback: "/index.html",
                 navigateFallbackDenylist: BACKEND_NAVIGATE_FALLBACK_DENY_LIST,
                 cleanupOutdatedCaches: true,

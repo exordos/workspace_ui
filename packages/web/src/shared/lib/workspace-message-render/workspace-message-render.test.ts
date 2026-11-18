@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { AUTH_IMAGE_PLACEHOLDER_SRC } from "~/shared/lib/media-display-url.lib";
 import { buildWorkspaceForwardUrn } from "~/shared/lib/workspace-reference-urn.lib";
+import { collectWorkspaceMarkdownFileReferences } from "./workspace-message-marked.lib";
 import { parseWorkspaceMessageBody } from "./workspace-message-parse.lib";
 import { DEFAULT_WORKSPACE_MESSAGE_RENDER_OPTIONS } from "./workspace-message-render-options.lib";
 import {
@@ -299,6 +300,24 @@ describe("workspace message render core", () => {
       hasLinks: true,
       hasAttachments: true,
     });
+  });
+
+  it("renders a legacy HEIC file reference as protected inline media without changing its URN", () => {
+    const fileUuid = "11111111-1111-4111-8111-111111111111";
+    const href = `urn:file:${fileUuid}?name=photo.HEIC&content_type=application%2Foctet-stream`;
+    const sourceMarkdown = `[photo.HEIC](${href})`;
+    const document = parseWorkspaceMessageBody(sourceMarkdown);
+    const result = renderWorkspaceMessageBody(document, {
+      ...DEFAULT_WORKSPACE_MESSAGE_RENDER_OPTIONS,
+      enableProtectedMedia: true,
+    });
+
+    expect(result.html).toContain(`data-workspace-file-uuid="${fileUuid}"`);
+    expect(result.html).toContain('data-workspace-media-kind="image"');
+    expect(collectWorkspaceMarkdownFileReferences(document.markdownTokens)).toContainEqual(
+      expect.objectContaining({ href, fileUuid, kind: "media", mediaKind: "image" }),
+    );
+    expect(document.sourceMarkdown).toBe(sourceMarkdown);
   });
 
   it("sanitizes malicious html and javascript links", () => {

@@ -1,9 +1,14 @@
 import React, { useEffect, useRef, useState } from "react";
-import type { LoadWorkspaceFilePreview } from "~/entities/messenger/messenger-workspace-message-file-preview.hook";
-import { normalizeWorkspacePreviewBlob } from "~/entities/messenger/messenger-workspace-message-preview-blob.lib";
+import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
+import {
+  captureWorkspaceRuntimeRequestContext,
+  isWorkspaceRuntimeRequestContextCurrent,
+} from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { createDisplayableBlobUrl } from "~/shared/lib/media-display-url.lib";
 import { MESSAGE_MEDIA_THUMBNAIL_CLASS_NAME } from "~/shared/lib/message-body-rich-text-classes";
 import type { WorkspaceMessageFileReference } from "~/shared/lib/workspace-message-render/workspace-message-document.types";
+import { buildWorkspaceMediaDisplayBlob } from "./messenger-workspace-message-preview-blob.lib";
+import type { LoadWorkspaceFilePreview } from "./messenger-workspace-message-file-preview.hook";
 
 interface WorkspaceMessageMediaThumbnailProps {
   reference: WorkspaceMessageFileReference;
@@ -23,6 +28,7 @@ export const WorkspaceMessageMediaThumbnail = React.memo(function WorkspaceMessa
   onStatusChange,
 }: WorkspaceMessageMediaThumbnailProps): React.ReactElement | null {
   const thumbnailRef = useRef<HTMLDivElement | null>(null);
+  const runtimeGeneration = useWorkspaceAuthStore((state) => state.runtimeGeneration);
   const releaseUrlRef = useRef<(url: string) => void>(NOOP_RELEASE);
   const [preview, setPreview] = useState<PreviewState>({ status: "loading", url: null });
 
@@ -37,6 +43,13 @@ export const WorkspaceMessageMediaThumbnail = React.memo(function WorkspaceMessa
     const releasedUrls = new Set<string>();
     let disposed = false;
     let started = false;
+    const getRuntimeContext = useWorkspaceAuthStore.getState().getCurrentRuntimeContext;
+    const requestContext = captureWorkspaceRuntimeRequestContext(getRuntimeContext);
+    const isCurrent = () =>
+      !disposed &&
+      (requestContext == null
+        ? getRuntimeContext() == null
+        : isWorkspaceRuntimeRequestContextCurrent(requestContext, getRuntimeContext));
     onStatusChange?.(reference.fileUuid, "loading");
 
     const releaseUrl = (url: string) => {
@@ -51,7 +64,7 @@ export const WorkspaceMessageMediaThumbnail = React.memo(function WorkspaceMessa
     releaseUrlRef.current = releaseUrl;
 
     const startLoad = () => {
-      if (started || disposed) return;
+      if (started || !isCurrent()) return;
       started = true;
       abortController = new AbortController();
       setPreview({ status: "loading", url: null });
@@ -59,18 +72,23 @@ export const WorkspaceMessageMediaThumbnail = React.memo(function WorkspaceMessa
       void (async () => {
         try {
           const blob = await onLoadWorkspaceFilePreview(reference, abortController.signal);
-          if (disposed) return;
+          if (!isCurrent()) return;
 
-          const normalizedBlob = normalizeWorkspacePreviewBlob(blob, reference.contentType);
-          const url = await createDisplayableBlobUrl(normalizedBlob, objectUrls);
-          if (disposed) {
+          const displayBlob = await buildWorkspaceMediaDisplayBlob(
+            blob,
+            reference,
+            abortController.signal,
+          );
+          if (!isCurrent()) return;
+          const url = await createDisplayableBlobUrl(displayBlob, objectUrls);
+          if (!isCurrent()) {
             releaseUrl(url);
             return;
           }
 
           setPreview({ status: "ready", url });
         } catch (error: unknown) {
-          if (!disposed && !(error instanceof Error && error.name === "AbortError")) {
+          if (isCurrent() && !(error instanceof Error && error.name === "AbortError")) {
             setPreview({ status: "error", url: null });
             onStatusChange?.(reference.fileUuid, "error");
           }
@@ -106,7 +124,7 @@ export const WorkspaceMessageMediaThumbnail = React.memo(function WorkspaceMessa
         releaseUrlRef.current = NOOP_RELEASE;
       }
     };
-  }, [onLoadWorkspaceFilePreview, onStatusChange, reference]);
+  }, [onLoadWorkspaceFilePreview, onStatusChange, reference, runtimeGeneration]);
 
   if (onLoadWorkspaceFilePreview == null || preview.status === "error") {
     return null;

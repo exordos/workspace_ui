@@ -1,3 +1,4 @@
+import { isHeicAttachment } from "~/shared/lib/heic-preview.lib";
 import type { WorkspaceMessageFileReference } from "./workspace-message-document.types";
 
 const UUID_PATTERN_SOURCE = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
@@ -78,7 +79,8 @@ export function parseWorkspaceMessageFileHref(
   const width = parseIntegerParam(parsed.searchParams, "w");
   const height = parseIntegerParam(parsed.searchParams, "h");
   const sizeBytes = parseIntegerParam(parsed.searchParams, "size", true);
-  const mediaKind = parsed.type === "image" || parsed.type === "video" ? parsed.type : undefined;
+  const heicMediaKind = isHeicAttachment(name, contentType) ? "image" : undefined;
+  const mediaKind = parsed.type === "file" ? heicMediaKind : parsed.type;
   const kind = mediaKind == null ? "attachment" : "media";
 
   return {

@@ -7741,6 +7741,33 @@ describe("WorkspaceMessageList", () => {
     expect(screen.queryByRole("menuitem", { name: "Copy image" })).not.toBeInTheDocument();
   });
 
+  it("downloads a legacy HEIC from its context menu without a viewer", async () => {
+    const fileUuid = "44444444-4444-4444-8444-444444444444";
+    const href = `urn:file:${fileUuid}?name=photo.heic&content_type=application%2Foctet-stream`;
+    const onDownloadFile = vi.fn();
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "heic-context-message",
+            markdown: `[photo.heic](${href})`,
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onDownloadFile }}
+      />,
+    );
+
+    const placeholder = container.querySelector(`[data-workspace-file-uuid="${fileUuid}"]`);
+    expect(placeholder).toHaveAttribute("data-workspace-media-kind", "image");
+    fireEvent.contextMenu(placeholder!, { clientX: 120, clientY: 80 });
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Download" }));
+    expect(onDownloadFile).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ fileUuid, href, name: "photo.heic" }),
+    );
+  });
+
   it("opens the Workspace bubble menu from keyboard context menu shortcut", async () => {
     const { container } = render(
       <WorkspaceMessageList

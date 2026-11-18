@@ -16,13 +16,23 @@ env:
   VITE_DEFAULT_LOGIN_ORGANIZATION_URL: ${{ vars.DEFAULT_LOGIN_ORGANIZATION_URL }}
 
 jobs:
+  build-heic-decoder:
+    uses: ./.github/workflows/build-heic-decoder.yml
+
   lint:
     name: Typecheck and ESLint
+    needs: build-heic-decoder
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
     steps:
       - uses: actions/checkout@v6
+
+      - name: Download HEIC decoder
+        uses: actions/download-artifact@v4
+        with:
+          name: heic-decoder
+          path: packages/web/vendor/heic
 
       - uses: actions/setup-node@v6
         with:
@@ -49,11 +59,18 @@ jobs:
 
   tests:
     name: Unit tests
+    needs: build-heic-decoder
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
     steps:
       - uses: actions/checkout@v6
+
+      - name: Download HEIC decoder
+        uses: actions/download-artifact@v4
+        with:
+          name: heic-decoder
+          path: packages/web/vendor/heic
 
       - uses: actions/setup-node@v6
         with:
@@ -87,6 +104,12 @@ jobs:
 
       - uses: actions/checkout@v6
 
+      - name: Download HEIC decoder
+        uses: actions/download-artifact@v4
+        with:
+          name: heic-decoder
+          path: packages/web/vendor/heic
+
       - uses: actions/setup-node@v6
         with:
           node-version-file: .nvmrc
@@ -118,6 +141,12 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6
+
+      - name: Download HEIC decoder
+        uses: actions/download-artifact@v4
+        with:
+          name: heic-decoder
+          path: packages/web/vendor/heic
 
       - uses: actions/setup-node@v6
         with:
@@ -209,6 +238,12 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - name: Download HEIC decoder
+        uses: actions/download-artifact@v4
+        with:
+          name: heic-decoder
+          path: packages/web/vendor/heic
+
       - uses: actions/setup-node@v6
         with:
           node-version-file: .nvmrc
@@ -294,6 +329,12 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6
+
+      - name: Download HEIC decoder
+        uses: actions/download-artifact@v4
+        with:
+          name: heic-decoder
+          path: packages/web/vendor/heic
 
       - uses: actions/setup-node@v6
         with:

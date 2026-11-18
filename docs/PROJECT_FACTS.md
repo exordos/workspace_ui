@@ -75,6 +75,18 @@ GitHub fallback (requires repository access):
 
 These branch links can move. For a release or a cross-repository change, record the backend revision actually inspected. A missing local file or failed network request is not evidence that a backend capability is absent.
 
+## HEIC attachments
+
+The composer uploads the original HEIC/HEIF file. The chat and media viewer can
+display a locally generated JPEG from a lazily loaded WebAssembly decoder.
+Historical `urn:file` links with a HEIC/HEIF MIME type or filename are eligible
+for preview using their existing file UUID. Workspace downloads still use the
+original bytes and filename from the file API.
+
+CI supplies the WebAssembly decoder as a build artifact. On a fresh local
+checkout, [generate the decoder](../packages/web/vendor/heic/LICENSES.md) before
+starting the dev server or building the app.
+
 ## Unread counter presentation
 
 Unread counts above 1000 display as whole thousands rounded down with a plus sign: 1001–1999 as `1k+`, 2000–2999 as `2k+`, and so on in count badges, Inbox rows and stream totals, the unread message divider, and the browser window title. The scroll-to-bottom button uses the same formatted bucket in its localized accessible name. Values of 1000 or less display as received. Backend-bounded category counts can be approximate even below this display threshold. The shared formatter changes presentation only: API adapters, numeric store/cache values, aggregate calculations, badge visibility and notification/read behavior retain their existing contracts. Non-unread activity counts, including drafts and starred messages, stay exact. Topic and stream badge selection still prefers active unread and otherwise shows passive unread in gray.

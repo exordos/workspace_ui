@@ -2,8 +2,18 @@ import EmojiPicker, { EmojiStyle, Theme, type EmojiClickData } from "emoji-picke
 import React, { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { isMessengerUuid } from "~/entities/messenger/messenger-ids.lib";
+import {
+  buildWorkspaceMediaDisplayBlob,
+  isWorkspaceHeicMedia,
+} from "~/entities/messenger/messenger-workspace-message-preview-blob.lib";
+import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
+import {
+  captureWorkspaceRuntimeRequestContext,
+  isWorkspaceRuntimeRequestContextCurrent,
+} from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { t } from "~/i18n/i18n";
 import { writeImage, writeText } from "~/shared/lib/clipboard";
+import type { WorkspaceMessageFileReference } from "~/shared/lib/workspace-message-render/workspace-message-document.types";
 import { formatWorkspaceMessageTimesForCopy } from "~/shared/lib/workspace-message-render/workspace-message-marked.lib";
 import { DropdownMenu, type DropdownMenuItem } from "~/shared/ui/dropdown-menu";
 import { Icon } from "~/shared/ui/icon";
@@ -27,6 +37,24 @@ const REACTION_EMOJI_PICKER_HEIGHT = 360;
 const REACTION_EMOJI_PICKER_MARGIN = 8;
 const REACTION_EMOJI_PICKER_GAP = 8;
 const subscribeToNoQuickReactionUpdates = () => () => {};
+
+async function loadImageForClipboard(
+  reference: WorkspaceMessageFileReference,
+  loadPreview: NonNullable<WorkspaceMessageBubbleMenuProps["onLoadWorkspaceFilePreview"]>,
+): Promise<Blob> {
+  const getRuntimeContext = useWorkspaceAuthStore.getState().getCurrentRuntimeContext;
+  const requestContext = captureWorkspaceRuntimeRequestContext(getRuntimeContext);
+  const isCurrent = () =>
+    requestContext == null
+      ? getRuntimeContext() == null
+      : isWorkspaceRuntimeRequestContextCurrent(requestContext, getRuntimeContext);
+  const { signal } = new AbortController();
+  const original = await loadPreview(reference, signal);
+  if (!isCurrent()) throw new DOMException("Preview scope changed", "AbortError");
+  const preview = await buildWorkspaceMediaDisplayBlob(original, reference, signal);
+  if (!isCurrent()) throw new DOMException("Preview scope changed", "AbortError");
+  return preview;
+}
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(min, value), max);
@@ -174,6 +202,7 @@ export const WorkspaceMessageBubbleMenu = React.memo(function WorkspaceMessageBu
   onCopyMessageLink,
   onToggleMessageReaction,
   onLoadWorkspaceFilePreview,
+  onDownloadFile,
   getSelectedText,
   onPollSettings,
   onPollClose,
@@ -339,11 +368,25 @@ export const WorkspaceMessageBubbleMenu = React.memo(function WorkspaceMessageBu
         icon: "images",
         label: t("message.copyImage"),
         onSelect: () => {
-          const controller = new AbortController();
-          const imageBlob = Promise.resolve().then(() =>
-            onLoadWorkspaceFilePreview(contextImageFile, controller.signal),
-          );
+          const imageBlob = loadImageForClipboard(contextImageFile, onLoadWorkspaceFilePreview);
+          void imageBlob.catch(() => undefined);
           void writeImage(imageBlob);
+          closeMenu();
+        },
+      });
+    }
+    if (
+      contextImageFile != null &&
+      isWorkspaceHeicMedia(contextImageFile) &&
+      onDownloadFile != null
+    ) {
+      secondaryActionItems.push({
+        type: "action",
+        key: "download-original",
+        icon: "download",
+        label: t("mediaViewer.download"),
+        onSelect: () => {
+          void onDownloadFile(contextImageFile);
           closeMenu();
         },
       });
@@ -458,6 +501,7 @@ export const WorkspaceMessageBubbleMenu = React.memo(function WorkspaceMessageBu
     onAddReplyMessage,
     onCopyMessageText,
     onCopyMessageLink,
+    onDownloadFile,
     onEditMessage,
     onForwardMessage,
     onLoadWorkspaceFilePreview,

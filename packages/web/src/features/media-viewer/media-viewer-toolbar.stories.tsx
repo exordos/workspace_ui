@@ -28,4 +28,7 @@ type Story = StoryObj<typeof meta>;
 
 export const Image: Story = {};
 export const ImageLoading: Story = { args: { actionsEnabled: false } };
+export const ImagePreviewUnavailable: Story = {
+  args: { actionsEnabled: false, downloadEnabled: true },
+};
 export const Video: Story = { args: { showCopy: false } };

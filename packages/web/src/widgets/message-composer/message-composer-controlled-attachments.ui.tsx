@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import type { LoadWorkspaceFilePreview } from "~/entities/messenger/messenger-workspace-message-file-preview.hook";
+import { buildWorkspaceMediaDisplayBlob } from "~/entities/messenger/messenger-workspace-message-preview-blob.lib";
 import { t } from "~/i18n/i18n";
 import { createDisplayableBlobUrl } from "~/shared/lib/media-display-url.lib";
 import { AttachmentCard } from "~/shared/ui/attachment-card";
@@ -141,8 +142,18 @@ function RestoredWorkspaceAttachmentCard({
   onLoadWorkspaceFilePreview?: LoadWorkspaceFilePreview;
   renderCard: (card: React.ReactElement, previewAvailable: boolean) => React.ReactElement;
 }>) {
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [preview, setPreview] = useState<{
+    url: string;
+    reference: NonNullable<MessageComposerAttachmentView["workspaceFile"]>;
+    load: LoadWorkspaceFilePreview;
+  } | null>(null);
   const reference = attachment.workspaceFile;
+  const previewUrl =
+    preview != null &&
+    preview.reference === reference &&
+    preview.load === onLoadWorkspaceFilePreview
+      ? preview.url
+      : null;
 
   useEffect(() => {
     if (
@@ -157,16 +168,17 @@ function RestoredWorkspaceAttachmentCard({
     let active = true;
     const revokeRegistry: string[] = [];
     void onLoadWorkspaceFilePreview(reference, controller.signal)
+      .then((blob) => buildWorkspaceMediaDisplayBlob(blob, reference, controller.signal))
       .then((blob) => createDisplayableBlobUrl(blob, revokeRegistry))
       .then((url) => {
         if (!active) {
           URL.revokeObjectURL(url);
           return;
         }
-        setPreviewUrl(url);
+        setPreview({ url, reference, load: onLoadWorkspaceFilePreview });
       })
       .catch(() => {
-        if (active) setPreviewUrl(null);
+        if (active) setPreview(null);
       });
     return () => {
       active = false;
@@ -233,6 +245,7 @@ export const MessageComposerControlledAttachmentCards = React.memo(
       if (attachment.workspaceFile != null) {
         return (
           <RestoredWorkspaceAttachmentCard
+            key={attachment.localId}
             attachment={attachment}
             onRemove={() => onRemoveAttachment?.(attachment.localId)}
             onLoadWorkspaceFilePreview={onLoadWorkspaceFilePreview}

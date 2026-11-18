@@ -1,4 +1,5 @@
 import type { WorkspaceFileMetadata } from "~/shared/api/messenger-files.api";
+import { isHeicAttachment } from "~/shared/lib/heic-preview.lib";
 import { sanitizeFilename } from "~/shared/lib/validation";
 import {
   createWorkspaceMarkdownLexer,
@@ -137,8 +138,9 @@ export async function buildWorkspaceComposerAttachmentMetadata(
 ): Promise<WorkspaceComposerAttachmentServerMetadata> {
   const name = safeFileName(file);
   const contentType = uploaded.content_type.trim() || file.type.trim();
-  const urnType = resolveUrnType(contentType);
-  const dimensions = await readMediaDimensions(urnType, file, options.signal);
+  const isHeic = isHeicAttachment(name, contentType);
+  const urnType = isHeic ? "image" : resolveUrnType(contentType);
+  const dimensions = isHeic ? null : await readMediaDimensions(urnType, file, options.signal);
   const params = new URLSearchParams({ name });
   if (contentType.length > 0) params.set("content_type", contentType);
   if (dimensions != null) {

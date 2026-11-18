@@ -9,6 +9,7 @@ const TOOLBAR_BUTTON_CLASS =
 
 export const MediaViewerToolbar: React.FC<MediaViewerToolbarProps> = ({
   actionsEnabled,
+  downloadEnabled = actionsEnabled,
   showCopy,
   copyKey,
   showOpenInNewTab,
@@ -33,10 +34,10 @@ export const MediaViewerToolbar: React.FC<MediaViewerToolbarProps> = ({
   const handleDownload = useCallback(
     (event: React.MouseEvent) => {
       event.stopPropagation();
-      if (!actionsEnabled) return;
+      if (!downloadEnabled) return;
       onDownload();
     },
-    [actionsEnabled, onDownload],
+    [downloadEnabled, onDownload],
   );
 
   const handleClose = useCallback(
@@ -80,7 +81,7 @@ export const MediaViewerToolbar: React.FC<MediaViewerToolbarProps> = ({
         type="button"
         className={TOOLBAR_BUTTON_CLASS}
         onClick={handleDownload}
-        disabled={!actionsEnabled}
+        disabled={!downloadEnabled}
         aria-label={t("mediaViewer.download")}
       >
         <Icon name="download" size={20} />
