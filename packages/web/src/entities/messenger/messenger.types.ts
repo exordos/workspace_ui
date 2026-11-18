@@ -73,7 +73,7 @@ export interface MessengerStream {
   activeUnreadCount?: number;
   passiveUnreadCount?: number;
   sourceName: WorkspaceMessengerSourceName;
-  source: WorkspaceMessengerSourceDto;
+  source?: WorkspaceMessengerSourceDto;
   audience: MessengerAudience;
   isPrivate: boolean;
   inviteOnly: boolean;

@@ -56,7 +56,7 @@ export interface WorkspaceMessengerStreamDto {
   active_unread_count: number;
   passive_unread_count: number;
   source_name: WorkspaceMessengerSourceName;
-  source: WorkspaceMessengerSourceDto;
+  source?: WorkspaceMessengerSourceDto;
   invite_only: boolean;
   announce: boolean;
   private: boolean;
@@ -1123,7 +1123,7 @@ export function isWorkspaceMessengerStreamDto(
     isNonNegativeInteger(value.active_unread_count) &&
     isNonNegativeInteger(value.passive_unread_count) &&
     isSourceName(value.source_name) &&
-    isWorkspaceMessengerSourceDto(value.source) &&
+    (value.source === undefined || isWorkspaceMessengerSourceDto(value.source)) &&
     typeof value.invite_only === "boolean" &&
     typeof value.announce === "boolean" &&
     typeof value.private === "boolean" &&
