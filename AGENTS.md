@@ -21,6 +21,7 @@ Workspace API is the source of truth for the messenger. Read [Project Facts](doc
 
 ## Domain and architecture
 
+- For module design and agreed incremental refactoring, use the [Workspace module design skill](.agents/skills/workspace-module-design/SKILL.md). It links the refactoring principles and relevant scenarios. Keep business state and workflow coordination in explicit owning modules; views receive data and callbacks, with local interaction state in UI. Apply agreed boundaries within the task scope and current import policy; record open proposals as such.
 - Use Workspace UUIDs and the existing DTO-to-domain adapters. Do not add hidden Zulip fallbacks, numeric ID conversions, or fabricated domain data.
 - Check the backend contract before declaring a capability unsupported. If it is unsupported, expose that state explicitly.
 - `entities/messenger` owns catalogs and domain actions; `entities/message` owns the Workspace message store. Session and request ownership belong to `entities/workspace-auth` and `entities/workspace-runtime`.

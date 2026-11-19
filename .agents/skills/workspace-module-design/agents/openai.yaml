@@ -1,0 +1,4 @@
+interface:
+  display_name: "Workspace Module Design"
+  short_description: "Проектирование и рефакторинг модулей Workspace"
+  default_prompt: "Используй $workspace-module-design для разбора границ модулей и состояния в сценарии Workspace."
