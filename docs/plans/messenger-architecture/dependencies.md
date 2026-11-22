@@ -2,7 +2,7 @@
 
 [Карта заметок](README.md) · [Структура src](source-structure.md) · [Принципы](principles.md)
 
-Вариант обсуждения от 19 ноября 2026 года. Направление разделения на `applications` и общие `modules` согласовано. Ниже сохранены правила связей для этого варианта. Точный граф, публичные контракты и техническое внедрение ещё уточняются. При реализации действуют текущие [правила импортов](../../fsd-architecture.md#files-and-imports), пока переход явно не согласован.
+Согласованное направление разделения на `applications` и общие `modules` и внутренние границы мессенджера. Ниже приведены правила и начальный граф для рассмотренных сценариев. Сигнатуры, техническая проверка и порядок перехода остаются открытыми. Существующий код следует текущим [правилам импортов](../../fsd-architecture.md#files-and-imports).
 
 ## На какую архитектуру это похоже
 
@@ -44,13 +44,18 @@ platform
 
 `app` создаёт приложения и общие модули, собирает оболочку и совместные сценарии. Приложения и общие бизнес-модули используют инфраструктуру. Платформа получает доменные обработчики при сборке. Циклы зависимостей между общими модулями исключаются. Внутри приложения связи проверяются отдельно, например по графу мессенджера ниже.
 
+Ответственность инфраструктуры, сборки и доменных обработчиков описана в [границах платформы](platform.md#граница-с-app-и-мессенджером).
+
 ```ts
-const realtime = createRealtime({
-  onEvent: messengerEvents.apply,
-});
+const applier = composeWorkspaceRealtimeAppliers([
+  users.events,
+  messenger.events,
+  calendar.events,
+]);
+const realtime = createRealtime({ session, applier });
 ```
 
-Переданный callback позволяет транспорту доставить событие мессенджеру. Код транспорта не импортирует его внутренние файлы.
+Workspace собирает такую композицию на каждого владельца сессии. Каждое событие передаётся всем обработчикам этой сессии, которые сами определяют его применимость. UI подписывается на стор выбранной сессии через её runtime. Код транспорта получает обработчики через параметры сборки. [Жизненный цикл и подписка](workspace-runtime.md#runtime-и-тёплый-стор-на-каждую-сессию) · [Контракт обработки и курсора](workspace-runtime.md#контракт-обработки-события)
 
 ## Публичные операции и состояние
 
@@ -59,33 +64,65 @@ const realtime = createRealtime({
 ```ts
 users.getById(userUuid);
 drafts.update(draftRef, { text });
-sending.submitDraft({ draftRef, revision });
+messages.sendDraft({ draftRef, revision });
 ```
 
 Другой модуль запрашивает изменение у владельца. Store, HTTP и кеш остаются внутренними деталями владельца. Публичный контракт описывает результат и гарантии операции. Его точная форма ещё обсуждается.
 
 ## Связи внутри мессенджера
 
+Целевое направление `pages → features → model`. `pages` также может вызвать публичную операцию `model`, если она нужна для сборки или навигации. `create-messenger.ts` создаёт сервисы и подключает `runtime/sync` вне жизненного цикла React. `runtime/sync` обращается к модели по публичным контрактам.
+
+| Откуда         | Допустимые связи                                                                                                                                                                                 |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `pages`        | Публичные входы `features` и `model`. Связь между блоками экрана выражается через props и callbacks.                                                                                             |
+| `features`     | Публичные входы `model` и конкретные ацикличные зависимости от общей возможности другого feature. Например, лента и сайдбар используют общий хук для E2EE, а лента подключает содержимое опроса. |
+| `model`        | Конкретные ацикличные зависимости от публичных входов соседей, например `messages → drafts, crypto`. UI и маршрутизация находятся выше модели.                                                   |
+| `runtime/sync` | Публичные операции модели для загрузки, восстановления и применения событий.                                                                                                                     |
+
 ```text
-composer     → drafts, sending
-sending      → drafts, messages, crypto
-presentation → messages, crypto
-timeline     → messages, presentation, sending
-sync         → chats, messages, sending
+pages/messenger                → features/sidebar, conversation-header, timeline, composer, chat-details
+pages/messenger (ссылка)       → model/messages.openAroundMessage
+features/sidebar               → model/chats, model/messages, features/decrypted-message
+features/conversation-header   → model/chats
+features/chat-details          → model/chats
+features/timeline              → model/messages, features/decrypted-message, features/polls
+features/composer              → model/drafts, model/messages
+features/decrypted-message     → model/messages (тип Message), model/crypto
+features/polls                 → model/messages
+model/messages                 → model/drafts, model/crypto
+runtime/sync                   → model/chats, model/messages
 ```
 
-Это начальный граф для проверки на сценариях. Например, чтение данных `timeline` может быть оформлено через тонкую связку с UI. Обратный вызов, переданный при сборке, не требует обратного импорта.
+Список показывает основные связи рассмотренных сценариев. Workspace `shared`, `modules/users` и `platform` используются по [общему направлению зависимостей](#направление-зависимостей).
 
-При появлении цикла вроде `messages → sending → messages` проверяем, какой сценарий должен координировать обе стороны. Пример предложенной общей операции подтверждения:
+Внешний потребитель обращается к намеренно открытому входу, например `features/sidebar/sidebar.tsx`, `features/decrypted-message/decrypted-message.ts` или `model/messages/messages.ts`. `index.ts` допустим для набора явных экспортов. Внутренние файлы вызывают друг друга напрямую. Чужое состояние читают через публичный снимок или подписку, изменения запрашивают через операции владельца. Store, cache и транспортные вызовы остаются внутри модуля. Тесты и истории модуля могут обращаться к его внутренним файлам.
+
+Пример координации через страницу: `Sidebar` вызывает `onSelectChat`, `MessengerPage` обновляет маршрут, `ConversationView` передаёт `conversationId` в ленту и композер. Для E2EE лента и превью сайдбара вызывают `decrypted-message` внутри своих связок. Опрос лента передаёт через публичный `PollBody`, а кнопки вызывают команды `model/messages`. `messages` применяет серверный снимок опроса и координирует исходящую очередь. Для шифрования при доставке он вызывает `model/crypto` без участия UI. [Сборка экрана](source-structure.md#экран-и-навигация) · [Рендер сообщения](scenarios/present-message.md) · [Голосование](scenarios/polls.md)
+
+Внутри `messages` публичные операции координируют хранилище подтверждённых сообщений, историю и очередь:
+
+```text
+messages.ts → history, repository, outgoing
+history     → переданная операция приёма серверных данных
+outgoing    → drafts, crypto, переданная операция приёма результата доставки
+repository  → адаптеры и кеш
+```
+
+Внутренние части не импортируют публичный вход родителя и не вызывают друг друга по кругу. Функция приёма передаётся при сборке внутри `messages` и вызывает только операции принятия данных и подтверждения, не запуская из них новую доставку или загрузку.
 
 ```ts
-function acceptServerMessage(message) {
-  messages.applyServerMessage(message);
-  sending.reconcileConfirmation(message);
+// Внутри messages.
+async function acceptServerMessages(batch, scope) {
+  const result = await repository.accept(batch, scope);
+  if (result.status === "stale-session") return result;
+
+  await outgoing.confirmObserved(result.serverEvidence, scope);
+  return result;
 }
 ```
 
-Последовательность и ошибки такой операции принадлежат сценарию согласования. Пример не задаёт окончательную сигнатуру или место хранения функции. Подробные гарантии и разные порядки HTTP и realtime разобраны в [отправке](scenarios/send-message.md#6-согласование-с-сервером).
+Изначально `sending → messages` требовал обратной связи, когда сообщение из истории подтверждало отправку. Рассматривались callback, подписка и внешний координатор, но отдельное публичное использование `sending` пока не обосновано. Поэтому последовательность и ошибки общего приёма принадлежат `messages`, а очередь остаётся его явной внутренней ответственностью. `sync` координирует запуск и восстановление, не подтверждая каждую отправку отдельно. Подробности решения и гарантии — в [отправке](scenarios/send-message.md#решение-отправка-внутри-messages).
 
 ## Связи между приложениями
 
@@ -105,7 +142,7 @@ async function createMeetingFromMessage(messageId) {
 Прямую операцию используем, когда вызывающему нужен результат. Подписка позволяет наблюдать за изменениями.
 
 ```ts
-const outgoing = await sending.submitDraft(request);
+const outgoing = await messages.sendDraft(request);
 messages.subscribeWindow(conversationId, renderHistory);
 ```
 
@@ -113,9 +150,8 @@ messages.subscribeWindow(conversationId, renderHistory);
 
 ## Что остаётся определить
 
-- Разрешённые зависимости между конкретными бизнес-модулями и форма их публичных входов.
-- Места координации сценариев, затрагивающих нескольких владельцев.
-- Реализация контрактов, создание экземпляров и их время жизни.
-- Проверка графа зависимостей линтером и порядок перехода от действующей FSD.
+- Точные сигнатуры публичных операций, подписок и callback по мере переноса сценариев.
+- Механизм проверки направлений, циклов и глубоких импортов в CI.
+- Последовательность перехода от действующей структуры. Новые связи между features или владельцами модели описываем в сценарии и добавляем в граф по мере необходимости.
 
-В строгой FSD связи слайсов регулируются слоями. Для предложенных `applications` и общих `modules` нужно отдельно определить проверяемый граф бизнес-зависимостей. [Правила FSD](https://feature-sliced.design/docs/reference/layers)
+Вариант использует слои по мотивам FSD. Внутренний граф мессенджера допускает явно обоснованные связи соседей, указанные выше. [Правила FSD](https://feature-sliced.design/docs/reference/layers)

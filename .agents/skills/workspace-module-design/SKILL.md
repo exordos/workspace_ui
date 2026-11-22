@@ -19,7 +19,7 @@ For each boundary, name the coordination problem it owns and what becomes easier
 
 ```ts
 drafts.update(draftRef, { text });
-sending.submitDraft({ draftRef, revision });
+messages.sendDraft({ draftRef, revision });
 messages.loadMore({ conversationId, direction: "before" });
 ```
 
@@ -27,7 +27,7 @@ Describe the owned state, its consumers, permitted mutations and lifetime. Walk 
 
 ## Keep business behavior with its owner
 
-Keep workflow coordination, requests and storage decisions in the owning business module. A page composes the screen and translates navigation into user intent. A thin hook or connected component subscribes to a module and binds its operations to a view.
+Keep workflow coordination, requests and storage decisions in the owning business module. A page composes the screen and translates navigation into user intent. A thin hook or connected component subscribes to a module and binds its operations to a view. Keep one owner for each piece of domain state. Features read and request changes through the owner’s public contract and own their derived views and interaction state. [Messenger ownership rule](../../../docs/plans/messenger-architecture/principles.md#владение-состоянием-и-проекциями)
 
 ```tsx
 function ComposerConnected({ draftRef }) {
@@ -37,7 +37,7 @@ function ComposerConnected({ draftRef }) {
     <ComposerView
       text={draft.text}
       onTextChange={(text) => drafts.update(draftRef, { text })}
-      onSend={() => sending.submitDraft({ draftRef, revision: draft.revision })}
+      onSend={() => messages.sendDraft({ draftRef, revision: draft.revision })}
     />
   );
 }
