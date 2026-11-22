@@ -200,7 +200,12 @@ describe("useLayoutWorkspaceRealtime", () => {
     startWorkspacePresenceReporterMock.mockClear();
     onPowerResumeMock.mockClear();
     powerResumeListeners.clear();
-    useWorkspaceAuthStore.setState({ sessions: [], currentAccountId: null, runtimeGeneration: 0 });
+    useWorkspaceAuthStore.setState({
+      sessions: [],
+      reauthRequiredAccounts: [],
+      currentAccountId: null,
+      runtimeGeneration: 0,
+    });
     useMessengerStore.getState().clear();
     useActivityStore.getState().clear();
     useExternalChatsStore.getState().clear();
@@ -215,7 +220,12 @@ describe("useLayoutWorkspaceRealtime", () => {
     vi.clearAllMocks();
     ensureFreshWorkspaceSessionMock.mockClear();
     workspaceRealtimeRuntimeOptions.length = 0;
-    useWorkspaceAuthStore.setState({ sessions: [], currentAccountId: null, runtimeGeneration: 0 });
+    useWorkspaceAuthStore.setState({
+      sessions: [],
+      reauthRequiredAccounts: [],
+      currentAccountId: null,
+      runtimeGeneration: 0,
+    });
     useMessengerStore.getState().clear();
     useActivityStore.getState().clear();
     useExternalChatsStore.getState().clear();
@@ -318,6 +328,78 @@ describe("useLayoutWorkspaceRealtime", () => {
     rerender({ pathname, bootstrapBoundary: nextBoundary });
     await waitFor(() => expect(startedContexts).toHaveLength(3));
     expect(startedContexts[2]?.startCursor).toEqual(nextBoundary.cursor);
+  });
+
+  it("keeps background runtime live while the selected account reauthorizes and bootstraps", async () => {
+    const active = createSession();
+    const background = createSession({
+      accountId: "background",
+      instanceId: "background-instance",
+      projectId: "background-project",
+    });
+    setWorkspaceSession(active);
+    useWorkspaceAuthStore.setState({ sessions: [active, background] });
+    const { runtimeFactory, runtimes, startedContexts, factoryOptions } = createRuntimeFactory();
+    const cursorStorage = createWorkspaceRealtimeCursorStorage(new MemoryStorage());
+    const cursorStorageFactory = () => cursorStorage;
+    const applier = createWorkspaceRealtimeNoopApplier();
+    const boundary: LayoutWorkspaceBootstrapBoundary = {
+      runtimeContext: active,
+      cursor: { epochGeneration: "generation-a", epochVersion: 100 },
+      signal: new AbortController().signal,
+    };
+    const { rerender } = renderHook<void, { boundary: LayoutWorkspaceBootstrapBoundary | null }>(
+      ({ boundary }) =>
+        useLayoutWorkspaceRealtime({
+          enabled: true,
+          pathname: "/org/org-a/project/project-a/messenger",
+          bootstrapBoundary: boundary,
+          runtimeFactory,
+          cursorStorageFactory,
+          applier,
+          presenceReporterFactory: noopPresenceReporterFactory,
+        }),
+      { initialProps: { boundary } },
+    );
+    await waitFor(() => expect(startedContexts).toHaveLength(2));
+    const backgroundRuntime = runtimes[1]!;
+    const backgroundContext = startedContexts[1]!;
+    const backgroundOwnerCurrent = factoryOptions[1]!.isOwnerCurrent;
+
+    act(() => {
+      useWorkspaceAuthStore.getState().requireReauthorization(active.accountId);
+    });
+    await waitFor(() => expect(runtimes[0]?.stop).toHaveBeenCalledWith("manager_remove"));
+    expect(backgroundRuntime.stop).not.toHaveBeenCalled();
+    expect(backgroundOwnerCurrent(backgroundContext.owner)).toBe(true);
+
+    rerender({ boundary: null });
+    await act(() => {
+      const state = useWorkspaceAuthStore.getState();
+      state.restoreReauthorizedSession(state.reauthRequiredAccounts[0]!, {
+        ...active,
+        accessToken: "restored-access",
+      });
+      return Promise.resolve();
+    });
+    expect(startedContexts).toHaveLength(2);
+    expect(backgroundOwnerCurrent(backgroundContext.owner)).toBe(true);
+
+    const restored = useWorkspaceAuthStore.getState().getCurrentSession()!;
+    const nextBoundary = {
+      ...boundary,
+      runtimeContext: restored,
+      cursor: { epochGeneration: "generation-a", epochVersion: 200 },
+    };
+    rerender({ boundary: nextBoundary });
+    await waitFor(() => expect(startedContexts).toHaveLength(3));
+    expect(startedContexts[2]).toMatchObject({
+      surface: "active",
+      owner: { accountId: active.accountId, runtimeGeneration: restored.runtimeGeneration },
+      startCursor: nextBoundary.cursor,
+    });
+    expect(backgroundRuntime.start).toHaveBeenCalledTimes(1);
+    expect(backgroundRuntime.stop).not.toHaveBeenCalled();
   });
 
   it("starts active realtime runtime for current Workspace project route", async () => {

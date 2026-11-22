@@ -57,14 +57,14 @@ const EncryptedChatPreview = React.lazy(() =>
   })),
 );
 function resolveWorkspaceMessengerRootFromSessions(params: {
-  sessions: WorkspaceAuthSession[];
+  sessions: Pick<WorkspaceAuthSession, "accountId" | "organizationId" | "projectId">[];
   currentAccountId: string | null;
   orgId?: string;
 }): string {
   const currentSession =
     params.sessions.find((session) => session.accountId === params.currentAccountId) ?? null;
   const routeSession =
-    params.orgId != null
+    params.orgId != null && currentSession?.organizationId !== params.orgId
       ? (params.sessions.find((session) => session.organizationId === params.orgId) ??
         currentSession)
       : currentSession;
@@ -80,8 +80,13 @@ export const WorkspaceMessengerRootRedirect: React.FC = () => {
   const { hash } = useLocation();
   const { orgId } = useParams<{ orgId?: string }>();
   const sessions = useWorkspaceAuthStore((state) => state.sessions);
+  const reauthRequiredAccounts = useWorkspaceAuthStore((state) => state.reauthRequiredAccounts);
   const currentAccountId = useWorkspaceAuthStore((state) => state.currentAccountId);
-  const target = resolveWorkspaceMessengerRootFromSessions({ sessions, currentAccountId, orgId });
+  const target = resolveWorkspaceMessengerRootFromSessions({
+    sessions: [...sessions, ...reauthRequiredAccounts],
+    currentAccountId,
+    orgId,
+  });
   return <Navigate to={preserveWorkspaceProfileShareHash(target, hash)} replace />;
 };
 
@@ -133,10 +138,12 @@ export const LoginAppRoutes: React.FC = () => (
 
 export interface AuthenticatedAppRoutesProps {
   defaultMessengerRoute: string;
+  currentAccountNeedsReauth?: boolean;
 }
 
 export const AuthenticatedAppRoutes: React.FC<AuthenticatedAppRoutesProps> = ({
   defaultMessengerRoute,
+  currentAccountNeedsReauth = false,
 }) => {
   const location = useLocation();
   const diagnosticsRouteElement = IS_CONNECTION_DIAGNOSTICS_ENABLED ? (
@@ -144,6 +151,7 @@ export const AuthenticatedAppRoutes: React.FC<AuthenticatedAppRoutesProps> = ({
   ) : (
     <Navigate to={defaultMessengerRoute} replace />
   );
+  const licensesRouteElement = currentAccountNeedsReauth ? <Layout /> : <LicensesPage />;
 
   return (
     <Routes>
@@ -153,8 +161,8 @@ export const AuthenticatedAppRoutes: React.FC<AuthenticatedAppRoutesProps> = ({
       <Route path="/login" element={<LoginPage />} />
       <Route path="/" element={<WorkspaceShareEntryRedirect fallback={defaultMessengerRoute} />} />
       <Route path="/org/:orgId" element={<WorkspaceMessengerRootRedirect />} />
-      <Route path="/licenses" element={<LicensesPage />} />
-      <Route path="/org/:orgId/licenses" element={<LicensesPage />} />
+      <Route path="/licenses" element={licensesRouteElement} />
+      <Route path="/org/:orgId/licenses" element={licensesRouteElement} />
       <Route element={<Layout />}>
         <Route path="/calendar" element={<CalendarPage />} />
         <Route path="/mail" element={<MailPage />} />

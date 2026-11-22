@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { act, screen, waitFor } from "@testing-library/react";
 import { Outlet, useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WorkspaceAuthSession } from "~/entities/workspace-auth/workspace-auth.model";
@@ -26,10 +26,13 @@ vi.mock("~/widgets/layout/layout.ui", () => {
   return {
     Layout: () => {
       layoutOwners.push(useWorkspaceAuthStore.getState().currentAccountId);
+      const needsReauth = useWorkspaceAuthStore((state) =>
+        state.reauthRequiredAccounts.some(
+          (account) => account.accountId === state.currentAccountId,
+        ),
+      );
       return (
-        <div data-testid="layout-shell">
-          <Outlet />
-        </div>
+        <div data-testid="layout-shell">{needsReauth ? <span>reauth-host</span> : <Outlet />}</div>
       );
     },
   };
@@ -85,7 +88,12 @@ function LocationProbe() {
 describe("App default routing", () => {
   afterEach(() => {
     layoutOwners.length = 0;
-    useWorkspaceAuthStore.setState({ sessions: [], currentAccountId: null, runtimeGeneration: 0 });
+    useWorkspaceAuthStore.setState({
+      sessions: [],
+      reauthRequiredAccounts: [],
+      currentAccountId: null,
+      runtimeGeneration: 0,
+    });
   });
 
   function createSession(): WorkspaceAuthSession {
@@ -138,6 +146,57 @@ describe("App default routing", () => {
     renderWithProviders(<App />, { route: "/" });
 
     expect(await screen.findByText("inbox-page")).toBeInTheDocument();
+  });
+
+  it("keeps the only saved account in the shell when it requires reauthorization", async () => {
+    const session = createSession();
+    setAuthorizedSession();
+    useWorkspaceAuthStore.getState().requireReauthorization(session.accountId);
+
+    renderWithProviders(
+      <>
+        <App />
+        <LocationProbe />
+      </>,
+      { route: "/" },
+    );
+
+    expect(await screen.findByText("reauth-host")).toBeInTheDocument();
+    expect(screen.queryByText("login-page")).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByTestId("location-path")).toHaveTextContent(
+        "/org/zulip.example.com/project/project-a/messenger",
+      ),
+    );
+    expect(useWorkspaceAuthStore.getState().currentAccountId).toBe(session.accountId);
+  });
+
+  it("keeps a locked message deep link through reauthorization", async () => {
+    const session = createSession();
+    setAuthorizedSession();
+    useWorkspaceAuthStore.getState().requireReauthorization(session.accountId);
+    const lockedAccount = useWorkspaceAuthStore.getState().reauthRequiredAccounts[0]!;
+    const route = "/org/zulip.example.com/project/project-a/message/message-uuid";
+
+    renderWithProviders(
+      <>
+        <App />
+        <LocationProbe />
+      </>,
+      { route },
+    );
+
+    expect(await screen.findByText("reauth-host")).toBeInTheDocument();
+    expect(screen.queryByTestId("chat-page")).not.toBeInTheDocument();
+    act(() => {
+      useWorkspaceAuthStore.getState().restoreReauthorizedSession(lockedAccount, {
+        ...session,
+        accessToken: "new-access-token",
+      });
+    });
+
+    expect(await screen.findByTestId("chat-page")).toBeInTheDocument();
+    expect(screen.getByTestId("location-path")).toHaveTextContent(route);
   });
 
   it("renders licenses route outside layout shell", async () => {

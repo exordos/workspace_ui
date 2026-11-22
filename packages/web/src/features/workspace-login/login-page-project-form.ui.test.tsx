@@ -35,7 +35,9 @@ describe("LoginPageProjectForm", () => {
     expect(screen.getByRole("button", { name: "Login" })).toBeDisabled();
     fireEvent.click(screen.getByRole("combobox", { name: "Project" }));
     fireEvent.click(
-      within(screen.getByRole("listbox")).getByRole("option", { name: "Product — Example" }),
+      within(screen.getByRole("listbox")).getByRole("option", {
+        name: "Product — Example",
+      }),
     );
 
     expect(onProjectChange).toHaveBeenCalledWith("project-b");

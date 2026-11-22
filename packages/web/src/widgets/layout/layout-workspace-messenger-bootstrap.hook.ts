@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useState } from "react";
+import { useShallow } from "zustand/react/shallow";
 import { useActivityStore } from "~/entities/activity/activity.model";
 import { useWorkspaceMessageStore } from "~/entities/message/message.model";
 import { bootstrapMessengerStore } from "~/entities/messenger/messenger-bootstrap.lib";
@@ -49,12 +50,7 @@ export function useLayoutWorkspaceMessengerBootstrap(options: {
   retryNonce?: number;
 }): LayoutWorkspaceBootstrapBoundary | null {
   const { enabled, retryNonce = 0 } = options;
-  const sessions = useWorkspaceAuthStore((state) => state.sessions);
-  const currentAccountId = useWorkspaceAuthStore((state) => state.currentAccountId);
-  const runtimeContext = useMemo(
-    () => selectCurrentWorkspaceRuntimeContext({ sessions, currentAccountId }),
-    [sessions, currentAccountId],
-  );
+  const runtimeContext = useWorkspaceAuthStore(useShallow(selectCurrentWorkspaceRuntimeContext));
   const clearMessengerStore = useMessengerStore((state) => state.clear);
   const setWorkspaceMessageOwner = useWorkspaceMessageStore((state) => state.setOwner);
   const runtimeOwnerKey = runtimeContext == null ? null : workspaceRuntimeOwnerKey(runtimeContext);
