@@ -6,6 +6,7 @@ import {
 } from "~/entities/message/message.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
+import * as messengerClient from "~/shared/api/messenger-client";
 import { MessengerApiError } from "~/shared/api/messenger-client";
 import type {
   MessengerCollectionPage,
@@ -15,7 +16,10 @@ import type {
   WorkspaceMessengerMessageDto,
   WorkspaceMessengerMessageReactionDto,
 } from "~/shared/api/messenger.types";
+import { createMessages } from "./messages";
 import { adaptMessengerMessage } from "./messenger-adapters.lib";
+import * as messengerCache from "./messenger-cache.lib";
+import * as messengerReactions from "./messenger-message-reactions-actions.lib";
 import { syncMessengerOwnerOwnMessageReactions } from "./messenger-message-reactions-actions.lib";
 import {
   applyMessengerMessageWindow,
@@ -203,6 +207,148 @@ describe("messenger conversation messages loader", () => {
     useWorkspaceMessageStore.getState().clear();
     useMessengerOutboxStore.getState().clear();
     clearMessengerReadBoundariesForOwner(workspaceRuntimeOwnerKey(createRuntimeContext()));
+  });
+
+  it("only starts public older pagination after the authoritative opening window applies", async () => {
+    const runtimeContext = createRuntimeContext();
+    const ownerKey = prepareStoreOwner(runtimeContext);
+    const cached = adaptMessengerMessage(
+      createMessageDto({ uuid: MESSAGE_B, created_at: DATE_LATER }),
+    );
+    const { conversationId } = cached;
+    const options = { runtimeContext, getRuntimeContext: () => runtimeContext };
+    const facade = createMessages(options);
+    const pagination = createMessages(options);
+    const serverWindow = createDeferred<MessengerCollectionPage<WorkspaceMessengerMessageDto>>();
+    const reactionRead = createDeferred<void>();
+    const controller = new AbortController();
+    const readCache = vi
+      .spyOn(messengerCache, "readMessengerConversationWindowCache")
+      .mockResolvedValue({ messages: [cached], nextPageMarker: "cached-older", hasMore: true });
+    const getMessagesPage = vi
+      .spyOn(messengerClient, "getMessagesPage")
+      .mockImplementation((_options, query) => {
+        if (query?.pageMarker != null) {
+          return Promise.resolve({
+            items: [createMessageDto()],
+            nextPageMarker: null,
+            pageLimit: 50,
+          });
+        }
+        if (query?.read === false) {
+          return Promise.resolve({ items: [], nextPageMarker: null, pageLimit: 1 });
+        }
+        return serverWindow.promise;
+      });
+    const hydrateReactions = vi
+      .spyOn(messengerReactions, "hydrateMessengerOwnMessageReactionsFromCache")
+      .mockImplementation(async ({ messageUuids }) => {
+        if (messageUuids.includes(MESSAGE_C)) await reactionRead.promise;
+        return { status: "applied", ownerKey, messageUuids: [...messageUuids], reactions: 0 };
+      });
+    const syncReactions = vi
+      .spyOn(messengerReactions, "syncMessengerOwnerOwnMessageReactions")
+      .mockResolvedValue({ status: "applied", ownerKey, messageUuids: [], reactions: 0 });
+    const loadOlder = () =>
+      pagination.loadMore({
+        conversationId,
+        direction: "before",
+        signal: controller.signal,
+      });
+    const onServerWindowApplied = vi.fn(loadOlder);
+    const openingSettled = vi.fn();
+    const opening = facade.openWindow({
+      conversationId,
+      at: "latest",
+      signal: controller.signal,
+      onServerWindowApplied,
+    });
+    void opening.then(openingSettled, openingSettled);
+    try {
+      await vi.waitFor(() => expect(getMessagesPage).toHaveBeenCalledTimes(2));
+      expect(facade.getWindow(conversationId)).toMatchObject({
+        messages: [{ uuid: MESSAGE_B }],
+        hasOlder: true,
+        loading: false,
+      });
+      await expect(loadOlder()).resolves.toEqual({ status: "skipped", reason: "busy" });
+      expect(getMessagesPage).toHaveBeenCalledTimes(2);
+      expect(onServerWindowApplied).not.toHaveBeenCalled();
+
+      serverWindow.resolve({
+        items: [createMessageDto({ uuid: MESSAGE_C, created_at: DATE_LATEST })],
+        nextPageMarker: "server-older",
+        pageLimit: 50,
+      });
+      await vi.waitFor(() => expect(onServerWindowApplied).toHaveBeenCalledOnce());
+      await expect(onServerWindowApplied.mock.results[0]?.value).resolves.toEqual({
+        status: "applied",
+      });
+      expect(hydrateReactions).toHaveBeenCalledWith(
+        expect.objectContaining({ messageUuids: [MESSAGE_C] }),
+      );
+      expect(openingSettled).not.toHaveBeenCalled();
+      expect(getMessagesPage).toHaveBeenCalledTimes(3);
+      expect(getMessagesPage).toHaveBeenLastCalledWith(
+        expect.anything(),
+        expect.objectContaining({ pageMarker: "server-older" }),
+      );
+      expect(facade.getWindow(conversationId).messages.map(({ uuid }) => uuid)).toEqual([
+        MESSAGE_A,
+        MESSAGE_C,
+      ]);
+    } finally {
+      controller.abort();
+      serverWindow.resolve(createMessagesPage([]));
+      reactionRead.resolve();
+      await opening.catch(() => undefined);
+      readCache.mockRestore();
+      getMessagesPage.mockRestore();
+      hydrateReactions.mockRestore();
+      syncReactions.mockRestore();
+    }
+  });
+
+  it("does not settle a delayed public history page in the next owner's store", async () => {
+    const runtimeA = createRuntimeContext();
+    prepareStoreOwner(runtimeA);
+    let activeRuntime = runtimeA;
+    const message = adaptMessengerMessage(createMessageDto());
+    const { conversationId } = message;
+    replaceConversationWindow({
+      conversationId,
+      messages: [message],
+      beforePageMarker: "next-page",
+    });
+
+    const facade = createMessages({
+      runtimeContext: runtimeA,
+      getRuntimeContext: () => activeRuntime,
+    });
+    const response = createDeferred<MessengerCollectionPage<WorkspaceMessengerMessageDto>>();
+    const getMessagesPage = vi
+      .spyOn(messengerClient, "getMessagesPage")
+      .mockReturnValue(response.promise);
+    try {
+      const request = facade.loadMore({
+        conversationId,
+        direction: "before",
+        signal: new AbortController().signal,
+      });
+      await vi.waitFor(() => expect(getMessagesPage).toHaveBeenCalledTimes(1));
+      expect(facade.getWindow(conversationId).loading).toBe(true);
+
+      activeRuntime = createRuntimeContext({ accountId: ACCOUNT_B, runtimeGeneration: 2 });
+      prepareStoreOwner(activeRuntime);
+      const nextState = useWorkspaceMessageStore.getState();
+      expect(facade.getWindow(conversationId).messages).toEqual([]);
+      response.resolve(createMessagesPage([createMessageDto({ uuid: MESSAGE_B })]));
+
+      await expect(request).resolves.toEqual({ status: "skipped", reason: "stale-owner" });
+      expect(useWorkspaceMessageStore.getState()).toBe(nextState);
+    } finally {
+      getMessagesPage.mockRestore();
+    }
   });
 
   it("accepts a repeated server-unread frontier that contradicts an unchanged cached cursor", async () => {
@@ -2330,6 +2476,18 @@ describe("messenger conversation messages loader", () => {
       error: "server failed",
     });
 
+    const state = useWorkspaceMessageStore.getState();
+    expect(selectWorkspaceMessagesForConversation(state, cachedMessage.conversationId)).toEqual([
+      cachedMessage,
+    ]);
+    expect(
+      selectWorkspaceMessageStatusForConversation(state, cachedMessage.conversationId),
+    ).toEqual({
+      loading: false,
+      error: "server failed",
+      hasMore: true,
+      nextPageMarker: "cached-next",
+    });
     expect(hydrateFromCache).toHaveBeenCalledWith(
       expect.objectContaining({
         runtimeContext,

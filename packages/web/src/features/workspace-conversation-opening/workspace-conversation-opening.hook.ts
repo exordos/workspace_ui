@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useReducer, useRef } from "react";
+import type { Messages } from "~/entities/messenger/messages";
 import { resolveMessengerTopic } from "~/entities/messenger/messenger-conversation-metadata.lib";
 import { readMessengerConversationPosition } from "~/entities/messenger/messenger-conversation-position.lib";
-import { loadMessengerConversationMessages } from "~/entities/messenger/messenger-messages-loader.lib";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import type { MessengerTopic, MessengerConversationId } from "~/entities/messenger/messenger.types";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
@@ -99,17 +99,20 @@ function reduceOpening(state: OpeningState, action: OpeningAction): OpeningState
   if (action.scope !== state.scope) return state;
   if (action.type === "control")
     return state.viewport === "user" ? state : { ...state, viewport: "user" };
+  // После публикации окна готовность интерфейса сохраняется при сбое фоновой работы.
   if (state.phase === "ready" && action.type === "failed") return state;
   return { ...state, phase: action.type === "applied" ? "ready" : "failed" };
 }
 
 /** One mounted opening owns its request and viewport intent; pagination is independent. */
 export function useWorkspaceConversationOpening({
+  messages,
   runtimeContext,
   conversationId,
   enabled,
   retryNonce,
 }: {
+  messages: Messages | null;
   runtimeContext: WorkspaceRuntimeContext | null;
   conversationId: MessengerConversationId | null;
   enabled: boolean;
@@ -126,7 +129,7 @@ export function useWorkspaceConversationOpening({
   };
   const [state, dispatch] = useReducer(reduceOpening, initial);
   const current = state.scope === scope ? state : initial;
-  // The loader checks intent synchronously immediately before applying its window.
+  // Загрузчик сверяется с текущим намерением прокрутки прямо перед применением окна.
   const intentRef = useRef({ scope, retain: restored });
   const requestRef = useRef<{ scope: string; controller: AbortController } | null>(null);
   const acceptWindow = useCallback(() => {
@@ -136,12 +139,13 @@ export function useWorkspaceConversationOpening({
     dispatch({ type: "applied", scope });
   }, [scope]);
   const takeControl = useCallback(() => {
+    // Действие пользователя закрепляет видимую позицию, пока серверный запрос готовит окно.
     intentRef.current = { scope, retain: true };
     dispatch({ type: "control", scope });
   }, [scope]);
 
   useEffect(() => {
-    if (!enabled || runtimeContext == null || conversationId == null) return;
+    if (!enabled || messages == null || conversationId == null) return;
     const savedPosition = readMessengerConversationPosition(conversationId);
     const restoredAtStart = savedPosition?.kind === "anchor";
     const retained = intentRef.current.scope === scope ? intentRef.current.retain : restoredAtStart;
@@ -157,36 +161,41 @@ export function useWorkspaceConversationOpening({
     });
     const controller = new AbortController();
     requestRef.current = { scope, controller };
-    const retainCurrentWindow = () => intentRef.current.scope === scope && intentRef.current.retain;
-    void loadMessengerConversationMessages({
-      runtimeContext,
-      conversationId,
-      getRuntimeContext: () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
-      signal: controller.signal,
-      resolveUnreadBoundary: savedPosition == null,
-      openingAnchorUuid: savedPosition?.messageKey,
-      retainCurrentWindow,
-      onServerWindowApplied: () => {
-        if (controller.signal.aborted) return;
-        dispatch({ type: "applied", scope });
-      },
-    }).then(
-      (result) => {
-        if (controller.signal.aborted || result.status === "applied") return;
-        intentRef.current = { scope, retain: true };
-        dispatch({ type: "failed", scope });
-      },
-      () => {
-        if (controller.signal.aborted) return;
-        intentRef.current = { scope, retain: true };
-        dispatch({ type: "failed", scope });
-      },
-    );
+    // Даже в том же контексте ответ предыдущей попытки может прийти после повтора.
+    const isCurrent = () =>
+      requestRef.current?.controller === controller && !controller.signal.aborted;
+    const retainCurrentWindow = () =>
+      isCurrent() && intentRef.current.scope === scope && intentRef.current.retain;
+    void messages
+      .openWindow({
+        conversationId,
+        at: "latest",
+        signal: controller.signal,
+        savedPosition: savedPosition == null ? null : { messageUuid: savedPosition.messageKey },
+        retainCurrentWindow,
+        onServerWindowApplied: () => {
+          if (!isCurrent()) return;
+          // После применения серверного окна можно догружать историю, пока обновляются реакции.
+          dispatch({ type: "applied", scope });
+        },
+      })
+      .then(
+        (result) => {
+          if (!isCurrent() || result.status === "applied") return;
+          intentRef.current = { scope, retain: true };
+          dispatch({ type: "failed", scope });
+        },
+        () => {
+          if (!isCurrent()) return;
+          intentRef.current = { scope, retain: true };
+          dispatch({ type: "failed", scope });
+        },
+      );
     return () => {
       controller.abort();
       if (requestRef.current?.controller === controller) requestRef.current = null;
     };
-  }, [conversationId, enabled, retryNonce, runtimeContext, scope]);
+  }, [conversationId, enabled, messages, retryNonce, scope]);
 
   return {
     pending: enabled && current.phase === "pending",

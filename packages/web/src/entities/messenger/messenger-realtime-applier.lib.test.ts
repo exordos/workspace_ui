@@ -19,6 +19,7 @@ import type {
   WorkspaceRealtimeEventContext,
   WorkspaceRealtimeRuntimeOwner,
 } from "~/shared/lib/workspace-realtime/workspace-realtime-runtime.lib";
+import { createMessages } from "./messages";
 import { adaptMessengerMessage } from "./messenger-adapters.lib";
 import { repairDeletedMessagePointers } from "./messenger-deleted-message-pointer-repair.lib";
 import { MESSENGER_ALL_CHATS_FOLDER_UUID } from "./messenger-folder-system-type.lib";
@@ -42,6 +43,7 @@ import {
   useMessengerStore,
 } from "./messenger.model";
 import type { RemoveMessengerStreamProjectionOptions } from "./messenger-stream-projection-cleanup.lib";
+import type { MessengerMessage } from "./messenger.types";
 
 const ACCOUNT_A = "account-a";
 const INSTANCE_A = "instance-a";
@@ -1035,6 +1037,73 @@ describe("messenger realtime active applier", () => {
     expect(cache.writeRealtimeCursor).toHaveBeenNthCalledWith(1, ownerKey, 11);
     expect(cache.writeRealtimeCursor).toHaveBeenNthCalledWith(2, ownerKey, 12);
     expect(cache.writeRealtimeCursor).toHaveBeenNthCalledWith(3, ownerKey, 13);
+  });
+
+  it("notifies only the public window affected by a legacy realtime edit", async () => {
+    const context = createContext();
+    const runtimeContext = {
+      ...context.owner,
+      organizationOrigin: "https://organization-a.example.com",
+      accessToken: "access-token-a",
+    };
+    useMessengerStore.getState().startBootstrap(context.ownerKey);
+    useWorkspaceMessageStore.getState().setOwner(context.ownerKey, false);
+    const visible = adaptMessengerMessage(createMessageDto());
+    const unrelated = adaptMessengerMessage(
+      createMessageDto({ uuid: MESSAGE_B, topic_uuid: TOPIC_B }),
+    );
+    for (const message of [visible, unrelated]) {
+      useWorkspaceMessageStore.getState().replaceConversationWindow({
+        conversationId: message.conversationId,
+        expectedRevision: null,
+        capturedMutationRevision: 0,
+        mode: "tail",
+        anchorMessageUuid: null,
+        messages: [message],
+        markers: { beforePageMarker: null, afterPageMarker: null },
+      });
+    }
+
+    const facade = createMessages({ runtimeContext, getRuntimeContext: () => runtimeContext });
+    const readVisible = () => facade.getWindow(visible.conversationId);
+    const initial = readVisible();
+    expect(initial.messages[0]?.uuid).toBe(visible.uuid);
+    const listener = vi.fn(readVisible);
+    const unsubscribe = facade.subscribeWindow(visible.conversationId, listener);
+    const applier = createMessengerRealtimeActiveApplier({
+      cache: { patchCachedMessage: vi.fn() },
+    });
+    const edit = (epochVersion: number, message: MessengerMessage) =>
+      applier.applyEvent(
+        {
+          epoch_version: epochVersion,
+          type: "message",
+          kind: "message.updated",
+          message: createMessageDto({
+            uuid: message.uuid,
+            topic_uuid: message.topicUuid,
+            payload: { kind: "markdown", content: "Edited through realtime" },
+            updated_at: DATE_LATER,
+          }),
+        },
+        context,
+      );
+
+    try {
+      await edit(11, unrelated);
+      expect(readVisible()).toBe(initial);
+      expect(listener).not.toHaveBeenCalled();
+
+      await edit(12, visible);
+      expect(listener).toHaveBeenCalledTimes(1);
+      expect(listener).toHaveReturnedWith(readVisible());
+      expect(readVisible().messages[0]).toMatchObject({
+        uuid: visible.uuid,
+        payload: { kind: "markdown", content: "Edited through realtime" },
+      });
+    } finally {
+      unsubscribe();
+    }
   });
 
   it("repairs last-message pointers when the deleted tail arrives through realtime", async () => {

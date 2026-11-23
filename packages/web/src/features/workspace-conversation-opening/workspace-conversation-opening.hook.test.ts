@@ -1,5 +1,7 @@
 import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { useWorkspaceMessageStore } from "~/entities/message/message.model";
+import { createMessages } from "~/entities/messenger/messages";
 import type {
   LoadMessengerConversationMessagesOptions,
   MessengerConversationMessagesResult,
@@ -24,6 +26,7 @@ vi.mock("~/entities/messenger/messenger-conversation-metadata.lib", () => ({
 }));
 vi.mock("~/entities/messenger/messenger-messages-loader.lib", () => ({
   loadMessengerConversationMessages: mocks.load,
+  loadMessengerMessageWindowPage: vi.fn(),
 }));
 vi.mock("~/entities/messenger/messenger-conversation-position.lib", () => ({
   readMessengerConversationPosition: mocks.saved,
@@ -42,7 +45,10 @@ const runtime: WorkspaceRuntimeContext = {
   accessToken: "test",
   runtimeGeneration: 1,
 };
-const conversationId = "topic:stream:topic";
+const streamUuid = "75309057-419c-4b12-a7c1-3932429ec4a6";
+const conversationId = `topic:${streamUuid}:4ec0b996-b778-45f8-8ef4-ef863be0c047`;
+const secondConversationId = `topic:${streamUuid}:ed25f944-8106-4386-b2f9-65e9db32d465`;
+const messages = createMessages({ runtimeContext: runtime, getRuntimeContext: mocks.current });
 const applied: MessengerConversationMessagesResult = {
   status: "applied",
   ownerKey: "owner",
@@ -57,8 +63,10 @@ const requests: {
 }[] = [];
 
 beforeEach(() => {
+  const ownerKey = workspaceRuntimeOwnerKey(runtime);
+  useWorkspaceMessageStore.getState().setOwner(ownerKey, false);
   useMessengerStore.getState().clear();
-  useMessengerStore.setState({ ownerKey: workspaceRuntimeOwnerKey(runtime) });
+  useMessengerStore.setState({ ownerKey });
   mocks.current.mockReturnValue(runtime);
   mocks.resolve.mockReset();
   requests.length = 0;
@@ -122,7 +130,16 @@ describe("topic opening resolution", () => {
 });
 
 function props(runtimeContext = runtime, retryNonce = 0) {
-  return { runtimeContext, conversationId, enabled: true, retryNonce };
+  return {
+    messages:
+      runtimeContext === runtime
+        ? messages
+        : createMessages({ runtimeContext, getRuntimeContext: mocks.current }),
+    runtimeContext,
+    conversationId,
+    enabled: true,
+    retryNonce,
+  };
 }
 
 describe("conversation opening lifetime", () => {
@@ -178,7 +195,7 @@ describe("conversation opening lifetime", () => {
       initialProps: props(),
     });
     act(() => result.current.takeControl());
-    rerender({ ...props(), conversationId: "topic:stream:other" });
+    rerender({ ...props(), conversationId: secondConversationId });
     expect(requests[0]?.options.signal?.aborted).toBe(true);
     rerender(props(runtime));
     expect(requests[1]?.options.signal?.aborted).toBe(true);
@@ -196,7 +213,9 @@ describe("conversation opening lifetime", () => {
       initialProps: props(),
     });
     act(() => result.current.takeControl());
-    rerender(props({ ...runtime, runtimeGeneration: 2 }));
+    const newRuntime = { ...runtime, runtimeGeneration: 2 };
+    mocks.current.mockReturnValue(newRuntime);
+    rerender(props(newRuntime));
     expect(requests[0]?.options.signal?.aborted).toBe(true);
     await act(() => {
       requests[0]?.options.onServerWindowApplied?.();

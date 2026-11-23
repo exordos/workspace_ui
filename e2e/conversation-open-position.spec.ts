@@ -118,7 +118,13 @@ async function installRealtime(page: Page, readyDelayMs: number): Promise<void> 
 
 async function installConversation(
   page: Page,
-  options: { unreadTail?: number; messageCount?: number; historyGate?: Promise<void> } = {},
+  options: {
+    unreadTail?: number;
+    messageCount?: number;
+    historyGate?: Promise<void>;
+    historyPageSize?: number;
+    olderPageGate?: Promise<void>;
+  } = {},
 ): Promise<void> {
   const unreadTail = options.unreadTail ?? 0;
   const unreadFrom = REAL_CONVERSATION_SAMPLE.length - unreadTail;
@@ -177,7 +183,8 @@ async function installConversation(
 
       await options.historyGate;
       const sortDir = url.searchParams.get("sort_dir") ?? "asc";
-      const pageLimit = Number(url.searchParams.get("page_limit") ?? "0");
+      const requestedPageLimit = Number(url.searchParams.get("page_limit") ?? "0");
+      const pageLimit = Math.min(requestedPageLimit, options.historyPageSize ?? requestedPageLimit);
       const pageMarker = url.searchParams.get("page_marker");
       let items = REAL_CONVERSATION_SAMPLE.slice(0, options.messageCount).map((message, index) =>
         messageDto(message, unreadTail > 0 && index >= unreadFrom),
@@ -186,16 +193,22 @@ async function installConversation(
         items = items.filter((item) => !item.read);
       }
       if (pageMarker != null) {
+        await options.olderPageGate;
         const markerIndex = items.findIndex((item) => item.uuid === pageMarker);
         if (markerIndex >= 0) {
           items = sortDir === "desc" ? items.slice(0, markerIndex) : items.slice(markerIndex + 1);
         }
       }
       if (sortDir === "desc") items = [...items].reverse();
+      const nextPageMarker =
+        options.historyPageSize != null && pageLimit > 0 && items.length > pageLimit
+          ? items[pageLimit - 1]?.uuid
+          : undefined;
       if (pageLimit > 0) items = items.slice(0, pageLimit);
       await route.fulfill({
         status: 200,
         contentType: "application/json",
+        headers: nextPageMarker == null ? undefined : { "X-Pagination-Marker": nextPageMarker },
         body: JSON.stringify(items),
       });
       return;
@@ -317,6 +330,69 @@ function driftAllowance(painted: TracePoint[]): number {
 }
 
 test.describe("Conversation open position @mock", () => {
+  test("prepending a delayed older page preserves the reader's row and offset", async ({
+    authenticatedMocked: page,
+  }) => {
+    let releaseOlderPage = () => {};
+    const olderPageGate = new Promise<void>((resolve) => {
+      releaseOlderPage = resolve;
+    });
+    const pageSize = 15;
+    const oldestInFirstPage = REAL_CONVERSATION_SAMPLE.at(-pageSize);
+    const expectedOlder = REAL_CONVERSATION_SAMPLE.at(-pageSize - 1);
+    if (oldestInFirstPage == null || expectedOlder == null) {
+      throw new Error("Expected enough sample messages for two history pages");
+    }
+    await installRealtime(page, 0);
+    await installConversation(page, { historyPageSize: pageSize, olderPageGate });
+
+    try {
+      await page.goto(TOPIC_PATH);
+      const scroller = page.locator("[data-workspace-scroll-controller='true']");
+      const olderRow = scroller.locator(`[data-message-uuid="${sampleUuid(expectedOlder)}"]`);
+      await expect(scroller.locator(`[data-message-uuid="${E2E_MESSAGE_UUID}"]`)).toBeInViewport();
+      await expect(olderRow).toHaveCount(0);
+      const beforeRequest = page.waitForRequest(
+        (request) =>
+          new URL(request.url()).searchParams.get("page_marker") === sampleUuid(oldestInFirstPage),
+      );
+      await scroller.hover();
+      await page.mouse.wheel(0, -10000);
+      await beforeRequest;
+
+      const previousScrollTop = await scroller.evaluate((root) => root.scrollTop);
+      await page.mouse.wheel(0, 180);
+      await expect
+        .poll(() => scroller.evaluate((root) => root.scrollTop))
+        .toBeGreaterThan(previousScrollTop);
+
+      const readVisibleRow = () =>
+        scroller.evaluate((root) => {
+          const viewport = root.getBoundingClientRect();
+          for (const row of root.querySelectorAll("[data-message-uuid]")) {
+            const rect = row.getBoundingClientRect();
+            if (rect.bottom > viewport.top && rect.top < viewport.bottom) {
+              return {
+                uuid: row.getAttribute("data-message-uuid"),
+                offset: rect.top - viewport.top,
+              };
+            }
+          }
+          return null;
+        });
+      const before = await readVisibleRow();
+      if (before == null) throw new Error("Expected a visible history row after scrolling");
+
+      releaseOlderPage();
+      await expect(olderRow).toBeAttached();
+      const after = await readVisibleRow();
+      expect(after?.uuid).toBe(before.uuid);
+      expect(Math.abs((after?.offset ?? Number.NaN) - before.offset)).toBeLessThanOrEqual(1);
+    } finally {
+      releaseOlderPage();
+    }
+  });
+
   test("cached tail stays provisional until delayed unread history chooses its boundary", async ({
     authenticatedMocked: page,
   }) => {

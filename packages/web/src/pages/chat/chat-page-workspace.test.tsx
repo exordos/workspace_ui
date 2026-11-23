@@ -3155,6 +3155,62 @@ describe("ChatPage Workspace route", () => {
     await waitFor(() => expect(captured.messageListProps?.isLoadingOlder).toBe(false));
   });
 
+  it("uses the current boundary and retries older history from an ordinary around-anchor window", async () => {
+    const conversationId = `topic:${STREAM_UUID}:${TOPIC_UUID}`;
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+    await screen.findByTestId("workspace-message-list-section");
+    await waitFor(() => expect(captured.loadWorkspaceMessages).toHaveBeenCalledOnce());
+    act(() => {
+      updateTestConversationWindow(conversationId, {
+        mode: "around-anchor",
+        anchorMessageUuid: MESSAGE_UUID,
+        beforePageMarker: "previous-boundary",
+      });
+    });
+    await waitFor(() => expect(captured.messageListProps?.hasOlderMessages).toBe(true));
+
+    const page = createDeferred<messageLoader.MessengerMessageWindowPageResult>();
+    captured.loadWorkspaceMessageWindowPage.mockReturnValueOnce(page.promise);
+    const loadOlder = captured.messageListProps?.onLoadOlder;
+    act(() => {
+      updateTestConversationWindow(conversationId, { beforePageMarker: "current-boundary" });
+      loadOlder?.();
+      loadOlder?.();
+    });
+
+    expect(captured.loadWorkspaceMessageWindowPage).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        conversationId,
+        direction: "before",
+        pageMarker: "current-boundary",
+        expectedRevision:
+          useWorkspaceMessageStore.getState().conversationWindowsById[conversationId]?.revision,
+      }),
+    );
+    expect(captured.messageListProps?.isLoadingOlder).toBe(true);
+
+    await act(async () => {
+      page.resolve({
+        status: "failed",
+        ownerKey: workspaceRuntimeOwnerKey(createSession()),
+        conversationId,
+        direction: "before",
+        error: "offline",
+      });
+      await page.promise;
+    });
+    expect(captured.messageListProps?.boundaryLoadFailed).toBe(true);
+
+    act(() => {
+      captured.messageListProps?.onRetryBoundaryLoad();
+    });
+    expect(captured.loadWorkspaceMessageWindowPage).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(captured.messageListProps?.boundaryLoadFailed).toBe(false));
+    expect(captured.loadWorkspaceMessages).toHaveBeenCalledOnce();
+  });
+
   it("does not let a canceled older request clear a newer conversation request", async () => {
     const topicConversationId = `topic:${STREAM_UUID}:${TOPIC_UUID}`;
     const streamConversationId = `stream:${STREAM_UUID}`;

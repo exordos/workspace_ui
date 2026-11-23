@@ -1,4 +1,12 @@
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { NavigationType, useLocation, useNavigate, useNavigationType } from "react-router-dom";
 import {
   deleteWorkspaceComposerDraftFromServer,
@@ -28,6 +36,7 @@ import {
   decryptRealChatMessage,
 } from "~/entities/messenger/chat-crypto-runtime.lib";
 import { acquireChatCryptoSession } from "~/entities/messenger/chat-crypto-session.lib";
+import { createMessages, EMPTY_MESSAGE_WINDOW } from "~/entities/messenger/messages";
 import { selectWorkspaceChatHeaderView } from "~/entities/messenger/messenger-chat-header.lib";
 import {
   conversationIdForStream,
@@ -46,7 +55,6 @@ import { toggleMessengerMessageReaction } from "~/entities/messenger/messenger-m
 import {
   applyMessengerMessageWindow,
   fetchMessengerMessageWindow,
-  loadMessengerConversationMessages,
   loadMessengerMessageWindowPage,
   resolveMessengerMessageAnchor,
 } from "~/entities/messenger/messenger-messages-loader.lib";
@@ -307,16 +315,14 @@ interface WorkspaceAnchorPaginationRequest {
 
 interface WorkspaceConversationPaginationState {
   conversationId: MessengerConversationId;
-  direction: "before";
-  marker: string;
   requestToken: symbol;
 }
 
 interface WorkspaceConversationPaginationRequest extends WorkspaceConversationPaginationState {
-  controller: AbortController | null;
+  controller: AbortController;
+  mode: "tail" | "around-anchor";
 }
 
-const EMPTY_MESSAGES: MessengerMessage[] = [];
 const EMPTY_MESSAGES_BY_ID: Record<MessengerUuid, MessengerMessage> = {};
 const EMPTY_OUTGOING_MESSAGES: MessengerOutgoingMessage[] = [];
 const EMPTY_OUTGOING_MESSAGE_PLACEMENT_UUIDS: readonly MessengerUuid[] = [];
@@ -694,6 +700,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
     () => selectMessengerConversationFromWorkspaceRoute(route),
     [route],
   );
+  const hasAnchorRoute = routeSelection.status === "message" || messageAnchorUuid != null;
   const sessions = useWorkspaceAuthStore((state) => state.sessions);
   const currentAccountId = useWorkspaceAuthStore((state) => state.currentAccountId);
   const runtimeContext = useMemo(
@@ -735,6 +742,13 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
   const getCurrentWorkspaceRuntimeContext = useCallback(
     () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
     [],
+  );
+  const messages = useMemo(
+    () =>
+      runtimeContext == null
+        ? null
+        : createMessages({ runtimeContext, getRuntimeContext: getCurrentWorkspaceRuntimeContext }),
+    [getCurrentWorkspaceRuntimeContext, runtimeContext],
   );
   const resolveKnownAnchorConversationId = useCallback(
     (messageUuid: MessengerUuid): MessengerConversationId | null => {
@@ -790,10 +804,21 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
           }),
     [runtimeContext],
   );
+  const cancelActiveConversationPagination = useCallback(() => {
+    const request = conversationPaginationRequestRef.current;
+    if (request == null) return;
+    conversationPaginationRequestRef.current = null;
+    request.controller.abort();
+    setConversationPaginationState((current) =>
+      current?.requestToken === request.requestToken ? null : current,
+    );
+  }, []);
   const cancelTailForAnchor = useCallback(() => {
     cancelAnchorTailRef.current();
     cancelAnchorPaginationRef.current();
-  }, []);
+    // Переход по ссылке может начать замену окна в том же разговоре до смены маршрута.
+    cancelActiveConversationPagination();
+  }, [cancelActiveConversationPagination]);
   const {
     intent: messageNavigationIntent,
     focusTarget: messageNavigationFocusTarget,
@@ -1296,11 +1321,43 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
         ? (topic?.lastMessageUuid ?? conversation?.lastMessageUuid ?? null)
         : (stream?.lastMessageUuid ?? conversation?.lastMessageUuid ?? null);
   }
-  const routeMessages = useWorkspaceMessageStore((state) =>
-    conversationId == null || state.ownerKey !== ownerKey
-      ? EMPTY_MESSAGES
-      : selectWorkspaceMessagesForConversation(state, conversationId),
+  const retry = useCallback(() => setRetryNonce((value) => value + 1), []);
+  const getRouteWindow = useCallback(
+    () =>
+      messages == null || conversationId == null
+        ? EMPTY_MESSAGE_WINDOW
+        : messages.getWindow(conversationId),
+    [conversationId, messages],
   );
+  const subscribeRouteWindow = useCallback(
+    (notify: () => void) => {
+      if (messages == null || conversationId == null) return noop;
+      let previousWindow = getRouteWindow();
+      return messages.subscribeWindow(conversationId, () => {
+        const nextWindow = getRouteWindow();
+        // Повтор открывает сброшенное окно только в активной сессии.
+        const windowWasReset =
+          previousWindow.mode != null &&
+          nextWindow.mode == null &&
+          nextWindow !== EMPTY_MESSAGE_WINDOW;
+        previousWindow = nextWindow;
+        if (windowWasReset) {
+          if (hasAnchorRoute) retryMessageNavigation();
+          else retry();
+        }
+        notify();
+      });
+    },
+    [conversationId, getRouteWindow, hasAnchorRoute, messages, retry, retryMessageNavigation],
+  );
+  const {
+    messages: routeMessages,
+    mode: conversationWindowMode,
+    loading: messagesLoading,
+    error: messagesError,
+    hasOlder: hasOlderMessages,
+    hasNewer: hasNewerMessages,
+  } = useSyncExternalStore(subscribeRouteWindow, getRouteWindow, getRouteWindow);
   const outgoingMessagesByPlacementUuid = useMessengerOutboxStore(
     (state) => state.outgoingMessagesByPlacementUuid,
   );
@@ -1321,22 +1378,10 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
 
     return messages.length === 0 ? EMPTY_OUTGOING_MESSAGES : messages;
   }, [outgoingMessagePlacementUuids, outgoingMessagesByPlacementUuid, ownerKey]);
-  const messagesStatus = useWorkspaceMessageStore((state) =>
-    conversationId == null || state.ownerKey !== ownerKey
-      ? selectWorkspaceMessageStatusForConversation(state, "")
-      : selectWorkspaceMessageStatusForConversation(state, conversationId),
-  );
-  const conversationWindow = useWorkspaceMessageStore((state) =>
-    conversationId == null || state.ownerKey !== ownerKey
-      ? null
-      : (state.conversationWindowsById[conversationId] ?? null),
-  );
   const realtimeReadyRuntimeGeneration = useMessengerStore(
     (state) => state.realtimeReadyRuntimeGeneration,
   );
   const realtimeReadyOwnerKey = useMessengerStore((state) => state.realtimeReadyOwnerKey);
-  const beforePageMarker = conversationWindow?.beforePageMarker ?? null;
-  const afterPageMarker = conversationWindow?.afterPageMarker ?? null;
   const usersById = useUsersStore((state) =>
     Object.keys(state.usersById).length > 0 ? state.usersById : EMPTY_USERS_BY_ID,
   );
@@ -1494,7 +1539,6 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
       usersById,
     ],
   );
-  const retry = useCallback(() => setRetryNonce((value) => value + 1), []);
   const retryMessagesLoad = useCallback(() => {
     if (messageNavigationIntent?.phase === "failed") {
       retryMessageNavigation();
@@ -1564,52 +1608,13 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
   );
 
   const opening = useWorkspaceConversationOpening({
+    messages,
     runtimeContext,
     conversationId,
-    enabled:
-      selection.status === "conversation" &&
-      routeSelection.status !== "message" &&
-      messageAnchorUuid == null,
+    enabled: selection.status === "conversation" && !hasAnchorRoute,
     retryNonce,
   });
   const { takeControl: takeOpeningControl, acceptWindow: acceptOpeningWindow } = opening;
-
-  useEffect(() => {
-    if (selection.status !== "conversation" || runtimeContext == null || ownerKey == null) return;
-
-    const conversationId = selection.conversationId;
-    let previousWindow =
-      useWorkspaceMessageStore.getState().conversationWindowsById[conversationId] ?? null;
-    const unsubscribe = useWorkspaceMessageStore.subscribe((state) => {
-      const nextWindow =
-        state.ownerKey === ownerKey
-          ? (state.conversationWindowsById[conversationId] ?? null)
-          : null;
-      const windowWasReset =
-        previousWindow != null && nextWindow == null && state.ownerKey === ownerKey;
-      previousWindow = nextWindow;
-      if (!windowWasReset) return;
-
-      if (messageAnchorUuid != null || routeSelection.status === "message") {
-        retryMessageNavigation();
-        return;
-      }
-
-      retry();
-    });
-
-    return () => {
-      unsubscribe();
-    };
-  }, [
-    messageAnchorUuid,
-    ownerKey,
-    retryMessageNavigation,
-    retry,
-    routeSelection.status,
-    runtimeContext,
-    selection,
-  ]);
 
   useEffect(() => {
     return () => {
@@ -1752,7 +1757,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
     realtimeReadyRuntimeGeneration === runtimeContext.runtimeGeneration;
   const initialPositionReady = resolveInitialPositionReady({
     hasRuntimeContext: runtimeContext != null && ownerKey != null,
-    hasConversationWindow: conversationWindow != null,
+    hasConversationWindow: conversationWindowMode != null,
     hasFocusTarget: activeMessageFocusTarget != null,
     realtimeReady,
     viewedBefore: hasConversationBeenViewed(conversationId),
@@ -1772,7 +1777,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
     markConversationViewed(conversationId);
   }, [conversationId, initialPositionReady]);
   const messagesLoadError: WorkspaceChatMessagesLoadErrorKind | null =
-    messagesStatus.error == null ? null : routeMessages.length === 0 ? "initial" : "refresh";
+    messagesError == null ? null : routeMessages.length === 0 ? "initial" : "refresh";
 
   const runChatScopedAction = useCallback(
     async <T,>(
@@ -3484,7 +3489,6 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
   const { scheduleReadBatch, scheduleTopicReadAtBottom, readRequestBoundaryMessageUuids } =
     useWorkspaceVisibleMessageRead({ runtimeContext, conversationId, topicUuid });
 
-  const hasAnchorRoute = routeSelection.status === "message" || messageAnchorUuid != null;
   const focusedAnchorIntentId =
     hasAnchorRoute &&
     messageNavigationIntent?.phase === "focused" &&
@@ -3494,26 +3498,13 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
   const anchorPaginationScopeKey =
     focusedAnchorIntentId == null ? null : `${tailRequestScopeKey}:${focusedAnchorIntentId}`;
 
-  const cancelActiveConversationPagination = useCallback(() => {
-    const request = conversationPaginationRequestRef.current;
-    if (request == null) return;
-    conversationPaginationRequestRef.current = null;
-    request.controller?.abort();
-    setConversationPaginationState((current) =>
-      current?.requestToken === request.requestToken ? null : current,
-    );
-  }, []);
+  // Догрузка привязана к разговору, поколению сессии и режиму маршрута.
   useLayoutEffect(() => {
     return () => {
       cancelActiveConversationPagination();
+      setWindowPaginationErrorDirection(null);
     };
-  }, [
-    cancelActiveConversationPagination,
-    conversationId,
-    hasAnchorRoute,
-    ownerKey,
-    runtimeContext?.runtimeGeneration,
-  ]);
+  }, [cancelActiveConversationPagination, conversationId, hasAnchorRoute, messages]);
 
   const cancelActiveAnchorPagination = useCallback(() => {
     const request = anchorPaginationRequestRef.current;
@@ -3534,8 +3525,15 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
   }, [anchorPaginationScopeKey, cancelActiveAnchorPagination]);
 
   const startAnchorPagination = useCallback(
-    (direction: "before" | "after", pageMarker: string, intentId: number): void => {
+    (direction: "before" | "after", intentId: number): void => {
       if (runtimeContext == null || conversationId == null) return;
+      // Маркер и ревизию читаем вместе при запуске. Realtime может изменить окно после рендера.
+      const state = useWorkspaceMessageStore.getState();
+      if (state.ownerKey !== ownerKey) return;
+      const window = state.conversationWindowsById[conversationId];
+      if (window == null) return;
+      const pageMarker = direction === "before" ? window.beforePageMarker : window.afterPageMarker;
+      if (pageMarker == null) return;
       cancelActiveAnchorPagination();
       const token = Symbol("anchor-pagination-request");
       const isCurrentRequest = (): boolean => {
@@ -3555,8 +3553,8 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
             conversationId,
             direction,
             pageMarker,
-            expectedRevision: conversationWindow?.revision ?? 0,
-            getRuntimeContext: () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
+            expectedRevision: window.revision,
+            getRuntimeContext: getCurrentWorkspaceRuntimeContext,
             signal,
           }),
         {
@@ -3592,7 +3590,8 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
     [
       cancelActiveAnchorPagination,
       conversationId,
-      conversationWindow?.revision,
+      getCurrentWorkspaceRuntimeContext,
+      ownerKey,
       runChatScopedAction,
       runtimeContext,
     ],
@@ -3601,69 +3600,53 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
   const handleLoadOlder = useCallback(() => {
     if (
       opening.pending ||
-      runtimeContext == null ||
+      messages == null ||
       conversationId == null ||
-      messagesStatus.loading ||
+      messagesLoading ||
       conversationPaginationRequestRef.current != null
     )
       return;
 
-    if (hasAnchorRoute || conversationWindow?.mode === "around-anchor") {
-      if (beforePageMarker == null || (hasAnchorRoute && focusedAnchorIntentId == null)) return;
-      startAnchorPagination("before", beforePageMarker, focusedAnchorIntentId ?? 0);
+    if (hasAnchorRoute) {
+      if (focusedAnchorIntentId != null) startAnchorPagination("before", focusedAnchorIntentId);
       return;
     }
 
-    const marker = messagesStatus.nextPageMarker;
-    if (!messagesStatus.hasMore || marker == null) return;
+    const { hasOlder, mode, loading } = messages.getWindow(conversationId);
+    if (!hasOlder || mode == null || loading) return;
 
+    const controller = new AbortController();
     const requestToken = Symbol("conversation-pagination-request");
-    const requestState: WorkspaceConversationPaginationState = {
-      conversationId,
-      direction: "before",
-      marker,
-      requestToken,
-    };
-    conversationPaginationRequestRef.current = { ...requestState, controller: null };
+    const requestState = { conversationId, requestToken };
+    // Список хранит позицию перед вставкой, пока выполняется именно догрузка сверху.
+    conversationPaginationRequestRef.current = { ...requestState, controller, mode };
     setConversationPaginationState(requestState);
-    void runChatScopedAction(
-      (signal) =>
-        loadMessengerConversationMessages({
-          runtimeContext,
-          conversationId,
-          pageMarker: marker,
-          getRuntimeContext: () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
-          signal,
-        }),
-      {
-        onController: (controller) => {
-          const request = conversationPaginationRequestRef.current;
-          if (request?.requestToken !== requestToken) {
-            controller.abort();
-            return;
-          }
-          request.controller = controller;
-        },
-      },
-    ).finally(() => {
-      if (conversationPaginationRequestRef.current?.requestToken !== requestToken) return;
-      conversationPaginationRequestRef.current = null;
-      setConversationPaginationState((current) =>
-        current?.requestToken === requestToken ? null : current,
-      );
-    });
+    if (mode === "around-anchor") setWindowPaginationErrorDirection(null);
+    const isCurrentRequest = () =>
+      conversationPaginationRequestRef.current?.requestToken === requestToken;
+    const showBoundaryError = () => {
+      if (isCurrentRequest() && mode === "around-anchor")
+        setWindowPaginationErrorDirection("before");
+    };
+    void messages
+      .loadMore({ conversationId, direction: "before", signal: controller.signal })
+      .then((result) => {
+        if (result.status === "failed") showBoundaryError();
+      }, showBoundaryError)
+      .finally(() => {
+        if (!isCurrentRequest()) return;
+        conversationPaginationRequestRef.current = null;
+        setConversationPaginationState((current) =>
+          current?.requestToken === requestToken ? null : current,
+        );
+      });
   }, [
     opening.pending,
-    beforePageMarker,
-    conversationWindow?.mode,
     conversationId,
     focusedAnchorIntentId,
     hasAnchorRoute,
-    messagesStatus.hasMore,
-    messagesStatus.loading,
-    messagesStatus.nextPageMarker,
-    runChatScopedAction,
-    runtimeContext,
+    messages,
+    messagesLoading,
     startAnchorPagination,
   ]);
 
@@ -3711,20 +3694,21 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
       opening.pending ||
       runtimeContext == null ||
       conversationId == null ||
-      messagesStatus.loading ||
-      afterPageMarker == null ||
+      messagesLoading ||
+      !hasNewerMessages ||
+      conversationPaginationRequestRef.current != null ||
       (hasAnchorRoute && focusedAnchorIntentId == null)
     ) {
       return;
     }
-    startAnchorPagination("after", afterPageMarker, focusedAnchorIntentId ?? 0);
+    startAnchorPagination("after", focusedAnchorIntentId ?? 0);
   }, [
     opening.pending,
-    afterPageMarker,
     conversationId,
     focusedAnchorIntentId,
     hasAnchorRoute,
-    messagesStatus.loading,
+    hasNewerMessages,
+    messagesLoading,
     runtimeContext,
     startAnchorPagination,
   ]);
@@ -3965,6 +3949,10 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
     takeOpeningControl();
     cancelMessageNavigationForTail();
     cancelActiveAnchorPagination();
+    // При переходе к концу догрузка от якоря теряет смысл. Догрузку окна у конца можно дождаться.
+    if (conversationPaginationRequestRef.current?.mode === "around-anchor") {
+      cancelActiveConversationPagination();
+    }
     if (runtimeContext == null || conversationId == null) return;
     const route = workspaceConversationRoute({
       organizationId: runtimeContext.organizationId,
@@ -3987,6 +3975,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
   }, [
     takeOpeningControl,
     cancelActiveAnchorPagination,
+    cancelActiveConversationPagination,
     cancelMessageNavigationForTail,
     conversationId,
     location.hash,
@@ -4028,7 +4017,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
   }, [handleLoadLatestWindow, lastMessageUuid]);
 
   useEffect(() => {
-    if (messagesStatus.loading) return;
+    if (messagesLoading) return;
 
     const queuedMessageUuid = queuedTailMessageUuidRef.current;
     if (queuedMessageUuid == null) return;
@@ -4047,7 +4036,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
       return;
     }
     startTailWindowRequest(intent);
-  }, [conversationId, messagesStatus.loading, settleTailWindowIntent, startTailWindowRequest]);
+  }, [conversationId, messagesLoading, settleTailWindowIntent, startTailWindowRequest]);
 
   useEffect(() => {
     queuedTailMessageUuidRef.current = null;
@@ -4328,8 +4317,8 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
         {selection.status === "conversation" &&
         (previewPresentation == null || anchorHandoffPending) ? (
           <ChatPageWorkspaceMessageListSection
-            messagesLoading={messagesStatus.loading || opening.pending}
-            hasInitialPayload={routeMessages.length > 0 || conversationWindow != null}
+            messagesLoading={messagesLoading || opening.pending}
+            hasInitialPayload={routeMessages.length > 0 || conversationWindowMode != null}
             initialPositionReady={initialPositionReady}
             initialPositionCancelled={opening.cancelled}
             onUserScrollInput={takeOpeningControl}
@@ -4347,18 +4336,15 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
             isLoadingOlder={
               routeMessages.length > 0 &&
               ((!hasAnchorRoute &&
-                conversationPaginationState?.conversationId === selection.conversationId &&
-                conversationPaginationState.direction === "before") ||
-                (messagesStatus.loading && windowPaginationDirection === "before"))
+                conversationPaginationState?.conversationId === selection.conversationId) ||
+                (messagesLoading && windowPaginationDirection === "before"))
             }
             isLoadingNewer={
-              messagesStatus.loading &&
-              routeMessages.length > 0 &&
-              windowPaginationDirection === "after"
+              messagesLoading && routeMessages.length > 0 && windowPaginationDirection === "after"
             }
             onLoadNewer={handleLoadNewer}
-            hasOlderMessages={!opening.pending && beforePageMarker != null}
-            hasNewerMessages={!opening.pending && afterPageMarker != null}
+            hasOlderMessages={!opening.pending && hasOlderMessages}
+            hasNewerMessages={!opening.pending && hasNewerMessages}
             lastMessageUuid={lastMessageUuid}
             onLoadLatestWindow={handleLoadLatestWindow}
             onCancelLatestWindowLoad={handleCancelLatestWindowLoad}
@@ -4379,7 +4365,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
             onUnreadMessagesAtBottom={
               anchorHandoffPending ||
               !opening.ready ||
-              conversationWindow?.mode === "around-anchor" ||
+              conversationWindowMode === "around-anchor" ||
               selection.kind !== "topic"
                 ? undefined
                 : scheduleTopicReadAtBottom

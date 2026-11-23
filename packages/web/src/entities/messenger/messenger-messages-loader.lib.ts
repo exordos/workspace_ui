@@ -109,6 +109,8 @@ export interface MessengerMessagesOwnReactionSyncDeps {
 export interface MessengerMessagesStoreApi {
   getState: () => Pick<
     ReturnType<typeof useWorkspaceMessageStore.getState>,
+    | "ownerKey"
+    | "messagesLoadingByConversationId"
     | "setMessagesLoading"
     | "setMessagesError"
     | "upsertMessageBodyFromSnapshot"
@@ -364,18 +366,23 @@ function conversationIdFromMessageAnchor(
   return conversationIdForStream(anchor.stream_uuid);
 }
 
+interface MessageLoadingRequestOwner {
+  token: symbol;
+  ownerKey: string | null;
+}
+
 const messageLoadingRequestOwners = new WeakMap<
   MessengerMessagesStoreApi,
-  Map<MessengerConversationId, symbol>
+  Map<MessengerConversationId, MessageLoadingRequestOwner>
 >();
 
 function messageLoadingRequestOwnerMap(
   store: MessengerMessagesStoreApi,
-): Map<MessengerConversationId, symbol> {
+): Map<MessengerConversationId, MessageLoadingRequestOwner> {
   const existing = messageLoadingRequestOwners.get(store);
   if (existing != null) return existing;
 
-  const created = new Map<MessengerConversationId, symbol>();
+  const created = new Map<MessengerConversationId, MessageLoadingRequestOwner>();
   messageLoadingRequestOwners.set(store, created);
   return created;
 }
@@ -385,7 +392,10 @@ function claimMessageLoadingRequest(
   conversationId: MessengerConversationId,
   requestToken: symbol,
 ): void {
-  messageLoadingRequestOwnerMap(store).set(conversationId, requestToken);
+  messageLoadingRequestOwnerMap(store).set(conversationId, {
+    token: requestToken,
+    ownerKey: store.getState().ownerKey,
+  });
 }
 
 function ownsMessageLoadingRequest(
@@ -393,7 +403,7 @@ function ownsMessageLoadingRequest(
   conversationId: MessengerConversationId,
   requestToken: symbol,
 ): boolean {
-  return messageLoadingRequestOwners.get(store)?.get(conversationId) === requestToken;
+  return messageLoadingRequestOwners.get(store)?.get(conversationId)?.token === requestToken;
 }
 
 function releaseMessageLoadingRequest(
@@ -402,7 +412,7 @@ function releaseMessageLoadingRequest(
   requestToken: symbol,
 ): void {
   const owners = messageLoadingRequestOwners.get(store);
-  if (owners?.get(conversationId) !== requestToken) return;
+  if (owners?.get(conversationId)?.token !== requestToken) return;
   owners.delete(conversationId);
   if (owners.size === 0) {
     messageLoadingRequestOwners.delete(store);
@@ -415,14 +425,19 @@ function finishMessageLoadingRequest(
   requestToken: symbol,
   error: string | null | undefined,
 ): boolean {
-  const owners = messageLoadingRequestOwners.get(store);
-  if (owners?.get(conversationId) !== requestToken) return false;
+  const request = messageLoadingRequestOwners.get(store)?.get(conversationId);
+  if (request?.token !== requestToken) return false;
 
-  owners.delete(conversationId);
-  if (owners.size === 0) {
-    messageLoadingRequestOwners.delete(store);
-  }
+  releaseMessageLoadingRequest(store, conversationId, requestToken);
   const messageStore = store.getState();
+  // Сброс владельца удаляет запись загрузки. После публикации окна запись может
+  // содержать false, пока запрос ещё способен завершиться ошибкой.
+  if (
+    messageStore.ownerKey !== request.ownerKey ||
+    !Object.hasOwn(messageStore.messagesLoadingByConversationId, conversationId)
+  ) {
+    return false;
+  }
   messageStore.setMessagesLoading(conversationId, false);
   if (error !== undefined) {
     messageStore.setMessagesError(conversationId, error);
