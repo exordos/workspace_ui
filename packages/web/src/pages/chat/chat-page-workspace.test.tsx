@@ -15,6 +15,7 @@ import type { RealChatSession } from "~/entities/messenger/chat-crypto-runtime.l
 import {
   decryptRealChatEnvelopeResult,
   decryptRealChatMessage,
+  decryptRealChatMessageResult,
 } from "~/entities/messenger/chat-crypto-runtime.lib";
 import { acceptServerMessages } from "~/entities/messenger/messages-accept-server.lib";
 import * as topicResolution from "~/entities/messenger/messenger-conversation-metadata.lib";
@@ -139,6 +140,7 @@ vi.mock("~/entities/messenger/chat-crypto-runtime.lib", () => ({
   commitPreparedPlaintextWindow: vi.fn(),
   openRealChatSession: captured.openRealChatSession,
   decryptRealChatMessage: vi.fn().mockResolvedValue(null),
+  decryptRealChatMessageResult: vi.fn().mockResolvedValue({ status: "missing-key" }),
   decryptRealChatEnvelopeResult: vi.fn().mockResolvedValue({ status: "missing-key" }),
 }));
 
@@ -3894,6 +3896,66 @@ describe("ChatPage Workspace route", () => {
         SECOND_MESSAGE_UUID,
       ),
     );
+  });
+
+  it("prepares the connected mixed window once per ciphertext and key lifetime", async () => {
+    const ownerKey = useWorkspaceMessageStore.getState().ownerKey;
+    if (ownerKey == null) throw new Error("Missing message owner");
+    const keyUuid = "test-window-key";
+    const encrypted: MessengerMessage = {
+      ...createMessage(),
+      payload: { kind: "e2ee", keyUuid, content: "previous-ciphertext" },
+    };
+    const ordinary = createSecondMessage();
+    replaceTestConversationWindow(encrypted.conversationId, [encrypted, ordinary]);
+    captured.renderRealMessageList = true;
+
+    const previous = createDeferred<Awaited<ReturnType<typeof decryptRealChatMessageResult>>>();
+    const decrypt = vi.mocked(decryptRealChatMessageResult).mockClear();
+    decrypt.mockReturnValueOnce(previous.promise).mockResolvedValueOnce({
+      status: "ready",
+      plaintext: "Current window plaintext",
+    });
+    const { container } = renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+    await waitFor(() => expect(decrypt).toHaveBeenCalledOnce());
+    expect(container.querySelector("article[data-message-uuid]")).toBeNull();
+
+    act(() => {
+      useWorkspaceMessageStore.getState().applyLiveKnownBodyMutation({
+        ...encrypted,
+        payload: { kind: "e2ee", keyUuid, content: "current-ciphertext" },
+      });
+    });
+    expect(await screen.findByText("Current window plaintext")).toBeInTheDocument();
+    expect(container.querySelectorAll("article[data-message-uuid]")).toHaveLength(2);
+    await act(async () => {
+      previous.resolve({ status: "ready", plaintext: "Stale window plaintext" });
+      await previous.promise;
+    });
+    expect(screen.queryByText("Stale window plaintext")).not.toBeInTheDocument();
+    expect(decrypt).toHaveBeenCalledTimes(2);
+
+    const changeKey = (kind: "updated" | "removed") =>
+      notifyRealChatKeyChanges({
+        kind,
+        ownerKey,
+        deviceId: "mock-device",
+        streamUuid: STREAM_UUID,
+        keyUuid,
+      });
+    act(() => changeKey("removed"));
+    expect(screen.queryByText("Current window plaintext")).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(container.querySelector("[data-encrypted-message-state='locked']")).not.toBeNull(),
+    );
+    expect(decrypt).toHaveBeenCalledTimes(3);
+
+    decrypt.mockResolvedValueOnce({ status: "ready", plaintext: "Window plaintext after key" });
+    act(() => changeKey("updated"));
+    expect(await screen.findByText("Window plaintext after key")).toBeInTheDocument();
+    expect(decrypt).toHaveBeenCalledTimes(4);
   });
 
   it("uses the already mounted canonical anchor without showing the transition layer", async () => {

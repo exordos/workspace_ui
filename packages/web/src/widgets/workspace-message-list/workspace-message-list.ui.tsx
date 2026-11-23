@@ -19,7 +19,7 @@ import { useUsersStore } from "~/entities/user/user.model";
 import type { UsersById } from "~/entities/user/user.types";
 import {
   MessagePresentationContext,
-  useMessagePresentations,
+  type PreparedMessageWindow,
 } from "~/features/message-presentation/message-presentation.hook";
 import { WorkspaceAvatar } from "~/features/workspace-avatar/workspace-avatar.ui";
 import { t, useTranslation } from "~/i18n/i18n";
@@ -733,8 +733,10 @@ const WorkspaceMessageAuthorGroupView = React.memo(function WorkspaceMessageAuth
   );
 });
 
-export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = (props) => {
-  const prepared = useMessagePresentations(props.messages, props.conversationId, true);
+// Лента получает подготовку окна и решает, когда показать и заменить строки.
+export const WorkspaceMessageList: React.FC<
+  WorkspaceMessageListProps & { prepared: PreparedMessageWindow }
+> = ({ prepared, ...props }) => {
   const pendingUuids = prepared.pendingMessageUuids;
   const preparing = pendingUuids.size > 0;
   const messages = useMemo(

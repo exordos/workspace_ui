@@ -31,6 +31,13 @@ export type MessagePresentation = (MessengerMessageContent | { readonly status: 
   readonly retryPending?: boolean;
 };
 
+// Подготовленные E2EE-результаты одного окна и сообщения, которые ещё ждут подготовки.
+export interface PreparedMessageWindow {
+  readonly scope: string; // Владелец, поколение сессии и потребитель окна.
+  readonly presentations: ReadonlyMap<string, MessagePresentation>; // Результаты по идентичности содержимого.
+  readonly pendingMessageUuids: ReadonlySet<string>; // Серверные UUID ещё не готовых строк.
+}
+
 export const MessagePresentationContext = createContext<ReadonlyMap<
   string,
   MessagePresentation
@@ -80,7 +87,7 @@ export function useMessagePresentations(
   messages: readonly MessengerMessage[],
   consumerScope: string,
   cacheWindow = false,
-) {
+): PreparedMessageWindow {
   const sessions = useWorkspaceAuthStore((state) => state.sessions);
   const currentAccountId = useWorkspaceAuthStore((state) => state.currentAccountId);
   const runtime = useMemo(
@@ -246,11 +253,6 @@ export function useMessagePresentations(
 
   const presentations = new Map<string, MessagePresentation>();
   const pendingMessageUuids = new Set<string>();
-  for (const message of messages) {
-    const key = getMessengerMessageContentKey(message);
-    const immediate = getImmediateMessengerMessageContent(message);
-    if (immediate != null) presentations.set(key, { ...immediate, retry: NOOP });
-  }
   for (const { key, message, allowed } of requests) {
     const entry = preparation.entries.get(key);
     const value = allowed
@@ -276,16 +278,18 @@ export function usePreparedMessagePresentation(
 ): MessagePresentation | undefined {
   const prepared = useContext(MessagePresentationContext);
   if (message == null) return undefined;
-  const supplied = prepared?.get(getMessengerMessageContentKey(message));
-  if (supplied != null) return supplied;
   const immediate = getImmediateMessengerMessageContent(message);
-  return immediate == null ? undefined : { ...immediate, retry: NOOP };
+  return immediate == null
+    ? prepared?.get(getMessengerMessageContentKey(message))
+    : { ...immediate, retry: NOOP };
 }
 
 /** Mount only in a fallback component when no prepared encrypted result exists. */
 export function useMessagePresentation(message: MessengerMessage | null): MessagePresentation {
   const messages = useMemo(() => (message == null ? [] : [message]), [message]);
   const local = useMessagePresentations(messages, "single-message", false);
+  const immediate = message == null ? null : getImmediateMessengerMessageContent(message);
+  if (immediate != null) return { ...immediate, retry: NOOP };
   return (
     (message == null
       ? undefined

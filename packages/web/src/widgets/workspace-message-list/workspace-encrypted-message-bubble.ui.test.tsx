@@ -28,7 +28,7 @@ import {
 import { WorkspaceEncryptedMessageBubble } from "./workspace-encrypted-message-bubble.ui";
 import { WorkspaceMessageBubble } from "./workspace-message-bubble.ui";
 import { createWorkspaceMessageListServerItem } from "./workspace-message-list-grouping.lib";
-import { WorkspaceMessageList } from "./workspace-message-list.ui";
+import { WorkspaceMessageListWithPreparation as WorkspaceMessageList } from "./workspace-message-list-with-preparation.ui";
 import { WorkspaceMessageQuote } from "./workspace-message-quote.ui";
 import type { WorkspaceMessageBubbleProps } from "./workspace-message-bubble.types";
 function createStream(overrides: Partial<MessengerStream> = {}): MessengerStream {

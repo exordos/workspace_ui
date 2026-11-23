@@ -6,7 +6,7 @@ import { EncryptedChatServiceMessage } from "~/features/encrypted-chat-message/e
 import { t } from "~/i18n/i18n";
 import { buildWorkspaceForwardUrn } from "~/shared/lib/workspace-reference-urn.lib";
 import { Button } from "~/shared/ui/button";
-import { WorkspaceMessageList } from "./workspace-message-list.ui";
+import { WorkspaceMessageListWithPreparation as WorkspaceMessageList } from "./workspace-message-list-with-preparation.ui";
 import { WorkspaceServiceMessageGroup } from "./workspace-service-message-group.ui";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 

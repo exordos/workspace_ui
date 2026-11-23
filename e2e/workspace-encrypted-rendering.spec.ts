@@ -185,9 +185,11 @@ async function installEncryptedWindow(
   await page.route(/\/messenger\/messages\/?(?:\?.*)?$/, async (route) => {
     if (route.request().method() !== "GET") return route.fallback();
     const query = new URL(route.request().url()).searchParams;
-    const items = query.get("read") === "false" ? [] : history.slice(0, MESSAGE_COUNT);
+    if (query.get("read") === "false" || query.has("page_marker"))
+      return route.fulfill({ json: [] });
+    const items = history.slice(0, MESSAGE_COUNT);
     if (query.get("sort_dir") === "desc") items.reverse();
-    await route.fulfill({ json: items });
+    await route.fulfill({ json: items, headers: { "X-Pagination-Marker": "encrypted-before" } });
   });
   return history;
 }
@@ -199,7 +201,8 @@ async function stageMessages(
 ) {
   await page.evaluate(
     async ({ dtos, direction }) => {
-      const { useWorkspaceMessageStore } = await import("/src/entities/message/message.model.ts");
+      const { captureWorkspaceConversationWindowBoundary, useWorkspaceMessageStore } =
+        await import("/src/entities/message/message.model.ts");
       const { adaptMessengerMessage } =
         await import("/src/entities/messenger/messenger-adapters.lib.ts");
       const messages = dtos.map(adaptMessengerMessage);
@@ -210,14 +213,15 @@ async function stageMessages(
       probe.existingRows = [...document.querySelectorAll("article[data-message-uuid]")];
       const store = useWorkspaceMessageStore.getState();
       if (direction === "live") return store.applyLiveCreatedMessages(messages);
-      const conversationWindow = store.conversationWindowsById[first.conversationId];
-      if (conversationWindow == null) throw new Error("Missing history window");
+      const boundary = captureWorkspaceConversationWindowBoundary(
+        store.conversationWindowsById[first.conversationId],
+        direction,
+      );
+      if (boundary == null) throw new Error("Missing older history boundary");
       store.mergeConversationWindowPage({
         conversationId: first.conversationId,
-        expectedRevision: conversationWindow.revision,
-        expectedPageMarker: conversationWindow.beforePageMarker,
+        boundary,
         capturedMutationRevision: store.messageMutationRevision,
-        direction: "before",
         messages,
         pageMarker: null,
       });

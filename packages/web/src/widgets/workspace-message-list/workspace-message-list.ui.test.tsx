@@ -15,7 +15,7 @@ import type { EncryptedChatServiceState } from "~/features/encrypted-chat-messag
 import { setLocale } from "~/i18n/i18n";
 import { AUTH_IMAGE_PLACEHOLDER_SRC } from "~/shared/lib/media-display-url.lib";
 import { buildWorkspaceForwardUrn } from "~/shared/lib/workspace-reference-urn.lib";
-import { WorkspaceMessageList } from "./workspace-message-list.ui";
+import { WorkspaceMessageListWithPreparation as WorkspaceMessageList } from "./workspace-message-list-with-preparation.ui";
 import type { WorkspaceMessageListProps } from "./workspace-message-list.types";
 
 vi.mock("emoji-picker-react", () => ({

@@ -3,11 +3,13 @@
 import "@testing-library/jest-dom/vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import { EMPTY_MESSAGE_WINDOW } from "~/entities/messenger/messages";
 import type { MessengerMessage } from "~/entities/messenger/messenger.types";
 import { t } from "~/i18n/i18n";
 import type { FloatingLoadingOverlayProps } from "~/shared/ui/loading";
 import type { WorkspaceMessageListProps } from "~/widgets/workspace-message-list/workspace-message-list.types";
-import { ChatPageWorkspaceMessageListSection } from "./chat-page-workspace-message-list-section.ui";
+import { ChatPageWorkspaceMessageListSection as MessageListSection } from "./chat-page-workspace-message-list-section.ui";
+import type { ChatPageWorkspaceMessageListSectionProps } from "./chat-page-workspace-message-list-section.types";
 
 const captured = vi.hoisted(() => ({
   workspaceMessageListProps: null as WorkspaceMessageListProps | null,
@@ -63,6 +65,19 @@ function createWorkspaceMessage(overrides: MessageOverrides = {}): MessengerMess
     updatedAt: "2026-07-03T09:00:00.000Z",
     ...rest,
   };
+}
+
+// Section tests supply a stable snapshot through the same read contract as the page.
+function ChatPageWorkspaceMessageListSection(
+  props: Omit<ChatPageWorkspaceMessageListSectionProps, "messagesModel">,
+) {
+  const snapshot = { ...EMPTY_MESSAGE_WINDOW, messages: props.messages };
+  return (
+    <MessageListSection
+      {...props}
+      messagesModel={{ getWindow: () => snapshot, subscribeWindow: () => () => undefined }}
+    />
+  );
 }
 
 describe("ChatPageWorkspaceMessageListSection", () => {

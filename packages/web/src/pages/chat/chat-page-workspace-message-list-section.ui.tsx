@@ -1,12 +1,44 @@
-import React, { useCallback } from "react";
+import React, { useCallback, useSyncExternalStore } from "react";
+import { EMPTY_MESSAGE_WINDOW } from "~/entities/messenger/messages";
 import { ChatBackground } from "~/features/chat-background/chat-background.ui";
+import { useMessagePresentations } from "~/features/message-presentation/message-presentation.hook";
 import { t } from "~/i18n/i18n";
 import { FloatingLoadingOverlay, Spinner } from "~/shared/ui/loading";
+import type { WorkspaceMessageListProps } from "~/widgets/workspace-message-list/workspace-message-list.types";
 import { WorkspaceMessageList } from "~/widgets/workspace-message-list/workspace-message-list.ui";
 import type { ChatPageWorkspaceMessageListSectionProps } from "./chat-page-workspace-message-list-section.types";
 
 const CHAT_MESSAGE_LIST_STATE_CARD_CLASS =
   "m-3 flex min-h-0 flex-1 flex-col justify-center rounded-xl border border-border-subtle bg-bg-elevated/50 px-4 py-3 text-sm";
+
+const noop = () => undefined;
+
+// Рабочий вход ленты. Подписку и подготовку монтируем только вместе со списком.
+function TimelineConnected({
+  messagesModel,
+  conversationId,
+  ...props
+}: Omit<WorkspaceMessageListProps, "messages"> &
+  Pick<ChatPageWorkspaceMessageListSectionProps, "messagesModel">) {
+  const getWindow = useCallback(
+    () => messagesModel?.getWindow(conversationId) ?? EMPTY_MESSAGE_WINDOW,
+    [messagesModel, conversationId],
+  );
+  const subscribe = useCallback(
+    (notify: () => void) => messagesModel?.subscribeWindow(conversationId, notify) ?? noop,
+    [messagesModel, conversationId],
+  );
+  const { messages } = useSyncExternalStore(subscribe, getWindow, getWindow);
+  const prepared = useMessagePresentations(messages, conversationId, true);
+  return (
+    <WorkspaceMessageList
+      {...props}
+      conversationId={conversationId}
+      messages={messages}
+      prepared={prepared}
+    />
+  );
+}
 
 export const ChatPageWorkspaceMessageListSection = React.memo(
   function ChatPageWorkspaceMessageListSection({
@@ -16,6 +48,7 @@ export const ChatPageWorkspaceMessageListSection = React.memo(
     initialPositionCancelled,
     onUserScrollInput,
     messages,
+    messagesModel,
     outgoingMessages,
     currentUserUuid,
     conversationId,
@@ -234,8 +267,8 @@ export const ChatPageWorkspaceMessageListSection = React.memo(
           data-message-anchor-list-layer="true"
           data-message-anchor-list-hidden={anchorHandoffPending ? "true" : "false"}
         >
-          <WorkspaceMessageList
-            messages={messages}
+          <TimelineConnected
+            messagesModel={messagesModel}
             outgoingMessages={outgoingMessages}
             currentUserUuid={currentUserUuid}
             conversationId={conversationId}

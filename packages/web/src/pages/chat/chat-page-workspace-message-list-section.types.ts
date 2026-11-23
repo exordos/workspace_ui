@@ -1,3 +1,4 @@
+import type { Messages } from "~/entities/messenger/messages";
 import type { MessengerOutgoingMessage } from "~/entities/messenger/messenger-outbox.types";
 import type {
   MessengerConversationId,
@@ -24,7 +25,8 @@ export interface ChatPageWorkspaceMessageListSectionProps {
   initialPositionReady: boolean;
   initialPositionCancelled?: boolean;
   onUserScrollInput?: () => void;
-  messages: readonly MessengerMessage[];
+  messages: readonly MessengerMessage[]; // Снимок маршрута для состояний загрузки секции.
+  messagesModel: Pick<Messages, "getWindow" | "subscribeWindow"> | null; // Подписка на текущее окно.
   outgoingMessages?: readonly MessengerOutgoingMessage[];
   currentUserUuid: MessengerUuid;
   conversationId: MessengerConversationId;

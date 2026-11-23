@@ -2,7 +2,7 @@ import { useCallback, useMemo, useRef } from "react";
 import { fn } from "storybook/test";
 import type { LoadWorkspaceFilePreview } from "~/entities/messenger/messenger-workspace-message-file-preview.hook";
 import type { MessengerMessage } from "~/entities/messenger/messenger.types";
-import { WorkspaceMessageList } from "./workspace-message-list.ui";
+import { WorkspaceMessageListWithPreparation as WorkspaceMessageList } from "./workspace-message-list-with-preparation.ui";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 
 const SYNTHETIC_IMAGE =

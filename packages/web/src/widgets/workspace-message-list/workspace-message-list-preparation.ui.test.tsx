@@ -13,7 +13,7 @@ import type { MessengerMessage, MessengerStream } from "~/entities/messenger/mes
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { setLocale } from "~/i18n/i18n";
-import { WorkspaceMessageList } from "./workspace-message-list.ui";
+import { WorkspaceMessageListWithPreparation as WorkspaceMessageList } from "./workspace-message-list-with-preparation.ui";
 import type { WorkspaceMessageListProps } from "./workspace-message-list.types";
 
 const STREAM_UUID = "11111111-1111-4111-8111-111111111111";

@@ -4239,6 +4239,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
             initialPositionCancelled={opening.cancelled}
             onUserScrollInput={takeOpeningControl}
             messages={routeMessages}
+            messagesModel={messages}
             outgoingMessages={outgoingMessages}
             currentUserUuid={currentUserUuid}
             conversationId={selection.conversationId}
