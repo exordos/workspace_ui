@@ -1,21 +1,17 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import React, { useCallback, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { chatCommands } from "~/entities/messenger/chat-commands";
+import { readActiveChats, useChatsCatalog } from "~/entities/messenger/chats";
 import {
   mapNotificationLevelToWorkspaceStreamMode,
   mapWorkspaceStreamNotificationModeToLevel,
   type WorkspaceStreamNotificationLevel,
 } from "~/entities/messenger/messenger-notification-mode.lib";
-import { runWorkspaceStreamNotificationUpdate } from "~/entities/messenger/messenger-sidebar-actions.lib";
-import {
-  addWorkspaceStreamMembers,
-  removeWorkspaceStreamMember,
-} from "~/entities/messenger/messenger-stream-member-actions.lib";
 import {
   resolveMessengerTopicSummaryPermissions,
   type MessengerTopicSummaryPermissionResolution,
 } from "~/entities/messenger/messenger-topic-summary-permissions.lib";
-import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import type { MessengerTopic, MessengerUuid } from "~/entities/messenger/messenger.types";
 import {
   isSelectableWorkspaceUser,
@@ -310,7 +306,7 @@ function isCurrentWorkspaceStreamOwner(
 ): boolean {
   if (streamUuid == null || runtimeContext == null) return false;
   const currentRuntime = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
-  const state = useMessengerStore.getState();
+  const state = readActiveChats();
   const ownerKey = workspaceRuntimeOwnerKey(runtimeContext);
   return (
     currentRuntime != null &&
@@ -341,13 +337,13 @@ const RightPanelWorkspaceChannelInfo: React.FC<{
     memberActionState.streamUuid === info.streamUuid
       ? memberActionState
       : createWorkspaceMemberActionState(info.streamUuid);
-  const storeNotificationMode = useMessengerStore((state) =>
+  const storeNotificationMode = useChatsCatalog((state) =>
     info.streamUuid == null ? null : (state.streamsById[info.streamUuid]?.notificationMode ?? null),
   );
-  const summaryStream = useMessengerStore((state) =>
+  const summaryStream = useChatsCatalog((state) =>
     info.streamUuid == null ? null : (state.streamsById[info.streamUuid] ?? null),
   );
-  const summaryTopic = useMessengerStore((state) =>
+  const summaryTopic = useChatsCatalog((state) =>
     info.topicSummary == null ? null : (state.topicsById[info.topicSummary.topicUuid] ?? null),
   );
   const workspaceUsersById = useUsersStore((state) => state.usersById);
@@ -358,7 +354,7 @@ const RightPanelWorkspaceChannelInfo: React.FC<{
     [currentAccountId, sessions],
   );
   const summaryOwnerKey = runtimeContext == null ? null : workspaceRuntimeOwnerKey(runtimeContext);
-  const canAddMembers = useMessengerStore(
+  const canAddMembers = useChatsCatalog(
     (state) =>
       runtimeContext != null &&
       info.streamUuid != null &&
@@ -432,7 +428,7 @@ const RightPanelWorkspaceChannelInfo: React.FC<{
         error: null,
       });
       try {
-        await runWorkspaceStreamNotificationUpdate({
+        await chatCommands.notifyStream({
           streamUuid,
           notificationMode: nextNotificationMode,
         });
@@ -524,9 +520,8 @@ const RightPanelWorkspaceChannelInfo: React.FC<{
 
     setMemberActionState((prev) => ({ ...prev, adding: true, addError: null }));
     try {
-      await addWorkspaceStreamMembers({
+      await chatCommands.addMembers({
         runtimeContext,
-        getRuntimeContext: useWorkspaceAuthStore.getState().getCurrentRuntimeContext,
         streamUuid,
         userUuids,
       });
@@ -584,9 +579,8 @@ const RightPanelWorkspaceChannelInfo: React.FC<{
         removingUserUuids: [...prev.removingUserUuids, member.userUuid],
       }));
       try {
-        await removeWorkspaceStreamMember({
+        await chatCommands.removeMember({
           runtimeContext,
-          getRuntimeContext: useWorkspaceAuthStore.getState().getCurrentRuntimeContext,
           streamUuid,
           bindingUuid: member.bindingUuid,
           userUuid: member.userUuid,
@@ -825,10 +819,10 @@ export const RightPanelWorkspaceInfo: React.FC<RightPanelWorkspaceInfoProps> = (
 }) => {
   const streamUuid =
     info.kind === "channel" || info.kind === "directPrivate" ? info.streamUuid : null;
-  const encrypted = useMessengerStore(
+  const encrypted = useChatsCatalog(
     (state) => streamUuid != null && state.streamsById[streamUuid]?.encryption === true,
   );
-  const native = useMessengerStore(
+  const native = useChatsCatalog(
     (state) => streamUuid != null && state.streamsById[streamUuid]?.sourceName === "native",
   );
   const ownerKey = useWorkspaceAuthStore((state) => {

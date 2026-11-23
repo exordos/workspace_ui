@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { chatCommands } from "~/entities/messenger/chat-commands";
 import { buildMessengerRequestOptions } from "~/entities/messenger/messenger-request-options.lib";
-import { updateMessengerTopicSummaryConfiguration as defaultUpdateTopic } from "~/entities/messenger/messenger-topic-summary-actions.lib";
 import type { MessengerTopic, MessengerUuid } from "~/entities/messenger/messenger.types";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { useWorkspaceIamCapabilitiesStore } from "~/entities/workspace-auth/workspace-iam-capabilities.model";
@@ -41,8 +41,8 @@ import type {
   TopicSummaryTopicDraft,
 } from "./topic-summary-settings.types";
 
-type UpdateTopicOptions = Parameters<typeof defaultUpdateTopic>[0];
-type UpdateTopicResult = Awaited<ReturnType<typeof defaultUpdateTopic>>;
+type UpdateTopicOptions = Parameters<typeof chatCommands.updateTopicSummary>[0];
+type UpdateTopicResult = Awaited<ReturnType<typeof chatCommands.updateTopicSummary>>;
 
 export interface TopicSummarySettingsClient {
   getSettings?: (
@@ -518,11 +518,10 @@ export function useTopicSummarySettings({
 
     void (async () => {
       try {
-        const result = await (clientRef.current.updateTopic ?? defaultUpdateTopic)({
+        const result = await (clientRef.current.updateTopic ?? chatCommands.updateTopicSummary)({
           runtimeContext: request.requestRuntime,
           topicUuid,
           body,
-          getRuntimeContext: getRuntimeContextRef.current,
           signal: request.controller.signal,
         });
         if (request.invalidated()) return;

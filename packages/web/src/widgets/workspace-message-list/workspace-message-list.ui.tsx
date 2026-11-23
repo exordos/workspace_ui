@@ -1,10 +1,7 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { compareWorkspaceMessages } from "~/entities/message/message-workspace-order.lib";
-import {
-  selectWorkspaceMessageById,
-  useWorkspaceMessageStore,
-} from "~/entities/message/message.model";
+import { useMessageIndex, selectKnownMessage } from "~/entities/messenger/messages-consumers";
 import { useResolvedMessengerQuoteMessage } from "~/entities/messenger/messenger-quote-resolver.hook";
 import type {
   MessengerConversationId,
@@ -928,8 +925,8 @@ const WorkspaceMessageListContent: React.FC<
     ],
     [messages],
   );
-  const storedRequests = useWorkspaceMessageStore(
-    useShallow((state) => requestUuids.map((uuid) => selectWorkspaceMessageById(state, uuid))),
+  const storedRequests = useMessageIndex(
+    useShallow((state) => requestUuids.map((uuid) => selectKnownMessage(state, uuid))),
   );
   const requestsByUuid = useMemo(() => {
     const requests = new Map<MessengerUuid, MessengerMessage>();

@@ -4,7 +4,7 @@ import { useChatDmCallBridgeStore } from "./chat-dm-call-bridge.model";
 describe("useChatDmCallBridgeStore", () => {
   afterEach(() => {
     useChatDmCallBridgeStore.getState().setInvokeDmCallFromProfileHandler(null);
-    useChatDmCallBridgeStore.getState().clearPendingDmCallPartner();
+    useChatDmCallBridgeStore.getState().clearPendingDmCall();
   });
 
   it("invokes registered handler with partner user uuid", () => {
@@ -23,14 +23,19 @@ describe("useChatDmCallBridgeStore", () => {
     expect(useChatDmCallBridgeStore.getState().invokeDmCallFromProfileHandler).toBeNull();
   });
 
-  it("stores and clears pending partner uuid", () => {
-    useChatDmCallBridgeStore
-      .getState()
-      .setPendingDmCallPartnerUserUuid("b225223c-637c-4afa-918f-5f2798b9305f");
-    expect(useChatDmCallBridgeStore.getState().pendingDmCallPartnerUserUuid).toBe(
-      "b225223c-637c-4afa-918f-5f2798b9305f",
-    );
-    useChatDmCallBridgeStore.getState().clearPendingDmCallPartner();
-    expect(useChatDmCallBridgeStore.getState().pendingDmCallPartnerUserUuid).toBeNull();
+  it("clears only the pending request acknowledged by the consumer", () => {
+    const bridge = useChatDmCallBridgeStore.getState();
+    const request = {
+      partnerUserUuid: "b225223c-637c-4afa-918f-5f2798b9305f",
+      ownerKey: "owner",
+      runtimeGeneration: 1,
+    };
+    const replacement = { ...request };
+    bridge.setPendingDmCall(request);
+    bridge.setPendingDmCall(replacement);
+    expect(bridge.clearPendingDmCall(request)).toBe(false);
+    expect(useChatDmCallBridgeStore.getState().pendingDmCall).toBe(replacement);
+    expect(bridge.clearPendingDmCall(replacement)).toBe(true);
+    expect(useChatDmCallBridgeStore.getState().pendingDmCall).toBeNull();
   });
 });

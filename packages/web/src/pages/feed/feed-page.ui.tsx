@@ -2,7 +2,7 @@ import React, { useEffect, useLayoutEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { fetchFeedMessages, hydrateFeedMessagesFromCache } from "~/entities/feed/feed.api";
 import { useFeedStore } from "~/entities/feed/feed.model";
-import { useMessengerStore } from "~/entities/messenger/messenger.model";
+import { useChatsCatalog } from "~/entities/messenger/chats";
 import { selectUserDisplayName } from "~/entities/user/user-selectors.lib";
 import { useUsersStore } from "~/entities/user/user.model";
 import {
@@ -98,8 +98,8 @@ export const FeedPage: React.FC = () => {
   const setMessagesIfActual = useFeedStore((s) => s.setMessagesIfActual);
   const setError = useFeedStore((s) => s.setError);
   const startRequest = useFeedStore((s) => s.startRequest);
-  const streamsById = useMessengerStore((s) => s.streamsById);
-  const topicsById = useMessengerStore((s) => s.topicsById);
+  const streamsById = useChatsCatalog((s) => s.streamsById);
+  const topicsById = useChatsCatalog((s) => s.topicsById);
   const listRef = useRef<HTMLUListElement>(null);
   const initialScrollPositionKeyRef = useRef<string | null>(null);
   const pendingScrollRestoreRef = useRef<{ scrollTop: number; scrollHeight: number } | null>(null);

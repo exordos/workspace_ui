@@ -104,7 +104,7 @@ export interface WorkspaceMessengerConversationCacheRow {
 
 export interface WorkspaceMessengerCachedFolder {
   uuid: string;
-  items?: WorkspaceMessengerCachedFolderItem[];
+  items?: readonly WorkspaceMessengerCachedFolderItem[];
   updatedAt?: string | null;
 }
 
@@ -183,13 +183,13 @@ export interface WorkspaceMessengerCachedMessage {
     revision: number;
     isClosed: boolean;
     voterCount: number;
-    questions: {
+    questions: readonly {
       questionUuid: string;
       voterCount: number;
       optionCounts: Record<string, number>;
-      optionVoterPreviews?: Record<string, string[]>;
+      optionVoterPreviews?: Readonly<Record<string, readonly string[]>>;
     }[];
-    myVotes: { questionUuid: string; optionUuids: string[] }[];
+    myVotes: readonly { questionUuid: string; optionUuids: readonly string[] }[];
   } | null;
   read?: boolean;
   createdAt: string;
@@ -248,11 +248,11 @@ export type WorkspaceMessengerCachedMessagePayload =
   | WorkspaceMessengerCachedMarkdownPayload
   | {
       kind: "poll";
-      questions: {
+      questions: readonly {
         uuid: string;
         text: string;
-        options: { uuid: string; text: string }[];
-        correctOptionUuids: string[];
+        options: readonly { uuid: string; text: string }[];
+        correctOptionUuids: readonly string[];
       }[];
       multipleAnswers: boolean;
       isAnonymous: boolean;
@@ -1652,13 +1652,10 @@ function folderWithRemovedItems(
   folder: WorkspaceMessengerCachedFolder,
   shouldRemove: (item: WorkspaceMessengerCachedFolderItem) => boolean,
 ): WorkspaceMessengerCachedFolder {
-  const folderWithItems = folder as WorkspaceMessengerCachedFolder & {
-    items?: WorkspaceMessengerCachedFolderItem[];
-  };
-  if (folderWithItems.items == null) return folder;
+  if (folder.items == null) return folder;
   return {
-    ...folderWithItems,
-    items: folderWithItems.items.filter((item) => !shouldRemove(item)),
+    ...folder,
+    items: folder.items.filter((item) => !shouldRemove(item)),
   };
 }
 

@@ -74,23 +74,27 @@ test.describe("Sidebar", () => {
             : defaultTopic,
       });
     });
-    await page.route(/\/messenger\/messages\/?(?:[^?]*)?(?:\?.*)?$/, (route) => {
-      const messages = [
-        messageSuccess("General message"),
-        {
-          ...messageSuccess("Latest release message", latestMessageUuid),
-          topic_uuid: latestTopicUuid,
-        },
-      ];
-      const url = new URL(route.request().url());
-      const path = url.pathname.replace(/\/$/, "");
-      const topicUuid = url.searchParams.get("topic_uuid");
-      return route.fulfill({
-        json: path.endsWith("/messages")
-          ? messages.filter((message) => topicUuid == null || message.topic_uuid === topicUuid)
-          : (messages.find((message) => path.endsWith(message.uuid)) ?? messages[1]),
-      });
-    });
+    await page.route(
+      /\/api\/workspace\/v1\/messenger\/messages(?:\/[0-9a-f-]{36})?\/?(?:\?.*)?$/i,
+      (route) => {
+        if (route.request().method() !== "GET") return route.fallback();
+        const messages = [
+          messageSuccess("General message"),
+          {
+            ...messageSuccess("Latest release message", latestMessageUuid),
+            topic_uuid: latestTopicUuid,
+          },
+        ];
+        const url = new URL(route.request().url());
+        const path = url.pathname.replace(/\/$/, "");
+        const topicUuid = url.searchParams.get("topic_uuid");
+        return route.fulfill({
+          json: path.endsWith("/messages")
+            ? messages.filter((message) => topicUuid == null || message.topic_uuid === topicUuid)
+            : (messages.find((message) => path.endsWith(message.uuid)) ?? messages[1]),
+        });
+      },
+    );
     await page.goto(`${e2eOrgBasePath()}/messenger`);
 
     const sidebar = page.getByRole("navigation", { name: "Chat list" });
@@ -112,9 +116,7 @@ test.describe("Sidebar", () => {
     await page.getByRole("button", { name: /профиль|profile/i }).click();
     await page.getByTestId("user-menu-settings-row").click();
     await page.getByTestId("right-panel-settings-chat-click-trigger").click();
-    await page
-      .getByRole("button", { name: /Последний топик|Latest topic/ })
-      .click();
+    await page.getByRole("button", { name: /Последний топик|Latest topic/ }).click();
     await page.screenshot({ path: testInfo.outputPath("chat-click-settings.png") });
     await page.reload();
     await expect(title).toHaveAttribute("href", latestPath);

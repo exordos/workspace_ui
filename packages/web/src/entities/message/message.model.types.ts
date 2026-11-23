@@ -58,13 +58,13 @@ export interface WorkspaceConversationWindowMarkers {
 export type WorkspaceConversationWindowMode = "tail" | "around-anchor";
 
 export interface WorkspaceConversationWindow {
-  mode: WorkspaceConversationWindowMode;
-  anchorMessageUuid: MessengerUuid | null;
-  messageUuids: MessengerUuid[];
-  beforePageMarker: string | null;
-  afterPageMarker: string | null;
-  revision: number; // Ревизия полного набора строк и маркеров.
-  generation: symbol; // Новая идентичность для каждой полной установки окна.
+  readonly mode: WorkspaceConversationWindowMode;
+  readonly anchorMessageUuid: MessengerUuid | null;
+  readonly messageUuids: readonly MessengerUuid[];
+  readonly beforePageMarker: string | null;
+  readonly afterPageMarker: string | null;
+  readonly revision: number; // Ревизия полного набора строк и маркеров.
+  readonly generation: symbol; // Новая идентичность для каждой полной установки окна.
 }
 
 export interface WorkspaceConversationWindowReplaceInput {

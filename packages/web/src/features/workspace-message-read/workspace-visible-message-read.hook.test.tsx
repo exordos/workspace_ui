@@ -7,6 +7,7 @@ import type {
   MessengerMessage,
 } from "~/entities/messenger/messenger.types";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
+import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import { useWorkspaceVisibleMessageRead } from "./workspace-visible-message-read.hook";
 
@@ -97,6 +98,7 @@ beforeEach(() => {
   vi.spyOn(document, "hasFocus").mockReturnValue(true);
   Object.defineProperty(document, "visibilityState", { value: "visible", configurable: true });
   useWorkspaceMessageStore.getState().clear();
+  useWorkspaceMessageStore.getState().setOwner(workspaceRuntimeOwnerKey(runtimeContext), false);
   captured.markReadUpTo.mockReset();
   captured.markReadUpTo.mockResolvedValue({
     status: "applied",

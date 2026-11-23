@@ -10,6 +10,8 @@ import type {
 } from "~/entities/messenger/messenger.types";
 import { useUsersStore } from "~/entities/user/user.model";
 import type { User } from "~/entities/user/user.types";
+import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
+import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { useMentionSuggestStore } from "~/features/mention-suggest/mention-suggest.model";
 import { useSettingsStore } from "~/features/settings/settings.model";
 import { computeFloatingPickerPosition } from "~/shared/lib/floating-panel-position.lib";
@@ -90,6 +92,7 @@ vi.mock("~/entities/sticker/sticker.api", () => ({
 }));
 
 afterEach(() => {
+  useWorkspaceAuthStore.getState().clear();
   useMessengerStore.getState().clear();
   useUsersStore.getState().clear();
   useMentionSuggestStore.getState().clear();
@@ -156,7 +159,24 @@ function createWorkspaceUser(overrides: Partial<User> = {}): User {
 
 const COMPOSER_STREAM_UUID = "11111111-1111-4111-8111-111111111111";
 const COMPOSER_TOPIC_UUID = "22222222-2222-4222-8222-222222222222";
-const COMPOSER_OWNER_KEY = "composer-workspace-owner";
+const composerSession = {
+  accountId: "composer-account",
+  instanceId: "composer-instance",
+  organizationId: "composer-org",
+  organizationOrigin: "https://workspace.example.com",
+  projectId: "project-uuid",
+  userUuid: "user-uuid",
+  accessToken: "test-token",
+  login: "composer@example.com",
+  profile: {
+    uuid: "user-uuid",
+    username: "composer",
+    firstName: null,
+    lastName: null,
+    email: null,
+  },
+};
+const COMPOSER_OWNER_KEY = workspaceRuntimeOwnerKey(composerSession);
 
 function createComposerStream(): MessengerStream {
   return {
@@ -200,6 +220,7 @@ function createComposerTopic(): MessengerTopic {
 }
 
 function seedComposerWorkspaceStore(): void {
+  useWorkspaceAuthStore.getState().setSession(composerSession);
   const store = useMessengerStore.getState();
   store.startBootstrap(COMPOSER_OWNER_KEY);
   store.upsertStream(COMPOSER_OWNER_KEY, createComposerStream());

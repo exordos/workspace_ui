@@ -8,11 +8,11 @@ import type { WorkspaceMessengerRouteMatch } from "~/shared/lib/workspace-messen
 import type { PresenceVisual } from "~/shared/ui/presence-indicator";
 import { resolveWorkspaceDirectPartnerUuid } from "./messenger-direct-partner.lib";
 import { selectMessengerConversationFromWorkspaceRoute } from "./messenger-ids.lib";
-import type { MessengerStoreState } from "./messenger.model";
+import type { ChatsCatalogSnapshot } from "./chats";
 import type { MessengerUuid } from "./messenger.types";
 
 type WorkspaceChatHeaderState = Pick<
-  MessengerStoreState,
+  ChatsCatalogSnapshot,
   | "conversationsById"
   | "streamsById"
   | "topicsById"

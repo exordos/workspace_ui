@@ -821,7 +821,12 @@ test.describe("Message anchor navigation @mock", () => {
       "2026-07-16T10:30:00.000Z",
     );
     const windowGate = deferred<void>();
-    let windowRequests = 0;
+    const windowDirections: string[] = [];
+    const readyFrame = JSON.stringify({
+      type: "ready",
+      epoch_generation: "e2e-generation-1",
+      epoch_version: 0,
+    });
 
     await page.routeWebSocket(
       (url) => url.pathname === EVENTS_SOCKET_PATH,
@@ -837,9 +842,7 @@ test.describe("Message anchor navigation @mock", () => {
     if (readySocket == null) {
       throw new Error("Expected Workspace realtime socket before the anchor handoff");
     }
-    readySocket.send(
-      JSON.stringify({ type: "ready", epoch_generation: "e2e-generation-1", epoch_version: 0 }),
-    );
+    readySocket.send(readyFrame);
     await expect
       .poll(() =>
         page.evaluate(
@@ -851,18 +854,33 @@ test.describe("Message anchor navigation @mock", () => {
 
     await installMessageRoute(page, {
       messages: new Map([[FIRST_ANCHOR_UUID, anchor]]),
-      onWindowRequest: async ({ messageUuid }) => {
+      onWindowRequest: async ({ messageUuid, url }) => {
         if (messageUuid !== FIRST_ANCHOR_UUID) return;
-        windowRequests += 1;
+        const direction = url.searchParams.get("sort_dir");
+        if (direction != null) windowDirections.push(direction);
         await windowGate.promise;
       },
     });
+    const connectionsBeforeNavigation = sockets.length;
     await page.goto(directMessageRoute(FIRST_ANCHOR_UUID));
-    await expect.poll(() => windowRequests).toBe(2);
+    await expect.poll(() => [...windowDirections].sort()).toEqual(["asc", "desc"]);
+    // The full navigation replaces the first document and its WebSocket. The saved
+    // cursor can already be 0, so wait for the new document's in-memory ready state.
+    await expect.poll(() => sockets.length).toBeGreaterThan(connectionsBeforeNavigation);
     const socket = sockets.at(-1);
     if (socket == null) {
-      throw new Error("Expected Workspace realtime socket before the anchor handoff");
+      throw new Error("Expected a new Workspace realtime socket for the anchor route");
     }
+    socket.send(readyFrame);
+    await expect
+      .poll(() =>
+        page.evaluate(async () => {
+          const { readActiveChats } = await import("/src/entities/messenger/chats.ts");
+          const catalog = readActiveChats();
+          return catalog.ownerKey != null && catalog.realtimeReadyOwnerKey === catalog.ownerKey;
+        }),
+      )
+      .toBe(true);
 
     socket.send(
       JSON.stringify({

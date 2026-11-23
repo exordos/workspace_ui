@@ -21,23 +21,23 @@ export interface MessengerOutgoingEncryption {
 export type MessengerOutgoingMessageStatus = "sending" | "failed";
 
 export interface MessengerOutgoingMessage {
-  canonicalMessageUuid: MessengerUuid;
-  placementUuid: MessengerUuid;
-  ownerKey: string;
-  conversationId: MessengerConversationId;
-  projectId: MessengerUuid;
-  streamUuid: MessengerUuid;
-  topicUuid: MessengerUuid;
-  authorUuid: MessengerUuid;
-  markdown: string;
-  sourceMarkdown: string;
-  status: MessengerOutgoingMessageStatus;
-  createdAt: string;
-  updatedAt: string;
-  attempt: number;
-  error: string | null;
-  includeStreamConversation: boolean;
-  encryption?: MessengerOutgoingEncryption;
+  readonly canonicalMessageUuid: MessengerUuid;
+  readonly placementUuid: MessengerUuid;
+  readonly ownerKey: string;
+  readonly conversationId: MessengerConversationId;
+  readonly projectId: MessengerUuid;
+  readonly streamUuid: MessengerUuid;
+  readonly topicUuid: MessengerUuid;
+  readonly authorUuid: MessengerUuid;
+  readonly markdown: string;
+  readonly sourceMarkdown: string;
+  readonly status: MessengerOutgoingMessageStatus;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+  readonly attempt: number;
+  readonly error: string | null;
+  readonly includeStreamConversation: boolean;
+  readonly encryption?: MessengerOutgoingEncryption;
 }
 
 export interface MessengerOutgoingMessageDraft {

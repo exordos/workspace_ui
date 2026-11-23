@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { runWorkspaceDirectStreamCreate } from "~/entities/messenger/messenger-create-chat-actions.lib";
-import { useMessengerStore } from "~/entities/messenger/messenger.model";
+import { chatCommands } from "~/entities/messenger/chat-commands";
+import { readActiveChats } from "~/entities/messenger/chats";
 import {
   resolveUserPresenceVisual,
   selectUserStatusLabel,
@@ -11,7 +11,10 @@ import {
   selectCurrentWorkspaceRuntimeContext,
   useWorkspaceAuthStore,
 } from "~/entities/workspace-auth/workspace-auth.model";
-import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
+import {
+  isWorkspaceRuntimeRequestContextCurrent,
+  workspaceRuntimeOwnerKey,
+} from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { useChatDmCallBridgeStore } from "~/features/chat-dm-call-bridge/chat-dm-call-bridge.model";
 import { useOwnProfileEditor } from "~/features/user-profile/user-profile-editor.hook";
 import { profileDraftDisplayName } from "~/features/user-profile/user-profile-editor.lib";
@@ -403,9 +406,18 @@ export const RightPanelUserProfile: React.FC<RightPanelUserProfileProps> = ({
     });
   }, [editor, handleSaveAvatar, profileBusy]);
 
+  // Profile actions use the session that rendered the selected user, even across sync bridge listeners.
+  const isCurrentProfileRuntime = useCallback(
+    () =>
+      isWorkspaceRuntimeRequestContextCurrent(runtimeContext, () =>
+        useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
+      ),
+    [runtimeContext],
+  );
+
   const navigateToDefaultTopic = useCallback(
     (streamUuid: string, topicUuid: string) => {
-      if (runtimeContext == null) return;
+      if (runtimeContext == null || !isCurrentProfileRuntime()) return;
       void navigate(
         workspaceMessengerTopicRoute({
           orgId: runtimeContext.organizationId,
@@ -415,13 +427,20 @@ export const RightPanelUserProfile: React.FC<RightPanelUserProfileProps> = ({
         }),
       );
     },
-    [navigate, runtimeContext],
+    [isCurrentProfileRuntime, navigate, runtimeContext],
   );
 
   const handleMessage = useCallback(() => {
-    if (messagePending || callPending || runtimeContext == null || profile.isOwnProfile) return;
+    if (
+      messagePending ||
+      callPending ||
+      runtimeContext == null ||
+      profile.isOwnProfile ||
+      !isCurrentProfileRuntime()
+    )
+      return;
 
-    const messengerState = useMessengerStore.getState();
+    const messengerState = readActiveChats();
     const target = resolveDirectProfileChatNavigation({
       directUserUuid: profile.userUuid,
       streamsById: messengerState.streamsById,
@@ -446,7 +465,8 @@ export const RightPanelUserProfile: React.FC<RightPanelUserProfileProps> = ({
 
     // stream-missing → создаём ЛС и открываем его default topic.
     setMessagePending(true);
-    void runWorkspaceDirectStreamCreate({ directUserUuid: profile.userUuid })
+    void chatCommands
+      .openDirectForRuntime({ directUserUuid: profile.userUuid, runtimeContext })
       .then((result) => {
         if (result.status !== "applied") return;
         navigateToDefaultTopic(result.stream.uuid, result.defaultTopic.uuid);
@@ -462,6 +482,7 @@ export const RightPanelUserProfile: React.FC<RightPanelUserProfileProps> = ({
   }, [
     callPending,
     currentMessengerRoute,
+    isCurrentProfileRuntime,
     messagePending,
     navigateToDefaultTopic,
     profile.isOwnProfile,
@@ -471,9 +492,16 @@ export const RightPanelUserProfile: React.FC<RightPanelUserProfileProps> = ({
 
   // Звонок: та же навигация, что у «Написать», плюс pending → ChatPage шлёт в текущий/default топик.
   const handleCall = useCallback(() => {
-    if (messagePending || callPending || runtimeContext == null || profile.isOwnProfile) return;
+    if (
+      messagePending ||
+      callPending ||
+      runtimeContext == null ||
+      profile.isOwnProfile ||
+      !isCurrentProfileRuntime()
+    )
+      return;
 
-    const messengerState = useMessengerStore.getState();
+    const messengerState = readActiveChats();
     const target = resolveDirectProfileChatNavigation({
       directUserUuid: profile.userUuid,
       streamsById: messengerState.streamsById,
@@ -488,7 +516,17 @@ export const RightPanelUserProfile: React.FC<RightPanelUserProfileProps> = ({
       return;
     }
 
-    useChatDmCallBridgeStore.getState().setPendingDmCallPartnerUserUuid(profile.userUuid);
+    const bridge = useChatDmCallBridgeStore.getState();
+    const request = {
+      partnerUserUuid: profile.userUuid,
+      ownerKey: workspaceRuntimeOwnerKey(runtimeContext),
+      runtimeGeneration: runtimeContext.runtimeGeneration,
+    };
+    bridge.setPendingDmCall(request);
+    if (!isCurrentProfileRuntime()) {
+      bridge.clearPendingDmCall(request);
+      return;
+    }
 
     if (target.status === "already-open") {
       // Остаёмся в текущем топике/stream — ChatPage подхватит pending и resolveSendTarget.
@@ -501,16 +539,17 @@ export const RightPanelUserProfile: React.FC<RightPanelUserProfileProps> = ({
     }
 
     setCallPending(true);
-    void runWorkspaceDirectStreamCreate({ directUserUuid: profile.userUuid })
+    void chatCommands
+      .openDirectForRuntime({ directUserUuid: profile.userUuid, runtimeContext })
       .then((result) => {
-        if (result.status !== "applied") {
-          useChatDmCallBridgeStore.getState().clearPendingDmCallPartner();
+        if (result.status !== "applied" || !isCurrentProfileRuntime()) {
+          bridge.clearPendingDmCall(request);
           return;
         }
         navigateToDefaultTopic(result.stream.uuid, result.defaultTopic.uuid);
       })
       .catch((error) => {
-        useChatDmCallBridgeStore.getState().clearPendingDmCallPartner();
+        bridge.clearPendingDmCall(request);
         log.error("Failed to open direct call from profile", {
           error: error instanceof Error ? error.message : String(error),
         });
@@ -521,6 +560,7 @@ export const RightPanelUserProfile: React.FC<RightPanelUserProfileProps> = ({
   }, [
     callPending,
     currentMessengerRoute,
+    isCurrentProfileRuntime,
     messagePending,
     navigateToDefaultTopic,
     profile.isOwnProfile,

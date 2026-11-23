@@ -1,6 +1,6 @@
 import { useCallback, useLayoutEffect, useMemo, useRef } from "react";
-import { useWorkspaceMessageStore } from "~/entities/message/message.model";
-import { useMessengerStore } from "~/entities/messenger/messenger.model";
+import { readActiveChats, useChatsCatalog } from "~/entities/messenger/chats";
+import { useMessageIndex } from "~/entities/messenger/messages-consumers";
 import { useUsersStore } from "~/entities/user/user.model";
 import {
   selectCurrentWorkspaceRuntimeContext,
@@ -20,11 +20,11 @@ export function useEncryptedChatInfo(streamUuid: string, sendingKeyUuid: string 
     [sessions, currentAccountId],
   );
   const ownerKey = runtime == null ? null : workspaceRuntimeOwnerKey(runtime);
-  const catalogOwnerKey = useMessengerStore((state) => state.ownerKey);
-  const streamsById = useMessengerStore((state) => state.streamsById);
-  const bindingsById = useMessengerStore((state) => state.streamBindingsById);
-  const messagesOwnerKey = useWorkspaceMessageStore((state) => state.ownerKey);
-  const messagesById = useWorkspaceMessageStore((state) => state.messagesById);
+  const catalogOwnerKey = useChatsCatalog((state) => state.ownerKey);
+  const streamsById = useChatsCatalog((state) => state.streamsById);
+  const bindingsById = useChatsCatalog((state) => state.streamBindingsById);
+  const messagesOwnerKey = useMessageIndex((state) => state.ownerKey);
+  const messagesById = useMessageIndex((state) => state.messagesById);
   const usersOwnerKey = useUsersStore((state) => state.ownerKey);
   const usersById = useUsersStore((state) => state.usersById);
   const projection = useMemo(
@@ -68,7 +68,7 @@ export function useEncryptedChatInfo(streamUuid: string, sendingKeyUuid: string 
   }, [scopeKey]);
   const onCopyKey = useCallback(() => {
     const current = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
-    const catalog = useMessengerStore.getState();
+    const catalog = readActiveChats();
     if (
       current == null ||
       ownerKey == null ||
@@ -93,10 +93,9 @@ export function useEncryptedChatInfo(streamUuid: string, sendingKeyUuid: string 
         latest == null ||
         workspaceRuntimeOwnerKey(latest) !== ownerKey ||
         latest.runtimeGeneration !== current.runtimeGeneration ||
-        useMessengerStore.getState().ownerKey !== ownerKey ||
+        readActiveChats().ownerKey !== ownerKey ||
         (stream.encryption === true &&
-          useMessengerStore.getState().streamsById[streamUuid]?.currentEncryptionKey?.keyUuid !==
-            keyUuid)
+          readActiveChats().streamsById[streamUuid]?.currentEncryptionKey?.keyUuid !== keyUuid)
       )
         return;
       if (!copied) toast.error(t("e2ee.copyFailed"));

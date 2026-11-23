@@ -2,8 +2,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { useActivityStore } from "~/entities/activity/activity.model";
+import { useChatsCatalog } from "~/entities/messenger/chats";
 import { selectMessengerSidebarActivityCounts } from "~/entities/messenger/messenger-sidebar.lib";
-import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import {
   selectCurrentWorkspaceRuntimeContext,
   useWorkspaceAuthStore,
@@ -75,8 +75,8 @@ export const Layout: React.FC = () => {
   const activeStreamSlug = streamSlug ?? undefined;
   const activeTopic = topicName ?? null;
 
-  const workspaceActivityCounts = useMessengerStore(selectMessengerSidebarActivityCounts);
-  const bootstrapError = useMessengerStore((state) => state.error);
+  const workspaceActivityCounts = useChatsCatalog(selectMessengerSidebarActivityCounts);
+  const bootstrapError = useChatsCatalog((state) => state.error);
   const openCallsInSeparateWindow = useSettingsStore((state) => state.openCallsInSeparateWindow);
   const currentUserId = null;
   const streamsFromStore = EMPTY_LEGACY_STREAMS;

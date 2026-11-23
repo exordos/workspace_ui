@@ -31,10 +31,10 @@ export type MessengerOwnReactionUuidsByName = Record<string, MessengerUuid>;
 export type MessengerPendingOwnReactionOperation = "add" | "remove";
 
 export interface MessengerPendingOwnReactionState {
-  requestId: string;
-  operation: MessengerPendingOwnReactionOperation;
-  previousCount: number;
-  previousOwnReactionUuid: MessengerUuid | null;
+  readonly requestId: string;
+  readonly operation: MessengerPendingOwnReactionOperation;
+  readonly previousCount: number;
+  readonly previousOwnReactionUuid: MessengerUuid | null;
 }
 
 // Pending-проекция живет только в runtime message store. Она не подменяет
@@ -43,69 +43,72 @@ export interface MessengerPendingOwnReactionState {
 export type MessengerPendingOwnReactionsByName = Record<string, MessengerPendingOwnReactionState>;
 
 export interface MessengerMarkdownPayload {
-  kind: "markdown";
-  content: string;
+  readonly kind: "markdown";
+  readonly content: string;
 }
 
 export interface MessengerPollPayload {
-  kind: "poll";
-  questions: {
-    uuid: string;
-    text: string;
-    options: { uuid: string; text: string }[];
-    correctOptionUuids: string[];
+  readonly kind: "poll";
+  readonly questions: readonly {
+    readonly uuid: string;
+    readonly text: string;
+    readonly options: readonly { readonly uuid: string; readonly text: string }[];
+    readonly correctOptionUuids: readonly string[];
   }[];
-  multipleAnswers: boolean;
-  isAnonymous: boolean;
-  allowRevote: boolean;
-  resultsVisibility: "always" | "after_vote";
-  allowAddingOptions: boolean;
-  closesAt: string | null;
-  closedAt: string | null;
+  readonly multipleAnswers: boolean;
+  readonly isAnonymous: boolean;
+  readonly allowRevote: boolean;
+  readonly resultsVisibility: "always" | "after_vote";
+  readonly allowAddingOptions: boolean;
+  readonly closesAt: string | null;
+  readonly closedAt: string | null;
 }
 export interface MessengerPollState {
-  revision: number;
-  isClosed: boolean;
-  voterCount: number;
-  questions: {
-    questionUuid: string;
-    voterCount: number;
-    optionCounts: Record<string, number>;
-    optionVoterPreviews?: Record<string, string[]>;
+  readonly revision: number;
+  readonly isClosed: boolean;
+  readonly voterCount: number;
+  readonly questions: readonly {
+    readonly questionUuid: string;
+    readonly voterCount: number;
+    readonly optionCounts: Readonly<Record<string, number>>;
+    readonly optionVoterPreviews?: Readonly<Record<string, readonly string[]>>;
   }[];
-  myVotes: { questionUuid: string; optionUuids: string[] }[];
+  readonly myVotes: readonly {
+    readonly questionUuid: string;
+    readonly optionUuids: readonly string[];
+  }[];
 }
 
 export interface MessengerEncryptedPayload {
-  kind: "e2ee";
-  keyUuid: string;
-  content: string;
+  readonly kind: "e2ee";
+  readonly keyUuid: string;
+  readonly content: string;
 }
 export interface MessengerKeyRequestPayload {
-  kind: "key_request";
-  keyUuid: string;
-  deviceId: string;
-  deviceName: string;
-  publicKey: string;
+  readonly kind: "key_request";
+  readonly keyUuid: string;
+  readonly deviceId: string;
+  readonly deviceName: string;
+  readonly publicKey: string;
 }
 export interface MessengerKeyGrantPayload {
-  kind: "key_grant";
-  keyUuid: string;
-  requestMessageUuid: string;
-  senderDeviceId: string;
-  recipientDeviceId: string;
-  content: string;
+  readonly kind: "key_grant";
+  readonly keyUuid: string;
+  readonly requestMessageUuid: string;
+  readonly senderDeviceId: string;
+  readonly recipientDeviceId: string;
+  readonly content: string;
 }
 export interface MessengerKeyAnnouncedPayload {
-  kind: "key_announced";
-  keyUuid: string;
+  readonly kind: "key_announced";
+  readonly keyUuid: string;
 }
 export interface MessengerKeyRejectPayload {
-  kind: "key_reject";
-  keyUuid: string;
-  requestMessageUuid: string;
-  senderDeviceId: string;
-  recipientDeviceId: string;
+  readonly kind: "key_reject";
+  readonly keyUuid: string;
+  readonly requestMessageUuid: string;
+  readonly senderDeviceId: string;
+  readonly recipientDeviceId: string;
 }
 export type MessengerE2eePayload =
   | MessengerEncryptedPayload
@@ -128,149 +131,155 @@ export interface MessengerOwnReactionProjectionRow {
 }
 
 export interface MessengerStream {
-  uuid: MessengerUuid;
-  projectId: MessengerUuid;
-  ownerUuid: MessengerUuid;
-  userUuid: MessengerUuid;
-  role: "guest" | "member" | "moderator" | "administrator" | "owner";
-  notificationMode: WorkspaceMessengerStreamNotificationMode;
-  name: string;
-  description: string;
-  unreadCount: number;
-  activeUnreadCount?: number;
-  passiveUnreadCount?: number;
-  sourceName: WorkspaceMessengerSourceName;
-  providerUuid?: MessengerUuid | null;
-  providerIdentity?: string | null;
-  audience: MessengerAudience;
-  isPrivate: boolean;
-  encryption?: boolean;
-  allowKeySharingByHolders?: boolean;
-  keySharingUpdatedAt?: string;
-  currentEncryptionKey?: { keyUuid: string } | null;
-  inviteOnly: boolean;
-  announce: boolean;
-  isArchived: boolean;
-  color?: number | null;
-  directUserUuid: MessengerUuid | null;
-  lastMessageUuid: MessengerUuid | null;
-  createdAt: string;
-  updatedAt: string;
+  readonly uuid: MessengerUuid;
+  readonly projectId: MessengerUuid;
+  readonly ownerUuid: MessengerUuid;
+  readonly userUuid: MessengerUuid;
+  readonly role: "guest" | "member" | "moderator" | "administrator" | "owner";
+  readonly notificationMode: WorkspaceMessengerStreamNotificationMode;
+  readonly name: string;
+  readonly description: string;
+  readonly unreadCount: number;
+  readonly activeUnreadCount?: number;
+  readonly passiveUnreadCount?: number;
+  readonly sourceName: WorkspaceMessengerSourceName;
+  readonly providerUuid?: MessengerUuid | null;
+  readonly providerIdentity?: string | null;
+  readonly audience: MessengerAudience;
+  readonly isPrivate: boolean;
+  readonly encryption?: boolean;
+  readonly allowKeySharingByHolders?: boolean;
+  readonly keySharingUpdatedAt?: string;
+  readonly currentEncryptionKey?: { readonly keyUuid: string } | null;
+  readonly inviteOnly: boolean;
+  readonly announce: boolean;
+  readonly isArchived: boolean;
+  readonly color?: number | null;
+  readonly directUserUuid: MessengerUuid | null;
+  readonly lastMessageUuid: MessengerUuid | null;
+  readonly createdAt: string;
+  readonly updatedAt: string;
 }
 
 // Bindings let the domain track stream membership without reading raw DTOs.
 export interface MessengerStreamBinding {
-  uuid: MessengerUuid;
-  projectId: MessengerUuid;
-  streamUuid: MessengerUuid;
-  userUuid: MessengerUuid;
-  whoUuid: MessengerUuid;
-  role: "guest" | "member" | "moderator" | "administrator" | "owner";
-  notificationMode: WorkspaceMessengerStreamNotificationMode;
-  createdAt: string;
-  updatedAt: string;
+  readonly uuid: MessengerUuid;
+  readonly projectId: MessengerUuid;
+  readonly streamUuid: MessengerUuid;
+  readonly userUuid: MessengerUuid;
+  readonly whoUuid: MessengerUuid;
+  readonly role: "guest" | "member" | "moderator" | "administrator" | "owner";
+  readonly notificationMode: WorkspaceMessengerStreamNotificationMode;
+  readonly createdAt: string;
+  readonly updatedAt: string;
 }
 
 export interface MessengerTopic {
-  uuid: MessengerUuid;
-  projectId: MessengerUuid;
-  streamUuid: MessengerUuid;
-  userUuid: MessengerUuid;
-  name: string;
-  unreadCount: number;
-  activeUnreadCount?: number;
-  passiveUnreadCount?: number;
-  isDefault: boolean;
-  isDone: boolean;
-  notificationMode: WorkspaceMessengerTopicNotificationMode;
-  color?: number | null;
-  lastMessageUuid: MessengerUuid | null;
-  summary?: string | null;
-  summaryLastMessageUuid?: MessengerUuid | null;
-  summaryHasNewMessages?: boolean | null;
-  summaryEnabled?: boolean;
-  summarySystemPrompt?: string | null;
-  summaryReasoningEffort?: WorkspaceMessengerTopicSummaryReasoningEffort | null;
-  createdAt: string;
-  updatedAt: string;
+  readonly uuid: MessengerUuid;
+  readonly projectId: MessengerUuid;
+  readonly streamUuid: MessengerUuid;
+  readonly userUuid: MessengerUuid;
+  readonly name: string;
+  readonly unreadCount: number;
+  readonly activeUnreadCount?: number;
+  readonly passiveUnreadCount?: number;
+  readonly isDefault: boolean;
+  readonly isDone: boolean;
+  readonly notificationMode: WorkspaceMessengerTopicNotificationMode;
+  readonly color?: number | null;
+  readonly lastMessageUuid: MessengerUuid | null;
+  readonly summary?: string | null;
+  readonly summaryLastMessageUuid?: MessengerUuid | null;
+  readonly summaryHasNewMessages?: boolean | null;
+  readonly summaryEnabled?: boolean;
+  readonly summarySystemPrompt?: string | null;
+  readonly summaryReasoningEffort?: WorkspaceMessengerTopicSummaryReasoningEffort | null;
+  readonly createdAt: string;
+  readonly updatedAt: string;
 }
 
 export interface MessengerConversation {
-  id: MessengerConversationId;
-  streamUuid: MessengerUuid;
-  topicUuid?: MessengerUuid;
-  title: string;
-  audience: MessengerAudience;
-  isPrivate: boolean;
-  unreadCount: number;
-  activeUnreadCount?: number;
-  passiveUnreadCount?: number;
-  isArchived?: boolean;
-  directUserUuid?: MessengerUuid | null;
-  lastMessageUuid?: MessengerUuid | null;
-  notificationMode?:
+  readonly id: MessengerConversationId;
+  readonly streamUuid: MessengerUuid;
+  readonly topicUuid?: MessengerUuid;
+  readonly title: string;
+  readonly audience: MessengerAudience;
+  readonly isPrivate: boolean;
+  readonly unreadCount: number;
+  readonly activeUnreadCount?: number;
+  readonly passiveUnreadCount?: number;
+  readonly isArchived?: boolean;
+  readonly directUserUuid?: MessengerUuid | null;
+  readonly lastMessageUuid?: MessengerUuid | null;
+  readonly notificationMode?:
     | WorkspaceMessengerStreamNotificationMode
     | WorkspaceMessengerTopicNotificationMode;
-  isDone?: boolean;
-  isDefaultTopic?: boolean;
+  readonly isDone?: boolean;
+  readonly isDefaultTopic?: boolean;
 }
 
 export interface MessengerMessage {
-  uuid: MessengerUuid;
-  conversationId: MessengerConversationId;
-  projectId: MessengerUuid;
-  streamUuid: MessengerUuid;
-  topicUuid: MessengerUuid;
-  authorUuid: MessengerUuid;
-  userUuid: MessengerUuid;
-  payload: MessengerMessagePayload;
-  pollState?: MessengerPollState | null;
-  read: boolean;
-  pinned: boolean;
-  starred: boolean;
-  isOwn: boolean;
+  readonly uuid: MessengerUuid;
+  readonly conversationId: MessengerConversationId;
+  readonly projectId: MessengerUuid;
+  readonly streamUuid: MessengerUuid;
+  readonly topicUuid: MessengerUuid;
+  readonly authorUuid: MessengerUuid;
+  readonly userUuid: MessengerUuid;
+  readonly payload: MessengerMessagePayload;
+  readonly pollState?: MessengerPollState | null;
+  readonly read: boolean;
+  readonly pinned: boolean;
+  readonly starred: boolean;
+  readonly isOwn: boolean;
   // The fields below stay optional because durable cache rows can predate provenance.
-  mentioned?: boolean;
-  sourceName?: WorkspaceMessengerSourceName;
-  providerUuid?: MessengerUuid | null;
-  providerIdentity?: string | null;
-  provider?: WorkspaceMessengerProviderDto | null;
-  delivery?: WorkspaceMessengerDeliveryDto | null;
-  reactions: MessengerReactionCountsByName;
-  reactionUserUuidsByEmojiName: MessengerReactionUserUuidsByName;
-  optimisticReactionUserUuidsByEmojiName?: MessengerOptimisticReactionUserUuidsByName;
-  ownReactionUuidsByEmojiName: MessengerOwnReactionUuidsByName;
-  pendingOwnReactionsByEmojiName?: MessengerPendingOwnReactionsByName;
-  createdAt: string;
-  updatedAt: string;
+  readonly mentioned?: boolean;
+  readonly sourceName?: WorkspaceMessengerSourceName;
+  readonly providerUuid?: MessengerUuid | null;
+  readonly providerIdentity?: string | null;
+  readonly provider?:
+    | (Readonly<Omit<WorkspaceMessengerProviderDto, "capabilities">> & {
+        readonly capabilities?: Readonly<Record<string, unknown>>;
+      })
+    | null;
+  readonly delivery?: Readonly<WorkspaceMessengerDeliveryDto> | null;
+  readonly reactions: Readonly<MessengerReactionCountsByName>;
+  readonly reactionUserUuidsByEmojiName: Readonly<Record<string, readonly MessengerUuid[]>>;
+  readonly optimisticReactionUserUuidsByEmojiName?: Readonly<
+    Record<string, readonly MessengerUuid[] | null>
+  >;
+  readonly ownReactionUuidsByEmojiName: Readonly<MessengerOwnReactionUuidsByName>;
+  readonly pendingOwnReactionsByEmojiName?: Readonly<MessengerPendingOwnReactionsByName>;
+  readonly createdAt: string;
+  readonly updatedAt: string;
 }
 
 export interface MessengerFolderItem {
-  uuid: MessengerUuid;
-  projectId: MessengerUuid;
-  folderUuid: MessengerUuid;
-  userUuid: MessengerUuid;
-  streamUuid: MessengerUuid;
-  conversationId: MessengerConversationId;
-  chatType: WorkspaceMessengerFolderItemChatType;
-  orderIndex: number | null;
-  pinnedAt: string | null;
-  unreadCount: number;
-  activeUnreadCount?: number;
-  passiveUnreadCount?: number;
-  createdAt: string;
-  updatedAt: string;
+  readonly uuid: MessengerUuid;
+  readonly projectId: MessengerUuid;
+  readonly folderUuid: MessengerUuid;
+  readonly userUuid: MessengerUuid;
+  readonly streamUuid: MessengerUuid;
+  readonly conversationId: MessengerConversationId;
+  readonly chatType: WorkspaceMessengerFolderItemChatType;
+  readonly orderIndex: number | null;
+  readonly pinnedAt: string | null;
+  readonly unreadCount: number;
+  readonly activeUnreadCount?: number;
+  readonly passiveUnreadCount?: number;
+  readonly createdAt: string;
+  readonly updatedAt: string;
 }
 
 export interface MessengerFolder {
-  uuid: MessengerUuid;
-  title: string;
-  backgroundColorValue: number | null;
-  unreadCount: number;
-  systemType: "all" | "created" | "personal" | "channels" | null;
-  items: MessengerFolderItem[];
-  createdAt: string;
-  updatedAt: string;
+  readonly uuid: MessengerUuid;
+  readonly title: string;
+  readonly backgroundColorValue: number | null;
+  readonly unreadCount: number;
+  readonly systemType: "all" | "created" | "personal" | "channels" | null;
+  readonly items: readonly MessengerFolderItem[];
+  readonly createdAt: string;
+  readonly updatedAt: string;
 }
 
 // Bootstrap is the first full snapshot for one runtime owner.
@@ -382,5 +391,5 @@ export interface MessengerSidebarFolderView {
   backgroundColorValue: number | null;
   unreadCount: number;
   systemType: MessengerFolder["systemType"];
-  items: MessengerFolderItem[];
+  items: readonly MessengerFolderItem[];
 }

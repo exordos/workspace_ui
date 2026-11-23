@@ -39,7 +39,7 @@ function topic(overrides: Partial<MessengerTopic> = {}): MessengerTopic {
 
 describe("topic summary draft helpers", () => {
   it("uses backend defaults when optional topic fields are absent", () => {
-    const source = topic();
+    const source = { ...topic() };
     delete source.summaryEnabled;
     delete source.summarySystemPrompt;
     delete source.summaryReasoningEffort;

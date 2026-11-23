@@ -7,10 +7,15 @@
  * state and receive real-time events without direct store access.
  */
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
+import { MESSENGER_ALL_CHATS_FOLDER_UUID } from "../entities/messenger/messenger-folder-system-type.lib";
 import { useMessengerStore } from "../entities/messenger/messenger.model";
 import { useThemeStore } from "../entities/theme/theme.model";
 import { useUsersStore } from "../entities/user/user.model";
-import { useWorkspaceAuthStore } from "../entities/workspace-auth/workspace-auth.model";
+import {
+  useWorkspaceAuthStore,
+  type WorkspaceAuthProfile,
+} from "../entities/workspace-auth/workspace-auth.model";
+import { workspaceRuntimeOwnerKey } from "../entities/workspace-runtime/workspace-runtime.lib";
 import {
   installAiContext,
   notifyAiNewMessage,
@@ -18,22 +23,8 @@ import {
   type AiContextBridge,
 } from "./ai-context";
 
-vi.mock("../entities/messenger/messenger-sidebar.lib", () => ({
-  selectMessengerSidebarActivityCounts: vi.fn((state: { inboxCount?: number }) => ({
-    inboxCount: state.inboxCount ?? 0,
-    mentionsCount: 0,
-    reactionsCount: 0,
-    starredCount: 0,
-  })),
-}));
-vi.mock("../entities/messenger/messenger.model", () => ({
-  useMessengerStore: { getState: vi.fn() },
-}));
 vi.mock("../entities/user/user.model", () => ({
   useUsersStore: { getState: vi.fn() },
-}));
-vi.mock("../entities/workspace-auth/workspace-auth.model", () => ({
-  useWorkspaceAuthStore: { getState: vi.fn() },
 }));
 vi.mock("../entities/theme/theme.model", () => ({
   useThemeStore: { getState: vi.fn() },
@@ -42,6 +33,7 @@ vi.mock("../i18n/i18n", () => ({
   getLocale: vi.fn(() => "ru"),
 }));
 vi.mock("../shared/lib/logger", () => ({
+  logStoreAction: vi.fn(),
   createLogger: () => ({
     info: vi.fn(),
     warn: vi.fn(),
@@ -55,17 +47,36 @@ function getAi(): AiContextBridge {
 }
 
 function setupDefaultStoreMocks() {
-  vi.mocked(useMessengerStore.getState).mockReturnValue({ inboxCount: 0 } as never);
   vi.mocked(useUsersStore.getState).mockReturnValue({
     getUser: vi.fn(() => undefined),
-  } as never);
-  vi.mocked(useWorkspaceAuthStore.getState).mockReturnValue({
-    getCurrentSession: vi.fn(() => null),
   } as never);
   vi.mocked(useThemeStore.getState).mockReturnValue({
     paletteId: "orange-warm",
     mode: "dark",
   } as never);
+}
+
+function activateWorkspaceSession(profile: Partial<WorkspaceAuthProfile> = {}): string {
+  const session = {
+    accountId: "test-account",
+    instanceId: "test-instance",
+    organizationId: "test-organization",
+    organizationOrigin: "https://workspace.example.com",
+    projectId: "test-project",
+    userUuid: "user-uuid",
+    login: "profile@example.com",
+    accessToken: "test-token",
+    profile: {
+      uuid: "user-uuid",
+      email: "profile@example.com",
+      username: "alice",
+      firstName: "Alice",
+      lastName: "Test",
+      ...profile,
+    },
+  };
+  useWorkspaceAuthStore.getState().setSession(session);
+  return workspaceRuntimeOwnerKey(session);
 }
 
 describe("ai-context", () => {
@@ -75,6 +86,8 @@ describe("ai-context", () => {
 
   afterEach(() => {
     delete (window as unknown as Record<string, unknown>).__ai__;
+    useMessengerStore.getState().clear();
+    useWorkspaceAuthStore.getState().clear();
     vi.restoreAllMocks();
   });
 
@@ -165,17 +178,7 @@ describe("ai-context", () => {
             : undefined,
         ),
       } as never);
-      vi.mocked(useWorkspaceAuthStore.getState).mockReturnValue({
-        getCurrentSession: vi.fn(() => ({
-          userUuid: "user-uuid",
-          profile: {
-            email: "profile@example.com",
-            username: "alice",
-            firstName: "Alice",
-            lastName: "Test",
-          },
-        })),
-      } as never);
+      activateWorkspaceSession();
 
       installAiContext();
       const result = getAi().context.getCurrentUser();
@@ -190,17 +193,12 @@ describe("ai-context", () => {
       vi.mocked(useUsersStore.getState).mockReturnValue({
         getUser: vi.fn(() => undefined),
       } as never);
-      vi.mocked(useWorkspaceAuthStore.getState).mockReturnValue({
-        getCurrentSession: vi.fn(() => ({
-          userUuid: "user-uuid",
-          profile: {
-            email: "user@example.com",
-            username: "fallback-user",
-            firstName: null,
-            lastName: null,
-          },
-        })),
-      } as never);
+      activateWorkspaceSession({
+        email: "user@example.com",
+        username: "fallback-user",
+        firstName: null,
+        lastName: null,
+      });
 
       installAiContext();
       const result = getAi().context.getCurrentUser();
@@ -229,7 +227,19 @@ describe("ai-context", () => {
 
     // Unread count helps AI prioritize which conversations to suggest
     it("computes unreadCount from messenger sidebar counts", () => {
-      vi.mocked(useMessengerStore.getState).mockReturnValue({ inboxCount: 10 } as never);
+      const ownerKey = activateWorkspaceSession();
+      const catalog = useMessengerStore.getState();
+      catalog.startBootstrap(ownerKey);
+      catalog.applyFolderSnapshot(ownerKey, {
+        uuid: MESSENGER_ALL_CHATS_FOLDER_UUID,
+        title: "All",
+        backgroundColorValue: null,
+        unreadCount: 10,
+        systemType: "all",
+        items: [],
+        createdAt: "2026-07-07T10:00:00Z",
+        updatedAt: "2026-07-07T10:00:00Z",
+      });
 
       installAiContext();
       const result = getAi().context.getAppState();

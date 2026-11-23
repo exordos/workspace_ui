@@ -9,6 +9,7 @@ import {
   useWorkspaceAuthStore,
   type WorkspaceAuthSession,
 } from "~/entities/workspace-auth/workspace-auth.model";
+import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { t } from "~/i18n/i18n";
 import { ELECTRON_MAC_TITLEBAR_STRIP_CLASS } from "~/shared/lib/electron-title-bar.lib";
 import { setCurrentOrgRouteIdResolver } from "~/shared/lib/org-route";
@@ -234,6 +235,9 @@ describe("TopBar", () => {
   });
 
   it("opens selected Workspace user from top-bar search through direct-private stream route", () => {
+    seedWorkspaceSession("b225223c-637c-4afa-918f-5f2798b9305f");
+    const runtime = useWorkspaceAuthStore.getState().getCurrentRuntimeContext()!;
+    const ownerKey = workspaceRuntimeOwnerKey(runtime);
     useUsersStore.getState().upsertUser(
       createUser({
         uuid: "a225223c-637c-4afa-918f-5f2798b9305f",
@@ -243,9 +247,9 @@ describe("TopBar", () => {
         status: "active",
       }),
     );
-    useMessengerStore.getState().startBootstrap("owner:top-bar");
-    useMessengerStore.getState().replaceBootstrapState("owner:top-bar", {
-      streams: [createDirectWorkspaceStream()],
+    useMessengerStore.getState().startBootstrap(ownerKey);
+    useMessengerStore.getState().replaceBootstrapState(ownerKey, {
+      streams: [createDirectWorkspaceStream({ userUuid: runtime.userUuid })],
       streamBindings: [],
       topics: [],
       conversations: [],

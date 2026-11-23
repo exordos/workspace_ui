@@ -79,23 +79,20 @@ function message(uuid: string, payload: MessengerMessage["payload"]): MessengerM
   };
 }
 
-async function seedRealEncryptedMessage(
-  text: string,
-  uuid = "55555555-5555-4555-8555-555555555555",
-) {
+function seedMessageRuntime(userUuid: string) {
   useWorkspaceAuthStore.getState().setSession({
     accountId: "account",
     instanceId: "instance",
     organizationId: "org",
     organizationOrigin: "http://127.0.0.1:9100",
     projectId: "project-a",
-    userUuid: "author",
+    userUuid,
     accessToken: "token",
     refreshToken: "refresh",
     login: "user@example.com",
     profile: {
-      uuid: "author",
-      username: "author",
+      uuid: userUuid,
+      username: userUuid,
       firstName: "Test",
       lastName: "User",
       email: "user@example.com",
@@ -103,6 +100,14 @@ async function seedRealEncryptedMessage(
   });
   const runtime = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
   if (runtime == null) throw new Error("Missing runtime");
+  return runtime;
+}
+
+async function seedRealEncryptedMessage(
+  text: string,
+  uuid = "55555555-5555-4555-8555-555555555555",
+) {
+  const runtime = seedMessageRuntime("author");
   const owner = workspaceRuntimeOwnerKey(runtime);
   const keyUuid = crypto.randomUUID();
   const provider = createRealChatCryptoProvider();
@@ -335,6 +340,7 @@ describe("key response service messages", () => {
     vi.restoreAllMocks();
     setLocale("en");
     useWorkspaceMessageStore.getState().clear();
+    useWorkspaceAuthStore.getState().clear();
   });
 
   function responseFixture(kind: "key_grant" | "key_reject") {
@@ -374,7 +380,8 @@ describe("key response service messages", () => {
       resolveAuthorLabel: (uuid: string) => ({ author: "Алексей", recipient: "Саша" })[uuid],
       actions: { getKeyServiceState: () => state },
     };
-    useWorkspaceMessageStore.getState().setOwner("owner", false);
+    const runtime = seedMessageRuntime("recipient");
+    useWorkspaceMessageStore.getState().setOwner(workspaceRuntimeOwnerKey(runtime), false);
     return { request, props, state };
   }
 

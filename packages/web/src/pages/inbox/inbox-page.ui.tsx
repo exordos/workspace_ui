@@ -1,12 +1,12 @@
 import React, { useCallback, useMemo } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { useWorkspaceMessageStore } from "~/entities/message/message.model";
+import { useChatsCatalog } from "~/entities/messenger/chats";
+import { useMessageIndex } from "~/entities/messenger/messages-consumers";
 import { resolveWorkspaceActiveUnreadCount } from "~/entities/messenger/messenger-notification-mode.lib";
 import {
   selectMessengerSidebarStreams,
   type MessengerSidebarStreamsState,
 } from "~/entities/messenger/messenger-sidebar.lib";
-import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import type {
   MessengerSidebarStreamItem,
   MessengerSidebarTopicItem,
@@ -184,14 +184,14 @@ export const InboxPage: React.FC = () => {
     }
     return null;
   }, [workspaceRoute, workspaceRuntimeContext]);
-  const messagesById = useWorkspaceMessageStore((state) => state.messagesById);
+  const messagesById = useMessageIndex((state) => state.messagesById);
   const usersById = useUsersStore((state) => state.usersById);
-  const streamIds = useMessengerStore((state) => state.streamIds);
-  const streamsById = useMessengerStore((state) => state.streamsById);
-  const topicIds = useMessengerStore((state) => state.topicIds);
-  const topicsById = useMessengerStore((state) => state.topicsById);
-  const foldersById = useMessengerStore((state) => state.foldersById);
-  const conversationsById = useMessengerStore((state) => state.conversationsById);
+  const streamIds = useChatsCatalog((state) => state.streamIds);
+  const streamsById = useChatsCatalog((state) => state.streamsById);
+  const topicIds = useChatsCatalog((state) => state.topicIds);
+  const topicsById = useChatsCatalog((state) => state.topicsById);
+  const foldersById = useChatsCatalog((state) => state.foldersById);
+  const conversationsById = useChatsCatalog((state) => state.conversationsById);
   const messengerSidebarState = useMemo<MessengerSidebarStreamsState>(
     () => ({
       streamIds,
@@ -203,9 +203,9 @@ export const InboxPage: React.FC = () => {
     }),
     [conversationsById, foldersById, streamIds, streamsById, topicIds, topicsById],
   );
-  const loadingRaw = useMessengerStore((state) => state.isLoading);
-  const error = useMessengerStore((state) => state.error);
-  const catalogLoaded = useMessengerStore(
+  const loadingRaw = useChatsCatalog((state) => state.isLoading);
+  const error = useChatsCatalog((state) => state.error);
+  const catalogLoaded = useChatsCatalog(
     (state) =>
       state.lastLoadedAt != null ||
       state.streamIds.length > 0 ||

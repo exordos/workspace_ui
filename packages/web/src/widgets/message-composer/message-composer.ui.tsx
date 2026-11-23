@@ -8,7 +8,7 @@ import React, {
   useId,
   type ReactNode,
 } from "react";
-import { useMessengerStore } from "~/entities/messenger/messenger.model";
+import { useChatsCatalog } from "~/entities/messenger/chats";
 import { AiComposerButton } from "~/features/ai-reply/ai-reply.ui";
 import { recordMentionPick } from "~/features/mention-suggest/mention-frecency.lib";
 import type { MentionSuggestion } from "~/features/mention-suggest/mention-suggest.types";
@@ -670,13 +670,13 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
     () => new Map(workspaceComposerMentions.map((mention) => [mention.userUuid, mention] as const)),
     [workspaceComposerMentions],
   );
-  const messengerOwnerKey = useMessengerStore((state) => state.ownerKey);
+  const messengerOwnerKey = useChatsCatalog((state) => state.ownerKey);
   const workspaceReferencesEnabled =
     capabilities?.mentions?.mode === "enabled" && messengerOwnerKey != null;
-  const streamIds = useMessengerStore((state) => state.streamIds);
-  const streamsById = useMessengerStore((state) => state.streamsById);
-  const topicIds = useMessengerStore((state) => state.topicIds);
-  const topicsById = useMessengerStore((state) => state.topicsById);
+  const streamIds = useChatsCatalog((state) => state.streamIds);
+  const streamsById = useChatsCatalog((state) => state.streamsById);
+  const topicIds = useChatsCatalog((state) => state.topicIds);
+  const topicsById = useChatsCatalog((state) => state.topicsById);
   const [showWorkspaceReferences, setShowWorkspaceReferences] = useState(false);
   const [workspaceReferenceQuery, setWorkspaceReferenceQuery] = useState("");
   const [activeWorkspaceReferenceIndex, setActiveWorkspaceReferenceIndex] = useState(0);

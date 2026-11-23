@@ -1,3 +1,6 @@
+import { useMemo } from "react";
+import { readActiveChats } from "~/entities/messenger/chats";
+import { readActiveMessageIndex } from "~/entities/messenger/messages-consumers";
 /**
  * Snapshots the mention ranking context when the "@" dropdown opens.
  *
@@ -5,9 +8,6 @@
  * every incoming message, and the order only has to be right when the list appears.
  */
 
-import { useMemo } from "react";
-import { useWorkspaceMessageStore } from "~/entities/message/message.model";
-import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import { loadMentionFrecency } from "~/features/mention-suggest/mention-frecency.lib";
 import type { MentionRankingContext } from "~/features/mention-suggest/mention-suggest.types";
 import { buildWorkspaceMentionContext } from "./message-composer-mention-context.lib";
@@ -29,8 +29,8 @@ export function useComposerMentionContext(
       streamUuid,
       conversationId,
       selfUserUuid,
-      messenger: useMessengerStore.getState(),
-      messages: useWorkspaceMessageStore.getState(),
+      messenger: readActiveChats(),
+      messages: readActiveMessageIndex(),
       frecencyByUserUuid: loadMentionFrecency(),
     });
   }, [active, hasInput, streamUuid, conversationId, selfUserUuid]);

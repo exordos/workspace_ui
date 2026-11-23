@@ -11,6 +11,9 @@ import type { MessengerOutgoingMessage } from "~/entities/messenger/messenger-ou
 import type { MessengerMessage } from "~/entities/messenger/messenger.types";
 import { useUsersStore } from "~/entities/user/user.model";
 import type { User } from "~/entities/user/user.types";
+import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
+import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
+import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import type { EncryptedChatServiceState } from "~/features/encrypted-chat-message/encrypted-chat-service-actions.lib";
 import { setLocale } from "~/i18n/i18n";
 import { AUTH_IMAGE_PLACEHOLDER_SRC } from "~/shared/lib/media-display-url.lib";
@@ -522,14 +525,37 @@ describe("WorkspaceMessageList", () => {
       conversationId: "topic:stream-uuid-1:topic-uuid-1",
       presentation: { serviceMessages: "account" },
     };
-    const { container, rerender } = render(<WorkspaceMessageList {...props} />);
-    expect(container.querySelector("[data-empty-state]")).toBeInTheDocument();
-    act(() => useWorkspaceMessageStore.setState({ messagesById: { [request.uuid]: request } }));
-    expect(screen.getByRole("button", { name: /1 event/ })).toBeInTheDocument();
-    expect(container.querySelector("article")).toHaveAttribute("data-message-uuid", response.uuid);
-    rerender(<WorkspaceMessageList {...props} currentUserUuid="another-account" />);
-    expect(container.querySelector("[data-empty-state]")).toBeInTheDocument();
-    act(() => useWorkspaceMessageStore.setState({ messagesById: {} }));
+    const runtime: WorkspaceRuntimeContext = {
+      accountId: "account",
+      instanceId: "instance",
+      organizationId: "organization",
+      organizationOrigin: "https://workspace.example.test",
+      projectId: request.projectId,
+      userUuid: props.currentUserUuid,
+      accessToken: "synthetic-token",
+      runtimeGeneration: 1,
+    };
+    const auth = vi
+      .spyOn(useWorkspaceAuthStore.getState(), "getCurrentRuntimeContext")
+      .mockReturnValue(runtime);
+    const previousMessageState = useWorkspaceMessageStore.getState();
+    useWorkspaceMessageStore.getState().setOwner(workspaceRuntimeOwnerKey(runtime), false);
+    const { container, rerender, unmount } = render(<WorkspaceMessageList {...props} />);
+    try {
+      expect(container.querySelector("[data-empty-state]")).toBeInTheDocument();
+      act(() => useWorkspaceMessageStore.setState({ messagesById: { [request.uuid]: request } }));
+      expect(screen.getByRole("button", { name: /1 event/ })).toBeInTheDocument();
+      expect(container.querySelector("article")).toHaveAttribute(
+        "data-message-uuid",
+        response.uuid,
+      );
+      rerender(<WorkspaceMessageList {...props} currentUserUuid="another-account" />);
+      expect(container.querySelector("[data-empty-state]")).toBeInTheDocument();
+    } finally {
+      unmount();
+      useWorkspaceMessageStore.setState(previousMessageState, true);
+      auth.mockRestore();
+    }
   });
 
   it("does not split visible author or topic runs with hidden events", () => {

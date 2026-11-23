@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useWorkspaceMessageStore } from "~/entities/message/message.model";
 import { subscribeRealChatKeyChanges } from "~/entities/messenger/chat-crypto-resources.lib";
 import type { RealChatKeyChange } from "~/entities/messenger/chat-crypto-resources.lib";
 import {
@@ -7,7 +6,8 @@ import {
   type RealChatMessageDecryption,
 } from "~/entities/messenger/chat-crypto-runtime.lib";
 import { acquireChatCryptoSession } from "~/entities/messenger/chat-crypto-session.lib";
-import { useMessengerStore } from "~/entities/messenger/messenger.model";
+import { readActiveChats, useChatsCatalog } from "~/entities/messenger/chats";
+import { readActiveMessageIndex, useMessageIndex } from "~/entities/messenger/messages-consumers";
 import type { MessengerMessage } from "~/entities/messenger/messenger.types";
 import {
   selectCurrentWorkspaceRuntimeContext,
@@ -32,10 +32,10 @@ export function useSecretFragmentPresentation(
     () => selectCurrentWorkspaceRuntimeContext({ sessions, currentAccountId }),
     [sessions, currentAccountId],
   );
-  const catalogOwner = useMessengerStore((state) => state.ownerKey);
-  const messageOwner = useWorkspaceMessageStore((state) => state.ownerKey);
+  const catalogOwner = useChatsCatalog((state) => state.ownerKey);
+  const messageOwner = useMessageIndex((state) => state.ownerKey);
   const streamUuid = secret.streamUuid;
-  const stream = useMessengerStore((state) =>
+  const stream = useChatsCatalog((state) =>
     streamUuid == null ? undefined : state.streamsById[streamUuid],
   );
   const [revision, setRevision] = useState(0);
@@ -91,14 +91,14 @@ export function useSecretFragmentPresentation(
     let disposed = false;
     const isCurrent = () => {
       const current = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
-      const catalog = useMessengerStore.getState();
+      const catalog = readActiveChats();
       return (
         !disposed &&
         revisionRef.current === revision &&
         current !== null &&
         workspaceRuntimeOwnerKey(current) === owner &&
         current.runtimeGeneration === runtime.runtimeGeneration &&
-        useWorkspaceMessageStore.getState().ownerKey === owner &&
+        readActiveMessageIndex().ownerKey === owner &&
         catalog.ownerKey === owner &&
         catalog.streamsById[secret.streamUuid]?.projectId === runtime.projectId &&
         catalog.streamsById[secret.streamUuid]?.userUuid === runtime.userUuid &&

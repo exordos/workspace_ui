@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useReducer, useRef } from "react";
+import { resolveChatTopic } from "~/entities/messenger/chat-commands";
+import { readActiveChats, useChatsCatalog } from "~/entities/messenger/chats";
 import type { Messages } from "~/entities/messenger/messages";
-import { resolveMessengerTopic } from "~/entities/messenger/messenger-conversation-metadata.lib";
 import { readMessengerConversationPosition } from "~/entities/messenger/messenger-conversation-position.lib";
-import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import type { MessengerTopic, MessengerConversationId } from "~/entities/messenger/messenger.types";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import {
@@ -24,7 +24,7 @@ export function useWorkspaceTopicResolution({
   onResolved: (topic: MessengerTopic, replace: boolean) => void;
 }) {
   const ownerKey = runtimeContext == null ? null : workspaceRuntimeOwnerKey(runtimeContext);
-  const knownTopicStreamUuid = useMessengerStore((state) =>
+  const knownTopicStreamUuid = useChatsCatalog((state) =>
     state.ownerKey === ownerKey && topicUuid != null
       ? state.topicsById[topicUuid]?.streamUuid
       : undefined,
@@ -43,22 +43,18 @@ export function useWorkspaceTopicResolution({
           isWorkspaceRuntimeRequestInvalidated(runtimeContext, getRuntimeContext, controller.signal)
         )
           return;
-        const store = useMessengerStore.getState();
-        if (store.topicsById[topic.uuid] !== topic)
-          store.upsertTopic(workspaceRuntimeOwnerKey(runtimeContext), topic);
         onResolved(topic, replace);
       };
-      const store = useMessengerStore.getState();
+      const store = readActiveChats();
       const knownTopic = store.ownerKey === ownerKey ? store.topicsById[requestedTopicUuid] : null;
       if (knownTopic != null) {
         applyTopic(knownTopic);
         return;
       }
-      void resolveMessengerTopic({
+      void resolveChatTopic({
         runtimeContext,
         topicUuid: requestedTopicUuid,
         signal: controller.signal,
-        getRuntimeContext,
       })
         .then(applyTopic)
         .catch(() => undefined)

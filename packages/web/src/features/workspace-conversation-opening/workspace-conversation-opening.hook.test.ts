@@ -1,5 +1,5 @@
 import { act, renderHook } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useWorkspaceMessageStore } from "~/entities/message/message.model";
 import { createMessages } from "~/entities/messenger/messages";
 import type {
@@ -8,6 +8,10 @@ import type {
 } from "~/entities/messenger/messenger-messages-loader.lib";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import type { MessengerTopic } from "~/entities/messenger/messenger.types";
+import {
+  useWorkspaceAuthStore,
+  type WorkspaceAuthSession,
+} from "~/entities/workspace-auth/workspace-auth.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import {
@@ -19,7 +23,6 @@ const mocks = vi.hoisted(() => ({
   load: vi.fn(),
   saved: vi.fn(() => null),
   resolve: vi.fn(),
-  current: vi.fn(),
 }));
 vi.mock("~/entities/messenger/messenger-conversation-metadata.lib", () => ({
   resolveMessengerTopic: mocks.resolve,
@@ -31,11 +34,8 @@ vi.mock("~/entities/messenger/messenger-messages-loader.lib", () => ({
 vi.mock("~/entities/messenger/messenger-conversation-position.lib", () => ({
   readMessengerConversationPosition: mocks.saved,
 }));
-vi.mock("~/entities/workspace-auth/workspace-auth.model", () => ({
-  useWorkspaceAuthStore: { getState: () => ({ getCurrentRuntimeContext: mocks.current }) },
-}));
 
-const runtime: WorkspaceRuntimeContext = {
+const session = {
   accountId: "account",
   instanceId: "instance",
   organizationId: "org",
@@ -44,14 +44,25 @@ const runtime: WorkspaceRuntimeContext = {
   organizationOrigin: "https://example.test",
   accessToken: "test",
   runtimeGeneration: 1,
-};
+  login: "test@example.com",
+  profile: {
+    uuid: "user",
+    username: "test-user",
+    firstName: null,
+    lastName: null,
+    email: null,
+  },
+} satisfies WorkspaceAuthSession;
+const runtime: WorkspaceRuntimeContext = session;
+const ownerKey = workspaceRuntimeOwnerKey(runtime);
+const getRuntimeContext = () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
 const streamUuid = "75309057-419c-4b12-a7c1-3932429ec4a6";
 const conversationId = `topic:${streamUuid}:4ec0b996-b778-45f8-8ef4-ef863be0c047`;
 const secondConversationId = `topic:${streamUuid}:ed25f944-8106-4386-b2f9-65e9db32d465`;
-const messages = createMessages({ runtimeContext: runtime, getRuntimeContext: mocks.current });
+const messages = createMessages({ runtimeContext: runtime, getRuntimeContext });
 const applied: MessengerConversationMessagesResult = {
   status: "applied",
-  ownerKey: "owner",
+  ownerKey,
   conversationId,
   nextPageMarker: null,
   hasMore: false,
@@ -63,11 +74,16 @@ const requests: {
 }[] = [];
 
 beforeEach(() => {
-  const ownerKey = workspaceRuntimeOwnerKey(runtime);
-  useWorkspaceMessageStore.getState().setOwner(ownerKey, false);
+  useWorkspaceAuthStore.setState({
+    sessions: [session],
+    currentAccountId: session.accountId,
+    runtimeGeneration: session.runtimeGeneration,
+  });
+  const messageStore = useWorkspaceMessageStore.getState();
+  messageStore.clear();
+  messageStore.setOwner(ownerKey, false);
   useMessengerStore.getState().clear();
-  useMessengerStore.setState({ ownerKey });
-  mocks.current.mockReturnValue(runtime);
+  useMessengerStore.getState().startBootstrap(ownerKey);
   mocks.resolve.mockReset();
   requests.length = 0;
   mocks.saved.mockReset().mockReturnValue(null);
@@ -77,6 +93,10 @@ beforeEach(() => {
         requests.push({ options, finish });
       }),
   );
+});
+
+afterEach(() => {
+  useWorkspaceAuthStore.getState().clear();
 });
 
 describe("topic opening resolution", () => {
@@ -132,9 +152,7 @@ describe("topic opening resolution", () => {
 function props(runtimeContext = runtime, retryNonce = 0) {
   return {
     messages:
-      runtimeContext === runtime
-        ? messages
-        : createMessages({ runtimeContext, getRuntimeContext: mocks.current }),
+      runtimeContext === runtime ? messages : createMessages({ runtimeContext, getRuntimeContext }),
     runtimeContext,
     conversationId,
     enabled: true,
@@ -151,7 +169,7 @@ describe("conversation opening lifetime", () => {
     await act(() => {
       requests[0]?.finish({
         status: "failed",
-        ownerKey: "owner",
+        ownerKey,
         conversationId,
         error: "reactions",
       });
@@ -176,7 +194,7 @@ describe("conversation opening lifetime", () => {
     await act(() => {
       requests[0]?.finish({
         status: "failed",
-        ownerKey: "owner",
+        ownerKey,
         conversationId,
         error: "offline",
       });
@@ -214,7 +232,10 @@ describe("conversation opening lifetime", () => {
     });
     act(() => result.current.takeControl());
     const newRuntime = { ...runtime, runtimeGeneration: 2 };
-    mocks.current.mockReturnValue(newRuntime);
+    useWorkspaceAuthStore.setState({
+      sessions: [{ ...session, runtimeGeneration: newRuntime.runtimeGeneration }],
+      runtimeGeneration: newRuntime.runtimeGeneration,
+    });
     rerender(props(newRuntime));
     expect(requests[0]?.options.signal?.aborted).toBe(true);
     await act(() => {

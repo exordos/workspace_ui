@@ -1,5 +1,5 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useWorkspaceMessageStore } from "~/entities/message/message.model";
 import {
   openMessengerMessageWindow,
@@ -11,6 +11,7 @@ import type {
   MessengerMessageWindowFetchResult,
 } from "~/entities/messenger/messenger-messages-loader.lib";
 import type { MessengerConversationId } from "~/entities/messenger/messenger.types";
+import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import type { WorkspaceMessengerMessageDto } from "~/shared/api/messenger.types";
@@ -121,7 +122,7 @@ function createOptions(
   const {
     loadWindow,
     loader: loaderOverrides,
-    getRuntimeContext = () => runtimeContext,
+    getRuntimeContext = () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
     ...options
   } = overrides;
   const loader: MessengerMessageWindowOpenLoaders = {
@@ -193,7 +194,28 @@ function createOptions(
 
 describe("useWorkspaceMessageAnchorNavigation", () => {
   beforeEach(() => {
+    useWorkspaceAuthStore.setState({
+      sessions: [
+        {
+          ...runtimeContext,
+          login: "member@example.com",
+          profile: {
+            uuid: runtimeContext.userUuid,
+            username: "member",
+            firstName: null,
+            lastName: null,
+            email: "member@example.com",
+          },
+        },
+      ],
+      currentAccountId: runtimeContext.accountId,
+      runtimeGeneration: runtimeContext.runtimeGeneration,
+    });
     useWorkspaceMessageStore.getState().setOwner(null, false);
+  });
+
+  afterEach(() => {
+    useWorkspaceAuthStore.getState().clear();
   });
 
   it.each(["not-found", "access-denied"] as const)(

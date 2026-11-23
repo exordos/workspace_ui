@@ -1,10 +1,10 @@
 import { useMemo } from "react";
-import { useWorkspaceMessageStore } from "~/entities/message/message.model";
+import { useChatsCatalog } from "~/entities/messenger/chats";
+import { useMessageIndex } from "~/entities/messenger/messages-consumers";
 import {
   selectWorkspaceRightPanelInfoView,
   type WorkspaceRightPanelInfoView,
 } from "~/entities/messenger/messenger-right-panel.lib";
-import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import type { MessengerMessage, MessengerUuid } from "~/entities/messenger/messenger.types";
 import { useUsersStore } from "~/entities/user/user.model";
 import {
@@ -90,12 +90,12 @@ export function useLayoutRightPanelShell(
     rightDrawerOpen,
   });
 
-  const workspaceConversationsById = useMessengerStore((state) => state.conversationsById);
-  const workspaceStreamsById = useMessengerStore((state) => state.streamsById);
-  const workspaceTopicsById = useMessengerStore((state) => state.topicsById);
-  const workspaceTopicIds = useMessengerStore((state) => state.topicIds);
-  const workspaceStreamBindingsById = useMessengerStore((state) => state.streamBindingsById);
-  const workspaceStreamBindingIdsByStreamId = useMessengerStore(
+  const workspaceConversationsById = useChatsCatalog((state) => state.conversationsById);
+  const workspaceStreamsById = useChatsCatalog((state) => state.streamsById);
+  const workspaceTopicsById = useChatsCatalog((state) => state.topicsById);
+  const workspaceTopicIds = useChatsCatalog((state) => state.topicIds);
+  const workspaceStreamBindingsById = useChatsCatalog((state) => state.streamBindingsById);
+  const workspaceStreamBindingIdsByStreamId = useChatsCatalog(
     (state) => state.streamBindingIdsByStreamId,
   );
   const workspaceUsersById = useUsersStore((state) => state.usersById);
@@ -122,7 +122,7 @@ export function useLayoutRightPanelShell(
     (rightDrawerWorkspaceUserUuidOverride?.trim().length ?? 0) > 0 && !canSelectWorkspaceProfile;
   const shouldSelectWorkspaceTopicMessages =
     workspaceMessengerActive && rightDrawerOpen && rightDrawerMode === "info";
-  const workspaceMessagesById = useWorkspaceMessageStore((state) =>
+  const workspaceMessagesById = useMessageIndex((state) =>
     shouldSelectWorkspaceTopicMessages &&
     workspaceOwnerKey != null &&
     state.ownerKey === workspaceOwnerKey

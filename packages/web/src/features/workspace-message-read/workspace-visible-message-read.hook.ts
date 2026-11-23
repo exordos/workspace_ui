@@ -1,10 +1,10 @@
 import { useCallback, useLayoutEffect, useMemo, useRef, useSyncExternalStore } from "react";
+import { useChatsCatalog } from "~/entities/messenger/chats";
+import { getMessageReadRequests } from "~/entities/messenger/message-commands";
 import {
-  selectWorkspaceMessageById,
-  useWorkspaceMessageStore,
-} from "~/entities/message/message.model";
-import { getMessengerReadQueue } from "~/entities/messenger/messenger-read-queue.lib";
-import { useMessengerStore } from "~/entities/messenger/messenger.model";
+  readActiveMessageIndex,
+  selectKnownMessage,
+} from "~/entities/messenger/messages-consumers";
 import type { MessengerConversationId, MessengerUuid } from "~/entities/messenger/messenger.types";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
@@ -30,19 +30,19 @@ export function useWorkspaceVisibleMessageRead({
   topicUuid = null,
 }: UseWorkspaceVisibleMessageReadOptions): UseWorkspaceVisibleMessageReadResult {
   const queueRef = useRef<{
-    queue: NonNullable<ReturnType<typeof getMessengerReadQueue>>;
+    queue: NonNullable<ReturnType<typeof getMessageReadRequests>>;
     scopeKey: string | null;
     conversationId: MessengerConversationId | null;
   } | null>(null);
   const ownerKey = runtimeContext == null ? null : workspaceRuntimeOwnerKey(runtimeContext);
   const scopeKey =
     runtimeContext == null ? null : `${ownerKey}\u0000${runtimeContext.runtimeGeneration}`;
-  const topicUnreadCount = useMessengerStore((state) =>
+  const topicUnreadCount = useChatsCatalog((state) =>
     ownerKey != null && state.ownerKey === ownerKey && topicUuid != null
       ? (state.topicsById[topicUuid]?.unreadCount ?? 0)
       : 0,
   );
-  const topicLastMessageUuid = useMessengerStore((state) =>
+  const topicLastMessageUuid = useChatsCatalog((state) =>
     ownerKey != null && state.ownerKey === ownerKey && topicUuid != null
       ? (state.topicsById[topicUuid]?.lastMessageUuid ??
         (conversationId == null
@@ -56,7 +56,7 @@ export function useWorkspaceVisibleMessageRead({
       queueRef.current = null;
       return;
     }
-    const queue = getMessengerReadQueue(runtimeContext);
+    const queue = getMessageReadRequests(runtimeContext);
     if (queue == null) return;
     queueRef.current = { queue, scopeKey, conversationId };
     return () => {
@@ -92,9 +92,9 @@ export function useWorkspaceVisibleMessageRead({
         current.conversationId !== conversationId
       )
         return;
-      const state = useWorkspaceMessageStore.getState();
+      const state = readActiveMessageIndex();
       for (const uuid of messageUuids) {
-        const message = selectWorkspaceMessageById(state, uuid);
+        const message = selectKnownMessage(state, uuid);
         if (
           message != null &&
           (message.conversationId === conversationId ||

@@ -1,12 +1,12 @@
 import React from "react";
-import type { MessengerOutgoingMessage } from "~/entities/messenger/messenger-outbox.types";
+import type { OutgoingMessageView } from "~/entities/messenger/messages-consumers";
 import { t } from "~/i18n/i18n";
 import { Icon } from "~/shared/ui/icon";
 
 interface WorkspaceMessageOutgoingDeliveryIndicatorProps {
-  message: MessengerOutgoingMessage;
-  onRetry?: (placementUuid: MessengerOutgoingMessage["placementUuid"]) => void;
-  onRemove?: (placementUuid: MessengerOutgoingMessage["placementUuid"]) => void;
+  message: OutgoingMessageView;
+  onRetry?: (placementUuid: OutgoingMessageView["placementUuid"]) => void;
+  onRemove?: (placementUuid: OutgoingMessageView["placementUuid"]) => void;
 }
 
 export const WorkspaceMessageOutgoingDeliveryIndicator = React.memo(

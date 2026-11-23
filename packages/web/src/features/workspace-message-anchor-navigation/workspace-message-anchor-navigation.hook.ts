@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useWorkspaceMessageStore } from "~/entities/message/message.model";
+import { useMessageIndex } from "~/entities/messenger/messages-consumers";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import {
@@ -680,7 +680,7 @@ export function useWorkspaceMessageAnchorNavigation({
     intentRuntimeScope.runtimeGeneration === visibleIntent.runtimeGeneration;
   const previewOwnerKey = previewRuntimeMatches ? visibleIntent.ownerKey : null;
   const previewMessageUuid = previewRuntimeMatches ? visibleIntent.messageUuid : null;
-  const previewMessage = useWorkspaceMessageStore((state) => {
+  const previewMessage = useMessageIndex((state) => {
     if (
       previewOwnerKey == null ||
       previewMessageUuid == null ||

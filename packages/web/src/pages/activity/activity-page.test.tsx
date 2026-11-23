@@ -187,7 +187,7 @@ function seedWorkspaceMessengerContext(): void {
   };
 
   useMessengerStore.setState({
-    ownerKey: `${WORKSPACE_SESSION.organizationId}:${WORKSPACE_SESSION.projectId}:${WORKSPACE_SESSION.userUuid}`,
+    ownerKey: workspaceRuntimeOwnerKey(WORKSPACE_SESSION),
     streamsById: { [stream.uuid]: stream },
     streamIds: [stream.uuid],
     topicsById: { [topic.uuid]: topic },

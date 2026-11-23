@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { useWorkspaceMessageStore } from "~/entities/message/message.model";
 import type { ChatCryptoEnvelope } from "~/entities/messenger/chat-crypto-provider.types";
 import type { RealChatSession } from "~/entities/messenger/chat-crypto-runtime.lib";
 import { acquireChatCryptoSession } from "~/entities/messenger/chat-crypto-session.lib";
 import type { ChatE2eeControllerState } from "~/entities/messenger/chat-e2ee-controller.types";
-import { useMessengerStore } from "~/entities/messenger/messenger.model";
+import { readActiveChats, useChatsCatalog } from "~/entities/messenger/chats";
+import { readActiveMessageIndex } from "~/entities/messenger/messages-consumers";
 import type { MessengerMessage } from "~/entities/messenger/messenger.types";
 import {
   selectCurrentWorkspaceRuntimeContext,
@@ -40,7 +40,7 @@ export function useChatCryptoSession(streamUuid: string | null, topicUuid?: stri
     [sessions, currentAccountId],
   );
   const ownerKey = runtime === null ? null : workspaceRuntimeOwnerKey(runtime);
-  const stream = useMessengerStore((state) =>
+  const stream = useChatsCatalog((state) =>
     state.ownerKey === ownerKey && streamUuid !== null ? state.streamsById[streamUuid] : undefined,
   );
   const enabled =
@@ -63,7 +63,7 @@ export function useChatCryptoSession(streamUuid: string | null, topicUuid?: stri
   const isActionCurrent = useCallback(
     (active: RealChatSession) => {
       const latest = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
-      const catalog = useMessengerStore.getState();
+      const catalog = readActiveChats();
       return (
         activeSessionRef.current === active &&
         latest !== null &&
@@ -85,7 +85,7 @@ export function useChatCryptoSession(streamUuid: string | null, topicUuid?: stri
     let unsubscribe: (() => void) | undefined;
     const isCurrent = () => {
       const live = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
-      const catalog = useMessengerStore.getState();
+      const catalog = readActiveChats();
       return (
         !disposed &&
         live !== null &&
@@ -190,7 +190,7 @@ export function useChatCryptoSession(streamUuid: string | null, topicUuid?: stri
     (keyUuid?: string, recoveryMessage?: MessengerMessage, requestTopicUuid = topicUuid) =>
       perform(
         async (active) => {
-          const catalog = useWorkspaceMessageStore.getState();
+          const catalog = readActiveMessageIndex();
           const probe =
             !recoveryMessage && keyUuid && catalog.ownerKey === ownerKey
               ? Object.values(catalog.messagesById).find(

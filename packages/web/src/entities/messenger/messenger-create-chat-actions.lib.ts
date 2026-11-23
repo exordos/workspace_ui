@@ -516,7 +516,12 @@ export async function createWorkspaceDirectStream({
     return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
 
   store.getState().upsertStream(action.ownerKey, stream);
+  // A catalog subscriber can switch runtimes while the stream is published.
+  if (action.isStale())
+    return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
   store.getState().upsertTopic(action.ownerKey, defaultTopic);
+  if (action.isStale())
+    return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
   return { status: "applied", ownerKey: action.ownerKey, stream, defaultTopic, streamBindings: [] };
 }
 

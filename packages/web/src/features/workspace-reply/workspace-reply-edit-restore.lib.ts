@@ -1,7 +1,7 @@
 import {
-  selectWorkspaceMessageById,
-  useWorkspaceMessageStore,
-} from "~/entities/message/message.model";
+  readActiveMessageIndex,
+  selectKnownMessage,
+} from "~/entities/messenger/messages-consumers";
 import {
   loadMessengerQuoteMessage,
   type LoadMessengerQuoteMessageOptions,
@@ -70,8 +70,7 @@ function collectStructuralQuoteMessageUuids(markdown: string): MessengerUuid[] {
 
 function defaultDependencies(): WorkspaceReplyEditRestoreDependencies {
   return {
-    getMessage: (messageUuid) =>
-      selectWorkspaceMessageById(useWorkspaceMessageStore.getState(), messageUuid) ?? null,
+    getMessage: (messageUuid) => selectKnownMessage(readActiveMessageIndex(), messageUuid) ?? null,
     loadMessage: loadMessengerQuoteMessage,
     resolveAuthor: (message) => {
       const author = useUsersStore.getState().usersById[message.authorUuid];

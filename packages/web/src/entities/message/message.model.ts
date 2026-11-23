@@ -98,7 +98,7 @@ function mergeWorkspaceMessageSnapshot(
   previousMessage: MessengerMessage | undefined,
   incomingMessage: MessengerMessage,
 ): MessengerMessage {
-  const incomingSnapshot: MessengerMessage = {
+  const incomingSnapshot = {
     ...incomingMessage,
     optimisticReactionUserUuidsByEmojiName: undefined,
   };
@@ -1296,7 +1296,7 @@ export const useWorkspaceMessageStore = create<WorkspaceMessageStoreState>((set,
 }));
 
 interface ConversationMessagesCacheEntry {
-  ids: MessengerUuid[];
+  ids: readonly MessengerUuid[];
   result: MessengerMessage[];
 }
 
@@ -1307,7 +1307,7 @@ const conversationMessagesCache = new WeakMap<
 >();
 
 export function selectWorkspaceMessagesForConversation(
-  state: WorkspaceMessageStoreState,
+  state: Pick<WorkspaceMessageStoreState, "messagesById" | "conversationWindowsById">,
   conversationId: MessengerConversationId,
 ): MessengerMessage[] {
   const messageIds =
@@ -1336,7 +1336,7 @@ export function selectWorkspaceMessagesForConversation(
 }
 
 export function selectWorkspaceConversationWindow(
-  state: WorkspaceMessageStoreState,
+  state: Pick<WorkspaceMessageStoreState, "conversationWindowsById">,
   conversationId: MessengerConversationId,
 ): WorkspaceConversationWindow | null {
   return state.conversationWindowsById[conversationId] ?? null;
@@ -1389,7 +1389,7 @@ export function selectWorkspaceMessageStatusForConversation(
 }
 
 export function selectWorkspaceMessageById(
-  state: WorkspaceMessageStoreState,
+  state: Pick<WorkspaceMessageStoreState, "messagesById">,
   messageUuid: MessengerUuid,
 ): MessengerMessage | null {
   return state.messagesById[messageUuid] ?? null;

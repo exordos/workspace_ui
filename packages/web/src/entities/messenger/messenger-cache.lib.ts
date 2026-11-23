@@ -58,6 +58,7 @@ import type {
   MessengerConversation,
   MessengerConversationId,
   MessengerFolder,
+  MessengerFolderItem,
   MessengerMessage,
   MessengerStream,
   MessengerStreamBinding,
@@ -185,7 +186,7 @@ function projectStreamUnreadIntoCachedFolders(
 
   return folders.map((folder) => {
     let unreadDelta = 0;
-    let nextItems: MessengerFolder["items"] | null = null;
+    let nextItems: MessengerFolderItem[] | null = null;
 
     for (const [index, item] of folder.items.entries()) {
       if (item.streamUuid !== stream.uuid) continue;

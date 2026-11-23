@@ -1,14 +1,9 @@
 import React, { useCallback, useMemo, useState } from "react";
+import { chatCommands } from "~/entities/messenger/chat-commands";
 import {
   mapTopicVisibilityLevelToWorkspaceMode,
   mapWorkspaceTopicNotificationModeToLevel,
 } from "~/entities/messenger/messenger-notification-mode.lib";
-import { runWorkspaceTopicRead } from "~/entities/messenger/messenger-read-actions.lib";
-import {
-  runWorkspaceTopicDoneToggle,
-  runWorkspaceTopicNotificationUpdate,
-  runWorkspaceTopicRenameRequest,
-} from "~/entities/messenger/messenger-sidebar-actions.lib";
 import type { MessengerStream, MessengerTopicListItem } from "~/entities/messenger/messenger.types";
 import { t } from "~/i18n/i18n";
 import type { WorkspaceMessengerTopicNotificationMode } from "~/shared/api/messenger.types";
@@ -130,11 +125,12 @@ export const WorkspaceTopicContextMenu = React.memo(function WorkspaceTopicConte
       if (notificationPending || notificationMode === mode) return;
       handleMenuOpenChange(false);
       setNotificationPending(true);
-      void runWorkspaceTopicNotificationUpdate({
-        streamUuid: topic.streamUuid,
-        topicUuid: topic.topicUuid,
-        notificationMode: mode,
-      })
+      void chatCommands
+        .notifyTopic({
+          streamUuid: topic.streamUuid,
+          topicUuid: topic.topicUuid,
+          notificationMode: mode,
+        })
         .catch((error) => reportWorkspaceTopicMenuActionError("topic-notifications", error))
         .finally(() => {
           setNotificationPending(false);
@@ -159,10 +155,11 @@ export const WorkspaceTopicContextMenu = React.memo(function WorkspaceTopicConte
     if (readPending) return;
     handleMenuOpenChange(false);
     setReadPending(true);
-    void runWorkspaceTopicRead({
-      streamUuid: topic.streamUuid,
-      topicUuid: topic.topicUuid,
-    })
+    void chatCommands
+      .readTopic({
+        streamUuid: topic.streamUuid,
+        topicUuid: topic.topicUuid,
+      })
       .catch((error) => reportWorkspaceTopicMenuActionError("topic-read", error))
       .finally(() => {
         setReadPending(false);
@@ -178,11 +175,12 @@ export const WorkspaceTopicContextMenu = React.memo(function WorkspaceTopicConte
     }
 
     setRenamePending(true);
-    void runWorkspaceTopicRenameRequest({
-      streamUuid: topic.streamUuid,
-      topicUuid: topic.topicUuid,
-      name,
-    })
+    void chatCommands
+      .renameTopic({
+        streamUuid: topic.streamUuid,
+        topicUuid: topic.topicUuid,
+        name,
+      })
       .catch((error) => reportWorkspaceTopicMenuActionError("rename-topic", error))
       .finally(() => {
         setRenamePending(false);
@@ -194,11 +192,12 @@ export const WorkspaceTopicContextMenu = React.memo(function WorkspaceTopicConte
     if (topicActionPending) return;
     handleMenuOpenChange(false);
     setTopicActionPending(true);
-    void runWorkspaceTopicDoneToggle({
-      streamUuid: topic.streamUuid,
-      topicUuid: topic.topicUuid,
-      done: !isDone,
-    })
+    void chatCommands
+      .toggleTopicDone({
+        streamUuid: topic.streamUuid,
+        topicUuid: topic.topicUuid,
+        done: !isDone,
+      })
       .catch((error) => reportWorkspaceTopicMenuActionError("toggle-topic-done", error))
       .finally(() => {
         setTopicActionPending(false);

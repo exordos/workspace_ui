@@ -744,11 +744,10 @@ describe("useCreateChatDialog", () => {
       uuid: "11111111-1111-4111-8111-111111111111",
       name: "engineering",
     });
-    useMessengerStore.getState().startBootstrap("owner");
-    useMessengerStore.getState().upsertStream("owner", stream);
+    const ownerKey = seedArchive([stream]);
     vi.mocked(runWorkspaceCreateTopicRequest).mockResolvedValue({
       status: "applied",
-      ownerKey: "owner",
+      ownerKey,
       topic: createTopic({ uuid: "topic-a", streamUuid: stream.uuid, name: "Roadmap" }),
     });
 

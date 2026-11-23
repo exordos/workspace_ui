@@ -6,6 +6,7 @@ import type { MessengerStream, MessengerTopic } from "~/entities/messenger/messe
 import { useUsersStore } from "~/entities/user/user.model";
 import type { User } from "~/entities/user/user.types";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
+import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import {
   workspaceInboxRoute,
   workspaceMessengerStreamRoute,
@@ -133,8 +134,9 @@ function seedWorkspaceInbox(input?: {
     },
   });
   useUsersStore.getState().replaceUsers(input?.users ?? [user()]);
+  const runtime = useWorkspaceAuthStore.getState().getCurrentRuntimeContext()!;
   useMessengerStore.setState({
-    ownerKey: "account",
+    ownerKey: workspaceRuntimeOwnerKey(runtime),
     isLoading: false,
     error: null,
     streamsById: Object.fromEntries((input?.streams ?? []).map((item) => [item.uuid, item])),

@@ -694,6 +694,14 @@ function toMarkdownMessageDto(message: MessengerMessage) {
 }
 
 // Feeds the mocked HTTP response through the actual message model.
+// Assertions about the delivery protocol read the queue entry identified by the rendered row.
+function getTestOutgoingEntry(placementUuid: string) {
+  const outgoing =
+    useMessengerOutboxStore.getState().outgoingMessagesByPlacementUuid[placementUuid];
+  if (outgoing == null) throw new Error("Expected an outbox entry for the rendered row");
+  return outgoing;
+}
+
 function receiveMockSendReceipt(ownerKey: string, message: MessengerMessage): MessengerMessage {
   acceptServerMessages({
     source: "send-response",
@@ -2224,9 +2232,14 @@ describe("ChatPage Workspace route", () => {
       expect(captured.messageListProps?.outgoingMessages?.[1]).toMatchObject({
         markdown: "Keep this text",
         status: "failed",
-        encryption: { keyUuid: "mock-key", deviceId: "mock-device" },
       }),
     );
+    const failedOutgoing = captured.messageListProps?.outgoingMessages?.[1];
+    if (failedOutgoing == null) throw new Error("Expected failed outgoing message");
+    expect(getTestOutgoingEntry(failedOutgoing.placementUuid).encryption).toMatchObject({
+      keyUuid: "mock-key",
+      deviceId: "mock-device",
+    });
     expect(textbox).toHaveValue("");
     expect(captured.sendMessengerMessage).not.toHaveBeenCalled();
     await act(async () => {
@@ -2330,6 +2343,7 @@ describe("ChatPage Workspace route", () => {
       );
       const outgoing = captured.messageListProps?.outgoingMessages?.[0];
       if (!outgoing) throw new Error("Missing failed attachment message");
+      const { canonicalMessageUuid } = getTestOutgoingEntry(outgoing.placementUuid);
       expect(outgoing.markdown).toContain("\nKeep with attachment");
       send.mockRejectedValueOnce(new Error("send failed"));
       act(() => captured.messageListProps?.onRetryOutgoingMessage?.(outgoing.placementUuid));
@@ -2342,7 +2356,7 @@ describe("ChatPage Workspace route", () => {
       expect(send).toHaveBeenCalledTimes(3);
       expect(send.mock.calls[2]?.[0]).toMatchObject({
         text: outgoing.markdown,
-        canonicalMessageUuid: outgoing.canonicalMessageUuid,
+        canonicalMessageUuid,
       });
       expect(captured.uploadWorkspaceFileWithProgress).toHaveBeenCalledOnce();
       expect(captured.sendMessengerMessage).not.toHaveBeenCalled();
@@ -3396,8 +3410,7 @@ describe("ChatPage Workspace route", () => {
     });
     await waitFor(() => expect(captured.messageListProps?.isLoadingOlder).toBe(true));
     const oldSignal = captured.loadWorkspaceMessages.mock.calls[1]?.[0].signal;
-    const streamMessage = createMessage();
-    streamMessage.conversationId = streamConversationId;
+    const streamMessage = { ...createMessage(), conversationId: streamConversationId };
 
     act(() => {
       replaceTestConversationWindow(streamConversationId, [streamMessage], {
@@ -6043,9 +6056,12 @@ describe("ChatPage Workspace route", () => {
     if (outgoing == null || capturedRequest == null) {
       throw new Error("Expected an outgoing message and its send request");
     }
-    expect(outgoing.canonicalMessageUuid).toBe(capturedRequest.canonicalMessageUuid);
+    const { canonicalMessageUuid, ownerKey: outgoingOwnerKey } = getTestOutgoingEntry(
+      outgoing.placementUuid,
+    );
+    expect(canonicalMessageUuid).toBe(capturedRequest.canonicalMessageUuid);
     expect(outgoing.placementUuid).toBe(
-      createMessengerPlacementUuid(TOPIC_UUID, outgoing.canonicalMessageUuid),
+      createMessengerPlacementUuid(TOPIC_UUID, canonicalMessageUuid),
     );
     expect(screen.getByText("fast local text:sending")).toHaveAttribute(
       "data-outgoing-message-id",
@@ -6056,7 +6072,7 @@ describe("ChatPage Workspace route", () => {
     expect(serverMessage.uuid).toBe(outgoing.placementUuid);
 
     await act(async () => {
-      receiveMockSendReceipt(outgoing.ownerKey, serverMessage);
+      receiveMockSendReceipt(outgoingOwnerKey, serverMessage);
       sendRequest.resolve({
         status: "applied",
         ownerKey: useWorkspaceMessageStore.getState().ownerKey ?? "",
@@ -6516,12 +6532,14 @@ describe("ChatPage Workspace route", () => {
       const outgoing = captured.messageListProps?.outgoingMessages?.[0];
       if (outgoing == null) throw new Error("Expected an outgoing message");
 
+      const { ownerKey: outgoingOwnerKey, conversationId: outgoingConversationId } =
+        getTestOutgoingEntry(outgoing.placementUuid);
       const message = toMarkdownMessageDto(createSentMessage(request));
       const owner = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
       if (owner == null) throw new Error("Expected the active runtime");
       const context = {
         owner,
-        ownerKey: outgoing.ownerKey,
+        ownerKey: outgoingOwnerKey,
         surface: "active",
         source: "websocket",
       } as const;
@@ -6536,14 +6554,14 @@ describe("ChatPage Workspace route", () => {
           const emptyReactionSync = () =>
             Promise.resolve({
               status: "applied" as const,
-              ownerKey: outgoing.ownerKey,
+              ownerKey: outgoingOwnerKey,
               reactions: 0,
               messageUuids: [],
             });
           await expect(
             loadMessengerConversationMessages({
               runtimeContext: owner,
-              conversationId: outgoing.conversationId,
+              conversationId: outgoingConversationId,
               client: {
                 getMessagesPage: () =>
                   Promise.resolve({ items: [message], nextPageMarker: null, pageLimit: 50 }),
@@ -6672,6 +6690,7 @@ describe("ChatPage Workspace route", () => {
     const outgoing = captured.messageListProps?.outgoingMessages?.[0];
     if (outgoing == null) throw new Error("Expected an outgoing message");
 
+    const { ownerKey: outgoingOwnerKey } = getTestOutgoingEntry(outgoing.placementUuid);
     act(() => {
       useWorkspaceMessageStore.getState().setOwner("other-owner", false);
       useWorkspaceMessageStore.getState().applyLiveCreatedMessage(createSentMessage(request));
@@ -6683,7 +6702,7 @@ describe("ChatPage Workspace route", () => {
     });
     expect(
       useMessengerOutboxStore.getState().outgoingMessagesByPlacementUuid[outgoing.placementUuid],
-    ).toEqual(expect.objectContaining({ status: "failed", ownerKey: outgoing.ownerKey }));
+    ).toEqual(expect.objectContaining({ status: "failed", ownerKey: outgoingOwnerKey }));
   });
 
   it("uploads composer files immediately and appends logical markdown refs on send", async () => {
@@ -7044,7 +7063,8 @@ describe("ChatPage Workspace route", () => {
     expect(failedOutgoing).toEqual(expect.objectContaining({ status: "failed" }));
     if (failedOutgoing == null) throw new Error("Expected failed outgoing message");
 
-    const { canonicalMessageUuid, placementUuid } = failedOutgoing;
+    const { placementUuid } = failedOutgoing;
+    const { canonicalMessageUuid } = getTestOutgoingEntry(placementUuid);
     act(() => captured.messageListProps?.onRetryOutgoingMessage?.(placementUuid));
 
     await waitFor(() => expect(captured.sendMessengerMessage).toHaveBeenCalledTimes(2));
@@ -8497,6 +8517,7 @@ describe("ChatPage Workspace route", () => {
       expect(readDraft()?.snapshotId).toBe(acceptedDraft?.snapshotId);
 
       if (result === "retry") {
+        const { canonicalMessageUuid } = getTestOutgoingEntry(outgoing.placementUuid);
         act(() => captured.messageListProps?.onReplyMessage?.(MESSAGE_UUID));
         act(() => captured.composerProps?.onComposerValueChange("newer reply"));
         const newer = readDraft();
@@ -8504,7 +8525,7 @@ describe("ChatPage Workspace route", () => {
         await waitFor(() => expect(captured.messageListProps?.outgoingMessages).toEqual([]));
         expect(captured.sendMessengerMessage).toHaveBeenCalledTimes(2);
         expect(captured.sendMessengerMessage.mock.calls[1]?.[0]).toMatchObject({
-          canonicalMessageUuid: outgoing.canonicalMessageUuid,
+          canonicalMessageUuid,
         });
         expect(readDraft()).toEqual(newer);
         expect(readDraft()?.content.replySession.tabs[0]?.answer).toBe("newer reply");
@@ -8512,6 +8533,7 @@ describe("ChatPage Workspace route", () => {
         return;
       }
 
+      const outgoingEntry = getTestOutgoingEntry(outgoing.placementUuid);
       if (result === "new runtime") {
         act(() => {
           useWorkspaceAuthStore.setState({
@@ -8528,7 +8550,7 @@ describe("ChatPage Workspace route", () => {
             type: "message",
             kind: "message.created",
             epoch_version: 1,
-            message: toMarkdownMessageDto(createSentMessage(outgoing)),
+            message: toMarkdownMessageDto(createSentMessage(outgoingEntry)),
           },
           { owner, ownerKey, surface: "active", source: "websocket" },
         );

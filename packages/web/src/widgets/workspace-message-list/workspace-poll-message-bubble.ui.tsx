@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
+import { useChatsCatalog } from "~/entities/messenger/chats";
 import {
   supportsMessengerPolls,
   supportsMessengerPollManagement,
 } from "~/entities/messenger/messenger-poll-actions.lib";
-import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import type { MessengerMessage } from "~/entities/messenger/messenger.types";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
@@ -32,8 +32,8 @@ function PollBubbleSession({
 }: WorkspaceMessageBubbleProps & { source: MessengerMessage }) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [closeOpen, setCloseOpen] = useState(false);
-  const stream = useMessengerStore((state) => state.streamsById[source.streamUuid]);
-  const owner = useMessengerStore((state) => state.ownerKey);
+  const stream = useChatsCatalog((state) => state.streamsById[source.streamUuid]);
+  const owner = useChatsCatalog((state) => state.ownerKey);
   const runtime = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
   const expired = usePollDeadline(source.payload.kind === "poll" ? source.payload.closesAt : null);
   const participant =

@@ -1,14 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  createWorkspaceDirectStream,
-  type MessengerCreateStreamResult,
-} from "~/entities/messenger/messenger-create-chat-actions.lib";
+import { chatCommands } from "~/entities/messenger/chat-commands";
+import { useChatsCatalog } from "~/entities/messenger/chats";
+import { type MessengerCreateStreamResult } from "~/entities/messenger/messenger-create-chat-actions.lib";
 import {
   findWorkspaceDefaultTopic,
   findWorkspaceSelfChatStream,
   isWorkspaceSelfChat,
 } from "~/entities/messenger/messenger-self-chat.lib";
-import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import {
   selectCurrentWorkspaceRuntimeContext,
   useWorkspaceAuthStore,
@@ -35,10 +33,6 @@ interface WorkspaceSelfChatRouteScope {
 
 const ensureRequestsByRuntimeKey = new Map<string, Promise<MessengerCreateStreamResult>>();
 
-function currentRuntimeContext(): WorkspaceRuntimeContext | null {
-  return useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
-}
-
 function runtimeRequestKey(runtimeContext: WorkspaceRuntimeContext): string {
   return `${workspaceRuntimeOwnerKey(runtimeContext)}:generation:${runtimeContext.runtimeGeneration}`;
 }
@@ -50,9 +44,8 @@ function ensureWorkspaceSelfChat(
   const pending = ensureRequestsByRuntimeKey.get(requestKey);
   if (pending != null) return pending;
 
-  const request = createWorkspaceDirectStream({
+  const request = chatCommands.openDirectForRuntime({
     runtimeContext,
-    getRuntimeContext: currentRuntimeContext,
     directUserUuid: runtimeContext.userUuid,
     name: "Personal notes",
     description: "",
@@ -91,12 +84,12 @@ export function useWorkspaceSelfChat({
     routeMatchesRuntime && runtimeContext != null ? workspaceRuntimeOwnerKey(runtimeContext) : null;
   const expectedRequestKey =
     routeMatchesRuntime && runtimeContext != null ? runtimeRequestKey(runtimeContext) : null;
-  const storeOwnerKey = useMessengerStore((state) => state.ownerKey);
-  const catalogLoading = useMessengerStore((state) => state.isLoading);
-  const streamIds = useMessengerStore((state) => state.streamIds);
-  const streamsById = useMessengerStore((state) => state.streamsById);
-  const topicIds = useMessengerStore((state) => state.topicIds);
-  const topicsById = useMessengerStore((state) => state.topicsById);
+  const storeOwnerKey = useChatsCatalog((state) => state.ownerKey);
+  const catalogLoading = useChatsCatalog((state) => state.isLoading);
+  const streamIds = useChatsCatalog((state) => state.streamIds);
+  const streamsById = useChatsCatalog((state) => state.streamsById);
+  const topicIds = useChatsCatalog((state) => state.topicIds);
+  const topicsById = useChatsCatalog((state) => state.topicsById);
   const [requestState, setRequestState] = useState<EnsureRequestState | null>(null);
   const [retryVersion, setRetryVersion] = useState(0);
 

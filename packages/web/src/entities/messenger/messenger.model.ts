@@ -1408,7 +1408,7 @@ export function applyDeletedMessagePointerRepair(
 let sidebarConversationCacheIds = EMPTY_IDS;
 let sidebarConversationCacheMap = EMPTY_CONVERSATIONS_BY_ID;
 let sidebarConversationCacheResult = EMPTY_CONVERSATIONS;
-let foldersCacheIds = EMPTY_IDS;
+let foldersCacheIds: readonly MessengerUuid[] = EMPTY_IDS;
 let foldersCacheMap = EMPTY_FOLDERS_BY_ID;
 let foldersCacheResult = EMPTY_FOLDERS;
 
@@ -1433,7 +1433,10 @@ export function selectMessengerSidebarConversations(
   return conversations;
 }
 
-export function selectMessengerFolders(state: MessengerStoreState): MessengerFolder[] {
+export function selectMessengerFolders(state: {
+  folderIds: readonly MessengerUuid[];
+  foldersById: Readonly<MessengerStoreState["foldersById"]>;
+}): MessengerFolder[] {
   if (state.folderIds.length === 0) return EMPTY_FOLDERS;
   if (state.folderIds === foldersCacheIds && state.foldersById === foldersCacheMap) {
     return foldersCacheResult;

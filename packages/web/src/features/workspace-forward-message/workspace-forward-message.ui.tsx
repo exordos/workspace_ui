@@ -1,11 +1,9 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useWorkspaceMessageStore } from "~/entities/message/message.model";
-import { adaptMessengerMessage } from "~/entities/messenger/messenger-adapters.lib";
-import { createWorkspaceDirectStream } from "~/entities/messenger/messenger-create-chat-actions.lib";
-import { sendMessengerMessage } from "~/entities/messenger/messenger-message-actions.lib";
-import { buildMessengerRequestOptions } from "~/entities/messenger/messenger-request-options.lib";
-import { useMessengerStore } from "~/entities/messenger/messenger.model";
+import { chatCommands } from "~/entities/messenger/chat-commands";
+import { readActiveChats, useChatsCatalog } from "~/entities/messenger/chats";
+import { loadKnownMessages, messageCommands } from "~/entities/messenger/message-commands";
+import { readActiveMessageIndex, useMessageIndex } from "~/entities/messenger/messages-consumers";
 import type {
   MessengerStream,
   MessengerTopic,
@@ -23,7 +21,6 @@ import {
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import { t } from "~/i18n/i18n";
-import { getMessagesByUuids } from "~/shared/api/messenger-client";
 import { createLogger } from "~/shared/lib/logger";
 import { resolveTopicDisplayInfo } from "~/shared/lib/topic-display.lib";
 import { isWorkspaceMessageWithinLimit } from "~/shared/lib/workspace-message-limits.lib";
@@ -332,11 +329,11 @@ export const WorkspaceForwardMessageDialog: React.FC = () => {
   const error = useWorkspaceForwardMessageStore((state) => state.error);
   const [tab, setTab] = useState<ForwardTab>("channel");
   const runtimeContext = useWorkspaceForwardRuntime();
-  const messagesById = useWorkspaceMessageStore((state) => state.messagesById);
-  const streamsById = useMessengerStore((state) => state.streamsById);
-  const streamIds = useMessengerStore((state) => state.streamIds);
-  const topicsById = useMessengerStore((state) => state.topicsById);
-  const topicIds = useMessengerStore((state) => state.topicIds);
+  const messagesById = useMessageIndex((state) => state.messagesById);
+  const streamsById = useChatsCatalog((state) => state.streamsById);
+  const streamIds = useChatsCatalog((state) => state.streamIds);
+  const topicsById = useChatsCatalog((state) => state.topicsById);
+  const topicIds = useChatsCatalog((state) => state.topicIds);
   const submitAbortControllerRef = useRef<AbortController | null>(null);
 
   const streams = useMemo(
@@ -359,25 +356,11 @@ export const WorkspaceForwardMessageDialog: React.FC = () => {
     const abortController = new AbortController();
     const ownerKey = workspaceRuntimeOwnerKey(loadRuntimeContext);
     const runtimeGeneration = loadRuntimeContext.runtimeGeneration;
-    const capturedMutationRevision = useWorkspaceMessageStore.getState().messageMutationRevision;
 
     async function loadMissingMessages() {
       try {
         useWorkspaceForwardMessageStore.getState().setError(null);
-        // Forward stores UUIDs only, so full message bodies are loaded from Workspace API.
-        const dtos = await getMessagesByUuids(
-          buildMessengerRequestOptions(loadRuntimeContext, undefined, abortController.signal),
-          missingMessageUuids,
-        );
-        if (abortController.signal.aborted || !isRuntimeStillCurrent(ownerKey, runtimeGeneration)) {
-          return;
-        }
-        const messages = dtos.map(adaptMessengerMessage);
-        for (const message of messages) {
-          useWorkspaceMessageStore
-            .getState()
-            .upsertMessageBodyFromSnapshot(message, capturedMutationRevision);
-        }
+        await loadKnownMessages(loadRuntimeContext, missingMessageUuids, abortController.signal);
       } catch (loadError) {
         if (abortController.signal.aborted || !isRuntimeStillCurrent(ownerKey, runtimeGeneration)) {
           return;
@@ -426,12 +409,12 @@ export const WorkspaceForwardMessageDialog: React.FC = () => {
           useWorkspaceForwardMessageStore.getState().setError(null);
           const messages = resolveWorkspaceForwardMessages({
             messageUuids,
-            messages: useWorkspaceMessageStore.getState().messagesById,
+            messages: readActiveMessageIndex().messagesById,
           });
           if (messages.length === 0) {
             throw new Error(t("message.forwardError"));
           }
-          const messengerState = useMessengerStore.getState();
+          const messengerState = readActiveChats();
           const markdown = buildWorkspaceForwardMarkdown({
             messages,
             selectedText,
@@ -475,9 +458,8 @@ export const WorkspaceForwardMessageDialog: React.FC = () => {
               .filter(isTopic),
             // Direct в Workspace - это private stream с default topic, а не старый numeric route.
             createWorkspaceDirectStream: (options) =>
-              createWorkspaceDirectStream({
+              chatCommands.openDirectForRuntime({
                 ...options,
-                getRuntimeContext: currentRuntimeContext,
                 signal: abortController.signal,
               }),
           });
@@ -487,9 +469,8 @@ export const WorkspaceForwardMessageDialog: React.FC = () => {
           ) {
             return;
           }
-          await sendMessengerMessage({
+          await messageCommands.send({
             runtimeContext: submitRuntimeContext,
-            getRuntimeContext: currentRuntimeContext,
             signal: abortController.signal,
             streamUuid: resolvedTarget.streamUuid,
             topicUuid: resolvedTarget.topicUuid,

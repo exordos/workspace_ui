@@ -6,9 +6,13 @@ import {
   useWorkspaceAuthStore,
   type WorkspaceAuthSession,
 } from "~/entities/workspace-auth/workspace-auth.model";
+import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
+import { useChatDmCallBridgeStore } from "~/features/chat-dm-call-bridge/chat-dm-call-bridge.model";
 import { t } from "~/i18n/i18n";
+import * as messengerStreamsApi from "~/shared/api/messenger-streams.api";
 import { renderWithProviders } from "~/test/render";
 import { RightPanelShell as ProductionRightPanelShell } from "./right-panel-shell.ui";
+import { RightPanelUserProfile } from "./right-panel-user-profile.ui";
 import type { RightPanelAccountScreen, RightPanelProps } from "./right-panel.types";
 
 function RightPanelShell(
@@ -165,6 +169,57 @@ describe("RightPanelShell personal-info subview", () => {
     useUsersStore.getState().clear();
     vi.restoreAllMocks();
   });
+
+  it.each([false, true])(
+    "cancels a profile call when pending publication switches owners (replacement call: %s)",
+    (replacePendingCall) => {
+      const partnerUserUuid = "b225223c-637c-4afa-918f-5f2798b9305f";
+      const firstSession = useWorkspaceAuthStore.getState().sessions[0]!;
+      const createDirect = vi.spyOn(messengerStreamsApi, "createStreamWithDefaultTopic");
+      const bridge = useChatDmCallBridgeStore.getState();
+      const unsubscribe = useChatDmCallBridgeStore.subscribe((state) => {
+        if (state.pendingDmCall?.partnerUserUuid !== partnerUserUuid) return;
+        unsubscribe();
+        useWorkspaceAuthStore.setState({
+          currentAccountId: "account-b",
+          runtimeGeneration: 2,
+          sessions: [{ ...firstSession, accountId: "account-b", runtimeGeneration: 2 }],
+        });
+        if (replacePendingCall) {
+          const runtime = useWorkspaceAuthStore.getState().getCurrentRuntimeContext()!;
+          bridge.setPendingDmCall({
+            partnerUserUuid,
+            ownerKey: workspaceRuntimeOwnerKey(runtime),
+            runtimeGeneration: runtime.runtimeGeneration,
+          });
+        }
+      });
+      try {
+        renderWithProviders(
+          <RightPanelUserProfile
+            info={{
+              kind: "userProfile",
+              userUuid: partnerUserUuid,
+              title: "Partner",
+              avatarUrl: null,
+              status: null,
+              isOwnProfile: false,
+              details: [],
+            }}
+          />,
+        );
+        fireEvent.click(screen.getByTestId("right-panel-profile-call"));
+        expect(useWorkspaceAuthStore.getState().currentAccountId).toBe("account-b");
+        expect(createDirect).not.toHaveBeenCalled();
+        expect(useChatDmCallBridgeStore.getState().pendingDmCall?.partnerUserUuid).toBe(
+          replacePendingCall ? partnerUserUuid : undefined,
+        );
+      } finally {
+        unsubscribe();
+        bridge.clearPendingDmCall();
+      }
+    },
+  );
 
   it("opens personal info inside the right panel without changing the route", () => {
     renderWithProviders(

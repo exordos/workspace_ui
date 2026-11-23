@@ -1,18 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { chatCommands } from "~/entities/messenger/chat-commands";
+import { readActiveChats, useChatsCatalog, useChatFolders } from "~/entities/messenger/chats";
 import {
   mapNotificationLevelToWorkspaceStreamMode,
   mapWorkspaceStreamNotificationModeToLevel,
 } from "~/entities/messenger/messenger-notification-mode.lib";
-import { runWorkspaceStreamRead } from "~/entities/messenger/messenger-read-actions.lib";
-import {
-  runWorkspaceCreateTopicRequest,
-  runWorkspaceFolderAssignmentToggle,
-  runWorkspaceFolderItemPinToggle,
-  runWorkspaceStreamArchive,
-  runWorkspaceStreamNotificationUpdate,
-  runWorkspaceStreamRenameRequest,
-} from "~/entities/messenger/messenger-sidebar-actions.lib";
-import { selectMessengerFolders, useMessengerStore } from "~/entities/messenger/messenger.model";
 import type {
   MessengerFolder,
   MessengerFolderItem,
@@ -58,7 +50,7 @@ interface ArchiveConfirmation {
 }
 
 function isArchiveConfirmationCurrent(confirmation: ArchiveConfirmation): boolean {
-  const store = useMessengerStore.getState();
+  const store = readActiveChats();
   return (
     isWorkspaceRuntimeRequestContextCurrent(
       confirmation.context,
@@ -71,8 +63,8 @@ function isArchiveConfirmationCurrent(confirmation: ArchiveConfirmation): boolea
 
 function useWorkspaceArchiveConfirmation(stream: MessengerSidebarStreamItem) {
   const runtimeGeneration = useWorkspaceAuthStore((state) => state.runtimeGeneration);
-  const ownerKey = useMessengerStore((state) => state.ownerKey);
-  const targetAvailable = useMessengerStore(
+  const ownerKey = useChatsCatalog((state) => state.ownerKey);
+  const targetAvailable = useChatsCatalog(
     (state) => state.streamsById[stream.streamUuid]?.isArchived === false,
   );
   const [confirmation, setConfirmation] = useState<ArchiveConfirmation | null>(null);
@@ -139,7 +131,8 @@ function useWorkspaceArchiveConfirmation(stream: MessengerSidebarStreamItem) {
     pendingConfirmation.current = current;
     setPending(true);
     setError(false);
-    void runWorkspaceStreamArchive({ streamUuid: current.streamUuid })
+    void chatCommands
+      .archiveStream({ streamUuid: current.streamUuid })
       .then((result) => {
         if (currentConfirmation.current === current && isArchiveConfirmationCurrent(current)) {
           if (result.status === "applied") dismiss();
@@ -196,7 +189,7 @@ function useWorkspaceMenuFolders(
   userCreatedFolders: MessengerFolder[];
   selectedFolderItem: MessengerFolderItem | null;
 } {
-  const folders = useMessengerStore(selectMessengerFolders);
+  const folders = useChatFolders();
   const selectedFolderId = useSidebarConfigStore((s) => s.selectedFolderId);
 
   return useMemo(() => {
@@ -214,7 +207,7 @@ function useWorkspaceMenuFolders(
 function useWorkspaceStreamNotificationMode(
   streamUuid: string,
 ): WorkspaceMessengerStreamNotificationMode {
-  return useMessengerStore((s) => s.streamsById[streamUuid]?.notificationMode ?? "mentions_only");
+  return useChatsCatalog((s) => s.streamsById[streamUuid]?.notificationMode ?? "mentions_only");
 }
 
 interface WorkspaceNameDialogProps {
@@ -341,10 +334,11 @@ export const WorkspaceStreamContextMenu = React.memo(function WorkspaceStreamCon
       if (notificationPending || notificationMode === mode) return;
       handleMenuOpenChange(false);
       setNotificationPending(true);
-      void runWorkspaceStreamNotificationUpdate({
-        streamUuid: stream.streamUuid,
-        notificationMode: mode,
-      })
+      void chatCommands
+        .notifyStream({
+          streamUuid: stream.streamUuid,
+          notificationMode: mode,
+        })
         .catch((error) => reportWorkspaceMenuActionError("stream-notifications", error))
         .finally(() => {
           setNotificationPending(false);
@@ -357,12 +351,13 @@ export const WorkspaceStreamContextMenu = React.memo(function WorkspaceStreamCon
     if (selectedFolderItem == null || pinPending) return;
     handleMenuOpenChange(false);
     setPinPending(true);
-    void runWorkspaceFolderItemPinToggle({
-      folderUuid: selectedFolderItem.folderUuid,
-      folderItemUuid: selectedFolderItem.uuid,
-      streamUuid: stream.streamUuid,
-      pinned: selectedFolderItem.pinnedAt == null,
-    })
+    void chatCommands
+      .pinFolderItem({
+        folderUuid: selectedFolderItem.folderUuid,
+        folderItemUuid: selectedFolderItem.uuid,
+        streamUuid: stream.streamUuid,
+        pinned: selectedFolderItem.pinnedAt == null,
+      })
       .catch((error) => reportWorkspaceMenuActionError("folder-item-pin", error))
       .finally(() => {
         setPinPending(false);
@@ -373,7 +368,8 @@ export const WorkspaceStreamContextMenu = React.memo(function WorkspaceStreamCon
     if (readPending) return;
     handleMenuOpenChange(false);
     setReadPending(true);
-    void runWorkspaceStreamRead({ streamUuid: stream.streamUuid })
+    void chatCommands
+      .readStream({ streamUuid: stream.streamUuid })
       .catch((error) => reportWorkspaceMenuActionError("stream-read", error))
       .finally(() => {
         setReadPending(false);
@@ -384,13 +380,14 @@ export const WorkspaceStreamContextMenu = React.memo(function WorkspaceStreamCon
     (folder: MessengerFolder, folderItem: MessengerFolderItem | null): void => {
       if (pendingFolderUuids.has(folder.uuid)) return;
       setPendingFolderUuids((prev) => new Set(prev).add(folder.uuid));
-      void runWorkspaceFolderAssignmentToggle({
-        folderUuid: folder.uuid,
-        folderItemUuid: folderItem?.uuid ?? null,
-        streamUuid: stream.streamUuid,
-        chatType: stream.uiKind === "directPrivate" ? "private" : "stream",
-        assigned: folderItem == null,
-      })
+      void chatCommands
+        .assignFolder({
+          folderUuid: folder.uuid,
+          folderItemUuid: folderItem?.uuid ?? null,
+          streamUuid: stream.streamUuid,
+          chatType: stream.uiKind === "directPrivate" ? "private" : "stream",
+          assigned: folderItem == null,
+        })
         .catch((error) => reportWorkspaceMenuActionError("folder-assignment", error))
         .finally(() => {
           setPendingFolderUuids((prev) => {
@@ -437,7 +434,8 @@ export const WorkspaceStreamContextMenu = React.memo(function WorkspaceStreamCon
     if (name.length === 0 || createTopicPending) return;
 
     setCreateTopicPending(true);
-    void runWorkspaceCreateTopicRequest({ streamUuid: stream.streamUuid, name })
+    void chatCommands
+      .createTopic({ streamUuid: stream.streamUuid, name })
       .then((result) => {
         if (result.status !== "applied") return;
         onTopicCreated?.(result.topic.streamUuid, result.topic.uuid);
@@ -455,7 +453,8 @@ export const WorkspaceStreamContextMenu = React.memo(function WorkspaceStreamCon
     if (name.length === 0 || name === stream.title || renamePending) return;
 
     setRenamePending(true);
-    void runWorkspaceStreamRenameRequest({ streamUuid: stream.streamUuid, name })
+    void chatCommands
+      .renameStream({ streamUuid: stream.streamUuid, name })
       .catch((error) => reportWorkspaceMenuActionError("stream-rename", error))
       .finally(() => {
         setRenamePending(false);

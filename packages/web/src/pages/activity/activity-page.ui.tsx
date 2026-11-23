@@ -6,8 +6,8 @@ import {
   selectActivityLiveMentionMessages,
   useActivityStore,
 } from "~/entities/activity/activity.model";
+import { useChatsCatalog } from "~/entities/messenger/chats";
 import { adaptMessengerMessage } from "~/entities/messenger/messenger-adapters.lib";
-import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import type { MessengerMessage } from "~/entities/messenger/messenger.types";
 import {
   selectCurrentWorkspaceRuntimeContext,
@@ -165,8 +165,8 @@ export const ActivityPage: React.FC = () => {
   const liveMentionMessagesByUuid = useActivityStore((state) =>
     selectActivityLiveMentionMessages(state, ownerKey, runtimeContext?.runtimeGeneration ?? null),
   );
-  const workspaceStreamsById = useMessengerStore((s) => s.streamsById);
-  const workspaceTopicsById = useMessengerStore((s) => s.topicsById);
+  const workspaceStreamsById = useChatsCatalog((s) => s.streamsById);
+  const workspaceTopicsById = useChatsCatalog((s) => s.topicsById);
   const unreadMentionsByUuid = useActivityStore((state) => state.unreadMentionsByUuid);
   const unreadMentionsOwnerKey = useActivityStore((state) => state.unreadMentionsOwnerKey);
   const unreadMentionsRuntimeGeneration = useActivityStore(

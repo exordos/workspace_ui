@@ -8,7 +8,7 @@ import {
 } from "~/entities/composer-draft/composer-draft-actions.lib";
 import { useWorkspaceComposerDraftStore } from "~/entities/composer-draft/composer-draft.model";
 import type { WorkspaceComposerDraft } from "~/entities/composer-draft/composer-draft.types";
-import { useMessengerStore } from "~/entities/messenger/messenger.model";
+import { useChatsCatalog } from "~/entities/messenger/chats";
 import { useUsersStore } from "~/entities/user/user.model";
 import {
   selectCurrentWorkspaceRuntimeContext,
@@ -69,8 +69,8 @@ function DraftCard({
   onAcceptServer: (draft: WorkspaceComposerDraft) => void;
   onKeepLocal: (draft: WorkspaceComposerDraft) => void;
 }>): React.ReactElement {
-  const stream = useMessengerStore((state) => state.streamsById[draft.streamUuid]);
-  const topic = useMessengerStore((state) => state.topicsById[draft.topicUuid]);
+  const stream = useChatsCatalog((state) => state.streamsById[draft.streamUuid]);
+  const topic = useChatsCatalog((state) => state.topicsById[draft.topicUuid]);
   const directUserUuid = stream?.directUserUuid ?? null;
   const directUser = useUsersStore((state) =>
     directUserUuid == null ? null : (state.usersById[directUserUuid] ?? null),

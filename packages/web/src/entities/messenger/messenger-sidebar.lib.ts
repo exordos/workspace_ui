@@ -26,7 +26,8 @@ import {
   type MessengerTopicListSortMode,
   type MessengerTopicUnreadMentionIndex,
 } from "./messenger-topic-list.lib";
-import { useMessengerStore, type MessengerStoreState } from "./messenger.model";
+import { useMessengerStore } from "./messenger.model";
+import type { ChatsCatalogSnapshot } from "./chats";
 import type {
   MessengerFolder,
   MessengerConversation,
@@ -64,23 +65,23 @@ export interface MessengerSidebarSelectorOptions {
 export type MessengerSidebarSortMode = MessengerTopicListSortMode;
 
 export type MessengerSidebarStreamsState = Pick<
-  MessengerStoreState,
+  ChatsCatalogSnapshot,
   "streamIds" | "streamsById" | "topicIds" | "topicsById" | "foldersById" | "conversationsById"
 > &
-  Partial<Pick<MessengerStoreState, "ownerKey">>;
+  Partial<Pick<ChatsCatalogSnapshot, "ownerKey">>;
 
 interface SidebarStreamsCacheEntry {
   ownerKey: string | null;
   locale: Locale;
-  streamIds: MessengerUuid[];
-  streamsById: MessengerStoreState["streamsById"];
-  topicIds: MessengerUuid[];
-  topicsById: MessengerStoreState["topicsById"];
+  streamIds: readonly MessengerUuid[];
+  streamsById: ChatsCatalogSnapshot["streamsById"];
+  topicIds: readonly MessengerUuid[];
+  topicsById: ChatsCatalogSnapshot["topicsById"];
   messagesById: Record<MessengerUuid, MessengerMessage>;
   usersById: UsersById;
   currentUserUuid: MessengerUuid | null;
-  foldersById: MessengerStoreState["foldersById"];
-  conversationsById: MessengerStoreState["conversationsById"];
+  foldersById: ChatsCatalogSnapshot["foldersById"];
+  conversationsById: ChatsCatalogSnapshot["conversationsById"];
   organizationId: string;
   projectId: string;
   selectedFolderUuid: string | null;
@@ -89,14 +90,14 @@ interface SidebarStreamsCacheEntry {
 }
 
 interface SidebarFoldersCacheEntry {
-  folderIds: MessengerUuid[];
-  foldersById: MessengerStoreState["foldersById"];
+  folderIds: readonly MessengerUuid[];
+  foldersById: ChatsCatalogSnapshot["foldersById"];
   result: MessengerSidebarFolderView[];
 }
 
 interface SidebarActivityCountsCacheEntry {
-  folderIds: MessengerUuid[];
-  foldersById: MessengerStoreState["foldersById"];
+  folderIds: readonly MessengerUuid[];
+  foldersById: ChatsCatalogSnapshot["foldersById"];
   result: MessengerSidebarActivityCounts;
 }
 
@@ -327,7 +328,7 @@ function streamItemFromStream(input: {
   projectId: string;
   stream: MessengerStream;
   topics: MessengerSidebarTopicItem[];
-  topicsById: MessengerStoreState["topicsById"];
+  topicsById: ChatsCatalogSnapshot["topicsById"];
   messagesById: Record<MessengerUuid, MessengerMessage>;
   usersById: UsersById;
   currentUserUuid: MessengerUuid | null;
@@ -724,7 +725,7 @@ export function selectMessengerSidebarStreams(
 }
 
 export function selectMessengerSidebarFolders(
-  state: Pick<MessengerStoreState, "folderIds" | "foldersById">,
+  state: Pick<ChatsCatalogSnapshot, "folderIds" | "foldersById">,
 ): MessengerSidebarFolderView[] {
   if (
     sidebarFoldersCache?.folderIds === state.folderIds &&
@@ -755,7 +756,7 @@ export function selectMessengerSidebarFolders(
 }
 
 export function selectMessengerSidebarActivityCounts(
-  state: Pick<MessengerStoreState, "folderIds" | "foldersById">,
+  state: Pick<ChatsCatalogSnapshot, "folderIds" | "foldersById">,
 ): MessengerSidebarActivityCounts {
   if (
     sidebarActivityCountsCache?.folderIds === state.folderIds &&

@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { useMessengerStore } from "~/entities/messenger/messenger.model";
+import { useChatsCatalog } from "~/entities/messenger/chats";
 import { EncryptedMessagePlaceholder } from "~/features/encrypted-chat-message/encrypted-message-placeholder.ui";
 import type { MessagePresentation } from "~/features/message-presentation/message-presentation.hook";
 import { t } from "~/i18n/i18n";
@@ -13,7 +13,7 @@ export function WorkspaceMessageContentBubble({
 }: Readonly<WorkspaceMessageBubbleProps & { content?: MessagePresentation }>) {
   const source = props.message.kind === "server" ? props.message.message : null;
   const encrypted = source?.payload.kind === "e2ee";
-  const encryptedChat = useMessengerStore((state) =>
+  const encryptedChat = useChatsCatalog((state) =>
     source == null ? false : state.streamsById[source.streamUuid]?.encryption === true,
   );
   const actions = useMemo(

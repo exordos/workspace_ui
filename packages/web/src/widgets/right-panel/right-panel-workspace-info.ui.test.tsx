@@ -854,6 +854,7 @@ describe("RightPanelWorkspaceInfo", () => {
   });
 
   it("reads notification mode updates from the messenger store", () => {
+    seedWorkspaceAuth();
     act(() => {
       useMessengerStore.getState().startBootstrap(OWNER_KEY);
       useMessengerStore.getState().upsertStream(OWNER_KEY, createStream());

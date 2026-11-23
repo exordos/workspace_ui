@@ -19,8 +19,8 @@
  *   __ai__.commands.register("summarize-chat", handler)
  */
 
+import { readActiveChats } from "~/entities/messenger/chats";
 import { selectMessengerSidebarActivityCounts } from "~/entities/messenger/messenger-sidebar.lib";
-import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import { useThemeStore } from "~/entities/theme/theme.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
@@ -103,7 +103,7 @@ function getCurrentUser(): AiUserContext {
 
 function getAppState(): AiAppState {
   const theme = useThemeStore.getState();
-  const counts = selectMessengerSidebarActivityCounts(useMessengerStore.getState());
+  const counts = selectMessengerSidebarActivityCounts(readActiveChats());
 
   return {
     locale: getLocale(),

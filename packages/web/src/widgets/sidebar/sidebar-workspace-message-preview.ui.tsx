@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { useWorkspaceMessageStore } from "~/entities/message/message.model";
+import { useKnownMessage } from "~/entities/messenger/messages-consumers";
 import type { MessengerSidebarMessagePreview } from "~/entities/messenger/messenger.types";
 import { encryptedMessageLabel } from "~/features/encrypted-chat-message/encrypted-message-label.lib";
 import { useMessagePresentation } from "~/features/message-presentation/message-presentation.hook";
@@ -11,9 +11,7 @@ import { SidebarMessagePreview } from "./sidebar-message-preview.ui";
 function EncryptedSidebarMessagePreview({
   preview,
 }: Readonly<{ preview: MessengerSidebarMessagePreview }>) {
-  const message = useWorkspaceMessageStore(
-    (state) => state.messagesById[preview.messageUuid] ?? null,
-  );
+  const message = useKnownMessage(preview.messageUuid);
   const presentation = useMessagePresentation(message);
   const { t } = useTranslation();
   const plaintext =

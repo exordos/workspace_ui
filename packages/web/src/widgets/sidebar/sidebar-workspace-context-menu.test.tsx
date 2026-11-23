@@ -63,7 +63,6 @@ vi.mock("~/shared/lib/unexpected-error.lib", () => ({
   reportUnexpectedError: (...args: unknown[]) => reportUnexpectedErrorMock(...args),
 }));
 
-const OWNER_KEY = "owner:workspace-sidebar";
 const STREAM_UUID = "75309057-419c-4b12-a7c1-3932429ec4a6";
 const TOPIC_UUID = "4ec0b996-b778-45f8-8ef4-ef863be0c047";
 const FOLDER_UUID = "50ecadd0-9823-4d97-b54c-806cc672c210";
@@ -127,7 +126,7 @@ function createNamedTopic(title: string, index: number, isDone = false): Messeng
   });
 }
 
-function seedArchiveContext(accountId = "archive-account-a", isArchived = false): void {
+function seedArchiveContext(accountId = "archive-account-a", isArchived = false): string {
   useWorkspaceAuthStore.getState().setSession({
     accountId,
     instanceId: "archive-instance",
@@ -167,10 +166,9 @@ function seedArchiveContext(accountId = "archive-account-a", isArchived = false)
     createdAt: DATE,
     updatedAt: DATE,
   };
-  useMessengerStore.setState({
-    ownerKey: workspaceRuntimeOwnerKey(context),
-    streamsById: { [STREAM_UUID]: stream },
-  });
+  const ownerKey = workspaceRuntimeOwnerKey(context);
+  useMessengerStore.setState({ ownerKey, streamsById: { [STREAM_UUID]: stream } });
+  return ownerKey;
 }
 
 function createFolder(overrides: Partial<MessengerFolder> = {}): MessengerFolder {
@@ -985,8 +983,9 @@ describe("WorkspaceSidebar context menu", () => {
 
   it("pins a workspace stream when the selected folder owns a folder item", async () => {
     runWorkspaceFolderItemPinToggleMock.mockResolvedValue({ status: "applied" });
-    useMessengerStore.getState().startBootstrap(OWNER_KEY);
-    useMessengerStore.getState().applyFolderSnapshot(OWNER_KEY, createFolder());
+    const ownerKey = seedArchiveContext();
+    useMessengerStore.getState().startBootstrap(ownerKey);
+    useMessengerStore.getState().applyFolderSnapshot(ownerKey, createFolder());
     useSidebarConfigStore.getState().setSelectedFolderId(FOLDER_UUID);
 
     renderWorkspaceSidebar([createStream()]);
@@ -1008,12 +1007,13 @@ describe("WorkspaceSidebar context menu", () => {
     const allFolderUuid = MESSENGER_ALL_CHATS_FOLDER_UUID;
     const allFolderItemUuid = "folder-item-all";
     runWorkspaceFolderItemPinToggleMock.mockResolvedValue({ status: "applied" });
-    useMessengerStore.getState().startBootstrap(OWNER_KEY);
+    const ownerKey = seedArchiveContext();
+    useMessengerStore.getState().startBootstrap(ownerKey);
     useMessengerStore
       .getState()
-      .applyFolderSnapshot(OWNER_KEY, createFolder({ items: [], unreadCount: 0 }));
+      .applyFolderSnapshot(ownerKey, createFolder({ items: [], unreadCount: 0 }));
     useMessengerStore.getState().applyFolderSnapshot(
-      OWNER_KEY,
+      ownerKey,
       createFolder({
         uuid: allFolderUuid,
         title: "All chats",
@@ -1233,10 +1233,11 @@ describe("WorkspaceSidebar context menu", () => {
 
   it("passes private chat type when adding a personal chat to a folder", async () => {
     runWorkspaceFolderAssignmentToggleMock.mockResolvedValue({ status: "applied" });
-    useMessengerStore.getState().startBootstrap(OWNER_KEY);
+    const ownerKey = seedArchiveContext();
+    useMessengerStore.getState().startBootstrap(ownerKey);
     useMessengerStore
       .getState()
-      .applyFolderSnapshot(OWNER_KEY, createFolder({ items: [], unreadCount: 0 }));
+      .applyFolderSnapshot(ownerKey, createFolder({ items: [], unreadCount: 0 }));
 
     renderWorkspaceSidebar([
       createStream({
@@ -1265,10 +1266,11 @@ describe("WorkspaceSidebar context menu", () => {
 
   it("keeps folder assignment chat type as stream when a private stream is not direct ui kind", async () => {
     runWorkspaceFolderAssignmentToggleMock.mockResolvedValue({ status: "applied" });
-    useMessengerStore.getState().startBootstrap(OWNER_KEY);
+    const ownerKey = seedArchiveContext();
+    useMessengerStore.getState().startBootstrap(ownerKey);
     useMessengerStore
       .getState()
-      .applyFolderSnapshot(OWNER_KEY, createFolder({ items: [], unreadCount: 0 }));
+      .applyFolderSnapshot(ownerKey, createFolder({ items: [], unreadCount: 0 }));
 
     renderWorkspaceSidebar([
       createStream({

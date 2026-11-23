@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import { useMessengerStore } from "~/entities/messenger/messenger.model";
+import { readActiveChats } from "~/entities/messenger/chats";
 import {
   parseWorkspaceMessengerRoute,
   workspaceMessengerStreamRoute,
@@ -29,7 +29,7 @@ export function useTopBarSearchModal(options: {
         return false;
       }
 
-      const messengerState = useMessengerStore.getState();
+      const messengerState = readActiveChats();
       const directStream = messengerState.streamIds
         .map((streamId) => messengerState.streamsById[streamId])
         .find((stream) => stream?.directUserUuid === userUuid);

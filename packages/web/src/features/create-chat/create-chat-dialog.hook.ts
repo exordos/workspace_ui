@@ -1,15 +1,8 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { chatCommands } from "~/entities/messenger/chat-commands";
 import { MessengerChannelCreationError } from "~/entities/messenger/chat-initial-key-bootstrap.lib";
-import {
-  runWorkspaceChannelCreate,
-  runWorkspaceDirectStreamCreate,
-} from "~/entities/messenger/messenger-create-chat-actions.lib";
+import { useChatsCatalog } from "~/entities/messenger/chats";
 import type { EncryptedChannelCreationAttempt } from "~/entities/messenger/messenger-create-chat-actions.lib";
-import {
-  runWorkspaceCreateTopicRequest,
-  runWorkspaceStreamUnarchive,
-} from "~/entities/messenger/messenger-sidebar-actions.lib";
-import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import type { MessengerStream } from "~/entities/messenger/messenger.types";
 import {
   selectSelectableWorkspaceUsers,
@@ -273,11 +266,11 @@ export function useCreateChatDialog(options: {
     otherCreating ||
     (channelCreation != null &&
       isWorkspaceRuntimeRequestContextCurrent(channelCreation, () => workspaceRuntimeContext));
-  const messengerOwnerKey = useMessengerStore((state) => state.ownerKey);
-  const messengerLoading = useMessengerStore((state) => state.isLoading);
-  const messengerError = useMessengerStore((state) => state.error);
-  const workspaceStreamIds = useMessengerStore((state) => state.streamIds);
-  const workspaceStreamsById = useMessengerStore((state) => state.streamsById);
+  const messengerOwnerKey = useChatsCatalog((state) => state.ownerKey);
+  const messengerLoading = useChatsCatalog((state) => state.isLoading);
+  const messengerError = useChatsCatalog((state) => state.error);
+  const workspaceStreamIds = useChatsCatalog((state) => state.streamIds);
+  const workspaceStreamsById = useChatsCatalog((state) => state.streamsById);
   const workspaceStreams = useMemo(
     () =>
       workspaceStreamIds
@@ -429,7 +422,7 @@ export function useCreateChatDialog(options: {
       setUnarchivePending([...unarchiveRequestsRef.current.keys()]);
       setUnarchiveInlineError(null);
       try {
-        const result = await runWorkspaceStreamUnarchive({ streamUuid });
+        const result = await chatCommands.unarchiveStream({ streamUuid });
         if (result.status !== "applied" && isCurrent()) {
           setUnarchiveInlineError({ streamUuid });
         }
@@ -509,7 +502,8 @@ export function useCreateChatDialog(options: {
     (user: CreateChatUserOption) => {
       if (user.workspaceUserUuid == null || creating) return;
       setCreating(true);
-      void runWorkspaceDirectStreamCreate({ directUserUuid: user.workspaceUserUuid })
+      void chatCommands
+        .openDirect({ directUserUuid: user.workspaceUserUuid })
         .then((result) => {
           if (result.status !== "applied") return;
           onNavigateWorkspaceStream?.(result.stream.uuid);
@@ -605,14 +599,17 @@ export function useCreateChatDialog(options: {
     channelCreationRef.current = requestContext;
     setChannelCreateErrorKey(null);
     setChannelCreation(requestContext);
-    void runWorkspaceChannelCreate({
-      name: channelName.trim(),
-      description: channelDesc.trim(),
-      memberUserUuids,
-      inviteOnly: channelEncryption ? false : channelInviteOnly,
-      announce: channelEncryption ? false : channelAnnounce,
-      ...(channelEncryption ? { encryption: true, creationAttempt: encryptedIntent?.attempt } : {}),
-    })
+    void chatCommands
+      .createChannel({
+        name: channelName.trim(),
+        description: channelDesc.trim(),
+        memberUserUuids,
+        inviteOnly: channelEncryption ? false : channelInviteOnly,
+        announce: channelEncryption ? false : channelAnnounce,
+        ...(channelEncryption
+          ? { encryption: true, creationAttempt: encryptedIntent?.attempt }
+          : {}),
+      })
       .then((result) => {
         if (
           channelCreationRef.current !== requestContext ||
@@ -679,7 +676,8 @@ export function useCreateChatDialog(options: {
     const name = workspaceTopicName.trim();
     if (streamUuid.length === 0 || name.length === 0 || creating) return;
     setCreating(true);
-    void runWorkspaceCreateTopicRequest({ streamUuid, name })
+    void chatCommands
+      .createTopic({ streamUuid, name })
       .then((result) => {
         if (result.status !== "applied") return;
         setWorkspaceTopicName("");

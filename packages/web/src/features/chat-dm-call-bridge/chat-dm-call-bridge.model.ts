@@ -1,6 +1,6 @@
 /**
  * Bridge from profile / mention and sidebar UI to ChatPage for starting a Jitsi call.
- * ChatPage watches pending partner uuid and starts the call once the DM route is active.
+ * ChatPage watches owner-bound requests and starts a call once the DM route is active.
  */
 import { create } from "zustand";
 import { logStoreAction } from "~/shared/lib/logger";
@@ -14,14 +14,21 @@ export interface ActiveChatCall {
   readonly invoke: () => void;
 }
 
+// The request object binds the intent to one session and identifies the publication to consume.
+interface PendingDmCall {
+  readonly partnerUserUuid: string;
+  readonly ownerKey: string;
+  readonly runtimeGeneration: number;
+}
+
 interface ChatDmCallBridgeState {
   activeChatCall: ActiveChatCall | null;
   setActiveChatCall: (call: ActiveChatCall | null) => void;
-  pendingDmCallPartnerUserUuid: string | null;
+  pendingDmCall: PendingDmCall | null;
   invokeDmCallFromProfileHandler: InvokeDmCallFromProfileHandler | null;
 
-  setPendingDmCallPartnerUserUuid: (userUuid: string | null) => void;
-  clearPendingDmCallPartner: () => void;
+  setPendingDmCall: (request: PendingDmCall) => void;
+  clearPendingDmCall: (request?: PendingDmCall) => boolean;
   setInvokeDmCallFromProfileHandler: (handler: InvokeDmCallFromProfileHandler | null) => void;
   invokeDmCallFromProfile: (partnerUserUuid: string) => void;
 }
@@ -29,20 +36,20 @@ interface ChatDmCallBridgeState {
 export const useChatDmCallBridgeStore = create<ChatDmCallBridgeState>((set, get) => ({
   activeChatCall: null,
   setActiveChatCall: (activeChatCall) => set({ activeChatCall }),
-  pendingDmCallPartnerUserUuid: null,
+  pendingDmCall: null,
   invokeDmCallFromProfileHandler: null,
 
-  setPendingDmCallPartnerUserUuid(userUuid) {
-    logStoreAction("chatDmCallBridge", "setPendingDmCallPartnerUserUuid", {
-      userUuid: userUuid ?? null,
-    });
-    set({ pendingDmCallPartnerUserUuid: userUuid });
+  setPendingDmCall(request) {
+    logStoreAction("chatDmCallBridge", "setPendingDmCall", {});
+    set({ pendingDmCall: request });
   },
 
-  clearPendingDmCallPartner() {
-    if (get().pendingDmCallPartnerUserUuid == null) return;
-    logStoreAction("chatDmCallBridge", "clearPendingDmCallPartner", {});
-    set({ pendingDmCallPartnerUserUuid: null });
+  clearPendingDmCall(request) {
+    const pending = get().pendingDmCall;
+    if (pending == null || (request != null && pending !== request)) return false;
+    logStoreAction("chatDmCallBridge", "clearPendingDmCall", {});
+    set({ pendingDmCall: null });
+    return true;
   },
 
   setInvokeDmCallFromProfileHandler(handler) {

@@ -13,21 +13,27 @@ import {
   getEmptyWorkspaceComposerDraftSnapshot,
 } from "~/entities/composer-draft/composer-draft-actions.lib";
 import type { WorkspaceComposerDraftContent } from "~/entities/composer-draft/composer-draft.types";
-import {
-  selectWorkspaceMessageById,
-  useWorkspaceMessageStore,
-} from "~/entities/message/message.model";
+import { chatCommands, useChatRouteMembership } from "~/entities/messenger/chat-commands";
 import { subscribeRealChatKeyChanges } from "~/entities/messenger/chat-crypto-resources.lib";
 import {
   decryptRealChatEnvelopeResult,
   decryptRealChatMessage,
 } from "~/entities/messenger/chat-crypto-runtime.lib";
 import { acquireChatCryptoSession } from "~/entities/messenger/chat-crypto-session.lib";
+import { readActiveChats, useChatsCatalog } from "~/entities/messenger/chats";
+import { messageCommands } from "~/entities/messenger/message-commands";
 import {
   createMessages,
   EMPTY_MESSAGE_WINDOW,
   MessagesDraftSendError,
 } from "~/entities/messenger/messages";
+import {
+  readActiveMessageIndex,
+  subscribeActiveMessageIndex,
+  useMessageIndex,
+  useOutgoingMessages,
+  selectKnownMessage,
+} from "~/entities/messenger/messages-consumers";
 import { selectWorkspaceChatHeaderView } from "~/entities/messenger/messenger-chat-header.lib";
 import {
   conversationIdForStream,
@@ -36,18 +42,8 @@ import {
   parseMessengerConversationId,
   selectMessengerConversationFromWorkspaceRoute,
 } from "~/entities/messenger/messenger-ids.lib";
-import {
-  deleteMessengerMessage,
-  editMessengerMessage,
-  sendMessengerMessage,
-} from "~/entities/messenger/messenger-message-actions.lib";
 import { canPrepareMessengerEncryptedMessage } from "~/entities/messenger/messenger-message-content.lib";
-import { toggleMessengerMessageReaction } from "~/entities/messenger/messenger-message-reactions-actions.lib";
-import { useMessengerOutboxStore } from "~/entities/messenger/messenger-outbox.model";
-import type {
-  MessengerSendOptions,
-  MessengerOutgoingMessage,
-} from "~/entities/messenger/messenger-outbox.types";
+import type { MessengerSendOptions } from "~/entities/messenger/messenger-outbox.types";
 import { supportsMessengerPolls } from "~/entities/messenger/messenger-poll-actions.lib";
 import { summarizeMessengerPoll } from "~/entities/messenger/messenger-poll-text.lib";
 import { buildMessengerRequestOptions } from "~/entities/messenger/messenger-request-options.lib";
@@ -57,11 +53,8 @@ import {
   restoreMessengerSecretMarkdown,
 } from "~/entities/messenger/messenger-secret-message.lib";
 import { isWorkspaceSelfChat } from "~/entities/messenger/messenger-self-chat.lib";
-import { runWorkspaceTopicDoneToggle } from "~/entities/messenger/messenger-sidebar-actions.lib";
 import { selectMessengerSidebarTopicsForStream } from "~/entities/messenger/messenger-sidebar.lib";
-import { useMessengerStreamBindingsForRoute } from "~/entities/messenger/messenger-stream-bindings-loader.lib";
 import { normalizeWorkspacePreviewBlob } from "~/entities/messenger/messenger-workspace-message-preview-blob.lib";
-import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import type {
   MessengerConversationId,
   MessengerMessage,
@@ -306,8 +299,6 @@ interface WorkspaceConversationPaginationRequest extends WorkspaceConversationPa
 }
 
 const EMPTY_MESSAGES_BY_ID: Record<MessengerUuid, MessengerMessage> = {};
-const EMPTY_OUTGOING_MESSAGES: MessengerOutgoingMessage[] = [];
-const EMPTY_OUTGOING_MESSAGE_PLACEMENT_UUIDS: readonly MessengerUuid[] = [];
 const EMPTY_USERS_BY_ID: UsersById = {};
 const WORKSPACE_COMPOSER_EDIT_SESSION_ID = 1;
 // Нет владельца черновика для редактора вне обычного разговора.
@@ -687,7 +678,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
     () => (runtimeContext == null ? null : workspaceRuntimeOwnerKey(runtimeContext)),
     [runtimeContext],
   );
-  const anyWorkspaceMessageWindowLoading = useWorkspaceMessageStore(
+  const anyWorkspaceMessageWindowLoading = useMessageIndex(
     (state) =>
       state.ownerKey === ownerKey &&
       Object.values(state.messagesLoadingByConversationId).some(Boolean),
@@ -840,7 +831,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
       streamUuid: parsedConversationId.streamUuid,
     };
   }, [activeMessageConversationId, route]);
-  useMessengerStreamBindingsForRoute({ route: effectiveRoute });
+  useChatRouteMembership({ route: effectiveRoute });
   const openSearch = useOpenSearch();
   const rightDrawer = useRightDrawer();
   const selection = useMemo(
@@ -856,14 +847,12 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
     ownerKey == null ? null : (state.meetUrlsByOwnerKey[ownerKey] ?? null),
   );
   // Подписка нужна: если уже в этом ЛС, pending меняется без смены route/headerView.
-  const pendingDmCallPartnerUserUuid = useChatDmCallBridgeStore(
-    (state) => state.pendingDmCallPartnerUserUuid,
-  );
+  const pendingDmCall = useChatDmCallBridgeStore((state) => state.pendingDmCall);
   const conversationId = selection.status === "conversation" ? selection.conversationId : null;
   const streamUuid = selection.status === "conversation" ? selection.streamUuid : null;
   const topicUuid =
     selection.status === "conversation" && selection.kind === "topic" ? selection.topicUuid : null;
-  const stream = useMessengerStore((state) =>
+  const stream = useChatsCatalog((state) =>
     streamUuid != null && state.ownerKey === ownerKey ? state.streamsById[streamUuid] : undefined,
   );
   const encryptedChat = useChatCryptoSession(streamUuid, topicUuid ?? undefined);
@@ -899,10 +888,10 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
       )
         clear();
     });
-    const unsubscribeMessages = useWorkspaceMessageStore.subscribe((messages) => {
+    const unsubscribeMessages = subscribeActiveMessageIndex((messages) => {
       const source = encryptedEditSourceRef.current;
       if (source == null) return;
-      const latest = selectWorkspaceMessageById(messages, source.uuid);
+      const latest = selectKnownMessage(messages, source.uuid);
       if (
         messages.ownerKey !== ownerKey ||
         latest?.payload.kind !== source.payload.kind ||
@@ -980,11 +969,11 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
     const unsubscribeKeys = subscribeRealChatKeyChanges((change) =>
       invalidate((source) => isEncryptedReplySourceAffectedByKeyChange(source, ownerKey, change)),
     );
-    const unsubscribeMessages = useWorkspaceMessageStore.subscribe((messages) =>
+    const unsubscribeMessages = subscribeActiveMessageIndex((messages) =>
       invalidate(
         (source) =>
           messages.ownerKey !== ownerKey ||
-          !isEncryptedReplySourceCurrent(source, selectWorkspaceMessageById(messages, source.uuid)),
+          !isEncryptedReplySourceCurrent(source, selectKnownMessage(messages, source.uuid)),
       ),
     );
     return () => {
@@ -1034,7 +1023,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
     () => new URLSearchParams(location.search).get("draft_uuid"),
     [location.search],
   );
-  const composerDraftTopicsById = useMessengerStore((state) => state.topicsById);
+  const composerDraftTopicsById = useChatsCatalog((state) => state.topicsById);
   const composerDraftTarget = useMemo(() => {
     if (selection.status !== "conversation") return null;
     if (selection.kind === "topic") {
@@ -1133,10 +1122,10 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
     [updateWorkspaceComposerDraft],
   );
   const selectionMode = selectedMessageUuids.size > 0;
-  const conversation = useMessengerStore((state) =>
+  const conversation = useChatsCatalog((state) =>
     conversationId != null ? state.conversationsById[conversationId] : undefined,
   );
-  const topic = useMessengerStore((state) =>
+  const topic = useChatsCatalog((state) =>
     topicUuid != null ? state.topicsById[topicUuid] : undefined,
   );
   const handleResolvedTopic = useCallback(
@@ -1211,36 +1200,17 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
     hasOlder: hasOlderMessages,
     hasNewer: hasNewerMessages,
   } = useSyncExternalStore(subscribeRouteWindow, getRouteWindow, getRouteWindow);
-  const outgoingMessagesByPlacementUuid = useMessengerOutboxStore(
-    (state) => state.outgoingMessagesByPlacementUuid,
-  );
-  const outgoingMessagePlacementUuids = useMessengerOutboxStore((state) =>
-    conversationId == null
-      ? EMPTY_OUTGOING_MESSAGE_PLACEMENT_UUIDS
-      : (state.outgoingMessagePlacementUuidsByConversationId[conversationId] ??
-        EMPTY_OUTGOING_MESSAGE_PLACEMENT_UUIDS),
-  );
-  const outgoingMessages = useMemo(() => {
-    if (ownerKey == null || outgoingMessagePlacementUuids.length === 0) {
-      return EMPTY_OUTGOING_MESSAGES;
-    }
-
-    const messages = outgoingMessagePlacementUuids
-      .map((placementUuid) => outgoingMessagesByPlacementUuid[placementUuid])
-      .filter((message): message is MessengerOutgoingMessage => message?.ownerKey === ownerKey);
-
-    return messages.length === 0 ? EMPTY_OUTGOING_MESSAGES : messages;
-  }, [outgoingMessagePlacementUuids, outgoingMessagesByPlacementUuid, ownerKey]);
-  const realtimeReadyRuntimeGeneration = useMessengerStore(
+  const outgoingMessages = useOutgoingMessages(conversationId);
+  const realtimeReadyRuntimeGeneration = useChatsCatalog(
     (state) => state.realtimeReadyRuntimeGeneration,
   );
-  const realtimeReadyOwnerKey = useMessengerStore((state) => state.realtimeReadyOwnerKey);
+  const realtimeReadyOwnerKey = useChatsCatalog((state) => state.realtimeReadyOwnerKey);
   const usersById = useUsersStore((state) =>
     Object.keys(state.usersById).length > 0 ? state.usersById : EMPTY_USERS_BY_ID,
   );
-  const topicsById = useMessengerStore((state) => state.topicsById);
-  const topicIds = useMessengerStore((state) => state.topicIds);
-  const allWorkspaceMessagesById = useWorkspaceMessageStore((state) =>
+  const topicsById = useChatsCatalog((state) => state.topicsById);
+  const topicIds = useChatsCatalog((state) => state.topicIds);
+  const allWorkspaceMessagesById = useMessageIndex((state) =>
     state.ownerKey === ownerKey ? state.messagesById : EMPTY_MESSAGES_BY_ID,
   );
   const handleRequestMessageKey = useCallback(
@@ -1304,7 +1274,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
     // Session notifications also update historical request outcomes and local key availability.
     [streamUuid, runtimeContext?.projectId, encryptedChat.session, encryptedChat.state],
   );
-  const streamsById = useMessengerStore((state) => state.streamsById);
+  const streamsById = useChatsCatalog((state) => state.streamsById);
   const isFavoritesConversation = shouldPresentWorkspaceFavorites({
     presentation,
     selection,
@@ -1360,9 +1330,9 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
       return topicName.length > 0 ? topicName : null;
     };
   }, [messageListPresentation, topicsById]);
-  const streamBindingsById = useMessengerStore((state) => state.streamBindingsById);
-  const streamBindingIdsByStreamId = useMessengerStore((state) => state.streamBindingIdsByStreamId);
-  const conversationsById = useMessengerStore((state) => state.conversationsById);
+  const streamBindingsById = useChatsCatalog((state) => state.streamBindingsById);
+  const streamBindingIdsByStreamId = useChatsCatalog((state) => state.streamBindingIdsByStreamId);
+  const conversationsById = useChatsCatalog((state) => state.conversationsById);
   const headerView = useMemo(
     () =>
       selectWorkspaceChatHeaderView(
@@ -1626,11 +1596,12 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
     const isUiActionCurrent = captureWorkspaceChatUiAction();
     setActionError(null);
     setTopicReopenPending(true);
-    void runWorkspaceTopicDoneToggle({
-      streamUuid: topic.streamUuid,
-      topicUuid: topic.uuid,
-      done: false,
-    })
+    void chatCommands
+      .toggleTopicDone({
+        streamUuid: topic.streamUuid,
+        topicUuid: topic.uuid,
+        done: false,
+      })
       .then((result) => {
         if (isUiActionCurrent() && result.status !== "applied") {
           setActionError(t("workspaceMessenger.topicReopenFailed"));
@@ -1698,7 +1669,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
         )
       )
         throw new Error("Poll unavailable");
-      const catalog = useMessengerStore.getState();
+      const catalog = readActiveChats();
       const currentStream =
         catalog.ownerKey === ownerKey && selection.status === "conversation"
           ? catalog.streamsById[selection.streamUuid]
@@ -1718,9 +1689,8 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
       }
       const isCurrent = captureWorkspaceChatUiAction();
       const result = await runMessengerRuntimeMutation(runtimeContext, (signal) =>
-        sendMessengerMessage({
+        messageCommands.send({
           runtimeContext,
-          getRuntimeContext: () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
           signal,
           streamUuid: attempt.target.streamUuid,
           topicUuid: attempt.target.topicUuid,
@@ -1760,7 +1730,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
 
   const handleRequestSecretKey = useCallback(
     async (messageUuid: string, reference: WorkspaceSecretUrnReference, allowUsableKey = false) => {
-      const message = selectWorkspaceMessageById(useWorkspaceMessageStore.getState(), messageUuid);
+      const message = selectKnownMessage(readActiveMessageIndex(), messageUuid);
       if (
         runtimeContext == null ||
         message?.payload.kind !== "markdown" ||
@@ -1803,10 +1773,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
       const lease = acquireChatCryptoSession(runtimeContext, reference.streamUuid);
       try {
         const session = await lease.promise;
-        if (
-          useWorkspaceMessageStore.getState().ownerKey !== workspaceRuntimeOwnerKey(runtimeContext)
-        )
-          return;
+        if (readActiveMessageIndex().ownerKey !== workspaceRuntimeOwnerKey(runtimeContext)) return;
         await lease.sync();
         if (!isCurrent()) return;
         await session.requestEnvelopeKey(
@@ -2010,9 +1977,8 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
             topicUuid: target.topicUuid,
             includeStreamConversation: target.includeStreamConversation,
           })
-        : sendMessengerMessage({
+        : messageCommands.send({
             runtimeContext,
-            getRuntimeContext: () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
             signal,
             streamUuid: target.streamUuid,
             topicUuid: target.topicUuid,
@@ -2100,25 +2066,33 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
     handleStartWorkspaceHeaderCall,
   ]);
 
-  // Звонок из чужого профиля: pending uuid → ждём активный DM → стартуем как из хедера.
+  // Звонок из профиля запускается в активном DM той же сессии, что опубликовала запрос.
   useEffect(() => {
-    if (isFavoritesConversation) return;
-    if (headerView.kind !== "directPrivate") return;
-    if (workspaceMeetUrl == null) return;
-    if (
-      pendingDmCallPartnerUserUuid == null ||
-      pendingDmCallPartnerUserUuid !== headerView.directUserUuid
-    ) {
+    if (isFavoritesConversation || headerView.kind !== "directPrivate" || workspaceMeetUrl == null)
       return;
-    }
+    if (
+      pendingDmCall?.partnerUserUuid !== headerView.directUserUuid ||
+      pendingDmCall.ownerKey !== ownerKey ||
+      pendingDmCall.runtimeGeneration !== runtimeContext?.runtimeGeneration ||
+      !isWorkspaceRuntimeRequestContextCurrent(runtimeContext, getCurrentWorkspaceRuntimeContext)
+    )
+      return;
 
-    useChatDmCallBridgeStore.getState().clearPendingDmCallPartner();
-    handleStartWorkspaceHeaderCall();
+    const bridge = useChatDmCallBridgeStore.getState();
+    if (
+      bridge.clearPendingDmCall(pendingDmCall) &&
+      useChatDmCallBridgeStore.getState().pendingDmCall == null &&
+      isWorkspaceRuntimeRequestContextCurrent(runtimeContext, getCurrentWorkspaceRuntimeContext)
+    )
+      handleStartWorkspaceHeaderCall();
   }, [
+    getCurrentWorkspaceRuntimeContext,
     handleStartWorkspaceHeaderCall,
     headerView,
-    pendingDmCallPartnerUserUuid,
+    pendingDmCall,
     isFavoritesConversation,
+    ownerKey,
+    runtimeContext,
     workspaceMeetUrl,
   ]);
 
@@ -2147,10 +2121,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
       const message =
         composerEditMessageUuid == null
           ? null
-          : selectWorkspaceMessageById(
-              useWorkspaceMessageStore.getState(),
-              composerEditMessageUuid,
-            );
+          : selectKnownMessage(readActiveMessageIndex(), composerEditMessageUuid);
       if (
         !message?.isOwn ||
         (message.payload.kind !== "markdown" && message.payload.kind !== "e2ee") ||
@@ -2192,9 +2163,8 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
               signal,
             );
           }
-          return editMessengerMessage({
+          return messageCommands.edit({
             runtimeContext,
-            getRuntimeContext: () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
             signal,
             messageUuid: message.uuid,
             markdown,
@@ -2247,8 +2217,8 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
 
   const handleEditMessage = useCallback(
     (messageUuid: string) => {
-      const messages = useWorkspaceMessageStore.getState();
-      const message = selectWorkspaceMessageById(messages, messageUuid);
+      const messages = readActiveMessageIndex();
+      const message = selectKnownMessage(messages, messageUuid);
       if (
         runtimeContext == null ||
         messages.ownerKey !== ownerKey ||
@@ -2260,7 +2230,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
           message.topicUuid !== selection.topicUuid) ||
         (message.payload.kind !== "markdown" && message.payload.kind !== "e2ee") ||
         (message.payload.kind === "e2ee" &&
-          useMessengerStore.getState().streamsById[message.streamUuid]?.encryption !== true)
+          readActiveChats().streamsById[message.streamUuid]?.encryption !== true)
       ) {
         setActionError(t("message.editUnavailable"));
         return;
@@ -2284,9 +2254,9 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
           : null;
       const isCurrent = () => {
         const latestRuntime = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
-        const latestMessages = useWorkspaceMessageStore.getState();
-        const latest = selectWorkspaceMessageById(latestMessages, messageUuid);
-        const catalog = useMessengerStore.getState();
+        const latestMessages = readActiveMessageIndex();
+        const latest = selectKnownMessage(latestMessages, messageUuid);
+        const catalog = readActiveChats();
         return (
           isUiActionCurrent() &&
           latestRuntime != null &&
@@ -2389,7 +2359,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
   );
 
   const handleRequestDeleteMessage = useCallback((messageUuid: string) => {
-    const message = selectWorkspaceMessageById(useWorkspaceMessageStore.getState(), messageUuid);
+    const message = selectKnownMessage(readActiveMessageIndex(), messageUuid);
     if (!message?.isOwn) {
       setActionError(t("workspaceMessenger.messageActionTargetMissing"));
       return;
@@ -2411,7 +2381,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
     const message =
       pendingDeleteMessageUuid == null
         ? null
-        : selectWorkspaceMessageById(useWorkspaceMessageStore.getState(), pendingDeleteMessageUuid);
+        : selectKnownMessage(readActiveMessageIndex(), pendingDeleteMessageUuid);
     if (!message?.isOwn) {
       setActionError(t("workspaceMessenger.messageActionTargetMissing"));
       setPendingDeleteMessageUuid(null);
@@ -2421,9 +2391,8 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
     setPendingDeleteMessageUuid(null);
     const isUiActionCurrent = captureWorkspaceChatUiAction();
     void runMessengerRuntimeMutation(runtimeContext, (signal) =>
-      deleteMessengerMessage({
+      messageCommands.delete({
         runtimeContext,
-        getRuntimeContext: () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
         signal,
         messageUuid: message.uuid,
         streamUuid: message.streamUuid,
@@ -2446,7 +2415,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
         return null;
       }
 
-      const message = selectWorkspaceMessageById(useWorkspaceMessageStore.getState(), messageUuid);
+      const message = selectKnownMessage(readActiveMessageIndex(), messageUuid);
       if (message?.payload.kind !== "markdown" && message?.payload.kind !== "poll") {
         setActionError(t("workspaceMessenger.messageActionTargetMissing"));
         return null;
@@ -2499,8 +2468,8 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
         (effectiveRoute?.kind !== "stream" && effectiveRoute?.kind !== "topic")
       )
         return;
-      const messages = useWorkspaceMessageStore.getState();
-      const source = selectWorkspaceMessageById(messages, messageUuid);
+      const messages = readActiveMessageIndex();
+      const source = selectKnownMessage(messages, messageUuid);
       if (
         messages.ownerKey !== ownerKey ||
         source == null ||
@@ -2522,9 +2491,9 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
       const isUiActionCurrent = captureWorkspaceChatUiAction();
       const isCurrent = () => {
         const latestRuntime = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
-        const latestMessages = useWorkspaceMessageStore.getState();
-        const latest = selectWorkspaceMessageById(latestMessages, messageUuid);
-        const catalog = useMessengerStore.getState();
+        const latestMessages = readActiveMessageIndex();
+        const latest = selectKnownMessage(latestMessages, messageUuid);
+        const catalog = readActiveChats();
         return (
           isUiActionCurrent() &&
           encryptedReplyAttemptRef.current === attempt &&
@@ -2921,11 +2890,11 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
 
   const handleCopyMessageLink = useCallback(
     async (messageUuid: string) => {
-      const message = selectWorkspaceMessageById(useWorkspaceMessageStore.getState(), messageUuid);
+      const message = selectKnownMessage(readActiveMessageIndex(), messageUuid);
       const url =
         runtimeContext == null ||
         message == null ||
-        useWorkspaceMessageStore.getState().ownerKey !== ownerKey ||
+        readActiveMessageIndex().ownerKey !== ownerKey ||
         message.projectId !== runtimeContext.projectId
           ? null
           : buildWorkspaceMessagePermalink(
@@ -2953,7 +2922,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
 
   const handleCopyMessageText = useCallback(
     async (messageUuid: string, selectedText?: string) => {
-      const message = selectWorkspaceMessageById(useWorkspaceMessageStore.getState(), messageUuid);
+      const message = selectKnownMessage(readActiveMessageIndex(), messageUuid);
       if (message == null) {
         setActionError(t("workspaceMessenger.messageActionTargetMissing"));
         return;
@@ -2977,9 +2946,9 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
 
         const isCurrent = () => {
           const currentRuntime = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
-          const messages = useWorkspaceMessageStore.getState();
-          const currentMessage = selectWorkspaceMessageById(messages, messageUuid);
-          const messenger = useMessengerStore.getState();
+          const messages = readActiveMessageIndex();
+          const currentMessage = selectKnownMessage(messages, messageUuid);
+          const messenger = readActiveChats();
           if (currentRuntime == null || currentMessage?.payload.kind !== "e2ee") {
             return false;
           }
@@ -3064,9 +3033,8 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
       const isUiActionCurrent = captureWorkspaceChatUiAction();
       try {
         const result = await runMessengerRuntimeMutation(runtimeContext, (signal) =>
-          toggleMessengerMessageReaction({
+          messageCommands.toggleReaction({
             runtimeContext,
-            getRuntimeContext: () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
             signal,
             messageUuid,
             emojiName,

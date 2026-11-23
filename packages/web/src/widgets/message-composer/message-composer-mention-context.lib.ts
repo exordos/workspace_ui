@@ -6,7 +6,7 @@
  */
 
 import type { WorkspaceMessageStoreData } from "~/entities/message/message.model.types";
-import type { MessengerStoreState } from "~/entities/messenger/messenger.model";
+import type { ChatsCatalogSnapshot } from "~/entities/messenger/chats";
 import type { MessengerMessage, MessengerUuid } from "~/entities/messenger/messenger.types";
 import type { MentionRankingContext } from "~/features/mention-suggest/mention-suggest.types";
 
@@ -16,7 +16,7 @@ const RECENT_AUTHOR_LIMIT = 20;
 const DM_PARTNER_LIMIT = 20;
 
 export type MentionContextMessengerState = Pick<
-  MessengerStoreState,
+  ChatsCatalogSnapshot,
   | "streamIds"
   | "streamsById"
   | "streamBindingsById"

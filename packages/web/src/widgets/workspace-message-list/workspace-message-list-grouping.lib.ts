@@ -1,4 +1,4 @@
-import type { MessengerOutgoingMessage } from "~/entities/messenger/messenger-outbox.types";
+import type { OutgoingMessageView } from "~/entities/messenger/messages-consumers";
 import type { MessengerMessage, MessengerUuid } from "~/entities/messenger/messenger.types";
 import type {
   WorkspaceMessageListItem,
@@ -84,7 +84,7 @@ export function createWorkspaceMessageListServerItem(
 }
 
 export function createWorkspaceMessageListOutgoingItem(
-  message: MessengerOutgoingMessage,
+  message: OutgoingMessageView,
 ): WorkspaceMessageListOutgoingItem {
   return {
     kind: "outgoing",

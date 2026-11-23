@@ -24,7 +24,6 @@ import {
 } from "./messenger-poll-actions.lib";
 import { createMessengerRealtimeActiveApplier } from "./messenger-realtime-applier.lib";
 import { useMessengerStore } from "./messenger.model";
-import type { MessengerPollPayload } from "./messenger.types";
 
 vi.mock("~/shared/api/messenger-messages.api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("~/shared/api/messenger-messages.api")>()),
@@ -73,13 +72,13 @@ afterEach(() => {
   useMessengerStore.getState().clear();
 });
 
-function compatiblePoll(): MessengerPollPayload {
+function compatiblePoll() {
   return {
-    kind: "poll",
+    kind: "poll" as const,
     multipleAnswers: true,
     isAnonymous: false,
     allowRevote: true,
-    resultsVisibility: "always",
+    resultsVisibility: "always" as const,
     allowAddingOptions: true,
     closesAt: null,
     closedAt: null,
@@ -87,7 +86,7 @@ function compatiblePoll(): MessengerPollPayload {
       {
         uuid: "question",
         text: "When?",
-        correctOptionUuids: [],
+        correctOptionUuids: Array<string>(),
         options: [
           { uuid: "first", text: "Today" },
           { uuid: "second", text: "Tomorrow" },

@@ -178,7 +178,7 @@ function createMessageDto(
     topic_uuid: overrides.topic_uuid ?? TOPIC_UUID,
     author_uuid: overrides.author_uuid ?? USER_B_UUID,
     payload: overrides.payload ?? { kind: "markdown", content: "full message text" },
-    user_uuid: overrides.user_uuid ?? USER_B_UUID,
+    user_uuid: overrides.user_uuid ?? USER_A_UUID,
     read: overrides.read ?? true,
     pinned: overrides.pinned ?? false,
     starred: overrides.starred ?? false,
@@ -206,6 +206,7 @@ function prepareStores(options: { includeDirect?: boolean } = {}) {
     currentAccountId: session.accountId,
     runtimeGeneration: session.runtimeGeneration,
   });
+  useWorkspaceMessageStore.getState().setOwner(ownerKey, false);
   useUsersStore.getState().startOwnerSync(ownerKey);
   useUsersStore.getState().replaceUsers([
     createUser({

@@ -1,11 +1,12 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useReducer } from "react";
 import { useShallow } from "zustand/react/shallow";
-import { useWorkspaceMessageStore } from "~/entities/message/message.model";
 import { subscribeRealChatKeyChanges } from "~/entities/messenger/chat-crypto-resources.lib";
 import {
   commitPreparedPlaintextWindow,
   type PreparedPlaintextRecord,
 } from "~/entities/messenger/chat-crypto-runtime.lib";
+import { readActiveChats, useChatsCatalog } from "~/entities/messenger/chats";
+import { readActiveMessageIndex, useMessageIndex } from "~/entities/messenger/messages-consumers";
 import {
   canPrepareMessengerEncryptedMessage,
   getImmediateMessengerMessageContent,
@@ -13,7 +14,6 @@ import {
   prepareMessengerMessageContent,
   type MessengerMessageContent,
 } from "~/entities/messenger/messenger-message-content.lib";
-import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import type { MessengerMessage } from "~/entities/messenger/messenger.types";
 import {
   selectCurrentWorkspaceRuntimeContext,
@@ -95,13 +95,13 @@ export function useMessagePresentations(
     [sessions, currentAccountId],
   );
   const owner = runtime == null ? null : workspaceRuntimeOwnerKey(runtime);
-  const catalogOwner = useMessengerStore((state) => state.ownerKey);
-  const messageOwner = useWorkspaceMessageStore((state) => state.ownerKey);
+  const catalogOwner = useChatsCatalog((state) => state.ownerKey);
+  const messageOwner = useMessageIndex((state) => state.ownerKey);
   const encryptedMessages = useMemo(
     () => messages.filter((message) => message.payload.kind === "e2ee"),
     [messages],
   );
-  const streams = useMessengerStore(
+  const streams = useChatsCatalog(
     useShallow((state) =>
       encryptedMessages.map((message) => state.streamsById[message.streamUuid]),
     ),
@@ -189,7 +189,7 @@ export function useMessagePresentations(
       if (entry.phase !== "queued") continue;
       const currentEntry = entry;
       const isCurrent = () => {
-        const catalog = useMessengerStore.getState();
+        const catalog = readActiveChats();
         return (
           preparation.active &&
           preparation.entries.get(key) === currentEntry &&
@@ -198,7 +198,7 @@ export function useMessagePresentations(
             runtime: getRuntime(),
             message,
             catalogOwner: catalog.ownerKey,
-            messageOwner: useWorkspaceMessageStore.getState().ownerKey,
+            messageOwner: readActiveMessageIndex().ownerKey,
             stream: catalog.streamsById[message.streamUuid],
           })
         );

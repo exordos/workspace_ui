@@ -1,4 +1,4 @@
-import type { MessengerOutgoingMessage } from "~/entities/messenger/messenger-outbox.types";
+import type { OutgoingMessageView } from "~/entities/messenger/messages-consumers";
 import type {
   MessengerConversationId,
   MessengerMessage,
@@ -91,7 +91,7 @@ export interface WorkspaceMessageListServerItem {
 export interface WorkspaceMessageListOutgoingItem {
   kind: "outgoing";
   key: string;
-  message: MessengerOutgoingMessage;
+  message: OutgoingMessageView;
   createdAt: string;
   authorUuid: MessengerUuid;
   isOwn: true;
@@ -112,7 +112,7 @@ export interface WorkspaceMessageListPresentation {
 
 export interface WorkspaceMessageListProps {
   messages: readonly MessengerMessage[];
-  outgoingMessages?: readonly MessengerOutgoingMessage[];
+  outgoingMessages?: readonly OutgoingMessageView[];
   currentUserUuid: MessengerUuid;
   conversationId: MessengerConversationId;
   initialPositionReady?: boolean;

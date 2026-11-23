@@ -1,6 +1,13 @@
 import { useMemo, useSyncExternalStore } from "react";
-import { useWorkspaceMessageStore } from "~/entities/message/message.model";
-import { useMessengerStore, type MessengerStoreState } from "~/entities/messenger/messenger.model";
+import {
+  EMPTY_CHATS_CATALOG,
+  createChatsCatalogSource,
+  type ChatsCatalogSnapshot,
+} from "~/entities/messenger/chats";
+import {
+  createMessagesIndexSource,
+  type MessagesIndexSnapshot,
+} from "~/entities/messenger/messages-consumers";
 import { useUsersStore } from "~/entities/user/user.model";
 import type { UsersById } from "~/entities/user/user.types";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
@@ -29,19 +36,21 @@ const CATALOG_FIELDS = [
 ] as const;
 
 interface SidebarProjectionSnapshot {
-  messenger: Readonly<Pick<MessengerStoreState, (typeof CATALOG_FIELDS)[number]>>;
-  messagesById: ReturnType<typeof useWorkspaceMessageStore.getState>["messagesById"];
+  messenger: Pick<ChatsCatalogSnapshot, (typeof CATALOG_FIELDS)[number]>;
+  messagesById: MessagesIndexSnapshot["messagesById"];
   usersById: UsersById;
 }
+const EMPTY_SIDEBAR_MESSAGES: MessagesIndexSnapshot["messagesById"] = {};
 
 function createSidebarProjectionSubscription(runtime: WorkspaceRuntimeContext | null) {
   const expectedOwner = runtime == null ? null : workspaceRuntimeOwnerKey(runtime);
+  const catalogSource = createChatsCatalogSource(runtime);
+  const messageSource = createMessagesIndexSource(runtime);
   const emptyMessenger = {
-    ...useMessengerStore.getInitialState(),
+    ...EMPTY_CHATS_CATALOG,
     ownerKey: expectedOwner,
     isLoading: runtime != null,
   };
-  const emptyMessages = useWorkspaceMessageStore.getInitialState().messagesById;
   const emptyUsers = useUsersStore.getInitialState().usersById;
   let cached: SidebarProjectionSnapshot | undefined;
   const isRuntimeCurrent = () =>
@@ -52,13 +61,15 @@ function createSidebarProjectionSubscription(runtime: WorkspaceRuntimeContext | 
         );
 
   const readSnapshot = (): SidebarProjectionSnapshot => {
-    const current = useMessengerStore.getState();
+    const current = catalogSource.getSnapshot();
     const valid = isRuntimeCurrent() && current.ownerKey === expectedOwner;
     const messenger = valid ? current : emptyMessenger;
-    const messages = useWorkspaceMessageStore.getState();
+    const messages = messageSource.getSnapshot();
     const users = useUsersStore.getState();
     const messagesById =
-      valid && messages.ownerKey === messenger.ownerKey ? messages.messagesById : emptyMessages;
+      valid && messages.ownerKey === messenger.ownerKey
+        ? messages.messagesById
+        : EMPTY_SIDEBAR_MESSAGES;
     const usersById = valid && users.ownerKey === messenger.ownerKey ? users.usersById : emptyUsers;
     if (
       cached?.messagesById === messagesById &&
@@ -72,7 +83,7 @@ function createSidebarProjectionSubscription(runtime: WorkspaceRuntimeContext | 
 
   let published = readSnapshot();
   const getSnapshot = (): SidebarProjectionSnapshot => {
-    const current = useMessengerStore.getState();
+    const current = catalogSource.getSnapshot();
     if (
       !isRuntimeCurrent() ||
       current.ownerKey !== published.messenger.ownerKey ||
@@ -111,18 +122,22 @@ function createSidebarProjectionSubscription(runtime: WorkspaceRuntimeContext | 
         if (isTabVisible()) flush();
       }, PROJECTION_INTERVAL_MS);
     };
+    let messageOwner = messageSource.getSnapshot().ownerKey;
     const unsubscribers = [
-      useMessengerStore.subscribe((state, previous) =>
+      catalogSource.subscribe(() => {
+        const catalog = catalogSource.getSnapshot();
         changed(
-          state.ownerKey !== previous.ownerKey ||
-            state.bootstrapRequestVersion !== previous.bootstrapRequestVersion ||
-            state.isLoading !== previous.isLoading ||
-            state.error !== previous.error,
-        ),
-      ),
-      useWorkspaceMessageStore.subscribe((state, previous) =>
-        changed(state.ownerKey !== previous.ownerKey),
-      ),
+          catalog.ownerKey !== published.messenger.ownerKey ||
+            catalog.bootstrapRequestVersion !== published.messenger.bootstrapRequestVersion ||
+            catalog.isLoading !== published.messenger.isLoading ||
+            catalog.error !== published.messenger.error,
+        );
+      }),
+      messageSource.subscribe((state) => {
+        const ownerChanged = state.ownerKey !== messageOwner;
+        messageOwner = state.ownerKey;
+        changed(ownerChanged);
+      }),
       useUsersStore.subscribe((state, previous) => changed(state.ownerKey !== previous.ownerKey)),
       onVisibilityChange((visible) => {
         if (visible) flush();

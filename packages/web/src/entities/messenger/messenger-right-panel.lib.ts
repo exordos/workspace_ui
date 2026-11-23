@@ -15,7 +15,7 @@ import {
   selectMessengerTopicsForStream,
   type MessengerTopicListSortMode,
 } from "./messenger-topic-list.lib";
-import type { MessengerStoreState } from "./messenger.model";
+import type { ChatsCatalogSnapshot } from "./chats";
 import type {
   MessengerMessage,
   MessengerStreamBinding,
@@ -26,7 +26,7 @@ import type {
 const EMPTY_MESSAGES_BY_ID: Record<MessengerUuid, MessengerMessage> = {};
 
 type WorkspaceRightPanelState = Pick<
-  MessengerStoreState,
+  ChatsCatalogSnapshot,
   | "conversationsById"
   | "streamsById"
   | "topicsById"

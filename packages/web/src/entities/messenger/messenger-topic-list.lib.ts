@@ -9,7 +9,7 @@ import {
   resolveWorkspaceActiveUnreadCount,
   resolveWorkspacePassiveUnreadCount,
 } from "./messenger-notification-mode.lib";
-import type { MessengerStoreState } from "./messenger.model";
+import type { ChatsCatalogSnapshot } from "./chats";
 import type {
   MessengerMessage,
   MessengerSidebarMessagePreview,
@@ -20,7 +20,7 @@ import type {
 } from "./messenger.types";
 
 const EMPTY_TOPIC_LIST: MessengerTopicListItem[] = [];
-type TopicCatalog = Pick<MessengerStoreState, "topicIds" | "topicsById">;
+type TopicCatalog = Pick<ChatsCatalogSnapshot, "topicIds" | "topicsById">;
 const topicsByStreamCache = new WeakMap<
   TopicCatalog["topicsById"],
   { topicIds: TopicCatalog["topicIds"]; byStream: Map<MessengerUuid, MessengerTopic[]> }

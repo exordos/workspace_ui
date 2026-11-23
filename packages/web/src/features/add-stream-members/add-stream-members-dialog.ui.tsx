@@ -1,7 +1,7 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import React, { useCallback, useMemo, useState } from "react";
-import { addWorkspaceStreamMembers } from "~/entities/messenger/messenger-stream-member-actions.lib";
-import { useMessengerStore } from "~/entities/messenger/messenger.model";
+import { chatCommands } from "~/entities/messenger/chat-commands";
+import { useChatsCatalog } from "~/entities/messenger/chats";
 import type { MessengerUuid } from "~/entities/messenger/messenger.types";
 import {
   isSelectableWorkspaceUser,
@@ -73,9 +73,9 @@ export const AddStreamMembersDialog: React.FC<AddStreamMembersDialogProps> = ({ 
   const close = useAddStreamMembersStore((s) => s.close);
   const submit = useAddStreamMembersStore((s) => s.submit);
   const usersById = useUsersStore((s) => s.usersById);
-  const streamsById = useMessengerStore((s) => s.streamsById);
-  const streamBindingIdsByStreamId = useMessengerStore((s) => s.streamBindingIdsByStreamId);
-  const streamBindingsById = useMessengerStore((s) => s.streamBindingsById);
+  const streamsById = useChatsCatalog((s) => s.streamsById);
+  const streamBindingIdsByStreamId = useChatsCatalog((s) => s.streamBindingIdsByStreamId);
+  const streamBindingsById = useChatsCatalog((s) => s.streamBindingsById);
   const runtimeContext = useWorkspaceAuthStore(selectCurrentWorkspaceRuntimeContext);
   const [workspaceSubmitting, setWorkspaceSubmitting] = useState(false);
   const [workspaceError, setWorkspaceError] = useState<string | null>(null);
@@ -151,12 +151,12 @@ export const AddStreamMembersDialog: React.FC<AddStreamMembersDialogProps> = ({ 
 
       setWorkspaceSubmitting(true);
       setWorkspaceError(null);
-      void addWorkspaceStreamMembers({
-        runtimeContext,
-        getRuntimeContext: useWorkspaceAuthStore.getState().getCurrentRuntimeContext,
-        streamUuid: workspaceStream.uuid,
-        userUuids,
-      })
+      void chatCommands
+        .addMembers({
+          runtimeContext,
+          streamUuid: workspaceStream.uuid,
+          userUuids,
+        })
         .then(() => {
           setWorkspaceSubmitting(false);
           close();

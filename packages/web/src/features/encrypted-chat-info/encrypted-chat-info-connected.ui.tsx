@@ -1,11 +1,10 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { chatCommands } from "~/entities/messenger/chat-commands";
 import { subscribeRealChatKeyChanges } from "~/entities/messenger/chat-crypto-resources.lib";
 import type { RealChatSession } from "~/entities/messenger/chat-crypto-runtime.lib";
 import type { StoredChatKeyMetadata } from "~/entities/messenger/chat-key-storage.types";
-import { updateMessengerStreamKeySharing } from "~/entities/messenger/messenger-sidebar-actions.lib";
 import { editableStreamKeySharing } from "~/entities/messenger/messenger-stream-key-sharing.lib";
 import type { MessengerStream } from "~/entities/messenger/messenger.types";
-import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import { t } from "~/i18n/i18n";
@@ -257,12 +256,12 @@ function useChannelKeySharing(
       if (activeScope.current !== scope || pendingRequests.current.has(scope)) return;
       pendingRequests.current.add(scope);
       setPendingScopes(new Set(pendingRequests.current));
-      void updateMessengerStreamKeySharing({
-        runtimeContext: runtime,
-        getRuntimeContext: useWorkspaceAuthStore.getState().getCurrentRuntimeContext,
-        streamUuid,
-        allowKeySharingByHolders: !editableValue,
-      })
+      void chatCommands
+        .updateKeySharing({
+          runtimeContext: runtime,
+          streamUuid,
+          allowKeySharingByHolders: !editableValue,
+        })
         .catch(() => {
           if (activeScope.current === scope) toast.error(t("channel.keySharingUpdateFailed"));
         })

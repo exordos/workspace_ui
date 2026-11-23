@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation } from "react-router-dom";
-import { useMessengerStore } from "~/entities/messenger/messenger.model";
-import { useWorkspaceMessageStore } from "~/entities/message/message.model";
+import { useChatsCatalog } from "~/entities/messenger/chats";
+import { useMessageIndex } from "~/entities/messenger/messages-consumers";
 import { useThemeStore } from "~/entities/theme/theme.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
@@ -68,13 +68,11 @@ export const LogsPage: React.FC = () => {
   const workspaceOwnerKey = useWorkspaceAuthStore(
     (s) => getWorkspaceSessionStorageScopeFromAuthState(s).ownerKey,
   );
-  const streamsCount = useMessengerStore((s) => s.streamIds.length);
-  const conversationsCount = useMessengerStore((s) => s.conversationIds.length);
-  const foldersCount = useMessengerStore((s) => s.folderIds.length);
+  const streamsCount = useChatsCatalog((s) => s.streamIds.length);
+  const conversationsCount = useChatsCatalog((s) => s.conversationIds.length);
+  const foldersCount = useChatsCatalog((s) => s.folderIds.length);
   const usersCount = useUsersStore((s) => s.userIds.length);
-  const currentChatMessagesCount = useWorkspaceMessageStore(
-    (s) => Object.keys(s.messagesById).length,
-  );
+  const currentChatMessagesCount = useMessageIndex((s) => Object.keys(s.messagesById).length);
   const themeMode = useThemeStore((s) => s.mode);
   const themePalette = useThemeStore((s) => s.paletteId);
   const settingsLanguage = useSettingsStore((s) => s.language);
