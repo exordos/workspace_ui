@@ -29,6 +29,7 @@ export interface WorkspaceReauthRequiredAccount extends WorkspaceRuntimeOwner {
 export interface WorkspaceAuthSession
   extends WorkspaceReauthRequiredAccount, WorkspaceRuntimeContext {
   expiresAtMs?: number;
+  authorizedAtMs?: number;
   // Account selection changes the runtime without replacing its credentials.
   credentialsRevision?: symbol;
 }
@@ -165,6 +166,7 @@ function normalizeStoredAccounts(
         accessToken,
         refreshToken: stringField(item, "refreshToken"),
         expiresAtMs: numberField(item, "expiresAtMs"),
+        authorizedAtMs: numberField(item, "authorizedAtMs"),
         runtimeGeneration: numberField(item, "runtimeGeneration") ?? 0,
       });
       accountedIds.add(account.accountId);
@@ -255,6 +257,7 @@ export const useWorkspaceAuthStore = create<WorkspaceAuthState>((set, get) => ({
         projectName: session.projectName ?? existing?.projectName ?? reauthRequired?.projectName,
         runtimeGeneration,
         credentialsRevision: Symbol(),
+        authorizedAtMs: Date.now(),
       };
       const sessions =
         existing == null
@@ -331,7 +334,12 @@ export const useWorkspaceAuthStore = create<WorkspaceAuthState>((set, get) => ({
       );
       const sessions = [
         ...state.sessions,
-        { ...session, runtimeGeneration, credentialsRevision: Symbol() },
+        {
+          ...session,
+          runtimeGeneration,
+          credentialsRevision: Symbol(),
+          authorizedAtMs: Date.now(),
+        },
       ];
       const reauthRequiredAccounts = state.reauthRequiredAccounts.filter(
         (item) => item !== account,

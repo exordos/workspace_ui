@@ -38,6 +38,7 @@ import {
 } from "~/shared/lib/workspace-messenger-route.lib";
 import { parseWorkspaceProfileShareHash } from "~/shared/lib/workspace-profile-link.lib";
 import { ErrorBoundary, PageErrorFallback, PageLoader } from "~/shared/ui/error-boundary";
+import { useLayoutAuthGuard } from "~/widgets/layout/layout-auth-guard.hook";
 import { configureWorkspaceI18nStorageScope } from "~/widgets/layout/layout-i18n-scope.lib";
 import { resolveElectronTrayNavigation } from "./app-electron-navigation.lib";
 import { resolveMessageEntrySession } from "./app-message-entry.lib";
@@ -301,6 +302,7 @@ const AppContent: React.FC = () => {
 };
 
 const App: React.FC = () => {
+  useLayoutAuthGuard();
   const ownerKey = useWorkspaceAuthStore(
     (state) => getWorkspaceSessionStorageScopeFromAuthState(state).ownerKey,
   );

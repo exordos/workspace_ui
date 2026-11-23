@@ -148,6 +148,22 @@ describe("App default routing", () => {
     expect(await screen.findByText("inbox-page")).toBeInTheDocument();
   });
 
+  it("requests sign-in at startup for a selected account idle past the default limit", async () => {
+    const session = createSession();
+    useWorkspaceAuthStore.setState({
+      sessions: [{ ...session, authorizedAtMs: Date.now() - 4 * 24 * 60 * 60 * 1_000 }],
+      currentAccountId: session.accountId,
+    });
+
+    renderWithProviders(<App />, {
+      route: "/org/zulip.example.com/project/project-a/stream/stream-uuid",
+    });
+
+    expect(await screen.findByText("reauth-host")).toBeInTheDocument();
+    expect(screen.queryByTestId("chat-page")).not.toBeInTheDocument();
+    expect(useWorkspaceAuthStore.getState().currentAccountId).toBe(session.accountId);
+  });
+
   it("keeps the only saved account in the shell when it requires reauthorization", async () => {
     const session = createSession();
     setAuthorizedSession();
