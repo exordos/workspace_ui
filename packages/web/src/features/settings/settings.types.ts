@@ -5,7 +5,7 @@
  * notification sound preference, and UI language.
  */
 
-import type { MessengerSidebarSortMode } from "~/entities/messenger/messenger-sidebar.lib";
+import type { MessengerSidebarSortMode } from "~/applications/messenger/features/sidebar/messenger-sidebar.lib";
 import type { HotkeyOverrides } from "~/shared/lib/hotkeys";
 
 export type NotificationSound = "default" | "subtle" | "digital" | "glass" | "pulse" | "none";

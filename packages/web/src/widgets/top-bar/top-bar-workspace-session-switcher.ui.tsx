@@ -1,6 +1,6 @@
 import React from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { useMessengerBackgroundProjectionStore } from "~/entities/messenger/messenger-background-projection.model";
+import { useMessengerBackgroundProjectionStore } from "~/applications/messenger/runtime/sync/messenger-background-projection.model";
 import { removeWorkspaceSession } from "~/entities/workspace-auth/workspace-auth.lib";
 import {
   useWorkspaceAuthStore,

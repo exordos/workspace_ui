@@ -1,6 +1,6 @@
 import { create } from "zustand";
-import type { MessengerUuid } from "~/entities/messenger/messenger.types";
-import type { EncryptedChatInfoScreen } from "~/features/encrypted-chat-info/encrypted-chat-info.types";
+import type { EncryptedChatInfoScreen } from "~/applications/messenger/features/chat-details/encrypted-chat-info/encrypted-chat-info.types";
+import type { MessengerUuid } from "~/applications/messenger/model/messenger.types";
 import { logStoreAction } from "~/shared/lib/logger";
 
 export type RightDrawerMode = "info" | "settings" | "user-menu" | "about" | "personal-info";

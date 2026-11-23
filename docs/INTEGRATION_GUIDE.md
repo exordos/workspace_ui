@@ -22,7 +22,7 @@ Use narrow selectors and keep derived values stable. Do not introduce a second s
 
 ## 3. Connect realtime only when the feature needs it
 
-Inspect the current [layout realtime hook](../packages/web/src/widgets/layout/layout-workspace-realtime.hook.ts), [event API](../packages/web/src/shared/api/messenger-realtime.api.ts), [event applier](../packages/web/src/entities/messenger/messenger-realtime-applier.lib.ts) and [cache application](../packages/web/src/entities/messenger/messenger-realtime-cache.lib.ts). Extend the existing event path instead of adding the legacy Zulip event loop.
+Inspect the current [layout realtime hook](../packages/web/src/widgets/layout/layout-workspace-realtime.hook.ts), [event API](../packages/web/src/shared/api/messenger-realtime.api.ts), [event applier](../packages/web/src/applications/messenger/runtime/sync/messenger-realtime-applier.lib.ts) and [cache application](../packages/web/src/applications/messenger/runtime/sync/messenger-realtime-cache.lib.ts). Extend the existing event path instead of adding the legacy Zulip event loop.
 
 Preserve REST catch-up ordering, epoch generation/version cursor semantics, deduplication, active conversation updates and background projections. Bind listeners and cleanup to the runtime that created them. A newly visible message must not bypass existing unread/read or notification policy.
 
@@ -34,7 +34,7 @@ Keep domain presentation in entities/features and composition in widgets/pages; 
 
 For new shared UI or changed public behavior/appearance, add or update adjacent `*.stories.tsx` examples and the catalog entry when selection guidance changes. Include relevant default, disabled/loading/error, empty/long-content and interactive states rather than every possible prop combination. Use the application themes and localized labels; use synthetic local fixtures rather than private data, credentials or production API calls. Source and tests define the implementation; stories document representative contracts and are not evidence of backend support.
 
-The [composer](../packages/web/src/widgets/message-composer/message-composer.ui.tsx) receives explicit capabilities. Keep read-only and unsupported states visible; adding a button or local state does not establish backend support. Message HTML/markdown must remain in the existing sanitized [render path](../packages/web/src/shared/lib/workspace-message-render/workspace-message-render.lib.ts).
+The [composer](../packages/web/src/applications/messenger/features/composer/message-composer.ui.tsx) receives explicit capabilities. Keep read-only and unsupported states visible; adding a button or local state does not establish backend support. Message HTML/markdown must remain in the existing sanitized [render path](../packages/web/src/shared/lib/workspace-message-render/workspace-message-render.lib.ts).
 
 ## 5. Verify the changed behavior
 

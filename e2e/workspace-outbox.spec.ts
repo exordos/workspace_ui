@@ -1,4 +1,4 @@
-import { createMessengerPlacementUuid } from "../packages/web/src/entities/messenger/messenger-message-identity.lib";
+import { createMessengerPlacementUuid } from "../packages/web/src/applications/messenger/model/messages/messenger-message-identity.lib";
 import type {
   WorkspaceMessengerCreateMessageRequestBody,
   WorkspaceMessengerMessageDto,
@@ -24,7 +24,7 @@ for (const encryption of [false, true]) {
           const { useWorkspaceAuthStore } =
             await import("/src/entities/workspace-auth/workspace-auth.model.ts");
           const { realChatKeyStorage, realChatCryptoProvider } =
-            await import("/src/entities/messenger/chat-crypto-resources.lib.ts");
+            await import("/src/applications/messenger/model/crypto/chat-crypto-resources.lib.ts");
           const runtime = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
           if (!runtime) throw new Error("Missing test runtime");
           const device = (await realChatKeyStorage.readDeviceIdentity(runtime)) ?? {

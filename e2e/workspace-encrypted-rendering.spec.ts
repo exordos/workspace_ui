@@ -61,7 +61,8 @@ async function installEncryptedWindow(
       page.evaluate(async (streamUuid) => {
         const { useWorkspaceAuthStore } =
           await import("/src/entities/workspace-auth/workspace-auth.model.ts");
-        const { useMessengerStore } = await import("/src/entities/messenger/messenger.model.ts");
+        const { useMessengerStore } =
+          await import("/src/applications/messenger/model/chats/messenger.model.ts");
         const catalog = useMessengerStore.getState();
         return (
           useWorkspaceAuthStore.getState().getCurrentRuntimeContext() != null &&
@@ -75,9 +76,10 @@ async function installEncryptedWindow(
     async ({ streamUuid, keyUuid, texts, encryptedChat }) => {
       const { useWorkspaceAuthStore } =
         await import("/src/entities/workspace-auth/workspace-auth.model.ts");
-      const { useMessengerStore } = await import("/src/entities/messenger/messenger.model.ts");
+      const { useMessengerStore } =
+        await import("/src/applications/messenger/model/chats/messenger.model.ts");
       const { ensureChatDeviceIdentity, realChatKeyStorage, realChatCryptoProvider } =
-        await import("/src/entities/messenger/chat-crypto-resources.lib.ts");
+        await import("/src/applications/messenger/model/crypto/chat-crypto-resources.lib.ts");
       const runtime = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
       const catalog = useMessengerStore.getState();
       const stream = catalog.streamsById[streamUuid];
@@ -202,9 +204,9 @@ async function stageMessages(
   await page.evaluate(
     async ({ dtos, direction }) => {
       const { captureWorkspaceConversationWindowBoundary, useWorkspaceMessageStore } =
-        await import("/src/entities/message/message.model.ts");
+        await import("/src/applications/messenger/model/messages/message.model.ts");
       const { adaptMessengerMessage } =
-        await import("/src/entities/messenger/messenger-adapters.lib.ts");
+        await import("/src/applications/messenger/model/messages/messenger-message-adapter.lib.ts");
       const messages = dtos.map(adaptMessengerMessage);
       const first = messages[0];
       if (first?.payload.kind !== "e2ee") throw new Error("Missing encrypted message");

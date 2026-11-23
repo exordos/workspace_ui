@@ -1,4 +1,4 @@
-import { createMessengerPlacementUuid } from "../packages/web/src/entities/messenger/messenger-message-identity.lib";
+import { createMessengerPlacementUuid } from "../packages/web/src/applications/messenger/model/messages/messenger-message-identity.lib";
 import type { WorkspaceMessengerCreateMessageRequestBody } from "../packages/web/src/shared/api/messenger.types";
 import { test, expect } from "./fixtures";
 import { expectReadyMessageComposer } from "./helpers/message-composer";
@@ -21,7 +21,7 @@ for (const entry of ["ordinary header", "encrypted header", "encrypted sidebar"]
           const { useWorkspaceAuthStore } =
             await import("/src/entities/workspace-auth/workspace-auth.model.ts");
           const { ensureChatDeviceIdentity, realChatKeyStorage, realChatCryptoProvider } =
-            await import("/src/entities/messenger/chat-crypto-resources.lib.ts");
+            await import("/src/applications/messenger/model/crypto/chat-crypto-resources.lib.ts");
           const runtime = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
           if (!runtime) throw new Error("Missing runtime");
           const device = await ensureChatDeviceIdentity(runtime, () => true);
@@ -105,7 +105,7 @@ for (const entry of ["ordinary header", "encrypted header", "encrypted sidebar"]
           const { useWorkspaceAuthStore } =
             await import("/src/entities/workspace-auth/workspace-auth.model.ts");
           const { ensureChatDeviceIdentity, realChatKeyStorage, realChatCryptoProvider } =
-            await import("/src/entities/messenger/chat-crypto-resources.lib.ts");
+            await import("/src/applications/messenger/model/crypto/chat-crypto-resources.lib.ts");
           const runtime = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
           if (!runtime) throw new Error("Missing runtime");
           const device = await ensureChatDeviceIdentity(runtime, () => true);

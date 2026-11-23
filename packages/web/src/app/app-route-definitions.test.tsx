@@ -4,7 +4,7 @@
  * The chat routes carry `key={location.pathname}`, so navigating between two topics
  * rebuilds the chat page rather than re-rendering it. Anything that has to survive a
  * conversation switch therefore cannot live in the page's own state — see
- * pages/chat/chat-page-conversation-view-memory.lib.ts.
+ * applications/messenger/pages/messenger/chat-page-conversation-view-memory.lib.ts.
  */
 import { render, screen, waitFor } from "@testing-library/react";
 import React from "react";
@@ -14,7 +14,7 @@ import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.
 
 const chatPageMounts = vi.hoisted(() => ({ count: 0 }));
 
-vi.mock("~/pages/chat/chat-page.ui", () => ({
+vi.mock("~/applications/messenger/messenger", () => ({
   ChatPage: () => {
     React.useEffect(() => {
       chatPageMounts.count += 1;
@@ -29,7 +29,7 @@ vi.mock("~/widgets/layout/layout.ui", () => ({
 }));
 vi.mock("~/pages/inbox/inbox-page.ui", () => ({ InboxPage: () => <div>Inbox</div> }));
 vi.mock("~/pages/login/login-page.ui", () => ({ LoginPage: () => <div>Login</div> }));
-vi.mock("~/pages/encrypted-chat/encrypted-chat-preview.ui", () => ({
+vi.mock("~/applications/messenger/pages/encrypted-chat/encrypted-chat-preview.ui", () => ({
   EncryptedChatPreview: () => <div>E2EE preview</div>,
 }));
 

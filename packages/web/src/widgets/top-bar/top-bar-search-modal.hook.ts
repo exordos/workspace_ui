@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import { readActiveChats } from "~/entities/messenger/chats";
+import { readActiveChats } from "~/applications/messenger/model/chats/chats";
 import {
   parseWorkspaceMessengerRoute,
   workspaceMessengerStreamRoute,

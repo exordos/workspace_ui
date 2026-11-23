@@ -1,4 +1,4 @@
-import type { MessengerRequestOptionsOverrides } from "~/entities/messenger/messenger-request-options.lib";
+import type { MessengerRequestOptionsOverrides } from "~/applications/messenger/model/messenger-request-options.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import type { MessengerClientOptions } from "~/shared/api/messenger-client";
 import { type getExternalAccounts as defaultGetExternalAccounts } from "~/shared/api/messenger-external-accounts.api";

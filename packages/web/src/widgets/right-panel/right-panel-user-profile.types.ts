@@ -2,8 +2,8 @@ import type {
   WorkspaceRightPanelDirectPrivateDetailView,
   WorkspaceRightPanelDirectPrivateInfoView,
   WorkspaceRightPanelUserProfileInfoView,
-} from "~/entities/messenger/messenger-right-panel.lib";
-import type { MessengerUuid } from "~/entities/messenger/messenger.types";
+} from "~/applications/messenger/features/chat-details/messenger-right-panel.lib";
+import type { MessengerUuid } from "~/applications/messenger/model/messenger.types";
 import type { User } from "~/entities/user/user.types";
 import type {
   ProfileDraft,

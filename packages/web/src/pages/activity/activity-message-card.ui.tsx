@@ -1,11 +1,11 @@
+import { encryptedMessageLabel } from "~/applications/messenger/features/decrypted-message/encrypted-chat-message/encrypted-message-label.lib";
 import type {
   MessengerMessage,
   MessengerStream,
   MessengerTopic,
-} from "~/entities/messenger/messenger.types";
+} from "~/applications/messenger/model/messenger.types";
 import { selectUserDisplayName } from "~/entities/user/user-selectors.lib";
 import { useUsersStore } from "~/entities/user/user.model";
-import { encryptedMessageLabel } from "~/features/encrypted-chat-message/encrypted-message-label.lib";
 import { t } from "~/i18n/i18n";
 import { formatActivityItemTime } from "~/shared/lib/datetime.lib";
 import type { WorkspaceMessageSummaryOptions } from "~/shared/lib/workspace-message-render/workspace-message-document.types";

@@ -1,9 +1,9 @@
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { useMessengerStore } from "~/applications/messenger/model/chats/messenger.model";
+import type { MessengerStream } from "~/applications/messenger/model/messenger.types";
 import { useDownloadStore } from "~/entities/download/download.model";
-import { useMessengerStore } from "~/entities/messenger/messenger.model";
-import type { MessengerStream } from "~/entities/messenger/messenger.types";
 import { useUsersStore } from "~/entities/user/user.model";
 import {
   useWorkspaceAuthStore,

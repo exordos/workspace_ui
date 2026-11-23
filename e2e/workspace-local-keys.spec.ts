@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import { createMessengerPlacementUuid } from "../packages/web/src/entities/messenger/messenger-message-identity.lib";
+import { createMessengerPlacementUuid } from "../packages/web/src/applications/messenger/model/messages/messenger-message-identity.lib";
 import { test, expect } from "./fixtures";
 import { e2eOrgBasePath } from "./helpers/navigate-messenger";
 import { seedAuthStorage } from "./helpers/seed-auth";
@@ -31,7 +31,7 @@ for (const savedDeviceName of [null, "Workspace browser"] as const) {
         const { useWorkspaceAuthStore } =
           await import("/src/entities/workspace-auth/workspace-auth.model.ts");
         const { realChatKeyStorage } =
-          await import("/src/entities/messenger/chat-crypto-resources.lib.ts");
+          await import("/src/applications/messenger/model/crypto/chat-crypto-resources.lib.ts");
         const runtime = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
         if (!runtime) throw new Error("Missing test runtime");
         return realChatKeyStorage.readDeviceIdentity(runtime);
@@ -43,7 +43,7 @@ for (const savedDeviceName of [null, "Workspace browser"] as const) {
         const { useWorkspaceAuthStore } =
           await import("/src/entities/workspace-auth/workspace-auth.model.ts");
         const { realChatKeyStorage } =
-          await import("/src/entities/messenger/chat-crypto-resources.lib.ts");
+          await import("/src/applications/messenger/model/crypto/chat-crypto-resources.lib.ts");
         const runtime = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
         if (!runtime) throw new Error("Missing test runtime");
         await realChatKeyStorage.writeDeviceIdentity(runtime, {
@@ -147,7 +147,7 @@ for (const role of ["owner", "member"] as const) {
             const { useWorkspaceAuthStore } =
               await import("/src/entities/workspace-auth/workspace-auth.model.ts");
             const { realChatKeyStorage, realChatCryptoProvider } =
-              await import("/src/entities/messenger/chat-crypto-resources.lib.ts");
+              await import("/src/applications/messenger/model/crypto/chat-crypto-resources.lib.ts");
             const { getDeviceName } = await import("/src/shared/lib/device-name.lib.ts");
             const runtime = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
             if (!runtime) throw new Error("Missing test runtime");
@@ -574,7 +574,7 @@ test("local key manager separates current metadata from saved keys and deletes o
       const { useWorkspaceAuthStore } =
         await import("/src/entities/workspace-auth/workspace-auth.model.ts");
       const { realChatKeyStorage, realChatCryptoProvider, ensureChatDeviceIdentity } =
-        await import("/src/entities/messenger/chat-crypto-resources.lib.ts");
+        await import("/src/applications/messenger/model/crypto/chat-crypto-resources.lib.ts");
       const runtime = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
       if (!runtime) throw new Error("Missing test runtime");
       const device = await ensureChatDeviceIdentity(runtime, () => true);

@@ -24,8 +24,8 @@ Workspace API is the source of truth for the messenger. Read [Project Facts](doc
 - For module design and agreed incremental refactoring, use the [Workspace module design skill](.agents/skills/workspace-module-design/SKILL.md). It links the refactoring principles and relevant scenarios. Keep business state and workflow coordination in explicit owning modules; views receive data and callbacks, with local interaction state in UI. Apply agreed boundaries within the task scope and current import policy; record open proposals as such.
 - Use Workspace UUIDs and the existing DTO-to-domain adapters. Do not add hidden Zulip fallbacks, numeric ID conversions, or fabricated domain data.
 - Check the backend contract before declaring a capability unsupported. If it is unsupported, expose that state explicitly.
-- `entities/messenger` owns catalogs and domain actions; `entities/message` owns the Workspace message store. Session and request ownership belong to `entities/workspace-auth` and `entities/workspace-runtime`.
-- Dependencies flow `app -> pages -> widgets -> features -> entities -> shared`. Keep routes thin; compose workflows in their owning layer.
+- `applications/messenger/model` owns the catalog, messages, outgoing delivery, drafts, and chat cryptography. Session and request ownership belong to `entities/workspace-auth` and `entities/workspace-runtime`.
+- Inside Messenger, dependencies flow `pages -> features -> model`. The rest of the Workspace follows `app -> pages -> widgets -> features -> entities -> shared`. Keep routes thin and compose workflows in their owning layer.
 - Before defining or changing module boundaries, imports or re-exports, read the [module policy](docs/fsd-architecture.md#files-and-imports). Use established public entries outside a module and direct concrete imports inside. Optional cohesive-module indexes use explicit exports; broad category barrels are prohibited.
 - Restore durable cache first where appropriate, refresh from the server, and update store and cache consistently. Scope data by runtime owner and reject stale async writes. Explain stricter loading when stale data would be unsafe.
 

@@ -7,8 +7,8 @@
  * state and receive real-time events without direct store access.
  */
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
-import { MESSENGER_ALL_CHATS_FOLDER_UUID } from "../entities/messenger/messenger-folder-system-type.lib";
-import { useMessengerStore } from "../entities/messenger/messenger.model";
+import { MESSENGER_ALL_CHATS_FOLDER_UUID } from "../applications/messenger/model/chats/messenger-folder-system-type.lib";
+import { useMessengerStore } from "../applications/messenger/model/chats/messenger.model";
 import { useThemeStore } from "../entities/theme/theme.model";
 import { useUsersStore } from "../entities/user/user.model";
 import {

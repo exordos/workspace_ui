@@ -1,18 +1,23 @@
 // Root app layout: shell, store orchestration, background syncs for the active instance.
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
+import type { EncryptedChatInfoScreen } from "~/applications/messenger/features/chat-details/encrypted-chat-info/encrypted-chat-info.types";
+import { selectMessengerSidebarActivityCounts } from "~/applications/messenger/features/sidebar/messenger-sidebar.lib";
+import type {
+  SidebarChat,
+  SidebarSearchHandle,
+  StreamWithLast,
+} from "~/applications/messenger/features/sidebar/sidebar.types";
+import { WorkspaceForwardMessageDialog } from "~/applications/messenger/features/timeline/forward/workspace-forward-message.ui";
+import { useChatsCatalog } from "~/applications/messenger/model/chats/chats";
 import { useActivityStore } from "~/entities/activity/activity.model";
-import { useChatsCatalog } from "~/entities/messenger/chats";
-import { selectMessengerSidebarActivityCounts } from "~/entities/messenger/messenger-sidebar.lib";
 import {
   selectCurrentWorkspaceRuntimeContext,
   useWorkspaceAuthStore,
 } from "~/entities/workspace-auth/workspace-auth.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
-import type { EncryptedChatInfoScreen } from "~/features/encrypted-chat-info/encrypted-chat-info.types";
 import { JitsiActiveCallHost } from "~/features/jitsi-call/jitsi-call-shell.ui";
 import { useSettingsStore } from "~/features/settings/settings.model";
-import { WorkspaceForwardMessageDialog } from "~/features/workspace-forward-message/workspace-forward-message.ui";
 import { parseWorkspaceMessengerRoute } from "~/shared/lib/workspace-messenger-route.lib";
 import type { StreamEntryInternal } from "~/shared/types/sidebar-chat";
 import {
@@ -21,11 +26,6 @@ import {
   type RightDrawerAccountScreen,
 } from "~/widgets/right-panel/right-drawer.model";
 import { useSearchModalStore } from "~/widgets/search-modal/search-modal.model";
-import type {
-  SidebarChat,
-  SidebarSearchHandle,
-  StreamWithLast,
-} from "~/widgets/sidebar/sidebar.types";
 import { getSectionFromPathname } from "~/widgets/top-bar/top-bar.lib";
 import { useLayoutAppIconBadge } from "./layout-app-icon-badge.hook";
 import { LayoutAppShell } from "./layout-app-shell.ui";

@@ -1,9 +1,9 @@
 import { useEffect, useLayoutEffect, useMemo, useState } from "react";
+import { useMessengerStore } from "~/applications/messenger/model/chats/messenger.model";
+import { useWorkspaceMessageStore } from "~/applications/messenger/model/messages/message.model";
+import { buildWorkspaceRequestOptions } from "~/applications/messenger/model/messenger-request-options.lib";
+import { bootstrapMessengerStore } from "~/applications/messenger/runtime/sync/messenger-bootstrap.lib";
 import { useActivityStore } from "~/entities/activity/activity.model";
-import { useWorkspaceMessageStore } from "~/entities/message/message.model";
-import { bootstrapMessengerStore } from "~/entities/messenger/messenger-bootstrap.lib";
-import { buildWorkspaceRequestOptions } from "~/entities/messenger/messenger-request-options.lib";
-import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import {
   classifyWorkspaceAuthRefreshError,
   ensureFreshWorkspaceSession,

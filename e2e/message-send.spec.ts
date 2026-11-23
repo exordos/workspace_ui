@@ -10,7 +10,7 @@ import {
   openStreamChatWithComposer,
 } from "./helpers/navigate-messenger";
 import { messageSuccess } from "./mocks/workspace-default-responses";
-import { createMessengerPlacementUuid } from "../packages/web/src/entities/messenger/messenger-message-identity.lib";
+import { createMessengerPlacementUuid } from "../packages/web/src/applications/messenger/model/messages/messenger-message-identity.lib";
 
 test.describe("Message send @mock", () => {
   test.beforeEach(async ({ authenticated }) => {

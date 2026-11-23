@@ -11,10 +11,10 @@ import { describe, expect, it, vi, afterEach } from "vitest";
 import { useThemeStore } from "../entities/theme/theme.model";
 import { installDevTools } from "./devtools";
 
-vi.mock("../entities/messenger/messenger.model", () => ({
+vi.mock("../applications/messenger/model/chats/messenger.model", () => ({
   useMessengerStore: { getState: vi.fn(() => ({})) },
 }));
-vi.mock("../entities/message/message.model", () => ({
+vi.mock("../applications/messenger/model/messages/message.model", () => ({
   useWorkspaceMessageStore: { getState: vi.fn(() => ({})) },
 }));
 vi.mock("../entities/user/user.model", () => ({
@@ -38,7 +38,7 @@ vi.mock("../entities/theme/theme.model", () => ({
     getState: vi.fn(() => mockThemeState),
   },
 }));
-vi.mock("../widgets/sidebar/sidebar-config.model", () => ({
+vi.mock("../applications/messenger/features/sidebar/sidebar-config.model", () => ({
   useSidebarConfigStore: { getState: vi.fn(() => ({})) },
 }));
 vi.mock("../entities/call/call.model", () => ({

@@ -5,7 +5,7 @@
  * uuid-based user store cutover.
  */
 
-import { buildWorkspaceRequestOptions } from "~/entities/messenger/messenger-request-options.lib";
+import { buildWorkspaceRequestOptions } from "~/applications/messenger/model/messenger-request-options.lib";
 import { adaptWorkspaceMessengerUserDto } from "~/entities/user/user-adapters.lib";
 import { writeUsersToCacheForOwner } from "~/entities/user/user-sync.lib";
 import { useUsersStore } from "~/entities/user/user.model";

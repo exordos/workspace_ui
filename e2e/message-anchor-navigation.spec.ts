@@ -875,7 +875,8 @@ test.describe("Message anchor navigation @mock", () => {
     await expect
       .poll(() =>
         page.evaluate(async () => {
-          const { readActiveChats } = await import("/src/entities/messenger/chats.ts");
+          const { readActiveChats } =
+            await import("/src/applications/messenger/model/chats/chats.ts");
           const catalog = readActiveChats();
           return catalog.ownerKey != null && catalog.realtimeReadyOwnerKey === catalog.ownerKey;
         }),

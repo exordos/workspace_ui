@@ -1,0 +1,547 @@
+import EmojiPicker, { EmojiStyle, Theme, type EmojiClickData } from "emoji-picker-react";
+import React, { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { isMessengerUuid } from "~/applications/messenger/model/messenger-ids.lib";
+import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
+import {
+  captureWorkspaceRuntimeRequestContext,
+  isWorkspaceRuntimeRequestContextCurrent,
+} from "~/entities/workspace-runtime/workspace-runtime.lib";
+import { t } from "~/i18n/i18n";
+import { writeImage, writeText } from "~/shared/lib/clipboard";
+import type { WorkspaceMessageFileReference } from "~/shared/lib/workspace-message-render/workspace-message-document.types";
+import { formatWorkspaceMessageTimesForCopy } from "~/shared/lib/workspace-message-render/workspace-message-marked.lib";
+import { DropdownMenu, type DropdownMenuItem } from "~/shared/ui/dropdown-menu";
+import { Icon } from "~/shared/ui/icon";
+import { ScrollArea } from "~/shared/ui/scroll-area";
+import {
+  buildWorkspaceMediaDisplayBlob,
+  isWorkspaceHeicMedia,
+} from "./messenger-workspace-message-preview-blob.lib";
+import { subscribeWorkspaceMessageQuickReactionUsage } from "./workspace-message-quick-reaction-history.lib";
+import {
+  getWorkspaceMessageQuickReactions,
+  getWorkspaceMessageQuickReactionsServerSnapshot,
+} from "./workspace-message-quick-reactions.lib";
+import type {
+  WorkspaceMessageBubbleMenuProps,
+  WorkspaceReactionEmojiPickerProps,
+} from "./workspace-message-bubble-menu.types";
+
+const MENU_ITEM_CLASS_NAME =
+  "data-[highlighted]:bg-sidebar-hover hover:bg-sidebar-hover flex cursor-pointer items-center gap-2 px-3 py-2 text-sm text-text-primary outline-none transition-colors";
+const REACTION_BUTTON_CLASS_NAME =
+  "hover:bg-sidebar-hover flex h-7 w-7 items-center justify-center rounded p-1 transition-colors";
+const REACTION_EMOJI_PICKER_WIDTH = 320;
+const REACTION_EMOJI_PICKER_HEIGHT = 360;
+const REACTION_EMOJI_PICKER_MARGIN = 8;
+const REACTION_EMOJI_PICKER_GAP = 8;
+const subscribeToNoQuickReactionUpdates = () => () => {};
+
+async function loadImageForClipboard(
+  reference: WorkspaceMessageFileReference,
+  loadPreview: NonNullable<WorkspaceMessageBubbleMenuProps["onLoadWorkspaceFilePreview"]>,
+): Promise<Blob> {
+  const getRuntimeContext = useWorkspaceAuthStore.getState().getCurrentRuntimeContext;
+  const requestContext = captureWorkspaceRuntimeRequestContext(getRuntimeContext);
+  const isCurrent = () =>
+    requestContext == null
+      ? getRuntimeContext() == null
+      : isWorkspaceRuntimeRequestContextCurrent(requestContext, getRuntimeContext);
+  const { signal } = new AbortController();
+  const original = await loadPreview(reference, signal);
+  if (!isCurrent()) throw new DOMException("Preview scope changed", "AbortError");
+  const preview = await buildWorkspaceMediaDisplayBlob(original, reference, signal);
+  if (!isCurrent()) throw new DOMException("Preview scope changed", "AbortError");
+  return preview;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(Math.max(min, value), max);
+}
+
+function getReactionEmojiPickerStyle(anchor: HTMLElement | null): React.CSSProperties {
+  if (typeof window === "undefined") return {};
+  const anchorRect = anchor?.getBoundingClientRect();
+  const availableWidth = Math.max(0, window.innerWidth - REACTION_EMOJI_PICKER_MARGIN * 2);
+  const availableHeight = Math.max(0, window.innerHeight - REACTION_EMOJI_PICKER_MARGIN * 2);
+  const width = Math.min(REACTION_EMOJI_PICKER_WIDTH, availableWidth);
+  const height = Math.min(REACTION_EMOJI_PICKER_HEIGHT, availableHeight);
+  const maxLeft = Math.max(
+    REACTION_EMOJI_PICKER_MARGIN,
+    window.innerWidth - width - REACTION_EMOJI_PICKER_MARGIN,
+  );
+  const maxTop = Math.max(
+    REACTION_EMOJI_PICKER_MARGIN,
+    window.innerHeight - height - REACTION_EMOJI_PICKER_MARGIN,
+  );
+  if (anchorRect == null) {
+    return {
+      left: REACTION_EMOJI_PICKER_MARGIN,
+      top: clamp(maxTop, REACTION_EMOJI_PICKER_MARGIN, maxTop),
+      width,
+      height,
+    };
+  }
+
+  const rightLeft = anchorRect.right + REACTION_EMOJI_PICKER_GAP;
+  const leftLeft = anchorRect.left - width - REACTION_EMOJI_PICKER_GAP;
+  const left =
+    rightLeft + width <= window.innerWidth - REACTION_EMOJI_PICKER_MARGIN
+      ? rightLeft
+      : leftLeft >= REACTION_EMOJI_PICKER_MARGIN
+        ? leftLeft
+        : rightLeft;
+
+  return {
+    left: clamp(left, REACTION_EMOJI_PICKER_MARGIN, maxLeft),
+    top: clamp(anchorRect.top, REACTION_EMOJI_PICKER_MARGIN, maxTop),
+    width,
+    height,
+  };
+}
+
+function emojiGlyphFromPickerData(data: EmojiClickData): string | null {
+  if (data.isCustom === true) return null;
+  const emoji = data.emoji.trim();
+  return emoji.length > 0 ? emoji : null;
+}
+
+const WorkspaceReactionEmojiPicker = React.memo(function WorkspaceReactionEmojiPicker({
+  open,
+  onOpenChange,
+  onEmojiPick,
+}: WorkspaceReactionEmojiPickerProps): React.ReactElement {
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const [pickerStyle, setPickerStyle] = useState<React.CSSProperties>({});
+
+  const updatePickerPosition = useCallback(() => {
+    setPickerStyle(getReactionEmojiPickerStyle(triggerRef.current));
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    updatePickerPosition();
+    const handleWindowChange = () => updatePickerPosition();
+    window.addEventListener("resize", handleWindowChange);
+    window.addEventListener("scroll", handleWindowChange, true);
+    return () => {
+      window.removeEventListener("resize", handleWindowChange);
+      window.removeEventListener("scroll", handleWindowChange, true);
+    };
+  }, [open, updatePickerPosition]);
+
+  const theme =
+    typeof document !== "undefined" && document.documentElement.dataset.theme === "light"
+      ? Theme.LIGHT
+      : Theme.DARK;
+
+  return (
+    <div className="relative shrink-0">
+      <button
+        ref={triggerRef}
+        type="button"
+        className={`${REACTION_BUTTON_CLASS_NAME} text-text-muted hover:text-text-primary`}
+        aria-label={t("a11y.moreReactions")}
+        onClick={(event) => {
+          event.preventDefault();
+          onOpenChange(!open);
+        }}
+      >
+        <Icon name="plus" size={14} className="text-current" />
+      </button>
+      {open
+        ? createPortal(
+            <>
+              <div
+                data-testid="workspace-message-reaction-emoji-picker-backdrop"
+                className="pointer-events-auto fixed inset-0 z-overlay"
+                aria-hidden
+                onClick={() => onOpenChange(false)}
+              />
+              <div
+                data-testid="workspace-message-reaction-emoji-picker-popover"
+                className="pointer-events-auto fixed z-modal overflow-hidden rounded-xl border border-border-subtle bg-bg-elevated shadow-xl"
+                style={pickerStyle}
+              >
+                <EmojiPicker
+                  onEmojiClick={onEmojiPick}
+                  emojiStyle={EmojiStyle.NATIVE}
+                  theme={theme}
+                  width="100%"
+                  height="100%"
+                  searchDisabled={false}
+                  previewConfig={{ showPreview: false }}
+                />
+              </div>
+            </>,
+            document.body,
+          )
+        : null}
+    </div>
+  );
+});
+
+export const WorkspaceMessageBubbleMenu = React.memo(function WorkspaceMessageBubbleMenu({
+  message,
+  isOwn,
+  open,
+  contextAnchor,
+  contextLinkUrl,
+  contextImageFile,
+  onOpenChange,
+  onRequestMessageKey,
+  requestMessageKeyPending,
+  onReplyMessage,
+  onAddReplyMessage,
+  onForwardMessage,
+  onToggleMessageSelection,
+  onEditMessage,
+  onRequestDeleteMessage,
+  onCopyMessageText,
+  onCopyMessageLink,
+  onToggleMessageReaction,
+  onLoadWorkspaceFilePreview,
+  onDownloadFile,
+  getSelectedText,
+  onPollSettings,
+  onPollClose,
+}: WorkspaceMessageBubbleMenuProps): React.ReactElement | null {
+  const quickReactions = React.useSyncExternalStore(
+    open ? subscribeWorkspaceMessageQuickReactionUsage : subscribeToNoQuickReactionUpdates,
+    getWorkspaceMessageQuickReactions,
+    getWorkspaceMessageQuickReactionsServerSnapshot,
+  );
+  const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
+
+  const closeMenu = useCallback(() => {
+    setEmojiPickerOpen(false);
+    onOpenChange(false);
+  }, [onOpenChange]);
+
+  const handleReaction = useCallback(
+    (emojiName: string) => {
+      void onToggleMessageReaction?.(message.uuid, emojiName);
+      closeMenu();
+    },
+    [closeMenu, message.uuid, onToggleMessageReaction],
+  );
+
+  const handleEmojiPick = useCallback(
+    (data: EmojiClickData) => {
+      const emojiName = emojiGlyphFromPickerData(data);
+      if (emojiName == null) return;
+      handleReaction(emojiName);
+    },
+    [handleReaction],
+  );
+
+  const menuItems = useMemo<DropdownMenuItem[]>(() => {
+    const items: DropdownMenuItem[] = [];
+    const appendCopyMessageLink = (section: DropdownMenuItem[]) => {
+      if (onCopyMessageLink == null || !isMessengerUuid(message.uuid)) return;
+      section.push({
+        type: "action",
+        key: "copy-message-link",
+        icon: "links_compact",
+        label: t("message.copyMessageLink"),
+        onSelect: () => {
+          void onCopyMessageLink(message.uuid);
+          closeMenu();
+        },
+      });
+    };
+    let markdown: string | undefined;
+    if (message.payload.kind === "markdown") {
+      markdown = message.payload.content;
+    } else if (message.payload.kind === "e2ee") {
+      if (onRequestMessageKey != null) {
+        items.push({
+          type: "action",
+          key: "request-message-key",
+          icon: "chatLock",
+          label: t("e2ee.requestMessageKey"),
+          disabled: requestMessageKeyPending,
+          onSelect: () => {
+            void onRequestMessageKey(message.uuid);
+            closeMenu();
+          },
+        });
+        appendCopyMessageLink(items);
+        return items;
+      }
+    } else if (message.payload.kind !== "poll") {
+      appendCopyMessageLink(items);
+      return items;
+    }
+
+    if (onToggleMessageReaction != null) {
+      items.push({
+        type: "custom",
+        key: "quick-reactions",
+        render: () => (
+          <div className="flex w-60 max-w-[calc(100vw-2rem)] items-center gap-0.5 border-b border-border-subtle px-3 py-2">
+            <ScrollArea axis="x" scrollbar="hidden" className="flex-1">
+              <div className="flex w-max items-center gap-0.5">
+                {quickReactions.map((reaction) => (
+                  <button
+                    key={reaction.emojiName}
+                    type="button"
+                    className={`${REACTION_BUTTON_CLASS_NAME} shrink-0 text-current`}
+                    aria-label={t(reaction.labelKey, { emoji: reaction.glyph })}
+                    data-workspace-message-quick-reaction={reaction.glyph}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      handleReaction(reaction.glyph);
+                    }}
+                  >
+                    <span className="text-[15px] leading-none">{reaction.glyph}</span>
+                  </button>
+                ))}
+              </div>
+            </ScrollArea>
+            <WorkspaceReactionEmojiPicker
+              open={emojiPickerOpen}
+              onOpenChange={setEmojiPickerOpen}
+              onEmojiPick={handleEmojiPick}
+            />
+          </div>
+        ),
+      });
+    }
+
+    const pushActionSection = (sectionItems: DropdownMenuItem[]) => {
+      if (sectionItems.length === 0) return;
+      const hasPreviousActionSection = items.some((item) => item.type === "action");
+      if (hasPreviousActionSection) {
+        items.push({ type: "separator", key: `context-separator-${items.length}` });
+      }
+      items.push(...sectionItems);
+    };
+
+    const primaryActionItems: DropdownMenuItem[] = [];
+    if (onReplyMessage != null) {
+      primaryActionItems.push({
+        type: "action",
+        key: "reply",
+        icon: "reply",
+        label: t("message.reply"),
+        onSelect: () => {
+          onReplyMessage(message.uuid, getSelectedText());
+          closeMenu();
+        },
+      });
+    }
+    if (onAddReplyMessage != null) {
+      primaryActionItems.push({
+        type: "action",
+        key: "add-reply",
+        icon: "reply",
+        label: t("message.addReply"),
+        onSelect: () => {
+          onAddReplyMessage(message.uuid, getSelectedText());
+          closeMenu();
+        },
+      });
+    }
+    if (onForwardMessage != null) {
+      primaryActionItems.push({
+        type: "action",
+        key: "forward",
+        icon: "forward",
+        label: t("message.forward"),
+        onSelect: () => {
+          onForwardMessage(message.uuid, getSelectedText());
+          closeMenu();
+        },
+      });
+    }
+    // "Open in chat" belongs in Activity/Feed/search/quotes — not in the in-chat bubble
+    // menu, where the message is already shown in its conversation.
+    pushActionSection(primaryActionItems);
+
+    const secondaryActionItems: DropdownMenuItem[] = [];
+    if (contextImageFile != null && onLoadWorkspaceFilePreview != null) {
+      secondaryActionItems.push({
+        type: "action",
+        key: "copy-image",
+        icon: "images",
+        label: t("message.copyImage"),
+        onSelect: () => {
+          const imageBlob = loadImageForClipboard(contextImageFile, onLoadWorkspaceFilePreview);
+          void imageBlob.catch(() => undefined);
+          void writeImage(imageBlob);
+          closeMenu();
+        },
+      });
+    }
+    if (
+      contextImageFile != null &&
+      isWorkspaceHeicMedia(contextImageFile) &&
+      onDownloadFile != null
+    ) {
+      secondaryActionItems.push({
+        type: "action",
+        key: "download-original",
+        icon: "download",
+        label: t("mediaViewer.download"),
+        onSelect: () => {
+          void onDownloadFile(contextImageFile);
+          closeMenu();
+        },
+      });
+    }
+    if (contextLinkUrl != null) {
+      secondaryActionItems.push({
+        type: "action",
+        key: "copy-link",
+        icon: "links_compact",
+        label: t("message.copyLink"),
+        onSelect: () => {
+          void writeText(contextLinkUrl);
+          closeMenu();
+        },
+      });
+    }
+    if (markdown != null || onCopyMessageText != null) {
+      secondaryActionItems.push({
+        type: "action",
+        key: "copy",
+        icon: "copy",
+        label: t("message.copy"),
+        onSelect: () => {
+          const selectedText = getSelectedText();
+          if (onCopyMessageText != null) {
+            void onCopyMessageText(message.uuid, selectedText);
+          } else if (selectedText != null) {
+            void writeText(selectedText);
+          } else if (markdown != null) {
+            void writeText(formatWorkspaceMessageTimesForCopy(markdown));
+          }
+          closeMenu();
+        },
+      });
+    }
+    appendCopyMessageLink(secondaryActionItems);
+    if (onToggleMessageSelection != null) {
+      secondaryActionItems.push({
+        type: "action",
+        key: "select",
+        icon: "check",
+        label: t("message.select"),
+        onSelect: () => {
+          onToggleMessageSelection(message.uuid);
+          closeMenu();
+        },
+      });
+    }
+    pushActionSection(secondaryActionItems);
+
+    const ownItems: DropdownMenuItem[] = [];
+    if (onPollSettings)
+      ownItems.push({
+        type: "action",
+        key: "poll-settings",
+        icon: "settings",
+        label: t("pollBubble.settings"),
+        onSelect: () => {
+          closeMenu();
+          onPollSettings();
+        },
+      });
+    if (onPollClose)
+      ownItems.push({
+        type: "action",
+        key: "poll-close",
+        icon: "block",
+        label: t("pollBubble.close"),
+        onSelect: () => {
+          closeMenu();
+          onPollClose();
+        },
+      });
+    if (isOwn && message.payload.kind !== "poll" && onEditMessage != null) {
+      ownItems.push({
+        type: "action",
+        key: "edit",
+        icon: "pen",
+        label: t("message.edit"),
+        onSelect: () => {
+          onEditMessage(message.uuid);
+          closeMenu();
+        },
+      });
+    }
+    if (isOwn && onRequestDeleteMessage != null) {
+      ownItems.push({
+        type: "action",
+        key: "delete",
+        icon: "delete",
+        label: t("message.delete"),
+        onSelect: () => {
+          onRequestDeleteMessage(message.uuid);
+          closeMenu();
+        },
+      });
+    }
+    pushActionSection(ownItems);
+
+    return items;
+  }, [
+    closeMenu,
+    contextImageFile,
+    contextLinkUrl,
+    emojiPickerOpen,
+    getSelectedText,
+    handleEmojiPick,
+    handleReaction,
+    isOwn,
+    message.payload,
+    message.uuid,
+    onAddReplyMessage,
+    onCopyMessageText,
+    onCopyMessageLink,
+    onDownloadFile,
+    onEditMessage,
+    onForwardMessage,
+    onLoadWorkspaceFilePreview,
+    onReplyMessage,
+    onRequestMessageKey,
+    requestMessageKeyPending,
+    onRequestDeleteMessage,
+    onToggleMessageSelection,
+    onToggleMessageReaction,
+    onPollSettings,
+    onPollClose,
+    quickReactions,
+  ]);
+
+  if (menuItems.length === 0) return null;
+  return (
+    // Why: no hover ellipsis. The bubble opens this menu only via right-click / keyboard.
+    <DropdownMenu
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) {
+          setEmojiPickerOpen(false);
+        }
+        onOpenChange(nextOpen);
+      }}
+      source="context"
+      contextAnchor={contextAnchor}
+      items={menuItems}
+      modal={false}
+      contentVariant="message"
+      itemClassName={MENU_ITEM_CLASS_NAME}
+      submenuTriggerClassName={MENU_ITEM_CLASS_NAME}
+      checkboxItemClassName={MENU_ITEM_CLASS_NAME}
+      contextContentProps={{
+        sideOffset: 0,
+        align: "start",
+        onCloseAutoFocus: (event) => {
+          event.preventDefault();
+        },
+      }}
+    />
+  );
+});

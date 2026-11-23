@@ -60,10 +60,8 @@ vi.mock("~/shared/lib/workspace-user-cache-db", () => ({
   deleteWorkspaceUserOwnerCache,
 }));
 
-vi.mock("~/entities/composer-draft/composer-draft.model", () => ({
-  useWorkspaceComposerDraftStore: {
-    getState: () => ({ disposeOwner: disposeWorkspaceComposerDraftOwner }),
-  },
+vi.mock("~/applications/messenger/model/drafts/composer-draft.model", () => ({
+  disposeWorkspaceDraftOwner: disposeWorkspaceComposerDraftOwner,
 }));
 
 function tokenWithClaims(claims: Record<string, unknown>): string {

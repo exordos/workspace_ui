@@ -1,13 +1,13 @@
 import { useMemo } from "react";
-import { t } from "~/i18n/i18n";
-import { computeIsGroupDmView, normalizeDmRouteUserIds } from "~/shared/lib/dm-route.lib";
 import {
   getDmById,
   parseDmSlugToUserIds,
   parseStreamSlug,
   resolveStreamRouteFromSlug,
-} from "~/widgets/sidebar/sidebar.lib";
-import type { SidebarChat } from "~/widgets/sidebar/sidebar.types";
+} from "~/applications/messenger/features/sidebar/sidebar.lib";
+import type { SidebarChat } from "~/applications/messenger/features/sidebar/sidebar.types";
+import { t } from "~/i18n/i18n";
+import { computeIsGroupDmView, normalizeDmRouteUserIds } from "~/shared/lib/dm-route.lib";
 import type {
   LayoutRightDrawerContext,
   UseLayoutRightDrawerContextOptions,

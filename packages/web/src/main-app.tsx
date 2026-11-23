@@ -3,7 +3,7 @@ import ReactDOM from "react-dom/client";
 import { installAiContext } from "~/app/ai-context";
 import { installDevTools } from "~/app/devtools";
 import { createWorkspacePluginDataProvider } from "~/app/workspace-plugin-data-provider.lib";
-import { useMessengerStore } from "~/entities/messenger/messenger.model";
+import { useMessengerStore } from "~/applications/messenger/model/chats/messenger.model";
 import { initAnalytics } from "~/shared/lib/analytics/setup";
 import { setStoreWiper } from "~/shared/lib/auth-guard";
 import { brand } from "~/shared/lib/brand";

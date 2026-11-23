@@ -1,14 +1,17 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { ChatChannelHeader } from "~/applications/messenger/features/conversation-header/chat-header-channel.ui";
+import { MY_ACTIVITY } from "~/applications/messenger/features/sidebar/sidebar.lib";
+import { useWorkspaceForwardMessageStore } from "~/applications/messenger/features/timeline/forward/workspace-forward-message.model";
+import { useChatsCatalog } from "~/applications/messenger/model/chats/chats";
+import { adaptMessengerMessage } from "~/applications/messenger/model/messages/messenger-message-adapter.lib";
+import type { MessengerMessage } from "~/applications/messenger/model/messenger.types";
 import { fetchMyMentionsPage } from "~/entities/activity/activity-mentions.api";
 import { fetchWorkspaceStarredMessages } from "~/entities/activity/activity-workspace-starred.api";
 import {
   selectActivityLiveMentionMessages,
   useActivityStore,
 } from "~/entities/activity/activity.model";
-import { useChatsCatalog } from "~/entities/messenger/chats";
-import { adaptMessengerMessage } from "~/entities/messenger/messenger-adapters.lib";
-import type { MessengerMessage } from "~/entities/messenger/messenger.types";
 import {
   selectCurrentWorkspaceRuntimeContext,
   useWorkspaceAuthStore,
@@ -18,7 +21,6 @@ import {
   workspaceRuntimeOwnerKey,
 } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
-import { useWorkspaceForwardMessageStore } from "~/features/workspace-forward-message/workspace-forward-message.model";
 import { t } from "~/i18n/i18n";
 import { useOpenSearch } from "~/shared/contexts/open-search";
 import { isAbortError } from "~/shared/lib/abort-error";
@@ -28,8 +30,6 @@ import {
   workspaceActivityRoute,
   workspaceMessengerMessageRoute,
 } from "~/shared/lib/workspace-messenger-route.lib";
-import { ChatChannelHeader } from "~/widgets/chat-view/chat-header-channel.ui";
-import { MY_ACTIVITY } from "~/widgets/sidebar/sidebar.lib";
 import { ActivityMessageList } from "./activity-message-list.ui";
 import { WorkspaceDraftsPage } from "./workspace-drafts-page.ui";
 

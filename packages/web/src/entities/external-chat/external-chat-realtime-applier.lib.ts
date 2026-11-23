@@ -1,4 +1,4 @@
-import { removeMessengerStreamProjection } from "~/entities/messenger/messenger-stream-projection-cleanup.lib";
+import { removeMessengerStreamProjection } from "~/applications/messenger/runtime/sync/messenger-stream-projection-cleanup.lib";
 import type {
   WorkspaceRealtimeEventApplier,
   WorkspaceRealtimeEventContext,

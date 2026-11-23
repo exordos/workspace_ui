@@ -61,7 +61,7 @@ const LoginPage = React.lazy(() =>
   import("~/pages/login/login-page.ui").then((m) => ({ default: m.LoginPage })),
 );
 const ChatPage = React.lazy(() =>
-  import("~/pages/chat/chat-page.ui").then((m) => ({ default: m.ChatPage })),
+  import("~/applications/messenger/messenger").then((m) => ({ default: m.ChatPage })),
 );
 
 function resolveWebviewWorkspaceMessengerRoot(params: {

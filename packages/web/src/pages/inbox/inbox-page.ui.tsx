@@ -1,16 +1,17 @@
 import React, { useCallback, useMemo } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { useChatsCatalog } from "~/entities/messenger/chats";
-import { useMessageIndex } from "~/entities/messenger/messages-consumers";
-import { resolveWorkspaceActiveUnreadCount } from "~/entities/messenger/messenger-notification-mode.lib";
+import { ChatChannelHeader } from "~/applications/messenger/features/conversation-header/chat-header-channel.ui";
 import {
   selectMessengerSidebarStreams,
   type MessengerSidebarStreamsState,
-} from "~/entities/messenger/messenger-sidebar.lib";
+} from "~/applications/messenger/features/sidebar/messenger-sidebar.lib";
+import { useChatsCatalog } from "~/applications/messenger/model/chats/chats";
+import { resolveWorkspaceActiveUnreadCount } from "~/applications/messenger/model/chats/messenger-notification-mode.lib";
+import { useMessageIndex } from "~/applications/messenger/model/messages/messages-consumers";
 import type {
   MessengerSidebarStreamItem,
   MessengerSidebarTopicItem,
-} from "~/entities/messenger/messenger.types";
+} from "~/applications/messenger/model/messenger.types";
 import { useUsersStore } from "~/entities/user/user.model";
 import {
   selectCurrentWorkspaceRuntimeContext,
@@ -22,7 +23,6 @@ import { formatCount, UNREAD_COUNT_DISPLAY_LIMIT } from "~/shared/lib/count-form
 import { formatMessageTimeShort } from "~/shared/lib/datetime.lib";
 import { parseWorkspaceMessengerRoute } from "~/shared/lib/workspace-messenger-route.lib";
 import { Icon } from "~/shared/ui/icon";
-import { ChatChannelHeader } from "~/widgets/chat-view/chat-header-channel.ui";
 
 const EMPTY_WORKSPACE_STREAMS: MessengerSidebarStreamItem[] = [];
 const INBOX_STATE_CARD_CLASS =

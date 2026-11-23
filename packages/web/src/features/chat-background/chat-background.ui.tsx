@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
-import { selectMessengerConversationFromWorkspaceRoute } from "~/entities/messenger/messenger-ids.lib";
+import { selectMessengerConversationFromWorkspaceRoute } from "~/applications/messenger/model/messenger-ids.lib";
 import { useTranslation } from "~/i18n/i18n";
 import { parseWorkspaceMessengerRoute } from "~/shared/lib/workspace-messenger-route.lib";
 import { AppDialog } from "~/shared/ui/app-dialog";

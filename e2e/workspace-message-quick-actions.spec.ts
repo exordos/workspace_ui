@@ -1,5 +1,5 @@
 import type { Locator, Page } from "@playwright/test";
-import { createMessengerPlacementUuid } from "../packages/web/src/entities/messenger/messenger-message-identity.lib";
+import { createMessengerPlacementUuid } from "../packages/web/src/applications/messenger/model/messages/messenger-message-identity.lib";
 import { test, expect } from "./fixtures";
 import { expectReadyMessageComposer } from "./helpers/message-composer";
 import { openStreamChatWithComposer } from "./helpers/navigate-messenger";
@@ -26,7 +26,7 @@ async function installDecryptedMessage(page: Page): Promise<void> {
       const { useWorkspaceAuthStore } =
         await import("/src/entities/workspace-auth/workspace-auth.model.ts");
       const { ensureChatDeviceIdentity, realChatKeyStorage, realChatCryptoProvider } =
-        await import("/src/entities/messenger/chat-crypto-resources.lib.ts");
+        await import("/src/applications/messenger/model/crypto/chat-crypto-resources.lib.ts");
       const runtime = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
       if (runtime == null) throw new Error("Missing test runtime");
       const device = await ensureChatDeviceIdentity(runtime, () => true);
@@ -293,7 +293,7 @@ test.describe("Workspace message quick actions @mock", () => {
         const { useWorkspaceAuthStore } =
           await import("/src/entities/workspace-auth/workspace-auth.model.ts");
         const { realChatKeyStorage, realChatCryptoProvider } =
-          await import("/src/entities/messenger/chat-crypto-resources.lib.ts");
+          await import("/src/applications/messenger/model/crypto/chat-crypto-resources.lib.ts");
         const runtime = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
         if (runtime == null) throw new Error("Missing test runtime");
         const device = await realChatKeyStorage.readDeviceIdentity(runtime);

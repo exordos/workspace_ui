@@ -1,10 +1,10 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useMessengerStore } from "~/applications/messenger/model/chats/messenger.model";
+import { useWorkspaceMessageStore } from "~/applications/messenger/model/messages/message.model";
+import type { MessengerConversationId } from "~/applications/messenger/model/messenger.types";
+import type { BootstrapMessengerStoreOptions } from "~/applications/messenger/runtime/sync/messenger-bootstrap.lib";
 import { useActivityStore, type ActivityUnreadMention } from "~/entities/activity/activity.model";
-import { useWorkspaceMessageStore } from "~/entities/message/message.model";
-import type { BootstrapMessengerStoreOptions } from "~/entities/messenger/messenger-bootstrap.lib";
-import { useMessengerStore } from "~/entities/messenger/messenger.model";
-import type { MessengerConversationId } from "~/entities/messenger/messenger.types";
 import type { WorkspaceAuthSession } from "~/entities/workspace-auth/workspace-auth.model";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import {
@@ -47,7 +47,7 @@ const fetchWorkspaceServerSettingsForOrganizationMock = vi.hoisted(() =>
 const WORKSPACE_AUTH_STORAGE_KEY = "workspace-auth-sessions";
 const WORKSPACE_AUTH_CURRENT_ACCOUNT_KEY = "workspace-auth-current-account";
 
-vi.mock("~/entities/messenger/messenger-bootstrap.lib", () => ({
+vi.mock("~/applications/messenger/runtime/sync/messenger-bootstrap.lib", () => ({
   bootstrapMessengerStore: async (options: BootstrapMessengerStoreOptions) => {
     await options.beforeServerRefresh?.();
     if (

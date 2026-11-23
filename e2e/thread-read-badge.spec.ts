@@ -254,9 +254,10 @@ test.describe("Thread unread badge after scroll read @mock", () => {
 
     await page.evaluate(
       async ({ streamUuid, topicUuid, messageUuid, createdAt }) => {
-        const { useWorkspaceMessageStore } = await import("/src/entities/message/message.model.ts");
+        const { useWorkspaceMessageStore } =
+          await import("/src/applications/messenger/model/messages/message.model.ts");
         const { advanceMessengerCachedReadBoundary } =
-          await import("/src/entities/messenger/messenger-cache.lib.ts");
+          await import("/src/applications/messenger/model/messenger-cache.lib.ts");
         const ownerKey = useWorkspaceMessageStore.getState().ownerKey;
         if (ownerKey == null) throw new Error("Missing messenger owner");
         await advanceMessengerCachedReadBoundary({

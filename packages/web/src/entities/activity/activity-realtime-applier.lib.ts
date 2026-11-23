@@ -1,4 +1,4 @@
-import { adaptMessengerMessage } from "~/entities/messenger/messenger-adapters.lib";
+import { adaptMessengerMessage } from "~/applications/messenger/model/messages/messenger-message-adapter.lib";
 import type { WorkspaceRealtimeEvent } from "~/shared/api/messenger.types";
 import type {
   WorkspaceRealtimeEventApplier,

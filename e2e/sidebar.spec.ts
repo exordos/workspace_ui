@@ -267,6 +267,10 @@ test.describe("Sidebar", () => {
     await expect(matchingNotes).toBeVisible();
     await expect(extraTopic).toHaveCount(0);
     await expect(otherTopics).toHaveCount(0);
+    // Hydrating the latest message can move General ahead of General Support.
+    await expect(results.locator("[data-sidebar-search-item]").first()).toHaveAccessibleName(
+      "General",
+    );
     await search.press("ArrowDown");
     await expect(chat).toBeFocused();
     await expectConversationFocusStyle(chat);

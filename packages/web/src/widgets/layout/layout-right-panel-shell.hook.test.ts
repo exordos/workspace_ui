@@ -1,7 +1,7 @@
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useMessengerStore } from "~/entities/messenger/messenger.model";
-import type { MessengerBootstrapPayload } from "~/entities/messenger/messenger.types";
+import { useMessengerStore } from "~/applications/messenger/model/chats/messenger.model";
+import type { MessengerBootstrapPayload } from "~/applications/messenger/model/messenger.types";
 import { useUsersStore } from "~/entities/user/user.model";
 import {
   useWorkspaceAuthStore,

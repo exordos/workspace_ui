@@ -1,5 +1,6 @@
 import React from "react";
-import type { EncryptedChatInfoScreen } from "~/features/encrypted-chat-info/encrypted-chat-info.types";
+import type { EncryptedChatInfoScreen } from "~/applications/messenger/features/chat-details/encrypted-chat-info/encrypted-chat-info.types";
+import type { SidebarSearchHandle } from "~/applications/messenger/features/sidebar/sidebar.types";
 import { JitsiIncomingInviteHost } from "~/features/jitsi-call/jitsi-call-shell.ui";
 import { MediaViewerOverlay } from "~/features/media-viewer/media-viewer-overlay.ui";
 import { OpenSearchContext } from "~/shared/contexts/open-search";
@@ -11,7 +12,6 @@ import type {
   RightDrawerMode,
 } from "~/widgets/right-panel/right-drawer.model";
 import type { WorkspaceRightPanelInfoView } from "~/widgets/right-panel/right-panel.types";
-import type { SidebarSearchHandle } from "~/widgets/sidebar/sidebar.types";
 import { TopBar } from "~/widgets/top-bar/top-bar.ui";
 import { LayoutMainWorkspace } from "./layout-main-workspace.ui";
 

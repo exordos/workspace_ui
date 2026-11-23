@@ -1,5 +1,5 @@
 import React from "react";
-import type { WorkspaceRightPanelDirectPrivateDetailId } from "~/entities/messenger/messenger-right-panel.lib";
+import type { WorkspaceRightPanelDirectPrivateDetailId } from "~/applications/messenger/features/chat-details/messenger-right-panel.lib";
 import type { ProfileEditableField } from "~/features/user-profile/user-profile-editor.lib";
 import { ProfileEditorField } from "~/features/user-profile/user-profile-editor.ui";
 import { t } from "~/i18n/i18n";

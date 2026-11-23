@@ -1,14 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useChatsCatalog } from "~/applications/messenger/model/chats/chats";
 import {
   acceptWorkspaceComposerDraftServerVersion,
   deleteWorkspaceComposerDraft,
   keepWorkspaceComposerDraftLocalVersion,
   refreshWorkspaceComposerDrafts,
-} from "~/entities/composer-draft/composer-draft-actions.lib";
-import { useWorkspaceComposerDraftStore } from "~/entities/composer-draft/composer-draft.model";
-import type { WorkspaceComposerDraft } from "~/entities/composer-draft/composer-draft.types";
-import { useChatsCatalog } from "~/entities/messenger/chats";
+  useWorkspaceDraftList,
+} from "~/applications/messenger/model/drafts/composer-draft-actions.lib";
+import type { WorkspaceComposerDraft } from "~/applications/messenger/model/drafts/composer-draft.types";
 import { useUsersStore } from "~/entities/user/user.model";
 import {
   selectCurrentWorkspaceRuntimeContext,
@@ -194,16 +194,7 @@ export const WorkspaceDraftsPage: React.FC = () => {
     [currentAccountId, sessions],
   );
   const ownerKey = runtimeContext == null ? null : workspaceRuntimeOwnerKey(runtimeContext);
-  const draftsByKey = useWorkspaceComposerDraftStore((state) => state.draftsByKey);
-  const drafts = useMemo(
-    () =>
-      ownerKey == null
-        ? []
-        : Object.values(draftsByKey)
-            .filter((draft) => draft.ownerKey === ownerKey)
-            .sort((left, right) => right.updatedAt - left.updatedAt),
-    [draftsByKey, ownerKey],
-  );
+  const drafts = useWorkspaceDraftList(ownerKey);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [hasLoadError, setHasLoadError] = useState(false);
 

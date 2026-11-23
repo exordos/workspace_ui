@@ -1,0 +1,773 @@
+import { act, renderHook, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  runWorkspaceChannelCreate,
+  runWorkspaceDirectStreamCreate,
+} from "~/applications/messenger/model/chats/messenger-create-chat-actions.lib";
+import {
+  runWorkspaceCreateTopicRequest,
+  runWorkspaceStreamUnarchive,
+} from "~/applications/messenger/model/chats/messenger-sidebar-actions.lib";
+import { useMessengerStore } from "~/applications/messenger/model/chats/messenger.model";
+import { MessengerChannelCreationError } from "~/applications/messenger/model/crypto/chat-initial-key-bootstrap.lib";
+import type {
+  MessengerStream,
+  MessengerTopic,
+} from "~/applications/messenger/model/messenger.types";
+import { useUsersStore } from "~/entities/user/user.model";
+import type { User } from "~/entities/user/user.types";
+import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
+import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
+import { useCreateChatDialog } from "./create-chat-dialog.hook";
+
+vi.mock("~/applications/messenger/model/chats/messenger-create-chat-actions.lib", () => ({
+  runWorkspaceChannelCreate: vi.fn(),
+  runWorkspaceDirectStreamCreate: vi.fn(),
+}));
+
+vi.mock("~/applications/messenger/model/chats/messenger-sidebar-actions.lib", () => ({
+  runWorkspaceCreateTopicRequest: vi.fn(),
+  runWorkspaceStreamUnarchive: vi.fn(),
+}));
+
+function defaultHookOptions(overrides: Partial<Parameters<typeof useCreateChatDialog>[0]> = {}) {
+  return {
+    open: true,
+    onChannelCreated: vi.fn(),
+    ...overrides,
+  };
+}
+
+function createUser(overrides: Partial<User> & { uuid: string }): User {
+  return {
+    uuid: overrides.uuid,
+    username: overrides.username ?? overrides.uuid,
+    firstName: overrides.firstName ?? null,
+    lastName: overrides.lastName ?? null,
+    displayName: overrides.displayName ?? overrides.username ?? overrides.uuid,
+    email: overrides.email ?? null,
+    avatarUrl: overrides.avatarUrl ?? null,
+    status: overrides.status ?? "offline",
+    statusEmoji: overrides.statusEmoji ?? null,
+    statusText: overrides.statusText ?? null,
+    lastPingAt: overrides.lastPingAt ?? "2026-06-30T09:00:00.000Z",
+    createdAt: overrides.createdAt ?? "2026-06-30T09:00:00.000Z",
+    updatedAt: overrides.updatedAt ?? "2026-06-30T09:00:00.000Z",
+  };
+}
+
+function createStream(overrides: Partial<MessengerStream> & { uuid: string }): MessengerStream {
+  return {
+    uuid: overrides.uuid,
+    projectId: overrides.projectId ?? "project",
+    ownerUuid: overrides.ownerUuid ?? "current-user",
+    userUuid: overrides.userUuid ?? "current-user",
+    role: overrides.role ?? "owner",
+    notificationMode: overrides.notificationMode ?? "mentions_only",
+    name: overrides.name ?? "engineering",
+    description: overrides.description ?? "",
+    unreadCount: overrides.unreadCount ?? 0,
+    sourceName: overrides.sourceName ?? "native",
+    providerUuid: overrides.providerUuid ?? null,
+    providerIdentity: overrides.providerIdentity ?? null,
+    audience: overrides.audience ?? "channel",
+    isPrivate: overrides.isPrivate ?? false,
+    inviteOnly: overrides.inviteOnly ?? false,
+    announce: overrides.announce ?? false,
+    isArchived: overrides.isArchived ?? false,
+    directUserUuid: overrides.directUserUuid ?? null,
+    lastMessageUuid: overrides.lastMessageUuid ?? null,
+    createdAt: overrides.createdAt ?? "2026-06-30T09:00:00.000Z",
+    updatedAt: overrides.updatedAt ?? "2026-06-30T09:00:00.000Z",
+  };
+}
+
+function createTopic(overrides: Partial<MessengerTopic> & { uuid: string }): MessengerTopic {
+  return {
+    uuid: overrides.uuid,
+    projectId: overrides.projectId ?? "project",
+    streamUuid: overrides.streamUuid ?? "stream-a",
+    userUuid: overrides.userUuid ?? "current-user",
+    name: overrides.name ?? "General",
+    unreadCount: overrides.unreadCount ?? 0,
+    isDefault: overrides.isDefault ?? true,
+    isDone: overrides.isDone ?? false,
+    notificationMode: overrides.notificationMode ?? "default",
+    lastMessageUuid: overrides.lastMessageUuid ?? null,
+    createdAt: overrides.createdAt ?? "2026-06-30T09:00:00.000Z",
+    updatedAt: overrides.updatedAt ?? "2026-06-30T09:00:00.000Z",
+  };
+}
+
+function seedWorkspaceSession(): void {
+  useWorkspaceAuthStore.getState().setSession({
+    accountId: "account",
+    instanceId: "instance",
+    organizationId: "org",
+    organizationOrigin: "https://workspace.test",
+    projectId: "project",
+    userUuid: "current-user",
+    accessToken: "token",
+    refreshToken: "refresh",
+    login: "current@example.com",
+    profile: {
+      uuid: "current-user",
+      username: "current",
+      firstName: "Current",
+      lastName: "User",
+      email: "current@example.com",
+    },
+  });
+}
+
+function seedUsers(): void {
+  useUsersStore.getState().replaceUsers([
+    createUser({
+      uuid: "current-user",
+      username: "current",
+      displayName: "Current User",
+      email: "me@example.com",
+      status: "active",
+    }),
+    createUser({
+      uuid: "alice-user",
+      username: "alice",
+      displayName: "Alice",
+      email: "alice@example.com",
+      status: "active",
+    }),
+    createUser({
+      uuid: "bob-user",
+      username: "bob",
+      displayName: "Bob",
+      email: "bob@example.com",
+      status: "idle",
+    }),
+  ]);
+}
+
+describe("useCreateChatDialog", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    useUsersStore.getState().clear();
+    useMessengerStore.getState().clear();
+    useWorkspaceAuthStore.getState().clear();
+  });
+
+  afterEach(() => {
+    useUsersStore.getState().clear();
+    useMessengerStore.getState().clear();
+    useWorkspaceAuthStore.getState().clear();
+  });
+
+  it("keeps the full tab shell while using Workspace-only behavior", () => {
+    const { result } = renderHook(() => useCreateChatDialog(defaultHookOptions()));
+
+    expect(result.current.visibleTabs).toEqual(["dm", "channels", "channel", "topic", "archived"]);
+    expect(result.current.browseChannels).toEqual([]);
+    expect(result.current.archivedChats).toEqual([]);
+  });
+
+  function seedArchive(streams: MessengerStream[]): string {
+    const context = useWorkspaceAuthStore.getState().getCurrentRuntimeContext()!;
+    const ownerKey = workspaceRuntimeOwnerKey(context);
+    useMessengerStore.getState().startBootstrap(ownerKey);
+    for (const stream of streams) useMessengerStore.getState().upsertStream(ownerKey, stream);
+    useMessengerStore.setState({ isLoading: false });
+    return ownerKey;
+  }
+
+  it("lists archived direct chats and channels for the current owner, searches display names and opens history without restoring", () => {
+    seedWorkspaceSession();
+    const ownerKey = seedArchive([
+      createStream({
+        uuid: "10000000-0000-4000-8000-000000000001",
+        name: "old name",
+        directUserUuid: "alice-user",
+        isArchived: true,
+      }),
+      createStream({
+        uuid: "10000000-0000-4000-8000-000000000002",
+        name: "Engineering",
+        isArchived: true,
+      }),
+      createStream({ uuid: "10000000-0000-4000-8000-000000000003", name: "Active" }),
+      createStream({
+        uuid: "10000000-0000-4000-8000-000000000004",
+        projectId: "other",
+        isArchived: true,
+      }),
+      createStream({
+        uuid: "10000000-0000-4000-8000-000000000005",
+        userUuid: "other",
+        isArchived: true,
+      }),
+    ]);
+    useUsersStore.getState().startOwnerSync(ownerKey);
+    useUsersStore
+      .getState()
+      .replaceUsersForOwner(ownerKey, [createUser({ uuid: "alice-user", displayName: "Alice" })]);
+    const onNavigateWorkspaceStream = vi.fn();
+    const onChannelCreated = vi.fn();
+    const { result } = renderHook(() =>
+      useCreateChatDialog(defaultHookOptions({ onNavigateWorkspaceStream, onChannelCreated })),
+    );
+    expect(result.current.archivedChats).toEqual([
+      { streamUuid: "10000000-0000-4000-8000-000000000001", name: "Alice", isDirect: true },
+      { streamUuid: "10000000-0000-4000-8000-000000000002", name: "Engineering", isDirect: false },
+    ]);
+    act(() => result.current.setArchivedSearch("  ALIce  "));
+    expect(result.current.archivedChats.map((chat) => chat.streamUuid)).toEqual([
+      "10000000-0000-4000-8000-000000000001",
+    ]);
+    act(() => result.current.openArchivedChat("10000000-0000-4000-8000-000000000001"));
+    expect(onNavigateWorkspaceStream).toHaveBeenCalledWith("10000000-0000-4000-8000-000000000001");
+    expect(runWorkspaceStreamUnarchive).not.toHaveBeenCalled();
+    expect(onChannelCreated).not.toHaveBeenCalled();
+    act(() => useMessengerStore.setState({ ownerKey: "another-owner" }));
+    expect(result.current.archivedChats).toEqual([]);
+  });
+
+  it("does not reuse direct user names from another owner's user catalog", () => {
+    seedWorkspaceSession();
+    seedArchive([
+      createStream({
+        uuid: "10000000-0000-4000-8000-000000000001",
+        name: "Stored name",
+        directUserUuid: "alice-user",
+        isArchived: true,
+      }),
+    ]);
+    useUsersStore.getState().startOwnerSync("another-owner");
+    useUsersStore
+      .getState()
+      .replaceUsersForOwner("another-owner", [
+        createUser({ uuid: "alice-user", displayName: "Unrelated name" }),
+      ]);
+    const { result } = renderHook(() => useCreateChatDialog(defaultHookOptions()));
+    expect(result.current.archivedChats[0]?.name).toBe("Stored name");
+  });
+
+  it("deduplicates restore clicks, exposes retry after failure and lets the applied store update remove the row", async () => {
+    seedWorkspaceSession();
+    const stream = createStream({ uuid: "10000000-0000-4000-8000-000000000006", isArchived: true });
+    const ownerKey = seedArchive([stream]);
+    let rejectRequest: ((error: Error) => void) | undefined;
+    vi.mocked(runWorkspaceStreamUnarchive).mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectRequest = reject;
+        }),
+    );
+    const onNavigateWorkspaceStream = vi.fn();
+    const { result } = renderHook(() =>
+      useCreateChatDialog(defaultHookOptions({ onNavigateWorkspaceStream })),
+    );
+    let first: Promise<void> | undefined;
+    act(() => {
+      first = result.current.onUnarchiveArchivedChat("10000000-0000-4000-8000-000000000006");
+      void result.current.onUnarchiveArchivedChat("10000000-0000-4000-8000-000000000006");
+    });
+    expect(runWorkspaceStreamUnarchive).toHaveBeenCalledTimes(1);
+    expect(result.current.unarchivePendingStreamUuids).toEqual([
+      "10000000-0000-4000-8000-000000000006",
+    ]);
+    await act(async () => {
+      rejectRequest?.(new Error("network"));
+      await first;
+    });
+    expect(result.current.unarchivePendingStreamUuids).toEqual([]);
+    expect(result.current.unarchiveInlineError).toEqual({
+      streamUuid: "10000000-0000-4000-8000-000000000006",
+    });
+    vi.mocked(runWorkspaceStreamUnarchive).mockImplementationOnce(() => {
+      const restored = { ...stream, isArchived: false };
+      useMessengerStore.getState().upsertStream(ownerKey, restored);
+      return Promise.resolve({ status: "applied", ownerKey, stream: restored });
+    });
+    await act(async () =>
+      result.current.onUnarchiveArchivedChat("10000000-0000-4000-8000-000000000006"),
+    );
+    expect(result.current.archivedChats).toEqual([]);
+    expect(result.current.unarchiveInlineError).toBeNull();
+    expect(onNavigateWorkspaceStream).not.toHaveBeenCalled();
+  });
+
+  it.each(["reopen", "runtime"] as const)(
+    "ignores old restore failures after modal %s changes and preserves a newer pending request",
+    async (transition) => {
+      seedWorkspaceSession();
+      seedArchive([
+        createStream({ uuid: "10000000-0000-4000-8000-000000000006", isArchived: true }),
+      ]);
+      const rejects: ((error: Error) => void)[] = [];
+      vi.mocked(runWorkspaceStreamUnarchive).mockImplementation(
+        () =>
+          new Promise((_resolve, reject) => {
+            rejects.push(reject);
+          }),
+      );
+      const options = defaultHookOptions();
+      const { result, rerender } = renderHook(
+        ({ open }) => useCreateChatDialog({ ...options, open }),
+        { initialProps: { open: true } },
+      );
+      let oldRequest: Promise<void> | undefined;
+      act(() => {
+        oldRequest = result.current.onUnarchiveArchivedChat("10000000-0000-4000-8000-000000000006");
+      });
+      if (transition === "reopen") {
+        rerender({ open: false });
+        rerender({ open: true });
+      } else {
+        act(() => seedWorkspaceSession());
+      }
+      let newRequest: Promise<void> | undefined;
+      act(() => {
+        newRequest = result.current.onUnarchiveArchivedChat("10000000-0000-4000-8000-000000000006");
+      });
+      expect(result.current.unarchivePendingStreamUuids).toEqual([
+        "10000000-0000-4000-8000-000000000006",
+      ]);
+      await act(async () => {
+        rejects[0]?.(new Error("old request"));
+        await oldRequest;
+      });
+      expect(result.current.unarchiveInlineError).toBeNull();
+      expect(result.current.unarchivePendingStreamUuids).toEqual([
+        "10000000-0000-4000-8000-000000000006",
+      ]);
+      await act(async () => {
+        rejects[1]?.(new Error("new request"));
+        await newRequest;
+      });
+      expect(result.current.unarchivePendingStreamUuids).toEqual([]);
+      expect(result.current.unarchiveInlineError).toEqual({
+        streamUuid: "10000000-0000-4000-8000-000000000006",
+      });
+    },
+  );
+
+  it("allows callers to limit visible tabs without changing Workspace behavior", () => {
+    const { result } = renderHook(() =>
+      useCreateChatDialog(defaultHookOptions({ visibleTabs: ["dm", "channel"] })),
+    );
+
+    expect(result.current.visibleTabs).toEqual(["dm", "channel"]);
+
+    act(() => {
+      result.current.setTab("archived");
+    });
+    expect(result.current.tab).toBe("dm");
+
+    act(() => {
+      result.current.setTab("channel");
+    });
+    expect(result.current.tab).toBe("channel");
+  });
+
+  it("opens a direct chat by creating a Workspace direct stream", async () => {
+    seedWorkspaceSession();
+    seedUsers();
+    const stream = createStream({ uuid: "direct-stream", directUserUuid: "alice-user" });
+    vi.mocked(runWorkspaceDirectStreamCreate).mockResolvedValue({
+      status: "applied",
+      ownerKey: "owner",
+      stream,
+      defaultTopic: createTopic({ uuid: "topic-a", streamUuid: stream.uuid }),
+      streamBindings: [],
+    });
+    const onNavigateWorkspaceStream = vi.fn();
+    const onChannelCreated = vi.fn();
+
+    const { result } = renderHook(() =>
+      useCreateChatDialog(defaultHookOptions({ onNavigateWorkspaceStream, onChannelCreated })),
+    );
+
+    act(() => {
+      result.current.openDirectUser(result.current.filteredUsers[0]!);
+    });
+
+    await waitFor(() => {
+      expect(runWorkspaceDirectStreamCreate).toHaveBeenCalledWith({
+        directUserUuid: "alice-user",
+      });
+    });
+    expect(onNavigateWorkspaceStream).toHaveBeenCalledWith("direct-stream");
+    expect(onChannelCreated).toHaveBeenCalledTimes(1);
+  });
+
+  it("offers the zero UUID as a direct chat candidate while excluding the current user", () => {
+    seedWorkspaceSession();
+    useUsersStore.getState().replaceUsers([
+      createUser({
+        uuid: "00000000-0000-0000-0000-000000000000",
+        username: "admin",
+        displayName: "admin",
+      }),
+      createUser({
+        uuid: "current-user",
+        username: "current-user",
+      }),
+      createUser({
+        uuid: "alice-user",
+        username: "alice",
+        displayName: "Alice",
+        email: "alice@example.com",
+      }),
+    ]);
+
+    const { result } = renderHook(() => useCreateChatDialog(defaultHookOptions()));
+
+    expect(result.current.filteredUsers.map((user) => user.workspaceUserUuid)).toEqual([
+      "00000000-0000-0000-0000-000000000000",
+      "alice-user",
+    ]);
+  });
+
+  it("creates a Workspace channel with selected member UUIDs", async () => {
+    seedWorkspaceSession();
+    seedUsers();
+    const stream = createStream({ uuid: "stream-a", name: "engineering" });
+    vi.mocked(runWorkspaceChannelCreate).mockResolvedValue({
+      status: "applied",
+      ownerKey: "owner",
+      stream,
+      defaultTopic: createTopic({ uuid: "topic-a", streamUuid: stream.uuid }),
+      streamBindings: [],
+    });
+
+    const { result } = renderHook(() => useCreateChatDialog(defaultHookOptions()));
+
+    act(() => {
+      result.current.setChannelName("  engineering  ");
+      result.current.toggleChannelUser("alice-user");
+    });
+    act(() => {
+      result.current.createChannel();
+    });
+
+    await waitFor(() => {
+      expect(runWorkspaceChannelCreate).toHaveBeenCalledWith({
+        name: "engineering",
+        description: "",
+        memberUserUuids: ["alice-user"],
+        inviteOnly: false,
+        announce: false,
+      });
+    });
+  });
+
+  it.each([
+    { encryption: false, query: "Bob" },
+    { encryption: true, query: "Bob" },
+    { encryption: false, query: "no matching users" },
+    { encryption: true, query: "no matching users" },
+  ])(
+    "submits all selected members with encryption=$encryption and search=$query",
+    async ({ encryption, query }) => {
+      seedWorkspaceSession();
+      seedUsers();
+      const stream = createStream({ uuid: "stream-a", encryption });
+      vi.mocked(runWorkspaceChannelCreate).mockResolvedValue({
+        status: "applied",
+        ownerKey: "owner",
+        stream,
+        defaultTopic: createTopic({ uuid: "topic-a", streamUuid: stream.uuid }),
+        streamBindings: [],
+      });
+      const { result } = renderHook(() => useCreateChatDialog(defaultHookOptions()));
+
+      act(() => {
+        result.current.setChannelName("Team");
+        result.current.setChannelEncryption(encryption);
+        result.current.setUserSearch("Alice");
+      });
+      act(() => result.current.toggleChannelUser("alice-user"));
+      act(() => result.current.setUserSearch("Bob"));
+      act(() => result.current.toggleChannelUser("bob-user"));
+      act(() => result.current.setUserSearch(query));
+
+      expect(result.current.channelSelectedUserKeys).toEqual(new Set(["alice-user", "bob-user"]));
+      act(() => result.current.createChannel());
+
+      await waitFor(() =>
+        expect(runWorkspaceChannelCreate).toHaveBeenCalledWith(
+          expect.objectContaining({ memberUserUuids: ["alice-user", "bob-user"] }),
+        ),
+      );
+    },
+  );
+
+  it("searches username independently of the display name and email", () => {
+    seedWorkspaceSession();
+    useUsersStore.getState().replaceUsers([
+      createUser({
+        uuid: "alice-user",
+        username: "hidden-login",
+        displayName: "Alice Adams",
+        email: null,
+      }),
+    ]);
+    const { result } = renderHook(() => useCreateChatDialog(defaultHookOptions()));
+
+    act(() => result.current.setUserSearch(" HIDDEN-LOGIN "));
+
+    expect(result.current.filteredUsers.map((user) => user.userKey)).toEqual(["alice-user"]);
+    expect(result.current.filteredUsers[0]?.fullName).toBe("Alice Adams");
+  });
+
+  it("creates an encrypted channel through the normal success navigation and clears exclusive flags", async () => {
+    seedWorkspaceSession();
+    seedUsers();
+    const stream = createStream({
+      uuid: "encrypted-stream",
+      name: "Protected team",
+      encryption: true,
+    });
+    vi.mocked(runWorkspaceChannelCreate).mockResolvedValue({
+      status: "applied",
+      ownerKey: "owner",
+      stream,
+      defaultTopic: createTopic({ uuid: "topic", streamUuid: stream.uuid }),
+      streamBindings: [],
+    });
+    const onNavigateWorkspaceStream = vi.fn();
+    const onChannelCreated = vi.fn();
+    const { result } = renderHook(() =>
+      useCreateChatDialog(defaultHookOptions({ onNavigateWorkspaceStream, onChannelCreated })),
+    );
+    act(() => {
+      result.current.setChannelName("Protected team");
+      result.current.setChannelInviteOnly(true);
+      result.current.setChannelAnnounce(true);
+      result.current.toggleChannelUser("alice-user");
+    });
+    act(() => result.current.setChannelEncryption(true));
+    expect(result.current.channelInviteOnly).toBe(false);
+    expect(result.current.channelAnnounce).toBe(false);
+    act(() => {
+      result.current.setChannelInviteOnly(true);
+      result.current.setChannelAnnounce(true);
+      result.current.createChannel();
+    });
+    await waitFor(() => expect(onChannelCreated).toHaveBeenCalledOnce());
+    expect(runWorkspaceChannelCreate).toHaveBeenCalledWith({
+      name: "Protected team",
+      description: "",
+      memberUserUuids: ["alice-user"],
+      inviteOnly: false,
+      announce: false,
+      encryption: true,
+      creationAttempt: expect.any(Object),
+    });
+    expect(onNavigateWorkspaceStream).toHaveBeenCalledWith("encrypted-stream", true);
+    expect(result.current.channelEncryption).toBe(false);
+    expect(result.current.channelName).toBe("");
+  });
+  it("keeps one encrypted intent across repeated clicks and dialog close/reopen", async () => {
+    seedWorkspaceSession();
+    seedUsers();
+    vi.mocked(runWorkspaceChannelCreate).mockImplementation((options) => {
+      if (options.creationAttempt) {
+        options.creationAttempt.state = {
+          phase: "dispatched",
+          metadata: { keyUuid: "key" },
+          inputIdentity: "original",
+        };
+      }
+      return Promise.reject(new Error("response lost"));
+    });
+    const hookOptions = defaultHookOptions();
+    const { result, rerender } = renderHook(
+      ({ open }) => useCreateChatDialog({ ...hookOptions, open }),
+      { initialProps: { open: true } },
+    );
+    act(() => {
+      result.current.setChannelName("Protected team");
+      result.current.setChannelDesc("Original description");
+      result.current.toggleChannelUser("alice-user");
+      result.current.setChannelEncryption(true);
+    });
+    act(() => {
+      result.current.createChannel();
+      result.current.createChannel();
+    });
+    await waitFor(() => expect(result.current.creating).toBe(false));
+    expect(runWorkspaceChannelCreate).toHaveBeenCalledOnce();
+    const original = vi.mocked(runWorkspaceChannelCreate).mock.calls[0]?.[0].creationAttempt;
+    rerender({ open: false });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    rerender({ open: true });
+    await waitFor(() => expect(result.current.channelEncryption).toBe(true));
+    expect(result.current.channelName).toBe("Protected team");
+    expect(result.current.channelDesc).toBe("Original description");
+    expect(result.current.channelSelectedUserKeys.has("alice-user")).toBe(true);
+    act(() => result.current.createChannel());
+    await waitFor(() => expect(runWorkspaceChannelCreate).toHaveBeenCalledTimes(2));
+    expect(vi.mocked(runWorkspaceChannelCreate).mock.calls[1]?.[0].creationAttempt).toBe(original);
+  });
+
+  it("ignores a saved create callback after its runtime is replaced before rerender", () => {
+    seedWorkspaceSession();
+    const { result } = renderHook(() => useCreateChatDialog(defaultHookOptions()));
+    act(() => result.current.setChannelName("Protected team"));
+    const staleCreate = result.current.createChannel;
+    act(() => {
+      useWorkspaceAuthStore.getState().clear();
+      seedWorkspaceSession();
+      staleCreate();
+    });
+    expect(runWorkspaceChannelCreate).not.toHaveBeenCalled();
+    expect(result.current.creating).toBe(false);
+  });
+
+  it("keeps failed creation visible and does not navigate or close", async () => {
+    seedWorkspaceSession();
+    vi.mocked(runWorkspaceChannelCreate).mockRejectedValue(new Error("request failed"));
+    const onNavigateWorkspaceStream = vi.fn();
+    const onChannelCreated = vi.fn();
+    const { result } = renderHook(() =>
+      useCreateChatDialog(defaultHookOptions({ onNavigateWorkspaceStream, onChannelCreated })),
+    );
+    act(() => result.current.setChannelName("Protected team"));
+    act(() => result.current.createChannel());
+    await waitFor(() => expect(result.current.channelCreateErrorKey).toBe("channel.createFailed"));
+    expect(result.current.channelName).toBe("Protected team");
+    expect(onNavigateWorkspaceStream).not.toHaveBeenCalled();
+    expect(onChannelCreated).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["encryption-unavailable", "channel.encryptionUnavailable"],
+    ["encryption-mismatch", "channel.encryptionMismatch"],
+  ] as const)("reports %s without navigating", async (reason, key) => {
+    seedWorkspaceSession();
+    vi.mocked(runWorkspaceChannelCreate).mockRejectedValue(
+      new MessengerChannelCreationError(reason),
+    );
+    const onNavigateWorkspaceStream = vi.fn();
+    const { result } = renderHook(() =>
+      useCreateChatDialog(defaultHookOptions({ onNavigateWorkspaceStream })),
+    );
+    act(() => {
+      result.current.setChannelName("Protected team");
+      result.current.setChannelEncryption(true);
+    });
+    act(() => result.current.createChannel());
+    await waitFor(() => expect(result.current.channelCreateErrorKey).toBe(key));
+    expect(onNavigateWorkspaceStream).not.toHaveBeenCalled();
+  });
+
+  it("does not let a late old-runtime completion clear a new creation or navigate", async () => {
+    seedWorkspaceSession();
+    let completeOld:
+      | ((value: Awaited<ReturnType<typeof runWorkspaceChannelCreate>>) => void)
+      | undefined;
+    let completeNew:
+      | ((value: Awaited<ReturnType<typeof runWorkspaceChannelCreate>>) => void)
+      | undefined;
+    vi.mocked(runWorkspaceChannelCreate)
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          completeOld = resolve;
+        }),
+      )
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          completeNew = resolve;
+        }),
+      );
+    const onNavigateWorkspaceStream = vi.fn();
+    const onChannelCreated = vi.fn();
+    const { result } = renderHook(() =>
+      useCreateChatDialog(defaultHookOptions({ onNavigateWorkspaceStream, onChannelCreated })),
+    );
+    act(() => result.current.setChannelName("First channel"));
+    act(() => result.current.createChannel());
+    expect(result.current.creating).toBe(true);
+    act(() => useWorkspaceAuthStore.getState().clear());
+    expect(result.current.creating).toBe(false);
+    act(() => seedWorkspaceSession());
+    expect(result.current.creating).toBe(false);
+    act(() => result.current.setChannelName("Second channel"));
+    act(() => result.current.createChannel());
+    expect(result.current.creating).toBe(true);
+    const stream = createStream({ uuid: "old-stream", name: "First channel" });
+    const applied = {
+      status: "applied" as const,
+      ownerKey: "owner",
+      stream,
+      defaultTopic: createTopic({ uuid: "topic", streamUuid: stream.uuid }),
+      streamBindings: [],
+    };
+    await act(async () => {
+      completeOld?.(applied);
+      await Promise.resolve();
+    });
+    expect(result.current.creating).toBe(true);
+    expect(result.current.channelName).toBe("Second channel");
+    expect(onNavigateWorkspaceStream).not.toHaveBeenCalled();
+    expect(onChannelCreated).not.toHaveBeenCalled();
+    await act(async () => {
+      completeNew?.({ ...applied, stream: { ...stream, uuid: "new-stream" } });
+      await Promise.resolve();
+    });
+    expect(result.current.creating).toBe(false);
+    expect(onNavigateWorkspaceStream).toHaveBeenCalledWith("new-stream");
+    expect(onChannelCreated).toHaveBeenCalledOnce();
+  });
+  it("keeps unsupported browse actions and unknown archive UUIDs inert", async () => {
+    const { result } = renderHook(() => useCreateChatDialog(defaultHookOptions()));
+
+    act(() => {
+      result.current.setTab("channels");
+      result.current.setChannelsSearch("design");
+      result.current.setChannelsSubscriptionFilter("subscribed");
+      result.current.setTab("archived");
+      result.current.setArchivedSearch("old");
+    });
+    await act(async () => {
+      await result.current.onSubscribeToChannel(1, "design");
+      await result.current.onUnsubscribeFromChannel(1, "design");
+      await result.current.onUnarchiveArchivedChat("unknown");
+    });
+
+    expect(result.current.channelsLoading).toBe(false);
+    expect(result.current.channelsError).toBe(false);
+    expect(result.current.subscribeInlineError).toBeNull();
+    expect(result.current.unarchiveInlineError).toBeNull();
+  });
+
+  it("creates a Workspace topic for the selected stream", async () => {
+    seedWorkspaceSession();
+    const stream = createStream({
+      uuid: "11111111-1111-4111-8111-111111111111",
+      name: "engineering",
+    });
+    const ownerKey = seedArchive([stream]);
+    vi.mocked(runWorkspaceCreateTopicRequest).mockResolvedValue({
+      status: "applied",
+      ownerKey,
+      topic: createTopic({ uuid: "topic-a", streamUuid: stream.uuid, name: "Roadmap" }),
+    });
+
+    const { result } = renderHook(() => useCreateChatDialog(defaultHookOptions()));
+
+    act(() => {
+      result.current.setWorkspaceTopicName("Roadmap");
+    });
+    act(() => {
+      result.current.createWorkspaceTopic();
+    });
+
+    await waitFor(() => {
+      expect(runWorkspaceCreateTopicRequest).toHaveBeenCalledWith({
+        streamUuid: "11111111-1111-4111-8111-111111111111",
+        name: "Roadmap",
+      });
+    });
+  });
+});

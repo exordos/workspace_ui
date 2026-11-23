@@ -1,4 +1,4 @@
-import { readActiveChats } from "~/entities/messenger/chats";
+import { readActiveChats } from "~/applications/messenger/model/chats/chats";
 import { useThemeStore } from "~/entities/theme/theme.model";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";

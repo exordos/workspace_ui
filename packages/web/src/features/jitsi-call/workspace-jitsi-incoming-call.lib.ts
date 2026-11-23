@@ -1,4 +1,7 @@
-import type { MessengerMessage, MessengerStream } from "~/entities/messenger/messenger.types";
+import type {
+  MessengerMessage,
+  MessengerStream,
+} from "~/applications/messenger/model/messenger.types";
 import { selectUserDisplayName } from "~/entities/user/user-selectors.lib";
 import type { UsersById } from "~/entities/user/user.types";
 import { getJitsiMeetingUrl } from "~/shared/lib/jitsi";

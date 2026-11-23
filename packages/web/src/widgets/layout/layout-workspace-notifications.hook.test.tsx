@@ -1,15 +1,18 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { WorkspaceConversationMetadata } from "~/applications/messenger/model/chats/messenger-conversation-metadata.lib";
+import { useMessengerStore } from "~/applications/messenger/model/chats/messenger.model";
+import { conversationIdForTopic } from "~/applications/messenger/model/messenger-ids.lib";
+import type {
+  MessengerStream,
+  MessengerTopic,
+} from "~/applications/messenger/model/messenger.types";
+import { useMessengerBackgroundProjectionStore } from "~/applications/messenger/runtime/sync/messenger-background-projection.model";
 import type {
   MessengerBackgroundNotificationCandidate,
   MessengerBackgroundProjection,
   MessengerBackgroundMessageIdSnapshot,
-} from "~/entities/messenger/messenger-background-projection.model";
-import { useMessengerBackgroundProjectionStore } from "~/entities/messenger/messenger-background-projection.model";
-import type { WorkspaceConversationMetadata } from "~/entities/messenger/messenger-conversation-metadata.lib";
-import { conversationIdForTopic } from "~/entities/messenger/messenger-ids.lib";
-import { useMessengerStore } from "~/entities/messenger/messenger.model";
-import type { MessengerStream, MessengerTopic } from "~/entities/messenger/messenger.types";
+} from "~/applications/messenger/runtime/sync/messenger-background-projection.model";
 import type { WorkspaceAuthSession } from "~/entities/workspace-auth/workspace-auth.model";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
@@ -79,7 +82,7 @@ vi.mock("~/shared/lib/electron", async (importOriginal) => ({
   isElectronDarwin: isElectronDarwinMock,
 }));
 
-vi.mock("~/entities/messenger/messenger-conversation-metadata.lib", () => ({
+vi.mock("~/applications/messenger/model/chats/messenger-conversation-metadata.lib", () => ({
   resolveWorkspaceConversationMetadata: (
     ...args: Parameters<typeof resolveConversationMetadataMock>
   ) => resolveConversationMetadataMock(...args),

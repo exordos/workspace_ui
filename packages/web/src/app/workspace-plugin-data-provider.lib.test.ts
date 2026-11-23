@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { useMessengerStore } from "~/entities/messenger/messenger.model";
-import type { MessengerStream } from "~/entities/messenger/messenger.types";
+import { useMessengerStore } from "~/applications/messenger/model/chats/messenger.model";
+import type { MessengerStream } from "~/applications/messenger/model/messenger.types";
 import {
   useWorkspaceAuthStore,
   type WorkspaceAuthSession,

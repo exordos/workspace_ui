@@ -1,5 +1,5 @@
 import React, { useMemo } from "react";
-import { buildMessengerRequestOptions } from "~/entities/messenger/messenger-request-options.lib";
+import { buildMessengerRequestOptions } from "~/applications/messenger/model/messenger-request-options.lib";
 import {
   selectCurrentWorkspaceRuntimeContext,
   useWorkspaceAuthStore,

@@ -1,7 +1,7 @@
 import { useCallback, type RefObject } from "react";
 import { flushSync } from "react-dom";
+import type { SidebarSearchHandle } from "~/applications/messenger/features/sidebar/sidebar.types";
 import { useAppHotkey } from "~/shared/lib/hotkeys";
-import type { SidebarSearchHandle } from "~/widgets/sidebar/sidebar.types";
 import type { TopBarSection } from "~/widgets/top-bar/top-bar.types";
 import { resolveShortcutPanelToggle } from "./layout-shortcuts.lib";
 

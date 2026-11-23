@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { buildMessengerRequestOptions } from "~/applications/messenger/model/messenger-request-options.lib";
 import {
   adaptWorkspaceExternalAccountDto,
   isExternalAccountDuplicate,
@@ -10,7 +11,6 @@ import {
   useExternalAccountStore,
 } from "~/entities/external-account/external-account.model";
 import type { ExternalAccount } from "~/entities/external-account/external-account.types";
-import { buildMessengerRequestOptions } from "~/entities/messenger/messenger-request-options.lib";
 import {
   captureWorkspaceRuntimeRequestContext,
   isWorkspaceRuntimeRequestInvalidated,

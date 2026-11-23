@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react"
 import {
   buildWorkspaceMediaDisplayBlob,
   isWorkspaceHeicMedia,
-} from "~/entities/messenger/messenger-workspace-message-preview-blob.lib";
+} from "~/applications/messenger/features/timeline/messenger-workspace-message-preview-blob.lib";
 import type { WorkspaceMessageFileReference } from "~/shared/lib/workspace-message-render/workspace-message-document.types";
 import { useMediaViewerStore } from "./media-viewer.model";
 import {

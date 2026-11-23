@@ -1,11 +1,18 @@
 import { useMemo } from "react";
-import { useChatsCatalog } from "~/entities/messenger/chats";
-import { useMessageIndex } from "~/entities/messenger/messages-consumers";
 import {
   selectWorkspaceRightPanelInfoView,
   type WorkspaceRightPanelInfoView,
-} from "~/entities/messenger/messenger-right-panel.lib";
-import type { MessengerMessage, MessengerUuid } from "~/entities/messenger/messenger.types";
+} from "~/applications/messenger/features/chat-details/messenger-right-panel.lib";
+import type {
+  SidebarChat,
+  StreamWithLast,
+} from "~/applications/messenger/features/sidebar/sidebar.types";
+import { useChatsCatalog } from "~/applications/messenger/model/chats/chats";
+import { useMessageIndex } from "~/applications/messenger/model/messages/messages-consumers";
+import type {
+  MessengerMessage,
+  MessengerUuid,
+} from "~/applications/messenger/model/messenger.types";
 import { useUsersStore } from "~/entities/user/user.model";
 import {
   selectCurrentWorkspaceRuntimeContext,
@@ -17,7 +24,6 @@ import { t } from "~/i18n/i18n";
 import type { WorkspaceMessengerRouteMatch } from "~/shared/lib/workspace-messenger-route.lib";
 import type { StreamEntryInternal } from "~/shared/types/sidebar-chat";
 import type { RightDrawerMode } from "~/widgets/right-panel/right-drawer.model";
-import type { SidebarChat, StreamWithLast } from "~/widgets/sidebar/sidebar.types";
 import { useLayoutRightDrawerContext } from "./layout-right-drawer-context.hook";
 import { resolveLayoutRightPanelTitle } from "./layout-right-drawer-title.lib";
 

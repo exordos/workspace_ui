@@ -4,7 +4,7 @@ import type {
   MessengerBackgroundNotificationCandidate,
   MessengerBackgroundProjection,
   MessengerBackgroundStreamSnapshot,
-} from "~/entities/messenger/messenger-background-projection.model";
+} from "~/applications/messenger/runtime/sync/messenger-background-projection.model";
 import { getBackgroundProjectionUnreadCount } from "./top-bar-workspace-session-unread.lib";
 
 const OWNER_KEY = "account:a:org:o:project:p:user:u";

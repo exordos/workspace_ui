@@ -1,4 +1,4 @@
-import type { MessengerBackgroundProjection } from "~/entities/messenger/messenger-background-projection.model";
+import type { MessengerBackgroundProjection } from "~/applications/messenger/runtime/sync/messenger-background-projection.model";
 
 function sumUnreadCounts(counts: Record<string, number>): number {
   return Object.values(counts).reduce((sum, count) => sum + Math.max(0, count), 0);

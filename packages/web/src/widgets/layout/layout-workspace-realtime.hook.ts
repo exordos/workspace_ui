@@ -1,4 +1,16 @@
 import { useEffect, useMemo, useRef, type RefObject } from "react";
+import { repairDeletedMessagePointers } from "~/applications/messenger/model/chats/messenger-deleted-message-pointer-repair.lib";
+import { useMessengerStore } from "~/applications/messenger/model/chats/messenger.model";
+import { useWorkspaceMessageStore } from "~/applications/messenger/model/messages/message.model";
+import { createMessengerReactionAggregateRevalidateHandler } from "~/applications/messenger/model/messages/messenger-message-reactions-actions.lib";
+import { messengerRealtimeActiveCache } from "~/applications/messenger/model/messenger-cache.lib";
+import { buildWorkspaceRequestOptions } from "~/applications/messenger/model/messenger-request-options.lib";
+import { bootstrapMessengerStore } from "~/applications/messenger/runtime/sync/messenger-bootstrap.lib";
+import {
+  createMessengerRealtimeActiveApplier,
+  createMessengerRealtimeBackgroundApplier,
+  type MessengerRealtimeActiveApplierOptions,
+} from "~/applications/messenger/runtime/sync/messenger-realtime-applier.lib";
 import { createActivityRealtimeApplier } from "~/entities/activity/activity-realtime-applier.lib";
 import { useActivityStore } from "~/entities/activity/activity.model";
 import {
@@ -9,18 +21,6 @@ import { loadExternalAccounts } from "~/entities/external-account/external-accou
 import { createExternalAccountRealtimeApplier } from "~/entities/external-account/external-account-realtime-applier.lib";
 import { createExternalChatRealtimeApplier } from "~/entities/external-chat/external-chat-realtime-applier.lib";
 import { useExternalChatsStore } from "~/entities/external-chat/external-chat.model";
-import { useWorkspaceMessageStore } from "~/entities/message/message.model";
-import { bootstrapMessengerStore } from "~/entities/messenger/messenger-bootstrap.lib";
-import { messengerRealtimeActiveCache } from "~/entities/messenger/messenger-cache.lib";
-import { repairDeletedMessagePointers } from "~/entities/messenger/messenger-deleted-message-pointer-repair.lib";
-import { createMessengerReactionAggregateRevalidateHandler } from "~/entities/messenger/messenger-message-reactions-actions.lib";
-import {
-  createMessengerRealtimeActiveApplier,
-  createMessengerRealtimeBackgroundApplier,
-  type MessengerRealtimeActiveApplierOptions,
-} from "~/entities/messenger/messenger-realtime-applier.lib";
-import { buildWorkspaceRequestOptions } from "~/entities/messenger/messenger-request-options.lib";
-import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import { workspaceStatusDecoration } from "~/entities/user/user-presence-status.lib";
 import { createUserRealtimeApplier } from "~/entities/user/user-realtime-applier.lib";
 import { selectUserDisplayName } from "~/entities/user/user-selectors.lib";

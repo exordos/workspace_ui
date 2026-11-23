@@ -1,4 +1,4 @@
-import { buildWorkspaceRequestOptions } from "~/entities/messenger/messenger-request-options.lib";
+import { buildWorkspaceRequestOptions } from "~/applications/messenger/model/messenger-request-options.lib";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import type { WorkspaceMessengerUserDto } from "~/shared/api/messenger.types";

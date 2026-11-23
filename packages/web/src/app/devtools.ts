@@ -8,9 +8,10 @@
  *   __dev__.logs("error")
  */
 
+import { useSidebarConfigStore } from "~/applications/messenger/features/sidebar/sidebar-config.model";
+import { useMessengerStore } from "~/applications/messenger/model/chats/messenger.model";
+import { useWorkspaceMessageStore } from "~/applications/messenger/model/messages/message.model";
 import { useCallParticipantsStore } from "~/entities/call/call.model";
-import { useMessengerStore } from "~/entities/messenger/messenger.model";
-import { useWorkspaceMessageStore } from "~/entities/message/message.model";
 import { useThemeStore } from "~/entities/theme/theme.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
@@ -30,7 +31,6 @@ import {
   setPipelineTrace,
   type PipelineTraceChannel,
 } from "~/shared/lib/pipeline-trace.lib";
-import { useSidebarConfigStore } from "~/widgets/sidebar/sidebar-config.model";
 
 interface DevTools {
   stores: {

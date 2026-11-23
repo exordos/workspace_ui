@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { buildMessengerRequestOptions } from "~/applications/messenger/model/messenger-request-options.lib";
 import { adaptWorkspaceExternalAccountDto } from "~/entities/external-account/external-account-adapters.lib";
 import { useExternalAccountsStore } from "~/entities/external-account/external-account.model";
 import type {
@@ -13,7 +14,6 @@ import {
 } from "~/entities/external-chat/external-chat-loader.lib";
 import { useExternalChatsStore } from "~/entities/external-chat/external-chat.model";
 import type { ExternalChat } from "~/entities/external-chat/external-chat.types";
-import { buildMessengerRequestOptions } from "~/entities/messenger/messenger-request-options.lib";
 import {
   selectCurrentWorkspaceRuntimeContext,
   useWorkspaceAuthStore,

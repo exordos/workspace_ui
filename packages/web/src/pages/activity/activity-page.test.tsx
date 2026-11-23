@@ -2,16 +2,19 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { act } from "react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useActivityStore } from "~/entities/activity/activity.model";
-import type * as ComposerDraftActions from "~/entities/composer-draft/composer-draft-actions.lib";
+import { useMessengerStore } from "~/applications/messenger/model/chats/messenger.model";
+import type * as ComposerDraftActions from "~/applications/messenger/model/drafts/composer-draft-actions.lib";
 import {
   resetWorkspaceComposerDraftStoreForTests,
   useWorkspaceComposerDraftStore,
-} from "~/entities/composer-draft/composer-draft.model";
-import type { WorkspaceComposerDraft } from "~/entities/composer-draft/composer-draft.types";
-import { adaptMessengerMessage } from "~/entities/messenger/messenger-adapters.lib";
-import { useMessengerStore } from "~/entities/messenger/messenger.model";
-import type { MessengerStream, MessengerTopic } from "~/entities/messenger/messenger.types";
+} from "~/applications/messenger/model/drafts/composer-draft.model";
+import type { WorkspaceComposerDraft } from "~/applications/messenger/model/drafts/composer-draft.types";
+import { adaptMessengerMessage } from "~/applications/messenger/model/messages/messenger-message-adapter.lib";
+import type {
+  MessengerStream,
+  MessengerTopic,
+} from "~/applications/messenger/model/messenger.types";
+import { useActivityStore } from "~/entities/activity/activity.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import {
   type WorkspaceAuthSession,
@@ -45,23 +48,29 @@ vi.mock("~/entities/activity/activity-mentions.api", () => ({
   fetchMyMentionsPage,
 }));
 
-vi.mock("~/entities/composer-draft/composer-draft-loader.lib", () => ({
+vi.mock("~/applications/messenger/model/drafts/composer-draft-loader.lib", () => ({
   loadWorkspaceComposerDrafts,
 }));
 
-vi.mock("~/entities/composer-draft/composer-draft-actions.lib", async (importOriginal) => {
-  const actual = await importOriginal<typeof ComposerDraftActions>();
-  return {
-    ...actual,
-    deleteWorkspaceComposerDraft,
-  };
-});
+vi.mock(
+  "~/applications/messenger/model/drafts/composer-draft-actions.lib",
+  async (importOriginal) => {
+    const actual = await importOriginal<typeof ComposerDraftActions>();
+    return {
+      ...actual,
+      deleteWorkspaceComposerDraft,
+    };
+  },
+);
 
-vi.mock("~/features/workspace-forward-message/workspace-forward-message.model", () => ({
-  useWorkspaceForwardMessageStore: (
-    selector: (state: { open: typeof openWorkspaceForward }) => unknown,
-  ) => selector({ open: openWorkspaceForward }),
-}));
+vi.mock(
+  "~/applications/messenger/features/timeline/forward/workspace-forward-message.model",
+  () => ({
+    useWorkspaceForwardMessageStore: (
+      selector: (state: { open: typeof openWorkspaceForward }) => unknown,
+    ) => selector({ open: openWorkspaceForward }),
+  }),
+);
 
 const scrollHeightDescriptor = Object.getOwnPropertyDescriptor(
   HTMLElement.prototype,

@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { buildMessengerRequestOptions } from "~/applications/messenger/model/messenger-request-options.lib";
 import { toWorkspaceExternalAccountCacheProfile } from "~/entities/external-account/external-account-adapters.lib";
 import { markExternalAccountLocallyDeleted } from "~/entities/external-account/external-account-realtime-applier.lib";
 import { useExternalAccountStore } from "~/entities/external-account/external-account.model";
 import { externalChatScopeKey } from "~/entities/external-chat/external-chat-loader.lib";
 import { useExternalChatsStore } from "~/entities/external-chat/external-chat.model";
-import { buildMessengerRequestOptions } from "~/entities/messenger/messenger-request-options.lib";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import {
   captureWorkspaceRuntimeRequestContext,

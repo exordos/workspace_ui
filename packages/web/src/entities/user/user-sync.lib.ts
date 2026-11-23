@@ -1,4 +1,4 @@
-import { buildWorkspaceRequestOptions } from "~/entities/messenger/messenger-request-options.lib";
+import { buildWorkspaceRequestOptions } from "~/applications/messenger/model/messenger-request-options.lib";
 import {
   captureWorkspaceRuntimeRequestContext,
   isWorkspaceRuntimeRequestInvalidated,

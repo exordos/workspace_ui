@@ -1,0 +1,44 @@
+import type {
+  MessengerMessage,
+  MessengerUuid,
+} from "~/applications/messenger/model/messenger.types";
+import type { WorkspaceMessageFileReference } from "~/shared/lib/workspace-message-render/workspace-message-document.types";
+import type { LoadWorkspaceFilePreview } from "./messenger-workspace-message-file-preview.hook";
+import type { EmojiClickData } from "emoji-picker-react";
+
+export interface WorkspaceMessageBubbleMenuAnchor {
+  left: number;
+  top: number;
+}
+
+export interface WorkspaceMessageBubbleMenuProps {
+  onPollSettings?: () => void;
+  onPollClose?: () => void;
+  message: MessengerMessage;
+  isOwn: boolean;
+  open: boolean;
+  contextAnchor: WorkspaceMessageBubbleMenuAnchor | null;
+  contextLinkUrl: string | null;
+  contextImageFile: WorkspaceMessageFileReference | null;
+  onOpenChange: (open: boolean) => void;
+  onRequestMessageKey?: (messageUuid: MessengerUuid) => void | Promise<void>;
+  requestMessageKeyPending?: boolean;
+  onReplyMessage?: (messageUuid: MessengerUuid, selectedText?: string) => void;
+  onAddReplyMessage?: (messageUuid: MessengerUuid, selectedText?: string) => void;
+  onForwardMessage?: (messageUuid: MessengerUuid, selectedText?: string) => void;
+  onToggleMessageSelection?: (messageUuid: MessengerUuid) => void;
+  onEditMessage?: (messageUuid: MessengerUuid) => void;
+  onRequestDeleteMessage?: (messageUuid: MessengerUuid) => void;
+  onCopyMessageLink?: (messageUuid: MessengerUuid) => void | Promise<void>;
+  onCopyMessageText?: (messageUuid: MessengerUuid, selectedText?: string) => void | Promise<void>;
+  onToggleMessageReaction?: (messageUuid: MessengerUuid, emojiName: string) => void | Promise<void>;
+  onLoadWorkspaceFilePreview?: LoadWorkspaceFilePreview;
+  onDownloadFile?: (file: WorkspaceMessageFileReference) => void | Promise<void>;
+  getSelectedText: () => string | undefined;
+}
+
+export interface WorkspaceReactionEmojiPickerProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onEmojiPick: (data: EmojiClickData) => void;
+}

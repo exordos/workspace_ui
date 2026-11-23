@@ -4,18 +4,21 @@ The project uses Feature-Sliced Design with explicit module boundaries. Current 
 
 ## Ownership
 
-| Layer      | Owns                                                      |
-| ---------- | --------------------------------------------------------- |
-| `app`      | App entry, router, global providers and composition       |
-| `pages`    | Route-level composition and intent                        |
-| `widgets`  | Shell and composite UI, lifecycle wiring                  |
-| `features` | User scenarios such as forwarding or downloading a file   |
-| `entities` | Domain state, adapters, actions and domain lifecycle      |
-| `shared`   | Domain-independent UI, utilities and transport primitives |
+Workspace still uses the existing FSD layers for the shell and other applications. The Messenger application is organized as `applications/messenger/pages → features → model`. `runtime/sync` contains the domain implementations of bootstrap, realtime, and projection cleanup. Workspace shell hooks still decide when these operations start and stop.
 
-Dependencies flow `app -> pages -> widgets -> features -> entities -> shared`. Shared code must not reach upward into domain stores; inject callbacks or data at the composition boundary.
+| Layer          | Owns                                                        |
+| -------------- | ----------------------------------------------------------- |
+| `app`          | App entry, router, global providers and composition         |
+| `applications` | Messenger routes, features, business models and domain sync |
+| `pages`        | Route-level composition and intent                          |
+| `widgets`      | Shell and composite UI, lifecycle wiring                    |
+| `features`     | User scenarios such as forwarding or downloading a file     |
+| `entities`     | Domain state, adapters, actions and domain lifecycle        |
+| `shared`       | Domain-independent UI, utilities and transport primitives   |
 
-Prefer composing sibling features/widgets in a higher layer instead of coupling them. Existing entity-to-entity dependencies exist (for example messenger request ownership depends on workspace-runtime); keep those explicit, acyclic and limited to domain responsibilities. `getState()` does not bypass dependency rules. Do not introduce an abstraction solely to satisfy a file template.
+In the legacy tree, dependencies flow `app -> pages -> widgets -> features -> entities -> shared`. Shared code must not reach upward into domain stores; inject callbacks or data at the composition boundary.
+
+Prefer composing sibling features/widgets in a higher layer instead of coupling them. Existing dependencies between domain modules remain explicit and limited to domain responsibilities. Messenger uses `entities/workspace-auth`, `entities/workspace-runtime`, and shared API and storage primitives during the migration. `getState()` does not bypass dependency rules. Do not introduce an abstraction solely to satisfy a file template.
 
 ## Files and imports
 
@@ -42,7 +45,7 @@ Import according to the boundary:
 - Where no module public entrypoint is established, existing concrete implementation/type imports remain valid:
 
 ```ts
-import { useWorkspaceMessageStore } from "~/entities/message/message.model";
+import { useKnownMessage } from "~/applications/messenger/model/messages/messages-consumers";
 import { useUsersStore } from "~/entities/user/user.model";
 import { writeText } from "~/shared/lib/clipboard";
 ```
@@ -53,13 +56,21 @@ For example, inside `button.tsx`, import types from `./button.types`; avoid impo
 
 Do not infer a performance defect from an index alone. Development loading and production tree-shaking depend on the dependency graph, side effects and tooling.
 
+### Messenger application imports
+
+The app router uses the lazy [Messenger route entry](../packages/web/src/applications/messenger/messenger.ts). Workspace shell slots and other consumers import the specific feature entry or model contract they use. Code inside Messenger imports the owning files directly. The route entry stays out of models, sync adapters, and eagerly loaded shell code.
+
+Messenger features use the [catalog](../packages/web/src/applications/messenger/model/chats/chats.ts), [messages](../packages/web/src/applications/messenger/model/messages/messages.ts), and [drafts](../packages/web/src/applications/messenger/model/drafts/composer-draft-actions.lib.ts) contracts. Outgoing delivery stays inside `model/messages/outgoing`. Profile, account settings, and the right drawer remain Workspace widgets. The chat details feature uses the existing Workspace profile view for a direct conversation.
+
+Bootstrap and realtime in the Workspace shell still use their current session lifecycle operations. Session cleanup calls the draft owner's disposal operation and the shared IndexedDB cleanup. The local reset registry and DevTools retain their existing store access. The [remaining boundary inventory](plans/messenger-architecture/modules.md#оставшиеся-прямые-обращения) assigns these links to steps 12–14.
+
 ## Workspace data flow
 
 1. IAM establishes the session and runtime owner in `entities/workspace-auth`.
-2. Shell hooks compose catalog/message hydration and realtime lifecycle.
-3. Workspace clients decode API DTOs; entity adapters convert them to domain values.
-4. `entities/messenger` owns catalogs and actions; `entities/message` owns message state.
-5. `entities/messenger/messenger-message-content.lib.ts` resolves message content by payload kind, preserving canonical ciphertext. `features/message-presentation` owns temporary preparation results and their runtime/key invalidation for lists, quotes, and previews. The message-list widget owns window readiness and scrolling; body rendering stays in the existing shared sanitize/render path.
+2. Shell hooks compose catalog and message hydration with Messenger domain sync and the existing realtime lifecycle.
+3. Workspace clients decode API DTOs. The catalog and message adapters convert them to domain values.
+4. Messenger `model/chats` owns the catalog. `model/messages` owns canonical messages and outgoing delivery. `model/drafts` owns draft versions, and `model/crypto` owns encrypted chat sessions.
+5. `features/decrypted-message` prepares content for the current runtime and invalidates outdated results when access or keys change. `features/timeline` owns window presentation and scrolling. Body rendering uses the shared sanitize/render path.
 6. UI reads narrow selectors and sends intent through features or entity actions.
 
 Use UUID-native identifiers and the [runtime ownership rules](ORG_SCOPED_ASYNC_SAFETY.md). Restore owned cached data before server refresh where appropriate. Preserve ordering, pagination markers, read boundaries and realtime cursor semantics.

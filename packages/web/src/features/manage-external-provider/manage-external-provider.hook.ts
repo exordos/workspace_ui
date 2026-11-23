@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { buildMessengerRequestOptions } from "~/entities/messenger/messenger-request-options.lib";
+import { buildMessengerRequestOptions } from "~/applications/messenger/model/messenger-request-options.lib";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import {
   captureWorkspaceRuntimeRequestContext,

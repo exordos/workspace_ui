@@ -6,7 +6,7 @@
  */
 
 import { create } from "zustand";
-import type { MessengerSidebarSortMode } from "~/entities/messenger/messenger-sidebar.lib";
+import type { MessengerSidebarSortMode } from "~/applications/messenger/features/sidebar/messenger-sidebar.lib";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import {
   buildLegacyWorkspaceSessionStorageKey,

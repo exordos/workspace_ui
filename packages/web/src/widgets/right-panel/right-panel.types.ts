@@ -1,5 +1,5 @@
-import type { WorkspaceRightPanelInfoView as MessengerWorkspaceRightPanelInfoView } from "~/entities/messenger/messenger-right-panel.lib";
-import type { EncryptedChatInfoScreen } from "~/features/encrypted-chat-info/encrypted-chat-info.types";
+import type { EncryptedChatInfoScreen } from "~/applications/messenger/features/chat-details/encrypted-chat-info/encrypted-chat-info.types";
+import type { WorkspaceRightPanelInfoView as MessengerWorkspaceRightPanelInfoView } from "~/applications/messenger/features/chat-details/messenger-right-panel.lib";
 import type { RightDrawerAccountScreen } from "./right-drawer.model";
 
 export type WorkspaceRightPanelInfoView = MessengerWorkspaceRightPanelInfoView;

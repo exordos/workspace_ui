@@ -1,8 +1,11 @@
 import React, { useEffect, useLayoutEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
+import { ChatChannelHeader } from "~/applications/messenger/features/conversation-header/chat-header-channel.ui";
+import { encryptedMessageLabel } from "~/applications/messenger/features/decrypted-message/encrypted-chat-message/encrypted-message-label.lib";
+import { useWorkspaceForwardMessageStore } from "~/applications/messenger/features/timeline/forward/workspace-forward-message.model";
+import { useChatsCatalog } from "~/applications/messenger/model/chats/chats";
 import { fetchFeedMessages, hydrateFeedMessagesFromCache } from "~/entities/feed/feed.api";
 import { useFeedStore } from "~/entities/feed/feed.model";
-import { useChatsCatalog } from "~/entities/messenger/chats";
 import { selectUserDisplayName } from "~/entities/user/user-selectors.lib";
 import { useUsersStore } from "~/entities/user/user.model";
 import {
@@ -14,8 +17,6 @@ import {
   workspaceRuntimeOwnerKey,
 } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
-import { encryptedMessageLabel } from "~/features/encrypted-chat-message/encrypted-message-label.lib";
-import { useWorkspaceForwardMessageStore } from "~/features/workspace-forward-message/workspace-forward-message.model";
 import { t } from "~/i18n/i18n";
 import { useOpenSearch } from "~/shared/contexts/open-search";
 import { formatMessageTimeWithDate } from "~/shared/lib/datetime.lib";
@@ -29,7 +30,6 @@ import { workspaceMessengerTopicRoute } from "~/shared/lib/workspace-messenger-r
 import { FloatingScrollToBottomButton } from "~/shared/ui/floating-scroll-to-bottom-button";
 import { Icon } from "~/shared/ui/icon";
 import { FloatingLoadingOverlay } from "~/shared/ui/loading";
-import { ChatChannelHeader } from "~/widgets/chat-view/chat-header-channel.ui";
 import { computeFeedScrollTopAfterPrepend, shouldRequestOlderFeedPage } from "./feed-scroll.lib";
 
 const log = createLogger("feed-page");

@@ -1,13 +1,13 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useChatDmCallBridgeStore } from "~/applications/messenger/features/chat-details/call-bridge/chat-dm-call-bridge.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import {
   useWorkspaceAuthStore,
   type WorkspaceAuthSession,
 } from "~/entities/workspace-auth/workspace-auth.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
-import { useChatDmCallBridgeStore } from "~/features/chat-dm-call-bridge/chat-dm-call-bridge.model";
 import { t } from "~/i18n/i18n";
 import * as messengerStreamsApi from "~/shared/api/messenger-streams.api";
 import { renderWithProviders } from "~/test/render";

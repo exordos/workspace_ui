@@ -1,5 +1,5 @@
-import type { MessengerBackgroundNotificationCandidate } from "~/entities/messenger/messenger-background-projection.model";
-import { compareMessengerMessageOrder } from "~/entities/messenger/messenger-read-boundary.lib";
+import { compareMessengerMessageOrder } from "~/applications/messenger/model/messages/messenger-read-boundary.lib";
+import type { MessengerBackgroundNotificationCandidate } from "~/applications/messenger/runtime/sync/messenger-background-projection.model";
 import {
   buildNotificationAggregateTag,
   buildWorkspaceNotificationBucketKey,

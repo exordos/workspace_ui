@@ -1,10 +1,10 @@
 import { useEffect, type RefObject } from "react";
+import type { SidebarSearchHandle } from "~/applications/messenger/features/sidebar/sidebar.types";
 import { isHotkeyBlockedByModal } from "~/shared/lib/hotkeys";
 import {
   parseWorkspaceMessengerRoute,
   workspaceInboxRoute,
 } from "~/shared/lib/workspace-messenger-route.lib";
-import type { SidebarSearchHandle } from "~/widgets/sidebar/sidebar.types";
 import {
   isInteractiveElementFocused,
   resolveLayoutEscapeKeyDown,

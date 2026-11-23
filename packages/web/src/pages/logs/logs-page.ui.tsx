@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation } from "react-router-dom";
-import { useChatsCatalog } from "~/entities/messenger/chats";
-import { useMessageIndex } from "~/entities/messenger/messages-consumers";
+import { useChatsCatalog } from "~/applications/messenger/model/chats/chats";
+import { useMessageIndex } from "~/applications/messenger/model/messages/messages-consumers";
 import { useThemeStore } from "~/entities/theme/theme.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";

@@ -19,8 +19,8 @@
  *   __ai__.commands.register("summarize-chat", handler)
  */
 
-import { readActiveChats } from "~/entities/messenger/chats";
-import { selectMessengerSidebarActivityCounts } from "~/entities/messenger/messenger-sidebar.lib";
+import { selectMessengerSidebarActivityCounts } from "~/applications/messenger/features/sidebar/messenger-sidebar.lib";
+import { readActiveChats } from "~/applications/messenger/model/chats/chats";
 import { useThemeStore } from "~/entities/theme/theme.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";

@@ -19,10 +19,10 @@ const LoginPage = React.lazy(() =>
   import("~/pages/login/login-page.ui").then((m) => ({ default: m.LoginPage })),
 );
 const ChatPage = React.lazy(() =>
-  import("~/pages/chat/chat-page.ui").then((m) => ({ default: m.ChatPage })),
+  import("~/applications/messenger/messenger").then((m) => ({ default: m.ChatPage })),
 );
 const FavoritesPage = React.lazy(() =>
-  import("~/pages/chat/chat-page.ui").then((m) => ({ default: m.FavoritesPage })),
+  import("~/applications/messenger/messenger").then((m) => ({ default: m.FavoritesPage })),
 );
 const ActivityPage = React.lazy(() =>
   import("~/pages/activity/activity-page.ui").then((m) => ({ default: m.ActivityPage })),
@@ -52,7 +52,7 @@ const FeedPage = React.lazy(() =>
   import("~/pages/feed/feed-page.ui").then((m) => ({ default: m.FeedPage })),
 );
 const EncryptedChatPreview = React.lazy(() =>
-  import("~/pages/encrypted-chat/encrypted-chat-preview.ui").then((m) => ({
+  import("~/applications/messenger/pages/encrypted-chat/encrypted-chat-preview.ui").then((m) => ({
     default: m.EncryptedChatPreview,
   })),
 );

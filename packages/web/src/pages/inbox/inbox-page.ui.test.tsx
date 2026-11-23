@@ -1,8 +1,11 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useMessengerStore } from "~/entities/messenger/messenger.model";
-import type { MessengerStream, MessengerTopic } from "~/entities/messenger/messenger.types";
+import { useMessengerStore } from "~/applications/messenger/model/chats/messenger.model";
+import type {
+  MessengerStream,
+  MessengerTopic,
+} from "~/applications/messenger/model/messenger.types";
 import { useUsersStore } from "~/entities/user/user.model";
 import type { User } from "~/entities/user/user.types";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";

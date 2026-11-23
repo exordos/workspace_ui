@@ -1,14 +1,17 @@
 import { useEffect, useMemo, useRef } from "react";
+import { resolveWorkspaceConversationMetadata } from "~/applications/messenger/model/chats/messenger-conversation-metadata.lib";
+import type { WorkspaceConversationMetadata } from "~/applications/messenger/model/chats/messenger-conversation-metadata.lib";
+import { useMessengerStore } from "~/applications/messenger/model/chats/messenger.model";
+import { selectMessengerConversationFromWorkspaceRoute } from "~/applications/messenger/model/messenger-ids.lib";
+import type {
+  MessengerStream,
+  MessengerTopic,
+} from "~/applications/messenger/model/messenger.types";
 import {
   useMessengerBackgroundProjectionStore,
   type MessengerBackgroundProjection,
   type MessengerBackgroundNotificationCandidate,
-} from "~/entities/messenger/messenger-background-projection.model";
-import { resolveWorkspaceConversationMetadata } from "~/entities/messenger/messenger-conversation-metadata.lib";
-import type { WorkspaceConversationMetadata } from "~/entities/messenger/messenger-conversation-metadata.lib";
-import { selectMessengerConversationFromWorkspaceRoute } from "~/entities/messenger/messenger-ids.lib";
-import { useMessengerStore } from "~/entities/messenger/messenger.model";
-import type { MessengerStream, MessengerTopic } from "~/entities/messenger/messenger.types";
+} from "~/applications/messenger/runtime/sync/messenger-background-projection.model";
 import { resolveCachedWorkspaceUser } from "~/entities/user/user-sync.lib";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";

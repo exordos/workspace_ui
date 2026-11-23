@@ -1,11 +1,11 @@
-import type { EncryptedChatInfoScreen } from "~/features/encrypted-chat-info/encrypted-chat-info.types";
+import type { EncryptedChatInfoScreen } from "~/applications/messenger/features/chat-details/encrypted-chat-info/encrypted-chat-info.types";
+import type { SidebarSearchHandle } from "~/applications/messenger/features/sidebar/sidebar.types";
 import type {
   RightDrawerAccountScreen,
   RightDrawerChatScreen,
   RightDrawerMode,
 } from "~/widgets/right-panel/right-drawer.model";
 import type { WorkspaceRightPanelInfoView } from "~/widgets/right-panel/right-panel.types";
-import type { SidebarSearchHandle } from "~/widgets/sidebar/sidebar.types";
 import type { RefObject } from "react";
 
 export interface LayoutMainWorkspaceProps {

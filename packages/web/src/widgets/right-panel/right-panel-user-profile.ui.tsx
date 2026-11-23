@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { chatCommands } from "~/entities/messenger/chat-commands";
-import { readActiveChats } from "~/entities/messenger/chats";
+import { useChatDmCallBridgeStore } from "~/applications/messenger/features/chat-details/call-bridge/chat-dm-call-bridge.model";
+import { chatCommands } from "~/applications/messenger/model/chats/chat-commands";
+import { readActiveChats } from "~/applications/messenger/model/chats/chats";
 import {
   resolveUserPresenceVisual,
   selectUserStatusLabel,
@@ -15,7 +16,6 @@ import {
   isWorkspaceRuntimeRequestContextCurrent,
   workspaceRuntimeOwnerKey,
 } from "~/entities/workspace-runtime/workspace-runtime.lib";
-import { useChatDmCallBridgeStore } from "~/features/chat-dm-call-bridge/chat-dm-call-bridge.model";
 import { useOwnProfileEditor } from "~/features/user-profile/user-profile-editor.hook";
 import { profileDraftDisplayName } from "~/features/user-profile/user-profile-editor.lib";
 import { ProfileEditorFeedback } from "~/features/user-profile/user-profile-editor.ui";

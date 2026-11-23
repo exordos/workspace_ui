@@ -1,0 +1,8049 @@
+// @vitest-environment jsdom
+
+import "@testing-library/jest-dom/vitest";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { StrictMode, useState } from "react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { EncryptedChatServiceState } from "~/applications/messenger/features/decrypted-message/encrypted-chat-message/encrypted-chat-service-actions.lib";
+import { useWorkspaceMessageStore } from "~/applications/messenger/model/messages/message.model";
+import type { MessengerOutgoingMessage } from "~/applications/messenger/model/messages/outgoing/messenger-outbox.types";
+import type { MessengerMessage } from "~/applications/messenger/model/messenger.types";
+import { useDownloadStore } from "~/entities/download/download.model";
+import { useUsersStore } from "~/entities/user/user.model";
+import type { User } from "~/entities/user/user.types";
+import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
+import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
+import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
+import { setLocale } from "~/i18n/i18n";
+import { AUTH_IMAGE_PLACEHOLDER_SRC } from "~/shared/lib/media-display-url.lib";
+import { buildWorkspaceForwardUrn } from "~/shared/lib/workspace-reference-urn.lib";
+import { WorkspaceMessageListWithPreparation as WorkspaceMessageList } from "./workspace-message-list-with-preparation.ui";
+import type { WorkspaceMessageListProps } from "./workspace-message-list.types";
+
+vi.mock("emoji-picker-react", () => ({
+  default: (props: {
+    onEmojiClick?: (data: {
+      emoji: string;
+      isCustom?: boolean;
+      names?: string[];
+      unified?: string;
+    }) => void;
+  }) => (
+    <button
+      type="button"
+      onClick={() =>
+        props.onEmojiClick?.({
+          emoji: "😀",
+          isCustom: false,
+          names: ["grinning"],
+          unified: "1f600",
+        })
+      }
+    >
+      Pick emoji
+    </button>
+  ),
+  EmojiStyle: { NATIVE: "native" },
+  Theme: { DARK: "dark", LIGHT: "light" },
+}));
+
+type MessageOverrides = Omit<Partial<MessengerMessage>, "payload"> & {
+  markdown?: string;
+  payload?: MessengerMessage["payload"];
+};
+
+function createWorkspaceMessage(overrides: MessageOverrides = {}): MessengerMessage {
+  const { markdown, payload, ...rest } = overrides;
+  return {
+    uuid: "message-uuid-1",
+    conversationId: "topic:stream-uuid-1:topic-uuid-1",
+    projectId: "project-uuid-1",
+    streamUuid: "stream-uuid-1",
+    topicUuid: "topic-uuid-1",
+    authorUuid: "author-uuid-1",
+    userUuid: "author-uuid-1",
+    payload: payload ?? { kind: "markdown", content: markdown ?? "Workspace text message" },
+    read: false,
+    pinned: false,
+    starred: false,
+    isOwn: false,
+    reactions: {},
+    reactionUserUuidsByEmojiName: {},
+    ownReactionUuidsByEmojiName: {},
+    createdAt: "2026-07-03T09:00:00.000Z",
+    updatedAt: "2026-07-03T09:00:00.000Z",
+    ...rest,
+  };
+}
+
+function createWorkspaceUser(overrides: Partial<User> = {}): User {
+  return {
+    uuid: "peer-user-uuid",
+    username: "bob",
+    firstName: "Bob",
+    lastName: "Reed",
+    displayName: "Bob Reed",
+    email: "bob@example.com",
+    avatarUrl: null,
+    status: "offline",
+    statusEmoji: null,
+    statusText: null,
+    lastPingAt: "2026-07-03T09:00:00.000Z",
+    createdAt: "2026-07-03T09:00:00.000Z",
+    updatedAt: "2026-07-03T09:00:00.000Z",
+    ...overrides,
+  };
+}
+
+function createServiceMessage(index: number, overrides: MessageOverrides = {}): MessengerMessage {
+  return createWorkspaceMessage({
+    uuid: `service-${index}`,
+    authorUuid: `author-${index}`,
+    createdAt: new Date(Date.parse("2026-07-03T09:00:00.000Z") + index * 60_000).toISOString(),
+    payload: { kind: "key_announced", keyUuid: "generation" },
+    ...overrides,
+  });
+}
+
+const SERVICE_REQUEST = {
+  kind: "key_request",
+  keyUuid: "generation",
+  deviceId: "requesting-device",
+  deviceName: "Test laptop",
+  publicKey: "synthetic-public-key",
+} as const;
+
+function createServiceState(
+  overrides: Partial<EncryptedChatServiceState> = {},
+): EncryptedChatServiceState {
+  return {
+    deviceId: "current-device",
+    canManageKeys: true,
+    hasKey: true,
+    requestStatus: null,
+    ...overrides,
+  };
+}
+
+function createOutgoingMessage(
+  overrides: Partial<MessengerOutgoingMessage> = {},
+): MessengerOutgoingMessage {
+  return {
+    canonicalMessageUuid: "canonical-message-uuid-1",
+    placementUuid: "outgoing-placement-uuid-1",
+    ownerKey: "owner-key-1",
+    conversationId: "topic:stream-uuid-1:topic-uuid-1",
+    projectId: "project-uuid-1",
+    streamUuid: "stream-uuid-1",
+    topicUuid: "topic-uuid-1",
+    authorUuid: "current-user-uuid",
+    markdown: "Local outgoing text",
+    sourceMarkdown: "Local outgoing text",
+    status: "sending",
+    createdAt: "2026-07-03T09:01:00.000Z",
+    updatedAt: "2026-07-03T09:01:00.000Z",
+    attempt: 1,
+    error: null,
+    includeStreamConversation: false,
+    ...overrides,
+  };
+}
+
+function openWorkspaceMessageMenu(): void {
+  const bubble = document.querySelector("[data-workspace-message-bubble='true']");
+  if (bubble == null) {
+    throw new Error("Workspace message bubble not found");
+  }
+  fireEvent.contextMenu(bubble, { clientX: 120, clientY: 80 });
+}
+
+function selectMessageBodyText(
+  container: HTMLElement,
+  messageUuid: string,
+  selectedText: string,
+): void {
+  const article = container.querySelector(`[data-message-uuid='${messageUuid}']`);
+  const body = article?.querySelector("[data-message-body='true']");
+  const textNode = body?.firstChild?.firstChild;
+
+  if (textNode?.textContent == null) {
+    throw new Error(`Message body text node was not found for ${messageUuid}`);
+  }
+
+  const start = textNode.textContent.indexOf(selectedText);
+  if (start < 0) {
+    throw new Error(`Selected text was not found in message body: ${selectedText}`);
+  }
+
+  const range = document.createRange();
+  range.setStart(textNode, start);
+  range.setEnd(textNode, start + selectedText.length);
+
+  const selection = window.getSelection();
+  selection?.removeAllRanges();
+  selection?.addRange(range);
+}
+
+function WorkspaceMessageSelectionHarness({
+  message,
+}: Readonly<{ message: MessengerMessage }>): React.ReactElement {
+  const [selectedMessageUuids, setSelectedMessageUuids] = useState<ReadonlySet<string>>(new Set());
+
+  return (
+    <WorkspaceMessageList
+      messages={[message]}
+      currentUserUuid="current-user-uuid"
+      conversationId="topic:stream-uuid-1:topic-uuid-1"
+      selectionMode
+      selectedMessageUuids={selectedMessageUuids}
+      actions={{
+        onToggleMessageSelection: (messageUuid) => {
+          setSelectedMessageUuids((currentMessageUuids) => {
+            const nextMessageUuids = new Set(currentMessageUuids);
+            if (nextMessageUuids.has(messageUuid)) {
+              nextMessageUuids.delete(messageUuid);
+            } else {
+              nextMessageUuids.add(messageUuid);
+            }
+            return nextMessageUuids;
+          });
+        },
+      }}
+    />
+  );
+}
+
+describe("message quote shortcut", () => {
+  afterEach(() => {
+    window.getSelection()?.removeAllRanges();
+    cleanup();
+  });
+
+  it("quotes the focused message unless text is selected in another message", () => {
+    const onReplyMessage = vi.fn();
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({ uuid: "first", markdown: "First message" }),
+          createWorkspaceMessage({
+            uuid: "second",
+            markdown: "Second message",
+            createdAt: "2026-07-03T09:01:00.000Z",
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onReplyMessage }}
+      />,
+    );
+    const first = container.querySelector<HTMLElement>("[data-message-uuid='first']")!;
+    const pressQuote = () =>
+      fireEvent.keyDown(document.activeElement ?? document.body, {
+        key: "l",
+        code: "KeyL",
+        ctrlKey: true,
+      });
+    first.querySelector<HTMLElement>("[data-workspace-message-bubble]")!.focus();
+    pressQuote();
+    expect(onReplyMessage).toHaveBeenLastCalledWith("first", undefined);
+    selectMessageBodyText(container, "second", "Second");
+    pressQuote();
+    expect(onReplyMessage).toHaveBeenLastCalledWith("second", "Second");
+  });
+
+  it("does not pass selected DOM text from messages containing secrets", () => {
+    const onReplyMessage = vi.fn();
+    const urn =
+      "urn:secret:v1:11111111-1111-4111-8111-111111111111:22222222-2222-4222-8222-222222222222:AAAA";
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({ uuid: "secret", markdown: `Public [secret](<${urn}>)` }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onReplyMessage }}
+      />,
+    );
+    selectMessageBodyText(container, "secret", "Public");
+    fireEvent.keyDown(window, { key: "l", code: "KeyL", ctrlKey: true });
+    expect(onReplyMessage).toHaveBeenCalledWith("secret", undefined);
+  });
+
+  it("does not consume Ctrl+L without a message target", () => {
+    const onReplyMessage = vi.fn();
+    render(
+      <WorkspaceMessageList
+        messages={[createWorkspaceMessage()]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onReplyMessage }}
+      />,
+    );
+    const event = new KeyboardEvent("keydown", {
+      key: "l",
+      code: "KeyL",
+      ctrlKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    window.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(false);
+    expect(onReplyMessage).not.toHaveBeenCalled();
+  });
+
+  it("replies to checked messages while a selection checkbox has focus", () => {
+    const reply = vi.fn();
+    const { getByRole } = render(
+      <WorkspaceMessageList
+        messages={[createWorkspaceMessage({ uuid: "selected" })]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        selectionMode
+        selectedMessageUuids={new Set(["selected"])}
+        onReplySelectedMessages={reply}
+      />,
+    );
+    const checkbox = getByRole("checkbox");
+    checkbox.focus();
+    fireEvent.keyDown(checkbox, { key: "l", code: "KeyL", ctrlKey: true });
+    expect(reply).toHaveBeenCalledOnce();
+  });
+});
+
+describe("WorkspaceMessageList", () => {
+  beforeEach(() => {
+    setLocale("en");
+    useUsersStore.getState().clear();
+    vi.useRealTimers();
+  });
+
+  afterEach(async () => {
+    cleanup();
+    useDownloadStore.getState().clearDownloads();
+    // Radix restores focus on a deferred task; run it before replacing the jsdom globals.
+    await act(async () => {
+      if (vi.isFakeTimers()) await vi.runOnlyPendingTimersAsync();
+      else
+        await new Promise<void>((resolve) => {
+          setTimeout(resolve, 0);
+        });
+    });
+    setLocale("en");
+    useUsersStore.getState().clear();
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it("hides unrelated service-only days even during selection and focused navigation", () => {
+    const messages = [
+      createServiceMessage(0, { authorUuid: "current-user-uuid" }),
+      createServiceMessage(1, {
+        payload: SERVICE_REQUEST,
+        createdAt: "2026-07-04T09:00:00.000Z",
+      }),
+      createServiceMessage(2, {
+        payload: {
+          kind: "key_grant",
+          keyUuid: "generation",
+          requestMessageUuid: "service-1",
+          senderDeviceId: "sender",
+          recipientDeviceId: SERVICE_REQUEST.deviceId,
+          content: "synthetic-ciphertext",
+        },
+      }),
+    ];
+    const { container, rerender } = render(
+      <WorkspaceMessageList
+        messages={messages}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        presentation={{ serviceMessages: "account", topicDividers: true }}
+        selectionMode
+        focusedMessageTarget={{ intentId: 1, messageUuid: "service-0", focusAttempt: 0 }}
+      />,
+    );
+    expect(container.querySelector("[data-empty-state]")).toBeInTheDocument();
+    expect(
+      container.querySelector("[data-service-message-group], [data-day-divider], article"),
+    ).toBeNull();
+    rerender(
+      <WorkspaceMessageList
+        messages={messages}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        presentation={{ serviceMessages: "all" }}
+      />,
+    );
+    expect(container.querySelectorAll("article")).toHaveLength(3);
+  });
+
+  it("keeps requests and responses for another device of the account in one disclosure", () => {
+    const request = createServiceMessage(1, {
+      authorUuid: "current-user-uuid",
+      payload: SERVICE_REQUEST,
+    });
+    const response = {
+      keyUuid: "generation",
+      requestMessageUuid: request.uuid,
+      senderDeviceId: "sender",
+      recipientDeviceId: SERVICE_REQUEST.deviceId,
+    };
+    const messages = [
+      createServiceMessage(0, { createdAt: "2026-07-02T09:00:00.000Z" }),
+      request,
+      createServiceMessage(2),
+      createServiceMessage(3, { payload: { kind: "key_reject", ...response } }),
+      createServiceMessage(4, {
+        payload: { kind: "key_grant", ...response, content: "synthetic-ciphertext" },
+      }),
+      createServiceMessage(5, { payload: SERVICE_REQUEST }),
+    ];
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={messages}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        presentation={{ serviceMessages: "account" }}
+        actions={{
+          getKeyServiceState: () => createServiceState({ canManageKeys: false }),
+          getKeyRequestActions: () => [],
+        }}
+      />,
+    );
+    const toggle = screen.getByRole("button", { name: /3 events/ });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(container.querySelectorAll("[data-day-divider]")).toHaveLength(1);
+    expect(container.querySelectorAll("article")).toHaveLength(3);
+    fireEvent.click(toggle);
+    expect(container.querySelectorAll("[data-encrypted-service-message]")).toHaveLength(3);
+    expect(screen.queryByRole("button", { name: /Request access/ })).not.toBeInTheDocument();
+    fireEvent.click(toggle);
+    expect(container.querySelector("[data-encrypted-service-message]")).toBeNull();
+  });
+
+  it("keeps actionable and completed incoming requests and the account's responses", () => {
+    const request = createServiceMessage(0, { payload: SERVICE_REQUEST });
+    const response = createServiceMessage(1, {
+      authorUuid: "current-user-uuid",
+      payload: {
+        kind: "key_reject",
+        keyUuid: "generation",
+        requestMessageUuid: request.uuid,
+        senderDeviceId: "current-device",
+        recipientDeviceId: SERVICE_REQUEST.deviceId,
+      },
+    });
+    const props: WorkspaceMessageListProps = {
+      messages: [
+        request,
+        response,
+        createServiceMessage(2),
+        createServiceMessage(3, {
+          authorUuid: "another-manager",
+          payload: { ...response.payload },
+        }),
+      ],
+      currentUserUuid: "current-user-uuid",
+      conversationId: "topic:stream-uuid-1:topic-uuid-1",
+      presentation: { serviceMessages: "account" },
+      actions: {
+        getKeyRequestActions: (message) =>
+          message.uuid === request.uuid
+            ? [{ label: "Approve", disabled: true, onClick: vi.fn() }]
+            : [],
+      },
+    };
+    const { rerender } = render(<WorkspaceMessageList {...props} />);
+    fireEvent.click(screen.getByRole("button", { name: /3 events/ }));
+    expect(screen.getByRole("button", { name: "Approve" })).toBeDisabled();
+    rerender(
+      <WorkspaceMessageList
+        {...props}
+        actions={{
+          getKeyServiceState: () => createServiceState({ requestStatus: "rejected" }),
+          getKeyRequestActions: () => [],
+        }}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "3 events" })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+    expect(screen.getByText("Request rejected.")).toBeInTheDocument();
+  });
+
+  it("shows a fragment request to an eligible key holder and hides it after eligibility is lost", () => {
+    const grant = vi.fn();
+    const request = createServiceMessage(0, { payload: SERVICE_REQUEST });
+    const props: WorkspaceMessageListProps = {
+      messages: [request],
+      currentUserUuid: "member-with-fragment-key",
+      conversationId: "topic:stream-uuid-1:topic-uuid-1",
+      presentation: { serviceMessages: "account" },
+      actions: {
+        getKeyServiceState: () => createServiceState({ requestStatus: "pending" }),
+        getKeyRequestActions: () => [{ label: "Send key", onClick: grant }],
+      },
+    };
+    const { rerender, container } = render(<WorkspaceMessageList {...props} />);
+    fireEvent.click(screen.getByRole("button", { name: /1 event/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Send key" }));
+    expect(grant).toHaveBeenCalledOnce();
+    rerender(
+      <WorkspaceMessageList
+        {...props}
+        actions={{
+          getKeyServiceState: () => createServiceState({ canManageKeys: false, hasKey: false }),
+          getKeyRequestActions: () => [],
+        }}
+      />,
+    );
+    expect(container.querySelector("[data-service-message-group]")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Send key" })).not.toBeInTheDocument();
+  });
+
+  it("updates response relevance when a request outside the window becomes available", () => {
+    const request = createServiceMessage(0, {
+      authorUuid: "current-user-uuid",
+      payload: SERVICE_REQUEST,
+    });
+    const response = createServiceMessage(1, {
+      payload: {
+        kind: "key_grant",
+        keyUuid: "generation",
+        requestMessageUuid: request.uuid,
+        senderDeviceId: "sender",
+        recipientDeviceId: SERVICE_REQUEST.deviceId,
+        content: "synthetic-ciphertext",
+      },
+    });
+    const props: WorkspaceMessageListProps = {
+      messages: [response],
+      currentUserUuid: "current-user-uuid",
+      conversationId: "topic:stream-uuid-1:topic-uuid-1",
+      presentation: { serviceMessages: "account" },
+    };
+    const runtime: WorkspaceRuntimeContext = {
+      accountId: "account",
+      instanceId: "instance",
+      organizationId: "organization",
+      organizationOrigin: "https://workspace.example.test",
+      projectId: request.projectId,
+      userUuid: props.currentUserUuid,
+      accessToken: "synthetic-token",
+      runtimeGeneration: 1,
+    };
+    const auth = vi
+      .spyOn(useWorkspaceAuthStore.getState(), "getCurrentRuntimeContext")
+      .mockReturnValue(runtime);
+    const previousMessageState = useWorkspaceMessageStore.getState();
+    useWorkspaceMessageStore.getState().setOwner(workspaceRuntimeOwnerKey(runtime), false);
+    const { container, rerender, unmount } = render(<WorkspaceMessageList {...props} />);
+    try {
+      expect(container.querySelector("[data-empty-state]")).toBeInTheDocument();
+      act(() => useWorkspaceMessageStore.setState({ messagesById: { [request.uuid]: request } }));
+      expect(screen.getByRole("button", { name: /1 event/ })).toBeInTheDocument();
+      expect(container.querySelector("article")).toHaveAttribute(
+        "data-message-uuid",
+        response.uuid,
+      );
+      rerender(<WorkspaceMessageList {...props} currentUserUuid="another-account" />);
+      expect(container.querySelector("[data-empty-state]")).toBeInTheDocument();
+    } finally {
+      unmount();
+      useWorkspaceMessageStore.setState(previousMessageState, true);
+      auth.mockRestore();
+    }
+  });
+
+  it("does not split visible author or topic runs with hidden events", () => {
+    const messages = [
+      createWorkspaceMessage({ uuid: "before" }),
+      createServiceMessage(1, { topicUuid: "hidden-topic" }),
+      createWorkspaceMessage({ uuid: "after", createdAt: "2026-07-03T09:02:00.000Z" }),
+    ];
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={messages}
+        currentUserUuid="current-user-uuid"
+        conversationId="stream:stream-uuid-1"
+        presentation={{ serviceMessages: "account", topicDividers: true }}
+      />,
+    );
+    expect(container.querySelectorAll("[data-author-group]")).toHaveLength(1);
+    expect(
+      container.querySelector("[data-topic-divider], [data-service-message-group]"),
+    ).toBeNull();
+    expect(container.querySelectorAll("article")).toHaveLength(2);
+  });
+
+  it.each(["older", "newer"] as const)(
+    "continues past hidden %s history pages without retrying the same boundary",
+    (direction) => {
+      const load = vi.fn();
+      const props: WorkspaceMessageListProps = {
+        messages: [createServiceMessage(0)],
+        currentUserUuid: "current-user-uuid",
+        conversationId: "topic:stream-uuid-1:topic-uuid-1",
+        presentation: { serviceMessages: "account" },
+        hasOlderMessages: direction === "older",
+        hasNewerMessages: direction === "newer",
+        initialPositionReady: true,
+        onLoadOlder: load,
+        onLoadNewer: load,
+      };
+      const { rerender } = render(<WorkspaceMessageList {...props} />);
+      expect(load).toHaveBeenCalledOnce();
+      rerender(<WorkspaceMessageList {...props} isLoadingOlder />);
+      rerender(<WorkspaceMessageList {...props} />);
+      expect(load).toHaveBeenCalledOnce();
+      const messages = [createServiceMessage(-1), ...props.messages];
+      rerender(<WorkspaceMessageList {...props} messages={messages} />);
+      expect(load).toHaveBeenCalledTimes(2);
+      rerender(
+        <WorkspaceMessageList
+          {...props}
+          messages={[createWorkspaceMessage({ uuid: "visible-message" }), ...messages]}
+        />,
+      );
+      expect(load).toHaveBeenCalledTimes(2);
+    },
+  );
+
+  it("places the unread divider at the next visible message after a hidden event", () => {
+    const hiddenUnread = createServiceMessage(0);
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "read-before",
+            read: true,
+            createdAt: "2026-07-02T09:00:00Z",
+          }),
+          hiddenUnread,
+          createWorkspaceMessage({ uuid: "visible-unread", createdAt: "2026-07-03T10:00:00Z" }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        presentation={{ serviceMessages: "account" }}
+        firstUnreadUuid={hiddenUnread.uuid}
+        unreadCount={2}
+        initialPositionReady
+      />,
+    );
+    const divider = container.querySelector("[data-unread-divider='true']");
+    expect(divider).toBeInTheDocument();
+    expect(divider?.nextElementSibling).toContainElement(
+      container.querySelector("[data-message-uuid='visible-unread']"),
+    );
+  });
+
+  it("collapses a continuous service run across authors and preserves its DOM read anchors on keyboard expansion", async () => {
+    const messages = Array.from({ length: 5 }, (_, index) => createServiceMessage(index));
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={messages}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+    const toggle = screen.getByRole("button", { name: /5 events/ });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(container.querySelectorAll("[data-service-message-group]")).toHaveLength(1);
+    expect(container.querySelector("[data-encrypted-service-message]")).toBeNull();
+    const anchors = [...container.querySelectorAll("[data-message-read-boundary]")];
+    expect(anchors).toHaveLength(5);
+    toggle.focus();
+    await userEvent.keyboard("{Enter}");
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(container.querySelectorAll("[data-encrypted-service-message]")).toHaveLength(5);
+    expect([...container.querySelectorAll("[data-message-read-boundary]")]).toEqual(anchors);
+    anchors.forEach((anchor) => expect(anchor.isConnected).toBe(true));
+    await userEvent.keyboard(" ");
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(container.querySelector("[data-encrypted-service-message]")).toBeNull();
+  });
+
+  it.each([
+    [1, "1 событие"],
+    [2, "2 события"],
+    [5, "5 событий"],
+  ] as const)("localizes a collapsed run of %i events", (count, label) => {
+    setLocale("ru");
+    render(
+      <WorkspaceMessageList
+        messages={Array.from({ length: count }, (_, index) => createServiceMessage(index))}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+    expect(screen.getByRole("button", { name: new RegExp(label) })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+  });
+
+  it("keeps an expanded run open through completion, appended events and older history from another author", () => {
+    const request = createServiceMessage(1, { payload: SERVICE_REQUEST });
+    const props: WorkspaceMessageListProps = {
+      messages: [request],
+      currentUserUuid: "current-user-uuid",
+      conversationId: "topic:stream-uuid-1:topic-uuid-1",
+      actions: {
+        getKeyServiceState: () => createServiceState({ requestStatus: "pending" }),
+        getKeyRequestActions: () => [{ label: "Approve", onClick: vi.fn() }],
+      },
+    };
+    const { rerender } = render(<WorkspaceMessageList {...props} />);
+    const toggle = screen.getByRole("button", { name: /1 event.*Action required/ });
+    fireEvent.click(toggle);
+    expect(screen.getByRole("button", { name: "Approve" })).toBeInTheDocument();
+    const completed: WorkspaceMessageListProps = {
+      ...props,
+      actions: {
+        getKeyServiceState: () => createServiceState({ requestStatus: "granted" }),
+        getKeyRequestActions: () => [],
+      },
+    };
+    rerender(<WorkspaceMessageList {...completed} />);
+    expect(screen.getByRole("button", { name: "1 event" })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+    expect(screen.getByText("Key sent")).toBeInTheDocument();
+    const newer = createServiceMessage(2);
+    rerender(<WorkspaceMessageList {...completed} messages={[request, newer]} />);
+    const twoEvents = screen.getByRole("button", { name: "2 events" });
+    expect(screen.getByRole("button", { name: "2 events" })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+    rerender(
+      <WorkspaceMessageList {...completed} messages={[createServiceMessage(0), request, newer]} />,
+    );
+    expect(screen.getByRole("button", { name: "3 events" })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "3 events" }));
+    expect(screen.getByRole("button", { name: "3 events" })).toBe(twoEvents);
+    rerender(
+      <WorkspaceMessageList {...props} messages={[createServiceMessage(0), request, newer]} />,
+    );
+    expect(screen.getByRole("button", { name: /3 events.*Action required/ })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+  });
+
+  it.each([
+    ["pending", false, "Awaiting response"],
+    [null, false, "Status unavailable"],
+    ["pending", true, "Awaiting response"],
+  ] as const)(
+    "shows unresolved request status %s with disabled action %s",
+    (requestStatus, disabledAction, label) => {
+      render(
+        <WorkspaceMessageList
+          messages={[createServiceMessage(0, { payload: SERVICE_REQUEST })]}
+          currentUserUuid="current-user-uuid"
+          conversationId="topic:stream-uuid-1:topic-uuid-1"
+          actions={{
+            getKeyServiceState: () => createServiceState({ requestStatus }),
+            getKeyRequestActions: () =>
+              disabledAction ? [{ label: "Approve", disabled: true, onClick: vi.fn() }] : [],
+          }}
+        />,
+      );
+      expect(screen.getByRole("button", { name: new RegExp(`1 event.*${label}`) })).toHaveAttribute(
+        "aria-expanded",
+        "false",
+      );
+    },
+  );
+
+  it("does not show a retry action for a rejection addressed to another device", () => {
+    render(
+      <WorkspaceMessageList
+        messages={[
+          createServiceMessage(0, {
+            payload: {
+              kind: "key_reject",
+              keyUuid: "generation",
+              requestMessageUuid: "request",
+              senderDeviceId: "sender",
+              recipientDeviceId: "another-device",
+            },
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{
+          getKeyServiceState: () => createServiceState(),
+          getKeyRequestActions: () => [{ label: "Retry", onClick: vi.fn() }],
+        }}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "1 event" })).toBeInTheDocument();
+  });
+
+  it("resets expansion on returning to a conversation", () => {
+    const props: WorkspaceMessageListProps = {
+      messages: [createServiceMessage(0)],
+      currentUserUuid: "current-user-uuid",
+      conversationId: "topic:stream-uuid-1:topic-uuid-1",
+    };
+    const { rerender } = render(<WorkspaceMessageList {...props} />);
+    fireEvent.click(screen.getByRole("button", { name: /1 event/ }));
+    rerender(<WorkspaceMessageList {...props} conversationId="topic:stream-uuid-2:topic-uuid-2" />);
+    expect(screen.getByRole("button", { name: /1 event/ })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+    rerender(<WorkspaceMessageList {...props} />);
+    expect(screen.getByRole("button", { name: /1 event/ })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+  });
+
+  it("keeps newly appended events expanded when a sliding window drops the original event", () => {
+    const props: WorkspaceMessageListProps = {
+      messages: [createServiceMessage(0)],
+      currentUserUuid: "current-user-uuid",
+      conversationId: "topic:stream-uuid-1:topic-uuid-1",
+    };
+    const { rerender } = render(<WorkspaceMessageList {...props} />);
+    fireEvent.click(screen.getByRole("button", { name: /1 event/ }));
+    rerender(
+      <WorkspaceMessageList
+        {...props}
+        messages={[createServiceMessage(0), createServiceMessage(1)]}
+      />,
+    );
+    rerender(<WorkspaceMessageList {...props} messages={[createServiceMessage(1)]} />);
+    expect(screen.getByRole("button", { name: /1 event/ })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+  });
+
+  it("reveals a focused service target and permits manual collapse after navigation", () => {
+    const props: WorkspaceMessageListProps = {
+      messages: [createServiceMessage(0)],
+      currentUserUuid: "current-user-uuid",
+      conversationId: "topic:stream-uuid-1:topic-uuid-1",
+    };
+    const { rerender } = render(<WorkspaceMessageList {...props} />);
+    const target = { intentId: 1, messageUuid: "service-0", focusAttempt: 0 };
+    rerender(<WorkspaceMessageList {...props} focusedMessageTarget={target} />);
+    expect(screen.getByRole("button", { name: /1 event/ })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+    fireEvent.click(screen.getByRole("button", { name: /1 event/ }));
+    expect(screen.getByRole("button", { name: /1 event/ })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+    rerender(
+      <WorkspaceMessageList {...props} focusedMessageTarget={{ ...target, focusAttempt: 1 }} />,
+    );
+    expect(screen.getByRole("button", { name: /1 event/ })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+  });
+
+  it.each([false, true])(
+    "restores the manual service disclosure (%s) after selection",
+    (expanded) => {
+      const props: WorkspaceMessageListProps = {
+        messages: [createServiceMessage(0)],
+        currentUserUuid: "current-user-uuid",
+        conversationId: "topic:stream-uuid-1:topic-uuid-1",
+      };
+      const { rerender } = render(<WorkspaceMessageList {...props} />);
+      fireEvent.click(screen.getByRole("button", { name: /1 event/ }));
+      if (!expanded) fireEvent.click(screen.getByRole("button", { name: /1 event/ }));
+      rerender(<WorkspaceMessageList {...props} selectionMode />);
+      expect(screen.getByRole("checkbox")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /1 event/ })).toBeDisabled();
+      rerender(<WorkspaceMessageList {...props} />);
+      expect(screen.getByRole("button", { name: /1 event/ })).toHaveAttribute(
+        "aria-expanded",
+        String(expanded),
+      );
+    },
+  );
+
+  it("renders encrypted and key-service history without exposing encoded content or loading files", () => {
+    const encoded =
+      "<img src=secret-key-material onerror=alert(1)> [asset](urn:file:11111111-1111-4111-8111-111111111111)";
+    const payloads: MessengerMessage["payload"][] = [
+      { kind: "e2ee", keyUuid: "generation", content: encoded },
+      {
+        kind: "key_request",
+        keyUuid: "generation",
+        deviceId: "device",
+        deviceName: "MacBook",
+        publicKey: encoded,
+      },
+      {
+        kind: "key_grant",
+        keyUuid: "generation",
+        requestMessageUuid: "request",
+        senderDeviceId: "sender",
+        recipientDeviceId: "device",
+        content: encoded,
+      },
+      { kind: "key_announced", keyUuid: "generation" },
+      {
+        kind: "key_reject",
+        keyUuid: "generation",
+        requestMessageUuid: "request",
+        senderDeviceId: "sender",
+        recipientDeviceId: "device",
+      },
+    ];
+    const loadPreview = vi.fn();
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={payloads.map((payload, index) =>
+          createWorkspaceMessage({ uuid: `encrypted-${index}`, payload }),
+        )}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onLoadWorkspaceFilePreview: loadPreview }}
+      />,
+    );
+    expect(screen.getByText("Key required")).toBeInTheDocument();
+    expect(screen.queryByText(/requested a security key/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /4 events/ }));
+    expect(screen.getByText(/requested a security key/)).toBeInTheDocument();
+    expect(screen.getByText(/sent an encrypted security key/)).toBeInTheDocument();
+    expect(screen.getByText("The security key was updated")).toBeInTheDocument();
+    expect(screen.getByText(/rejected the key request/)).toBeInTheDocument();
+    expect(screen.queryByText("MacBook")).not.toBeInTheDocument();
+    const events = container.querySelectorAll("[data-encrypted-service-message]");
+    expect(events).toHaveLength(4);
+    for (const event of events) {
+      expect(
+        event.closest("[data-author-group]")?.querySelector("[data-workspace-peer-avatar]"),
+      ).toBeNull();
+      expect(event.querySelector("time")).toBeNull();
+    }
+    expect(container.querySelectorAll("article")).toHaveLength(5);
+    expect(container.innerHTML).not.toContain("secret-key-material");
+    expect(container.innerHTML).not.toContain("urn:file:");
+    expect(loadPreview).not.toHaveBeenCalled();
+    expect(container.querySelector("textarea, [contenteditable=true]")).toBeNull();
+  });
+
+  it("renders Workspace messages with uuid based DOM identity", () => {
+    const message = createWorkspaceMessage({
+      uuid: "workspace-message-uuid",
+      markdown: "Message without numeric id",
+    });
+
+    render(
+      <WorkspaceMessageList
+        messages={[message]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+
+    const renderedMessage = screen.getByText("Message without numeric id").closest("article");
+
+    expect(renderedMessage).toHaveAttribute("data-message-uuid", "workspace-message-uuid");
+    expect(renderedMessage).not.toHaveAttribute(["data", "message", "id"].join("-"));
+  });
+
+  it("highlights every unread message covered by the active topic boundary", () => {
+    const olderMessage = createWorkspaceMessage({
+      uuid: "read-request-older",
+      markdown: "Older unread message",
+      createdAt: "2026-07-03T08:59:00.000Z",
+    });
+    const boundaryMessage = createWorkspaceMessage({
+      uuid: "read-request-boundary",
+      markdown: "Boundary unread message",
+    });
+    const laterMessage = createWorkspaceMessage({
+      uuid: "read-request-later",
+      markdown: "Later unread message",
+      createdAt: "2026-07-03T09:01:00.000Z",
+    });
+    const otherTopicMessage = createWorkspaceMessage({
+      uuid: "read-request-other-topic",
+      topicUuid: "topic-uuid-2",
+      markdown: "Other topic unread message",
+      createdAt: "2026-07-03T08:58:00.000Z",
+    });
+    const messages = [olderMessage, boundaryMessage, laterMessage, otherTopicMessage];
+    const renderList = (currentMessages: MessengerMessage[]) => (
+      <WorkspaceMessageList
+        messages={currentMessages}
+        currentUserUuid="current-user-uuid"
+        conversationId="stream:stream-uuid-1"
+        readRequestBoundaryMessageUuids={new Set([boundaryMessage.uuid])}
+      />
+    );
+    const { container, rerender } = render(renderList(messages));
+    const getBubble = (messageUuid: string): HTMLElement => {
+      const bubble = container.querySelector<HTMLElement>(
+        `[data-message-uuid='${messageUuid}'] [data-workspace-message-bubble='true']`,
+      );
+      if (bubble == null) throw new Error("Workspace message bubble not found");
+      return bubble;
+    };
+
+    expect(getBubble(olderMessage.uuid)).toHaveAttribute("data-read-request-pending", "true");
+    expect(getBubble(boundaryMessage.uuid)).toHaveAttribute("data-read-request-pending", "true");
+    expect(getBubble(boundaryMessage.uuid)).toHaveAttribute("aria-busy", "true");
+    expect(getBubble(boundaryMessage.uuid)).toHaveClass("workspace-message-read-request-pulse");
+    expect(getBubble(laterMessage.uuid)).not.toHaveAttribute("data-read-request-pending");
+    expect(getBubble(otherTopicMessage.uuid)).not.toHaveAttribute("data-read-request-pending");
+    expect(container.querySelector("[data-read-request-indicator='true']")).toBeNull();
+
+    rerender(
+      renderList(
+        messages.map((message) =>
+          message.uuid === olderMessage.uuid || message.uuid === boundaryMessage.uuid
+            ? { ...message, read: true }
+            : message,
+        ),
+      ),
+    );
+    expect(getBubble(olderMessage.uuid)).not.toHaveAttribute("data-read-request-pending");
+    expect(container.querySelector("[data-read-request-indicator='true']")).toBeNull();
+  });
+
+  it("renders topic dividers and topic labels from presentation settings", () => {
+    const onOpenWorkspaceReference = vi.fn();
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({ uuid: "topic-a-message", topicUuid: "topic-a" }),
+          createWorkspaceMessage({
+            uuid: "topic-a-second-message",
+            topicUuid: "topic-a",
+            createdAt: "2026-07-03T09:00:30.000Z",
+          }),
+          createWorkspaceMessage({
+            uuid: "topic-b-message",
+            topicUuid: "topic-b",
+            createdAt: "2026-07-03T09:01:00.000Z",
+          }),
+          createWorkspaceMessage({
+            uuid: "unknown-topic-message",
+            topicUuid: "topic-missing",
+            createdAt: "2026-07-03T09:02:00.000Z",
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="stream:stream-uuid-1"
+        presentation={{ topicDividers: true, topicLabels: true }}
+        resolveTopicLabel={(topicUuid) =>
+          ({ "topic-a": "Planning", "topic-b": "Releases" })[topicUuid] ?? null
+        }
+        actions={{ onOpenWorkspaceReference }}
+      />,
+    );
+
+    const topicDividers = container.querySelectorAll("[data-topic-divider='true']");
+    expect(topicDividers).toHaveLength(2);
+    expect(topicDividers[0]).toHaveTextContent("#Releases");
+    expect(topicDividers[1]?.querySelector("span")).toBeNull();
+    const topicLabels = container.querySelectorAll("[data-topic-label='true']");
+    expect(topicLabels).toHaveLength(2);
+    expect(
+      topicLabels[0]?.parentElement?.querySelector("[data-peer-author-label='true']"),
+    ).not.toBeNull();
+    expect(
+      container.querySelector(
+        "[data-message-uuid='topic-a-second-message'] [data-topic-label='true']",
+      ),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText("#Planning")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("#Planning"));
+    const releasesDividerLink = topicDividers[0]?.querySelector("[data-topic-link='true']");
+    expect(releasesDividerLink).not.toBeNull();
+    fireEvent.click(releasesDividerLink as Element);
+
+    expect(onOpenWorkspaceReference).toHaveBeenNthCalledWith(1, {
+      kind: "topic",
+      streamUuid: "stream-uuid-1",
+      topicUuid: "topic-a",
+    });
+    expect(onOpenWorkspaceReference).toHaveBeenNthCalledWith(2, {
+      kind: "topic",
+      streamUuid: "stream-uuid-1",
+      topicUuid: "topic-b",
+    });
+  });
+
+  it("can enable topic dividers without showing topic labels in bubbles", () => {
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({ uuid: "topic-a-message", topicUuid: "topic-a" }),
+          createWorkspaceMessage({
+            uuid: "topic-b-message",
+            topicUuid: "topic-b",
+            createdAt: "2026-07-03T09:01:00.000Z",
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="stream:stream-uuid-1"
+        presentation={{ topicDividers: true }}
+        resolveTopicLabel={() => "Topic name"}
+      />,
+    );
+
+    expect(container.querySelector("[data-topic-divider='true']")).toHaveTextContent("#Topic name");
+    expect(container.querySelector("[data-topic-label='true']")).not.toBeInTheDocument();
+  });
+
+  it("shows a topic label only in the first bubble of an own message group", () => {
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "own-first",
+            authorUuid: "current-user-uuid",
+            userUuid: "current-user-uuid",
+            isOwn: true,
+          }),
+          createWorkspaceMessage({
+            uuid: "own-second",
+            authorUuid: "current-user-uuid",
+            userUuid: "current-user-uuid",
+            isOwn: true,
+            createdAt: "2026-07-03T09:01:00.000Z",
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="stream:stream-uuid-1"
+        presentation={{ topicLabels: true }}
+        resolveTopicLabel={() => "Planning"}
+      />,
+    );
+
+    const topicLabel = container.querySelector(
+      "[data-message-uuid='own-first'] [data-topic-label='true']",
+    );
+    expect(container.querySelectorAll("[data-topic-label='true']")).toHaveLength(1);
+    expect(topicLabel).toHaveTextContent("#Planning");
+    // Brand accent reads on own/peer bubbles; accent-soft is a wash and fails contrast
+    expect(topicLabel).toHaveClass("text-accent");
+    expect(
+      container.querySelector("[data-message-uuid='own-second'] [data-topic-label='true']"),
+    ).not.toBeInTheDocument();
+    expect(container.querySelector("[data-peer-author-label='true']")).not.toBeInTheDocument();
+  });
+
+  it("renders one Workspace peer avatar with presence for an author group", () => {
+    const onOpenAuthorProfile = vi.fn();
+    useUsersStore.getState().replaceUsers([
+      createWorkspaceUser({
+        avatarUrl: "urn:url:https://cdn.example/avatar.png",
+        status: "active",
+      }),
+    ]);
+
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "peer-message-1",
+            authorUuid: "peer-user-uuid",
+            userUuid: "peer-user-uuid",
+            markdown: "First peer message",
+          }),
+          createWorkspaceMessage({
+            uuid: "peer-message-2",
+            authorUuid: "peer-user-uuid",
+            userUuid: "peer-user-uuid",
+            markdown: "Second peer message",
+            createdAt: "2026-07-03T09:01:00.000Z",
+            updatedAt: "2026-07-03T09:01:00.000Z",
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onOpenAuthorProfile }}
+      />,
+    );
+
+    expect(container.querySelectorAll("[data-workspace-peer-avatar='true']")).toHaveLength(1);
+    expect(container.querySelector("[data-workspace-peer-avatar='true']")).toHaveClass(
+      "sticky",
+      "bottom-2",
+      "z-[1]",
+    );
+    expect(container.querySelector("[data-workspace-peer-avatar='true'] img")).toHaveAttribute(
+      "src",
+      "https://cdn.example/avatar.png",
+    );
+    expect(container.querySelector("[data-presence='active']")).toBeInTheDocument();
+    expect(screen.getByText("Bob Reed")).toBeInTheDocument();
+
+    fireEvent.click(container.querySelector("[data-workspace-peer-avatar='true']")!);
+    expect(onOpenAuthorProfile).toHaveBeenCalledWith("peer-user-uuid");
+  });
+
+  it("opens author profile from peer author label click", () => {
+    const onOpenAuthorProfile = vi.fn();
+    useUsersStore.getState().replaceUsers([
+      createWorkspaceUser({
+        uuid: "peer-user-uuid",
+        displayName: "Bob Reed",
+      }),
+    ]);
+
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "peer-message-1",
+            authorUuid: "peer-user-uuid",
+            userUuid: "peer-user-uuid",
+            markdown: "First peer message",
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onOpenAuthorProfile }}
+      />,
+    );
+
+    const authorLabel = container.querySelector("[data-peer-author-label='true']");
+    expect(authorLabel).toBeInstanceOf(HTMLButtonElement);
+    fireEvent.click(authorLabel!);
+    expect(onOpenAuthorProfile).toHaveBeenCalledWith("peer-user-uuid");
+  });
+
+  it("keeps a fallback avatar for an unknown UUID", () => {
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            authorUuid: "unknown-author-uuid",
+            userUuid: "unknown-author-uuid",
+            markdown: "Unknown author message",
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        resolveAuthorLabel={() => null}
+      />,
+    );
+
+    expect(screen.getByText("#unknown-")).toBeInTheDocument();
+    expect(container.querySelector("[data-workspace-peer-avatar='true']")).toBeInTheDocument();
+    expect(container.querySelector("[data-workspace-peer-avatar='true'] img")).toBeNull();
+    expect(container.querySelector("[data-presence]")).toBeNull();
+  });
+
+  it("does not render a peer avatar for own messages", () => {
+    useUsersStore.getState().replaceUsers([
+      createWorkspaceUser({
+        uuid: "current-user-uuid",
+        displayName: "Current User",
+        status: "active",
+        avatarUrl: "urn:image:own-avatar-uuid",
+      }),
+    ]);
+
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            authorUuid: "current-user-uuid",
+            userUuid: "current-user-uuid",
+            isOwn: true,
+            markdown: "Own message",
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+
+    expect(container.querySelector("[data-message-owner='own']")).toBeInTheDocument();
+    expect(container.querySelector("[data-workspace-peer-avatar='true']")).toBeNull();
+    expect(container.querySelector("[data-presence]")).toBeNull();
+  });
+
+  it("renders local outgoing messages in the same Workspace feed", () => {
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "server-message",
+            markdown: "Server text",
+            createdAt: "2026-07-03T09:00:00.000Z",
+          }),
+        ]}
+        outgoingMessages={[
+          createOutgoingMessage({
+            placementUuid: "local-outgoing-message",
+            markdown: "Pending local text",
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+
+    expect(screen.getByText("Pending local text")).toBeInTheDocument();
+    const articles = Array.from(container.querySelectorAll("article"));
+    expect(articles.map((article) => article.getAttribute("data-message-kind"))).toEqual([
+      "server",
+      "outgoing",
+    ]);
+    expect(articles[1]).toHaveAttribute("data-message-uuid", "local-outgoing-message");
+    expect(articles[1]).toHaveAttribute("data-outgoing-message-id", "local-outgoing-message");
+    expect(
+      container.querySelector("[data-outgoing-delivery-status='sending']"),
+    ).toBeInTheDocument();
+  });
+
+  it("hands an outgoing row to its server snapshot without changing the row or body DOM", () => {
+    const placementUuid = "server-message-uuid";
+    const serverMessage = createWorkspaceMessage({
+      uuid: placementUuid,
+      authorUuid: "current-user-uuid",
+      userUuid: "current-user-uuid",
+      isOwn: true,
+      markdown: "Local outgoing text",
+      createdAt: "2026-07-03T09:01:00.000Z",
+    });
+    const outgoingMessage = createOutgoingMessage({
+      placementUuid,
+      markdown: "Local outgoing text",
+      status: "sending",
+    });
+
+    const { container, rerender } = render(
+      <WorkspaceMessageList
+        messages={[]}
+        outgoingMessages={[outgoingMessage]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+
+    expect(container.querySelectorAll("article")).toHaveLength(1);
+    const articleBeforeResolve = container.querySelector(
+      `[data-outgoing-message-id='${placementUuid}']`,
+    );
+    const bodyBeforeResolve = articleBeforeResolve?.querySelector("[data-message-body='true']");
+    expect(articleBeforeResolve).toHaveAttribute("data-message-uuid", placementUuid);
+    expect(bodyBeforeResolve).toBeInTheDocument();
+
+    rerender(
+      <WorkspaceMessageList
+        messages={[serverMessage]}
+        outgoingMessages={[outgoingMessage]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+
+    const articles = Array.from(container.querySelectorAll("article"));
+    expect(articles).toHaveLength(1);
+    expect(articles[0]).toBe(articleBeforeResolve);
+    expect(articles[0]).toHaveAttribute("data-message-uuid", placementUuid);
+    expect(articles[0]).toHaveAttribute("data-message-render-key", placementUuid);
+    expect(articles[0]).not.toHaveAttribute("data-outgoing-message-id");
+    expect(articles[0]).toHaveAttribute("data-server-message-uuid", placementUuid);
+    expect(articles[0]?.querySelector("[data-message-body='true']")).toBe(bodyBeforeResolve);
+
+    rerender(
+      <WorkspaceMessageList
+        messages={[serverMessage]}
+        outgoingMessages={[]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+
+    expect(container.querySelectorAll("article")).toHaveLength(1);
+    expect(container.querySelector("article")).toBe(articleBeforeResolve);
+  });
+
+  it("keeps outgoing row DOM when the server timestamp reorders it within the same day", () => {
+    const placementUuid = "reordered-server-message";
+    const outgoingMessage = createOutgoingMessage({
+      placementUuid,
+      markdown: "Reordered outgoing text",
+      createdAt: "2026-07-03T09:01:00.000Z",
+    });
+    const neighboringMessage = createWorkspaceMessage({
+      uuid: "reorder-neighbor",
+      authorUuid: "neighbor-author",
+      createdAt: "2026-07-03T09:02:00.000Z",
+    });
+    const { container, rerender } = render(
+      <WorkspaceMessageList
+        messages={[neighboringMessage]}
+        outgoingMessages={[outgoingMessage]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+    const outgoingArticle = container.querySelector(
+      `[data-outgoing-message-id='${placementUuid}']`,
+    );
+    const outgoingBody = outgoingArticle?.querySelector("[data-message-body='true']");
+    expect(Array.from(container.querySelectorAll("article"))).toEqual([
+      outgoingArticle,
+      container.querySelector("[data-message-uuid='reorder-neighbor']"),
+    ]);
+
+    rerender(
+      <WorkspaceMessageList
+        messages={[
+          neighboringMessage,
+          createWorkspaceMessage({
+            uuid: placementUuid,
+            authorUuid: "current-user-uuid",
+            userUuid: "current-user-uuid",
+            isOwn: true,
+            markdown: "Reordered outgoing text",
+            createdAt: "2026-07-03T09:03:00.000Z",
+          }),
+        ]}
+        outgoingMessages={[outgoingMessage]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+
+    const articles = Array.from(container.querySelectorAll("article"));
+    const confirmedArticle = container.querySelector(`[data-message-uuid='${placementUuid}']`);
+    expect(articles).toHaveLength(2);
+    expect(articles[1]).toBe(confirmedArticle);
+    expect(confirmedArticle).toBe(outgoingArticle);
+    expect(confirmedArticle?.querySelector("[data-message-body='true']")).toBe(outgoingBody);
+  });
+
+  it("keeps outgoing row DOM when confirmation splits its previous author group", () => {
+    const placementUuid = "split-group-server-message";
+    const existingOwnMessage = createWorkspaceMessage({
+      uuid: "split-group-existing-own",
+      authorUuid: "current-user-uuid",
+      userUuid: "current-user-uuid",
+      isOwn: true,
+      createdAt: "2026-07-03T09:00:00.000Z",
+    });
+    const outgoingMessage = createOutgoingMessage({
+      placementUuid,
+      createdAt: "2026-07-03T09:01:00.000Z",
+    });
+    const peerMessage = createWorkspaceMessage({
+      uuid: "split-group-peer",
+      authorUuid: "peer-user-uuid",
+      createdAt: "2026-07-03T09:02:00.000Z",
+    });
+    const { container, rerender } = render(
+      <WorkspaceMessageList
+        messages={[existingOwnMessage, peerMessage]}
+        outgoingMessages={[outgoingMessage]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+    const outgoingArticle = container.querySelector(
+      `[data-outgoing-message-id='${placementUuid}']`,
+    );
+
+    rerender(
+      <WorkspaceMessageList
+        messages={[
+          existingOwnMessage,
+          peerMessage,
+          createWorkspaceMessage({
+            uuid: placementUuid,
+            authorUuid: "current-user-uuid",
+            userUuid: "current-user-uuid",
+            isOwn: true,
+            markdown: outgoingMessage.markdown,
+            createdAt: "2026-07-03T09:03:00.000Z",
+          }),
+        ]}
+        outgoingMessages={[outgoingMessage]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+
+    expect(container.querySelector(`[data-message-uuid='${placementUuid}']`)).toBe(outgoingArticle);
+  });
+
+  it("renders the confirmed message in the server timestamp's day group", () => {
+    const placementUuid = "cross-day-server-message";
+    const outgoingCreatedAt = new Date(2026, 6, 3, 23, 59, 59).toISOString();
+    const confirmedCreatedAt = new Date(2026, 6, 4, 0, 0, 1).toISOString();
+    const outgoingMessage = createOutgoingMessage({
+      placementUuid,
+      createdAt: outgoingCreatedAt,
+    });
+    const { container, rerender } = render(
+      <WorkspaceMessageList
+        messages={[]}
+        outgoingMessages={[outgoingMessage]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+    const outgoingArticle = container.querySelector(
+      `[data-outgoing-message-id='${placementUuid}']`,
+    );
+    const outgoingDayGroup = outgoingArticle?.closest("[data-day-group='true']");
+    const outgoingDateKey = outgoingDayGroup
+      ?.querySelector("[data-day-divider]")
+      ?.getAttribute("datetime");
+
+    rerender(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: placementUuid,
+            authorUuid: "current-user-uuid",
+            userUuid: "current-user-uuid",
+            isOwn: true,
+            markdown: outgoingMessage.markdown,
+            createdAt: confirmedCreatedAt,
+          }),
+        ]}
+        outgoingMessages={[outgoingMessage]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+
+    const confirmedArticle = container.querySelector(`[data-message-uuid='${placementUuid}']`);
+    const confirmedDayGroup = confirmedArticle?.closest("[data-day-group='true']");
+    const confirmedDateKey = confirmedDayGroup
+      ?.querySelector("[data-day-divider]")
+      ?.getAttribute("datetime");
+
+    expect(container.querySelectorAll("article")).toHaveLength(1);
+    expect(confirmedArticle).toHaveAttribute("data-message-kind", "server");
+    expect(confirmedArticle).toHaveAttribute("data-server-message-uuid", placementUuid);
+    expect(confirmedArticle).not.toHaveAttribute("data-outgoing-message-id");
+    expect(confirmedArticle).toHaveTextContent(outgoingMessage.markdown);
+    expect(outgoingDateKey).toBe("2026-07-03");
+    expect(confirmedDateKey).toBe("2026-07-04");
+    expect(confirmedDateKey).not.toBe(outgoingDateKey);
+    expect(confirmedDayGroup?.contains(confirmedArticle)).toBe(true);
+  });
+
+  it("renders edited content from the server snapshot", () => {
+    const serverMessageUuid = "edited-server-message-uuid";
+    const { container, rerender } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: serverMessageUuid,
+            isOwn: true,
+            authorUuid: "current-user-uuid",
+            markdown: "Original server text",
+          }),
+        ]}
+        outgoingMessages={[]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+
+    expect(screen.getByText("Original server text")).toBeInTheDocument();
+
+    rerender(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: serverMessageUuid,
+            isOwn: true,
+            authorUuid: "current-user-uuid",
+            markdown: "Edited server text",
+            updatedAt: "2026-07-03T09:02:00.000Z",
+          }),
+        ]}
+        outgoingMessages={[]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+
+    expect(screen.getByText("Edited server text")).toBeInTheDocument();
+    expect(
+      container.querySelector("[data-message-uuid='edited-server-message-uuid']"),
+    ).toBeInTheDocument();
+  });
+
+  it("exposes retry and remove actions for failed local outgoing messages", () => {
+    const onRetryOutgoingMessage = vi.fn();
+    const onRemoveOutgoingMessage = vi.fn();
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[]}
+        outgoingMessages={[
+          createOutgoingMessage({
+            placementUuid: "failed-local-message",
+            status: "failed",
+            error: "network failed",
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onRetryOutgoingMessage, onRemoveOutgoingMessage }}
+      />,
+    );
+
+    const bubble = container.querySelector("[data-workspace-message-bubble='true']");
+    const retryButton = screen.getByLabelText("Retry send");
+    const removeButton = screen.getByLabelText("Remove message");
+
+    expect(bubble).toHaveAttribute("data-outgoing-delivery-status", "failed");
+    expect(bubble).toHaveClass(
+      "bg-danger/20",
+      "ring-2",
+      "ring-inset",
+      "ring-danger/80",
+      "shadow-lg",
+      "shadow-danger/20",
+    );
+    expect(retryButton).toHaveClass("text-danger");
+    expect(removeButton).toHaveClass("text-danger");
+    expect(screen.queryByText("Not delivered")).not.toBeInTheDocument();
+
+    fireEvent.click(retryButton);
+    fireEvent.click(removeButton);
+
+    expect(onRetryOutgoingMessage).toHaveBeenCalledWith("failed-local-message");
+    expect(onRemoveOutgoingMessage).toHaveBeenCalledWith("failed-local-message");
+  });
+
+  it("connects the Workspace scroll controller to the feed container", () => {
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "message-with-scroll-controller",
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+
+    const feed = container.querySelector("[role='feed']");
+
+    expect(feed).toHaveAttribute("data-workspace-scroll-controller", "true");
+    expect(feed).toHaveAttribute("data-scroll-at-bottom");
+  });
+
+  it("shows the scroll-to-bottom button after leaving the tail and returns to it", async () => {
+    const firstMessage = createWorkspaceMessage({ uuid: "scroll-button-message" });
+    const onLoadLatestWindow = vi.fn();
+    let feedAtTailRequest: HTMLElement | null = null;
+    const onTailNavigationRequested = vi.fn(() => {
+      expect(feedAtTailRequest?.scrollTop).toBe(300);
+    });
+    const { container, rerender } = render(
+      <WorkspaceMessageList
+        messages={[firstMessage]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        initialPositionReady={false}
+        focusedMessageTarget={{
+          intentId: 1,
+          messageUuid: "scroll-button-message",
+          focusAttempt: 0,
+        }}
+        lastMessageUuid="scroll-button-message"
+        onLoadLatestWindow={onLoadLatestWindow}
+        onTailNavigationRequested={onTailNavigationRequested}
+      />,
+    );
+    const feed = container.querySelector<HTMLElement>("[role='feed']");
+    if (feed == null) throw new Error("Expected message feed");
+    feedAtTailRequest = feed;
+    let scrollHeight = 1000;
+    Object.defineProperty(feed, "scrollHeight", { configurable: true, get: () => scrollHeight });
+    Object.defineProperty(feed, "clientHeight", { configurable: true, value: 200 });
+    feed.scrollTop = 300;
+    const focusedNode = container.querySelector<HTMLElement>(
+      "[data-message-uuid='scroll-button-message']",
+    );
+    if (focusedNode == null) throw new Error("Expected focused message");
+    focusedNode.scrollIntoView = vi.fn();
+
+    rerender(
+      <WorkspaceMessageList
+        messages={[firstMessage]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        initialPositionReady
+        focusedMessageTarget={{
+          intentId: 1,
+          messageUuid: "scroll-button-message",
+          focusAttempt: 0,
+        }}
+        lastMessageUuid="scroll-button-message"
+        onLoadLatestWindow={onLoadLatestWindow}
+        onTailNavigationRequested={onTailNavigationRequested}
+      />,
+    );
+
+    const scrollButton = await screen.findByRole("button", { name: "Scroll to bottom" });
+    fireEvent.click(scrollButton);
+
+    expect(onTailNavigationRequested).toHaveBeenCalledOnce();
+    expect(feed.scrollTop).toBe(1000);
+    expect(onLoadLatestWindow).not.toHaveBeenCalled();
+    await waitFor(() => expect(scrollButton).not.toBeInTheDocument());
+
+    scrollHeight = 1200;
+    rerender(
+      <WorkspaceMessageList
+        messages={[
+          firstMessage,
+          createWorkspaceMessage({
+            uuid: "message-after-scroll-button",
+            createdAt: "2026-07-03T09:01:00.000Z",
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        focusedMessageTarget={{
+          intentId: 1,
+          messageUuid: "scroll-button-message",
+          focusAttempt: 0,
+        }}
+        lastMessageUuid="message-after-scroll-button"
+        onLoadLatestWindow={onLoadLatestWindow}
+        onTailNavigationRequested={onTailNavigationRequested}
+      />,
+    );
+
+    expect(feed.scrollTop).toBe(1200);
+  });
+
+  it("loads one window around the known last message instead of paging to the tail", async () => {
+    const onLoadNewer = vi.fn();
+    const calls: string[] = [];
+    const onTailNavigationRequested = vi.fn(() => {
+      calls.push("tail");
+    });
+    const onLoadLatestWindow = vi.fn(() => {
+      calls.push("load");
+    });
+    const firstMessage = createWorkspaceMessage({ uuid: "anchor-window-message" });
+    const lastMessage = createWorkspaceMessage({
+      uuid: "last-anchor-window-message",
+      createdAt: "2026-07-03T09:01:00.000Z",
+    });
+    const { container, rerender } = render(
+      <WorkspaceMessageList
+        messages={[firstMessage]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        initialPositionReady={false}
+        hasNewerMessages
+        lastMessageUuid="last-anchor-window-message"
+        onLoadNewer={onLoadNewer}
+        onLoadLatestWindow={onLoadLatestWindow}
+        onTailNavigationRequested={onTailNavigationRequested}
+      />,
+    );
+    const feed = container.querySelector<HTMLElement>("[role='feed']");
+    if (feed == null) throw new Error("Expected message feed");
+    let scrollHeight = 1000;
+    Object.defineProperty(feed, "scrollHeight", { configurable: true, get: () => scrollHeight });
+    Object.defineProperty(feed, "clientHeight", { configurable: true, value: 200 });
+    feed.scrollTop = 300;
+    fireEvent.wheel(feed, { deltaY: -100 });
+
+    fireEvent.click(await screen.findByRole("button", { name: "Scroll to bottom" }));
+    expect(onLoadLatestWindow).toHaveBeenCalledOnce();
+    expect(onLoadLatestWindow).toHaveBeenCalledWith("last-anchor-window-message");
+    expect(calls).toEqual(["tail", "load"]);
+    expect(onLoadNewer).not.toHaveBeenCalled();
+    expect(feed.scrollTop).toBe(300);
+
+    scrollHeight = 1200;
+    rerender(
+      <WorkspaceMessageList
+        messages={[firstMessage, lastMessage]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        initialPositionReady={false}
+        lastMessageUuid="last-anchor-window-message"
+        onLoadNewer={onLoadNewer}
+        onLoadLatestWindow={onLoadLatestWindow}
+        onTailNavigationRequested={onTailNavigationRequested}
+      />,
+    );
+
+    expect(feed.scrollTop).toBe(1200);
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "Scroll to bottom" })).not.toBeInTheDocument(),
+    );
+  });
+
+  it("offers a direct tail jump when the known last message is outside the active window", () => {
+    render(
+      <WorkspaceMessageList
+        messages={[createWorkspaceMessage({ uuid: "active-window-tail" })]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        lastMessageUuid="known-conversation-tail"
+        onLoadLatestWindow={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "Scroll to bottom" })).toBeInTheDocument();
+  });
+
+  it("cancels a pending latest-window jump after manual scroll input", async () => {
+    const onLoadLatestWindow = vi.fn();
+    const onCancelLatestWindowLoad = vi.fn();
+    const firstMessage = createWorkspaceMessage({ uuid: "manual-cancel-anchor" });
+    const lastMessage = createWorkspaceMessage({
+      uuid: "manual-cancel-tail",
+      createdAt: "2026-07-03T09:01:00.000Z",
+    });
+    const { container, rerender } = render(
+      <WorkspaceMessageList
+        messages={[firstMessage]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        initialPositionReady={false}
+        lastMessageUuid={lastMessage.uuid}
+        onLoadLatestWindow={onLoadLatestWindow}
+        onCancelLatestWindowLoad={onCancelLatestWindowLoad}
+      />,
+    );
+    const feed = container.querySelector<HTMLElement>("[role='feed']");
+    if (feed == null) throw new Error("Expected message feed");
+    Object.defineProperty(feed, "scrollHeight", { configurable: true, value: 1000 });
+    Object.defineProperty(feed, "clientHeight", { configurable: true, value: 200 });
+    feed.scrollTop = 300;
+    fireEvent.wheel(feed, { deltaY: -100 });
+
+    fireEvent.click(await screen.findByRole("button", { name: "Scroll to bottom" }));
+    expect(onLoadLatestWindow).toHaveBeenCalledWith(lastMessage.uuid);
+
+    fireEvent.wheel(feed, { deltaY: -100 });
+    expect(onCancelLatestWindowLoad).toHaveBeenCalledOnce();
+    expect(onCancelLatestWindowLoad).toHaveBeenCalledWith(lastMessage.uuid);
+
+    rerender(
+      <WorkspaceMessageList
+        messages={[firstMessage, lastMessage]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        initialPositionReady={false}
+        lastMessageUuid={lastMessage.uuid}
+        onLoadLatestWindow={onLoadLatestWindow}
+        onCancelLatestWindowLoad={onCancelLatestWindowLoad}
+      />,
+    );
+
+    expect(feed.scrollTop).toBe(300);
+  });
+
+  it("allows retrying the latest window after a failed request settles", async () => {
+    let settleFirstRequest: (() => void) | undefined;
+    const firstRequest = new Promise<void>((resolve) => {
+      settleFirstRequest = resolve;
+    });
+    const onLoadLatestWindow = vi
+      .fn<(lastMessageUuid: string) => Promise<void>>()
+      .mockImplementationOnce(() => firstRequest)
+      .mockResolvedValueOnce(undefined);
+    const firstMessage = createWorkspaceMessage({ uuid: "retry-tail-anchor" });
+    const lastMessage = createWorkspaceMessage({
+      uuid: "retry-tail-message",
+      createdAt: "2026-07-03T09:01:00.000Z",
+    });
+    const { container, rerender } = render(
+      <WorkspaceMessageList
+        messages={[firstMessage]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        initialPositionReady={false}
+        lastMessageUuid={lastMessage.uuid}
+        onLoadLatestWindow={onLoadLatestWindow}
+      />,
+    );
+    const feed = container.querySelector<HTMLElement>("[role='feed']");
+    if (feed == null) throw new Error("Expected message feed");
+    let scrollHeight = 1000;
+    Object.defineProperty(feed, "scrollHeight", { configurable: true, get: () => scrollHeight });
+    Object.defineProperty(feed, "clientHeight", { configurable: true, value: 200 });
+    feed.scrollTop = 300;
+    fireEvent.wheel(feed, { deltaY: -100 });
+
+    const scrollButton = await screen.findByRole("button", { name: "Scroll to bottom" });
+    fireEvent.click(scrollButton);
+    expect(onLoadLatestWindow).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      settleFirstRequest?.();
+      await firstRequest;
+    });
+    expect(scrollButton).toBeInTheDocument();
+    expect(feed.scrollTop).toBe(300);
+
+    fireEvent.click(scrollButton);
+    expect(onLoadLatestWindow).toHaveBeenCalledTimes(2);
+
+    scrollHeight = 1300;
+    rerender(
+      <WorkspaceMessageList
+        messages={[firstMessage, lastMessage]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        initialPositionReady={false}
+        lastMessageUuid={lastMessage.uuid}
+        onLoadLatestWindow={onLoadLatestWindow}
+      />,
+    );
+
+    expect(feed.scrollTop).toBe(1300);
+  });
+
+  it("retargets a pending tail intent when the known last message changes", async () => {
+    const onLoadLatestWindow = vi.fn();
+    const onCancelLatestWindowLoad = vi.fn();
+    const onTailNavigationRequested = vi.fn();
+    const firstMessage = createWorkspaceMessage({ uuid: "retarget-anchor" });
+    const nextLastMessage = createWorkspaceMessage({
+      uuid: "retarget-tail-b",
+      createdAt: "2026-07-03T09:02:00.000Z",
+    });
+    const { container, rerender } = render(
+      <WorkspaceMessageList
+        messages={[firstMessage]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        initialPositionReady={false}
+        lastMessageUuid="retarget-tail-a"
+        onLoadLatestWindow={onLoadLatestWindow}
+        onCancelLatestWindowLoad={onCancelLatestWindowLoad}
+        onTailNavigationRequested={onTailNavigationRequested}
+      />,
+    );
+    const feed = container.querySelector<HTMLElement>("[role='feed']");
+    if (feed == null) throw new Error("Expected message feed");
+    let scrollHeight = 1000;
+    Object.defineProperty(feed, "scrollHeight", { configurable: true, get: () => scrollHeight });
+    Object.defineProperty(feed, "clientHeight", { configurable: true, value: 200 });
+    feed.scrollTop = 300;
+    fireEvent.wheel(feed, { deltaY: -100 });
+
+    const scrollButton = await screen.findByRole("button", { name: "Scroll to bottom" });
+    fireEvent.click(scrollButton);
+    fireEvent.click(scrollButton);
+    expect(onTailNavigationRequested).toHaveBeenCalledTimes(2);
+    expect(onLoadLatestWindow).toHaveBeenCalledTimes(1);
+    expect(onLoadLatestWindow).toHaveBeenLastCalledWith("retarget-tail-a");
+
+    rerender(
+      <WorkspaceMessageList
+        messages={[firstMessage]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        initialPositionReady={false}
+        lastMessageUuid={nextLastMessage.uuid}
+        onLoadLatestWindow={onLoadLatestWindow}
+        onCancelLatestWindowLoad={onCancelLatestWindowLoad}
+        onTailNavigationRequested={onTailNavigationRequested}
+      />,
+    );
+
+    expect(onCancelLatestWindowLoad).toHaveBeenCalledOnce();
+    expect(onCancelLatestWindowLoad).toHaveBeenCalledWith("retarget-tail-a");
+    expect(onLoadLatestWindow).toHaveBeenCalledTimes(2);
+    expect(onLoadLatestWindow).toHaveBeenLastCalledWith(nextLastMessage.uuid);
+
+    scrollHeight = 1400;
+    rerender(
+      <WorkspaceMessageList
+        messages={[firstMessage, nextLastMessage]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        initialPositionReady={false}
+        lastMessageUuid={nextLastMessage.uuid}
+        onLoadLatestWindow={onLoadLatestWindow}
+        onCancelLatestWindowLoad={onCancelLatestWindowLoad}
+        onTailNavigationRequested={onTailNavigationRequested}
+      />,
+    );
+
+    expect(feed.scrollTop).toBe(1400);
+    expect(onCancelLatestWindowLoad).toHaveBeenCalledOnce();
+  });
+
+  it("cancels pending latest-window work on conversation change and unmount", async () => {
+    const onLoadLatestWindow = vi.fn();
+    const onCancelLatestWindowLoad = vi.fn();
+    const renderList = (conversationId: string, lastMessageUuid: string) => (
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: `${conversationId}-anchor`,
+            conversationId,
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId={conversationId}
+        initialPositionReady={false}
+        lastMessageUuid={lastMessageUuid}
+        onLoadLatestWindow={onLoadLatestWindow}
+        onCancelLatestWindowLoad={onCancelLatestWindowLoad}
+      />
+    );
+    const { container, rerender, unmount } = render(
+      renderList("topic:stream-uuid-1:topic-uuid-1", "first-conversation-tail"),
+    );
+    const feed = container.querySelector<HTMLElement>("[role='feed']");
+    if (feed == null) throw new Error("Expected message feed");
+    Object.defineProperty(feed, "scrollHeight", { configurable: true, value: 1000 });
+    Object.defineProperty(feed, "clientHeight", { configurable: true, value: 200 });
+    feed.scrollTop = 300;
+    fireEvent.wheel(feed, { deltaY: -100 });
+    fireEvent.click(await screen.findByRole("button", { name: "Scroll to bottom" }));
+
+    rerender(renderList("topic:stream-uuid-2:topic-uuid-2", "second-conversation-tail"));
+    expect(onCancelLatestWindowLoad).toHaveBeenCalledTimes(1);
+    expect(onCancelLatestWindowLoad).toHaveBeenLastCalledWith("first-conversation-tail");
+    expect(onLoadLatestWindow).toHaveBeenCalledTimes(1);
+
+    const nextFeed = container.querySelector<HTMLElement>("[role='feed']");
+    if (nextFeed == null) throw new Error("Expected next message feed");
+    Object.defineProperty(nextFeed, "scrollHeight", { configurable: true, value: 1200 });
+    Object.defineProperty(nextFeed, "clientHeight", { configurable: true, value: 200 });
+    nextFeed.scrollTop = 300;
+    fireEvent.wheel(nextFeed, { deltaY: -100 });
+    fireEvent.click(await screen.findByRole("button", { name: "Scroll to bottom" }));
+    expect(onLoadLatestWindow).toHaveBeenLastCalledWith("second-conversation-tail");
+
+    unmount();
+    expect(onCancelLatestWindowLoad).toHaveBeenCalledTimes(2);
+    expect(onCancelLatestWindowLoad).toHaveBeenLastCalledWith("second-conversation-tail");
+  });
+
+  it("resets the scroll state when the conversation scroll key changes", async () => {
+    const { container, rerender } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "first-conversation-message",
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        scrollToBottomKey="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+
+    const feed = container.querySelector("[role='feed']");
+
+    expect(feed).toHaveAttribute("data-scroll-at-bottom", "true");
+
+    fireEvent.wheel(feed!, { deltaY: -100 });
+
+    await waitFor(() => expect(feed).toHaveAttribute("data-scroll-at-bottom", "false"));
+
+    rerender(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "second-conversation-message",
+            conversationId: "topic:stream-uuid-2:topic-uuid-2",
+            streamUuid: "stream-uuid-2",
+            topicUuid: "topic-uuid-2",
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-2:topic-uuid-2"
+        scrollToBottomKey="topic:stream-uuid-2:topic-uuid-2"
+      />,
+    );
+
+    expect(container.querySelector("[role='feed']")).toHaveAttribute(
+      "data-scroll-at-bottom",
+      "true",
+    );
+  });
+
+  it("renders an empty state for a Workspace conversation", () => {
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+
+    expect(container.querySelector("[data-empty-state='true']")).toBeInTheDocument();
+  });
+
+  it("renders messages in stable createdAt and uuid order", () => {
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "message-c",
+            markdown: "Third rendered message",
+            createdAt: "2026-07-03T09:02:00.000Z",
+          }),
+          createWorkspaceMessage({
+            uuid: "message-b",
+            markdown: "Second rendered message",
+            createdAt: "2026-07-03T09:01:00.000Z",
+          }),
+          createWorkspaceMessage({
+            uuid: "message-a",
+            markdown: "First rendered message",
+            createdAt: "2026-07-03T09:01:00.000Z",
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+
+    expect(
+      Array.from(container.querySelectorAll("article")).map((message) =>
+        message.getAttribute("data-message-uuid"),
+      ),
+    ).toEqual(["message-a", "message-b", "message-c"]);
+  });
+
+  it("renders translated today and yesterday day dividers", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 6, 3, 12, 0, 0, 0));
+
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "day-one-message",
+            createdAt: "2026-07-03T09:00:00.000Z",
+          }),
+          createWorkspaceMessage({
+            uuid: "day-two-message",
+            createdAt: "2026-07-02T09:00:00.000Z",
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+
+    expect(container.querySelector("[data-day-divider='2026-07-03']")).toHaveTextContent("Today");
+    expect(container.querySelector("[data-day-divider='2026-07-02']")).toHaveTextContent(
+      "Yesterday",
+    );
+  });
+
+  it("renders a localized month label for older Russian day dividers", () => {
+    setLocale("ru");
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 6, 3, 12, 0, 0, 0));
+
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "older-day-message",
+            createdAt: "2026-06-01T09:00:00.000Z",
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+
+    const divider = container.querySelector("[data-day-divider='2026-06-01']");
+
+    expect(divider).toHaveTextContent("1 июня");
+    expect(divider).not.toHaveTextContent("2026-06-01");
+  });
+
+  it("does not render the local day key as the visible divider label", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 6, 3, 12, 0, 0, 0));
+
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "today-message",
+            createdAt: "2026-07-03T09:00:00.000Z",
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+
+    const divider = container.querySelector("[data-day-divider='2026-07-03']");
+
+    expect(divider).toHaveTextContent("Today");
+    expect(divider).not.toHaveTextContent("2026-07-03");
+  });
+
+  it("keeps each sticky day divider within its own day's messages", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 6, 3, 12, 0, 0, 0));
+
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "day-one-message",
+            createdAt: "2026-07-02T09:00:00.000Z",
+          }),
+          createWorkspaceMessage({
+            uuid: "day-two-message",
+            createdAt: "2026-07-03T09:00:00.000Z",
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+
+    const dayGroups = Array.from(container.querySelectorAll("[data-day-group]"));
+
+    expect(dayGroups).toHaveLength(2);
+    expect(dayGroups[0]?.querySelector("[data-day-divider='2026-07-02']")).toBeInTheDocument();
+    expect(
+      dayGroups[0]?.querySelector("[data-message-uuid='day-one-message']"),
+    ).toBeInTheDocument();
+    expect(dayGroups[1]?.querySelector("[data-day-divider='2026-07-03']")).toBeInTheDocument();
+    expect(
+      dayGroups[1]?.querySelector("[data-message-uuid='day-two-message']"),
+    ).toBeInTheDocument();
+
+    for (const dayGroup of dayGroups) {
+      expect(dayGroup.firstElementChild).toHaveClass("sticky", "top-0", "z-sticky");
+      expect(dayGroup).toHaveClass("flex", "flex-col", "gap-2");
+      expect(dayGroup.querySelectorAll("[data-day-divider]")).toHaveLength(1);
+    }
+  });
+
+  it("renders one unread divider before the author group containing the anchor", () => {
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "first-author-message",
+            authorUuid: "author-a",
+            createdAt: "2026-07-03T09:00:00.000Z",
+          }),
+          createWorkspaceMessage({
+            uuid: "second-author-message",
+            authorUuid: "author-b",
+            createdAt: "2026-07-03T09:01:00.000Z",
+          }),
+          createWorkspaceMessage({
+            uuid: "unread-anchor",
+            authorUuid: "author-b",
+            createdAt: "2026-07-03T09:02:00.000Z",
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        firstUnreadUuid="unread-anchor"
+        unreadCount={2}
+      />,
+    );
+
+    const unreadDivider = container.querySelector("[data-unread-divider='true']");
+    const authorGroups = Array.from(container.querySelectorAll("[data-author-group='true']"));
+
+    expect(unreadDivider).toHaveTextContent("Unread messages • 2");
+    expect(container.querySelectorAll("[data-unread-divider='true']")).toHaveLength(1);
+    expect(unreadDivider?.nextElementSibling).toBe(authorGroups[1]);
+    expect(authorGroups[1]).toContainElement(
+      container.querySelector("[data-message-uuid='unread-anchor']"),
+    );
+  });
+
+  it("formats the unread divider above the exact display limit", () => {
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[createWorkspaceMessage({ uuid: "unread-anchor" })]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        firstUnreadUuid="unread-anchor"
+        unreadCount={1001}
+      />,
+    );
+
+    expect(container.querySelector("[data-unread-divider='true']")).toHaveTextContent(
+      "Unread messages • 1k+",
+    );
+  });
+
+  it("does not render an unread divider without an anchor in the current messages", () => {
+    const { container, rerender } = render(
+      <WorkspaceMessageList
+        messages={[createWorkspaceMessage({ uuid: "loaded-message" })]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        unreadCount={2}
+      />,
+    );
+
+    expect(container.querySelector("[data-unread-divider='true']")).not.toBeInTheDocument();
+
+    rerender(
+      <WorkspaceMessageList
+        messages={[createWorkspaceMessage({ uuid: "loaded-message" })]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        firstUnreadUuid="not-loaded-message"
+        unreadCount={2}
+      />,
+    );
+
+    expect(container.querySelector("[data-unread-divider='true']")).not.toBeInTheDocument();
+  });
+
+  it("keeps the unread divider at the initial anchor while read state advances", () => {
+    const messages = [
+      createWorkspaceMessage({
+        uuid: "initial-unread-anchor",
+        authorUuid: "author-a",
+        createdAt: "2026-07-03T09:00:00.000Z",
+      }),
+      createWorkspaceMessage({
+        uuid: "later-unread-anchor",
+        authorUuid: "author-b",
+        createdAt: "2026-07-03T09:01:00.000Z",
+      }),
+    ];
+    const { container, rerender } = render(
+      <WorkspaceMessageList
+        messages={messages}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        firstUnreadUuid="initial-unread-anchor"
+        unreadCount={2}
+      />,
+    );
+
+    rerender(
+      <WorkspaceMessageList
+        messages={messages}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        firstUnreadUuid="later-unread-anchor"
+        unreadCount={1}
+      />,
+    );
+
+    const unreadDivider = container.querySelector<HTMLElement>("[data-unread-divider='true']");
+    const initialAnchor = container.querySelector<HTMLElement>(
+      "[data-message-uuid='initial-unread-anchor']",
+    );
+
+    expect(unreadDivider).toBeInTheDocument();
+    expect(unreadDivider?.nextElementSibling as HTMLElement | null).toContainElement(initialAnchor);
+  });
+
+  it("removes the unread divider after every loaded message becomes read", () => {
+    const unreadMessage = createWorkspaceMessage({ uuid: "unread-anchor" });
+    const { container, rerender } = render(
+      <WorkspaceMessageList
+        messages={[unreadMessage]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        firstUnreadUuid="unread-anchor"
+        unreadCount={1}
+      />,
+    );
+
+    expect(container.querySelector("[data-unread-divider='true']")).toBeInTheDocument();
+
+    rerender(
+      <WorkspaceMessageList
+        messages={[{ ...unreadMessage, read: true }]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        unreadCount={0}
+      />,
+    );
+
+    expect(container.querySelector("[data-unread-divider='true']")).not.toBeInTheDocument();
+  });
+
+  it("waits for the initial snapshot before fixing a late unread anchor", () => {
+    const messages = [
+      createWorkspaceMessage({
+        uuid: "late-unread-anchor",
+        createdAt: "2026-07-03T09:00:00.000Z",
+      }),
+    ];
+    const { container, rerender } = render(
+      <WorkspaceMessageList
+        messages={messages}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        initialPositionReady={false}
+        unreadCount={0}
+      />,
+    );
+
+    expect(container.querySelector("[data-unread-divider='true']")).not.toBeInTheDocument();
+
+    rerender(
+      <WorkspaceMessageList
+        messages={messages}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        initialPositionReady
+        firstUnreadUuid="late-unread-anchor"
+        unreadCount={1}
+      />,
+    );
+
+    expect(container.querySelector("[data-unread-divider='true']")).toBeInTheDocument();
+  });
+
+  it("waits for initial position readiness and scrolls to the corrected unread message once", () => {
+    const oldUnread = createWorkspaceMessage({
+      uuid: "old-unread",
+      createdAt: "2026-07-03T09:00:00.000Z",
+    });
+    const correctedUnread = createWorkspaceMessage({
+      uuid: "corrected-unread",
+      createdAt: "2026-07-03T09:01:00.000Z",
+    });
+    const { container, rerender } = render(
+      <WorkspaceMessageList
+        messages={[oldUnread, correctedUnread]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        initialPositionReady={false}
+        scrollToBottomKey="initial-position"
+        firstUnreadUuid="old-unread"
+        unreadCount={2}
+      />,
+    );
+    const oldNode = container.querySelector<HTMLElement>("[data-message-uuid='old-unread']");
+    const correctedNode = container.querySelector<HTMLElement>(
+      "[data-message-uuid='corrected-unread']",
+    );
+    if (oldNode == null || correctedNode == null) throw new Error("Expected message nodes");
+    const oldScrollIntoView = vi.fn();
+    const correctedScrollIntoView = vi.fn();
+    oldNode.scrollIntoView = oldScrollIntoView;
+    correctedNode.scrollIntoView = correctedScrollIntoView;
+
+    expect(oldScrollIntoView).not.toHaveBeenCalled();
+    expect(correctedScrollIntoView).not.toHaveBeenCalled();
+
+    rerender(
+      <WorkspaceMessageList
+        messages={[{ ...oldUnread, read: true }, correctedUnread]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        initialPositionReady
+        scrollToBottomKey="initial-position"
+        firstUnreadUuid="corrected-unread"
+        unreadCount={1}
+      />,
+    );
+
+    expect(oldScrollIntoView).not.toHaveBeenCalled();
+    expect(correctedScrollIntoView).toHaveBeenCalledOnce();
+
+    rerender(
+      <WorkspaceMessageList
+        messages={[{ ...oldUnread, read: true }, correctedUnread]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        initialPositionReady
+        scrollToBottomKey="initial-position"
+        firstUnreadUuid="corrected-unread"
+        unreadCount={1}
+      />,
+    );
+
+    expect(correctedScrollIntoView).toHaveBeenCalledOnce();
+  });
+
+  it("preserves scroll position while an anchor is active without an exact focus target", () => {
+    const unreadMessage = createWorkspaceMessage({ uuid: "anchor-pending-unread" });
+    const tailMessage = createWorkspaceMessage({
+      uuid: "anchor-pending-tail",
+      createdAt: "2026-07-03T09:01:00.000Z",
+    });
+    const { container, rerender } = render(
+      <WorkspaceMessageList
+        messages={[unreadMessage, tailMessage]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        initialPositionReady={false}
+        scrollToBottomKey="anchor-pending-position"
+        firstUnreadUuid={unreadMessage.uuid}
+        unreadCount={1}
+        anchorNavigationActive
+      />,
+    );
+    const feed = container.querySelector<HTMLElement>("[role='feed']");
+    const unreadNode = container.querySelector<HTMLElement>(
+      "[data-message-uuid='anchor-pending-unread']",
+    );
+    if (feed == null || unreadNode == null)
+      throw new Error("Expected message feed and unread node");
+    const unreadScrollIntoView = vi.fn();
+    unreadNode.scrollIntoView = unreadScrollIntoView;
+    Object.defineProperty(feed, "scrollHeight", { configurable: true, value: 900 });
+    feed.scrollTop = 137;
+
+    rerender(
+      <WorkspaceMessageList
+        messages={[unreadMessage, tailMessage]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        initialPositionReady
+        scrollToBottomKey="anchor-pending-position"
+        firstUnreadUuid={unreadMessage.uuid}
+        unreadCount={1}
+        anchorNavigationActive
+      />,
+    );
+
+    expect(feed.scrollTop).toBe(137);
+    expect(unreadScrollIntoView).not.toHaveBeenCalled();
+
+    rerender(
+      <WorkspaceMessageList
+        messages={[unreadMessage, tailMessage]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        initialPositionReady
+        scrollToBottomKey="anchor-pending-position"
+        firstUnreadUuid={unreadMessage.uuid}
+        unreadCount={1}
+        anchorNavigationActive={false}
+      />,
+    );
+
+    expect(unreadScrollIntoView).toHaveBeenCalledOnce();
+  });
+
+  it("gives an explicit focused message priority over the unread boundary", () => {
+    const onFocusedMessageApplied = vi.fn();
+    const focusOrder: string[] = [];
+    const unreadMessage = createWorkspaceMessage({ uuid: "priority-unread" });
+    const focusedMessage = createWorkspaceMessage({ uuid: "priority-focused" });
+    const { container, rerender } = render(
+      <WorkspaceMessageList
+        messages={[unreadMessage, focusedMessage]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        initialPositionReady={false}
+        scrollToBottomKey="focused-position"
+        firstUnreadUuid="priority-unread"
+        unreadCount={2}
+        focusedMessageTarget={{ intentId: 17, messageUuid: "priority-focused", focusAttempt: 0 }}
+        onFocusedMessageApplied={onFocusedMessageApplied}
+      />,
+    );
+    const unreadNode = container.querySelector<HTMLElement>(
+      "[data-message-uuid='priority-unread']",
+    );
+    const focusedNode = container.querySelector<HTMLElement>(
+      "[data-message-uuid='priority-focused']",
+    );
+    if (unreadNode == null || focusedNode == null) throw new Error("Expected message nodes");
+    const unreadScrollIntoView = vi.fn();
+    const focusedScrollIntoView = vi.fn(() => {
+      focusOrder.push("scroll");
+    });
+    unreadNode.scrollIntoView = unreadScrollIntoView;
+    focusedNode.scrollIntoView = focusedScrollIntoView;
+    onFocusedMessageApplied.mockImplementation(() => {
+      expect(focusedNode).toHaveAttribute("data-workspace-message-anchor-highlight", "true");
+      focusOrder.push("callback");
+    });
+
+    rerender(
+      <WorkspaceMessageList
+        messages={[unreadMessage, focusedMessage]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        initialPositionReady
+        scrollToBottomKey="focused-position"
+        firstUnreadUuid="priority-unread"
+        unreadCount={2}
+        focusedMessageTarget={{ intentId: 17, messageUuid: "priority-focused", focusAttempt: 0 }}
+        onFocusedMessageApplied={onFocusedMessageApplied}
+      />,
+    );
+
+    expect(focusedScrollIntoView).toHaveBeenCalledOnce();
+    expect(focusedScrollIntoView).toHaveBeenCalledWith({
+      block: "center",
+      behavior: "instant",
+    });
+    expect(unreadScrollIntoView).not.toHaveBeenCalled();
+    expect(focusedNode).toHaveAttribute("data-workspace-message-anchor-highlight", "true");
+    expect(focusOrder).toEqual(["scroll", "callback"]);
+    expect(onFocusedMessageApplied).toHaveBeenCalledWith({
+      intentId: 17,
+      messageUuid: "priority-focused",
+      focusAttempt: 0,
+    });
+  });
+
+  it("reports a focused node without scrollIntoView as missing once per attempt", () => {
+    const onFocusedMessageMissing = vi.fn();
+    const target = createWorkspaceMessage({ uuid: "focus-without-scroll-method" });
+    const { container, rerender } = render(
+      <WorkspaceMessageList
+        messages={[target]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        initialPositionReady={false}
+        scrollToBottomKey="missing-scroll-method:0"
+        focusedMessageTarget={{
+          intentId: 73,
+          messageUuid: target.uuid,
+          focusAttempt: 0,
+        }}
+        onFocusedMessageMissing={onFocusedMessageMissing}
+      />,
+    );
+    const targetNode = container.querySelector<HTMLElement>(
+      "[data-message-uuid='focus-without-scroll-method']",
+    );
+    if (targetNode == null) throw new Error("Expected focused message node");
+    Reflect.deleteProperty(targetNode, "scrollIntoView");
+
+    rerender(
+      <WorkspaceMessageList
+        messages={[target]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        initialPositionReady
+        scrollToBottomKey="missing-scroll-method:0"
+        focusedMessageTarget={{
+          intentId: 73,
+          messageUuid: target.uuid,
+          focusAttempt: 0,
+        }}
+        onFocusedMessageMissing={onFocusedMessageMissing}
+      />,
+    );
+    expect(onFocusedMessageMissing).toHaveBeenCalledOnce();
+
+    rerender(
+      <WorkspaceMessageList
+        messages={[target]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        initialPositionReady
+        scrollToBottomKey="missing-scroll-method:1"
+        focusedMessageTarget={{
+          intentId: 73,
+          messageUuid: target.uuid,
+          focusAttempt: 1,
+        }}
+        onFocusedMessageMissing={onFocusedMessageMissing}
+      />,
+    );
+    expect(onFocusedMessageMissing).toHaveBeenCalledTimes(2);
+  });
+
+  it("reports one focus callback in StrictMode for the same composite target", () => {
+    const onFocusedMessageApplied = vi.fn();
+    const target = createWorkspaceMessage({ uuid: "strict-focus-message" });
+    const renderList = (ready: boolean) => (
+      <StrictMode>
+        <WorkspaceMessageList
+          messages={[target]}
+          currentUserUuid="current-user-uuid"
+          conversationId="topic:stream-uuid-1:topic-uuid-1"
+          initialPositionReady={ready}
+          scrollToBottomKey="strict-focus"
+          focusedMessageTarget={{
+            intentId: 91,
+            messageUuid: target.uuid,
+            focusAttempt: 0,
+          }}
+          onFocusedMessageApplied={onFocusedMessageApplied}
+        />
+      </StrictMode>
+    );
+    const { container, rerender } = render(renderList(false));
+    const targetNode = container.querySelector<HTMLElement>(
+      "[data-message-uuid='strict-focus-message']",
+    );
+    if (targetNode == null) throw new Error("Expected strict focused message node");
+    targetNode.scrollIntoView = vi.fn();
+
+    rerender(renderList(true));
+
+    expect(targetNode.scrollIntoView).toHaveBeenCalledOnce();
+    expect(onFocusedMessageApplied).toHaveBeenCalledOnce();
+  });
+
+  it("cancels a hidden focus confirmation when the same UUID receives a newer intent", () => {
+    const scheduledFrames: FrameRequestCallback[] = [];
+    const requestFrame = vi
+      .spyOn(window, "requestAnimationFrame")
+      .mockImplementation((callback) => {
+        scheduledFrames.push(callback);
+        return scheduledFrames.length;
+      });
+    const onFocusedMessageApplied = vi.fn();
+    const target = createWorkspaceMessage({ uuid: "reused-focus-message" });
+    const renderList = (
+      focusedMessageTarget: { intentId: number; messageUuid: string; focusAttempt: number } | null,
+      anchorHandoffPending: boolean,
+    ) => (
+      <WorkspaceMessageList
+        messages={[target]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        initialPositionReady={focusedMessageTarget != null}
+        scrollToBottomKey="reused-focus-message"
+        focusedMessageTarget={focusedMessageTarget}
+        anchorHandoffPending={anchorHandoffPending}
+        onFocusedMessageApplied={onFocusedMessageApplied}
+      />
+    );
+
+    try {
+      const { container, rerender } = render(renderList(null, false));
+      const feed = container.querySelector<HTMLElement>("[role='feed']");
+      const targetNode = container.querySelector<HTMLElement>(
+        "[data-message-uuid='reused-focus-message']",
+      );
+      if (feed == null || targetNode == null) throw new Error("Expected focus test nodes");
+      Object.defineProperty(feed, "clientHeight", { configurable: true, value: 200 });
+      Object.defineProperty(feed, "scrollHeight", { configurable: true, value: 1000 });
+      feed.getBoundingClientRect = () =>
+        ({ top: 0, bottom: 200, left: 0, right: 200, width: 200, height: 200 }) as DOMRect;
+      targetNode.getBoundingClientRect = () =>
+        ({
+          top: 600 - feed.scrollTop,
+          bottom: 640 - feed.scrollTop,
+          left: 0,
+          right: 200,
+          width: 200,
+          height: 40,
+        }) as DOMRect;
+      targetNode.scrollIntoView = vi.fn();
+
+      rerender(renderList({ intentId: 301, messageUuid: target.uuid, focusAttempt: 0 }, true));
+      expect(onFocusedMessageApplied).not.toHaveBeenCalled();
+
+      rerender(renderList(null, false));
+      rerender(renderList({ intentId: 302, messageUuid: target.uuid, focusAttempt: 0 }, true));
+      expect(onFocusedMessageApplied).not.toHaveBeenCalled();
+
+      while (scheduledFrames.length > 0) {
+        const frame = scheduledFrames.shift();
+        act(() => frame?.(0));
+      }
+
+      expect(onFocusedMessageApplied).toHaveBeenCalledOnce();
+      expect(onFocusedMessageApplied).toHaveBeenCalledWith({
+        intentId: 302,
+        messageUuid: target.uuid,
+        focusAttempt: 0,
+      });
+    } finally {
+      requestFrame.mockRestore();
+    }
+  });
+
+  it("confirms hidden focus only after layout stabilizes and corrects the root scroll position", () => {
+    const scheduledFrames: FrameRequestCallback[] = [];
+    const requestFrame = vi
+      .spyOn(window, "requestAnimationFrame")
+      .mockImplementation((callback) => {
+        scheduledFrames.push(callback);
+        return scheduledFrames.length;
+      });
+    const onFocusedMessageApplied = vi.fn();
+    const target = createWorkspaceMessage({ uuid: "layout-stabilized-focus-message" });
+    let targetDocumentTop = 700;
+
+    try {
+      const { container, rerender } = render(
+        <WorkspaceMessageList
+          messages={[target]}
+          currentUserUuid="current-user-uuid"
+          conversationId="topic:stream-uuid-1:topic-uuid-1"
+          initialPositionReady={false}
+          scrollToBottomKey="layout-stabilized-focus"
+          focusedMessageTarget={{ intentId: 401, messageUuid: target.uuid, focusAttempt: 0 }}
+          anchorHandoffPending
+          onFocusedMessageApplied={onFocusedMessageApplied}
+        />,
+      );
+      const feed = container.querySelector<HTMLElement>("[role='feed']");
+      const targetNode = container.querySelector<HTMLElement>(
+        "[data-message-uuid='layout-stabilized-focus-message']",
+      );
+      if (feed == null || targetNode == null) throw new Error("Expected focus test nodes");
+      Object.defineProperty(feed, "clientHeight", { configurable: true, value: 200 });
+      Object.defineProperty(feed, "scrollHeight", { configurable: true, value: 2000 });
+      feed.getBoundingClientRect = () =>
+        ({ top: 0, bottom: 200, left: 0, right: 200, width: 200, height: 200 }) as DOMRect;
+      targetNode.getBoundingClientRect = () =>
+        ({
+          top: targetDocumentTop - feed.scrollTop,
+          bottom: targetDocumentTop + 40 - feed.scrollTop,
+          left: 0,
+          right: 200,
+          width: 200,
+          height: 40,
+        }) as DOMRect;
+      targetNode.scrollIntoView = vi.fn();
+
+      rerender(
+        <WorkspaceMessageList
+          messages={[target]}
+          currentUserUuid="current-user-uuid"
+          conversationId="topic:stream-uuid-1:topic-uuid-1"
+          initialPositionReady
+          scrollToBottomKey="layout-stabilized-focus"
+          focusedMessageTarget={{ intentId: 401, messageUuid: target.uuid, focusAttempt: 0 }}
+          anchorHandoffPending
+          onFocusedMessageApplied={onFocusedMessageApplied}
+        />,
+      );
+      expect(onFocusedMessageApplied).not.toHaveBeenCalled();
+
+      const firstProgrammaticFrame = scheduledFrames.shift();
+      act(() => firstProgrammaticFrame?.(0));
+      expect(onFocusedMessageApplied).not.toHaveBeenCalled();
+      const firstConfirmationFrame = scheduledFrames.shift();
+      act(() => firstConfirmationFrame?.(0));
+      expect(onFocusedMessageApplied).not.toHaveBeenCalled();
+
+      targetDocumentTop = 900;
+      const secondProgrammaticFrame = scheduledFrames.shift();
+      act(() => secondProgrammaticFrame?.(0));
+      expect(onFocusedMessageApplied).not.toHaveBeenCalled();
+      const secondConfirmationFrame = scheduledFrames.shift();
+      act(() => secondConfirmationFrame?.(0));
+
+      expect(onFocusedMessageApplied).toHaveBeenCalledOnce();
+      expect(feed.scrollTop).toBe(820);
+      const targetRect = targetNode.getBoundingClientRect();
+      const feedRect = feed.getBoundingClientRect();
+      expect(targetRect.top + targetRect.height / 2).toBe(feedRect.top + feedRect.height / 2);
+    } finally {
+      requestFrame.mockRestore();
+    }
+  });
+
+  it("keeps one hidden focus confirmation when the same intent rerenders between frames", () => {
+    const scheduledFrames: FrameRequestCallback[] = [];
+    const requestFrame = vi
+      .spyOn(window, "requestAnimationFrame")
+      .mockImplementation((callback) => {
+        scheduledFrames.push(callback);
+        return scheduledFrames.length;
+      });
+    const onFocusedMessageApplied = vi.fn();
+    const target = createWorkspaceMessage({ uuid: "rerendered-hidden-focus-message" });
+    const appended = createWorkspaceMessage({ uuid: "rerendered-hidden-focus-append" });
+    let targetDocumentTop = 700;
+    const renderList = (messages: readonly MessengerMessage[], initialPositionReady: boolean) => (
+      <WorkspaceMessageList
+        messages={messages}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        initialPositionReady={initialPositionReady}
+        scrollToBottomKey="rerendered-hidden-focus"
+        focusedMessageTarget={{ intentId: 402, messageUuid: target.uuid, focusAttempt: 0 }}
+        anchorHandoffPending
+        onFocusedMessageApplied={onFocusedMessageApplied}
+      />
+    );
+
+    try {
+      const { container, rerender } = render(renderList([target], false));
+      const feed = container.querySelector<HTMLElement>("[role='feed']");
+      const targetNode = container.querySelector<HTMLElement>(
+        "[data-message-uuid='rerendered-hidden-focus-message']",
+      );
+      if (feed == null || targetNode == null) throw new Error("Expected focus test nodes");
+      Object.defineProperty(feed, "clientHeight", { configurable: true, value: 200 });
+      Object.defineProperty(feed, "scrollHeight", { configurable: true, value: 2000 });
+      feed.getBoundingClientRect = () =>
+        ({ top: 0, bottom: 200, left: 0, right: 200, width: 200, height: 200 }) as DOMRect;
+      targetNode.getBoundingClientRect = () =>
+        ({
+          top: targetDocumentTop - feed.scrollTop,
+          bottom: targetDocumentTop + 40 - feed.scrollTop,
+          left: 0,
+          right: 200,
+          width: 200,
+          height: 40,
+        }) as DOMRect;
+      targetNode.scrollIntoView = vi.fn();
+
+      rerender(renderList([target], true));
+      const initialProgrammaticFrame = scheduledFrames.shift();
+      act(() => initialProgrammaticFrame?.(0));
+
+      targetDocumentTop = 900;
+      rerender(renderList([target, appended], true));
+
+      while (scheduledFrames.length > 0) {
+        const frame = scheduledFrames.shift();
+        act(() => frame?.(0));
+      }
+
+      expect(onFocusedMessageApplied).toHaveBeenCalledOnce();
+      expect(feed.scrollTop).toBe(820);
+      const targetRect = targetNode.getBoundingClientRect();
+      const feedRect = feed.getBoundingClientRect();
+      expect(targetRect.top + targetRect.height / 2).toBe(feedRect.top + feedRect.height / 2);
+    } finally {
+      requestFrame.mockRestore();
+    }
+  });
+
+  it("reports a hidden focus target that disappears before confirmation as missing once", () => {
+    const scheduledFrames: FrameRequestCallback[] = [];
+    const requestFrame = vi
+      .spyOn(window, "requestAnimationFrame")
+      .mockImplementation((callback) => {
+        scheduledFrames.push(callback);
+        return scheduledFrames.length;
+      });
+    const onFocusedMessageApplied = vi.fn();
+    const onFocusedMessageMissing = vi.fn();
+    const target = createWorkspaceMessage({ uuid: "disappearing-hidden-focus-message" });
+
+    try {
+      const { container, rerender } = render(
+        <WorkspaceMessageList
+          messages={[target]}
+          currentUserUuid="current-user-uuid"
+          conversationId="topic:stream-uuid-1:topic-uuid-1"
+          initialPositionReady={false}
+          scrollToBottomKey="disappearing-hidden-focus"
+          focusedMessageTarget={{ intentId: 403, messageUuid: target.uuid, focusAttempt: 0 }}
+          anchorHandoffPending
+          onFocusedMessageApplied={onFocusedMessageApplied}
+          onFocusedMessageMissing={onFocusedMessageMissing}
+        />,
+      );
+      const targetNode = container.querySelector<HTMLElement>(
+        "[data-message-uuid='disappearing-hidden-focus-message']",
+      );
+      if (targetNode == null) throw new Error("Expected focus test node");
+      targetNode.scrollIntoView = vi.fn();
+
+      rerender(
+        <WorkspaceMessageList
+          messages={[target]}
+          currentUserUuid="current-user-uuid"
+          conversationId="topic:stream-uuid-1:topic-uuid-1"
+          initialPositionReady
+          scrollToBottomKey="disappearing-hidden-focus"
+          focusedMessageTarget={{ intentId: 403, messageUuid: target.uuid, focusAttempt: 0 }}
+          anchorHandoffPending
+          onFocusedMessageApplied={onFocusedMessageApplied}
+          onFocusedMessageMissing={onFocusedMessageMissing}
+        />,
+      );
+      targetNode.remove();
+
+      while (scheduledFrames.length > 0) {
+        const frame = scheduledFrames.shift();
+        act(() => frame?.(0));
+      }
+
+      expect(onFocusedMessageApplied).not.toHaveBeenCalled();
+      expect(onFocusedMessageMissing).toHaveBeenCalledOnce();
+      expect(onFocusedMessageMissing).toHaveBeenCalledWith({
+        intentId: 403,
+        messageUuid: target.uuid,
+        focusAttempt: 0,
+      });
+    } finally {
+      requestFrame.mockRestore();
+    }
+  });
+
+  it("restores the focused highlight during an initial StrictMode effect replay", () => {
+    const onFocusedMessageApplied = vi.fn();
+    const scrollIntoView = vi.fn();
+    const previousScrollIntoView = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      "scrollIntoView",
+    );
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: scrollIntoView,
+    });
+    const target = createWorkspaceMessage({ uuid: "strict-initial-focus-message" });
+
+    try {
+      const { container } = render(
+        <StrictMode>
+          <WorkspaceMessageList
+            messages={[target]}
+            currentUserUuid="current-user-uuid"
+            conversationId="topic:stream-uuid-1:topic-uuid-1"
+            initialPositionReady
+            scrollToBottomKey="strict-initial-focus"
+            focusedMessageTarget={{
+              intentId: 92,
+              messageUuid: target.uuid,
+              focusAttempt: 0,
+            }}
+            onFocusedMessageApplied={onFocusedMessageApplied}
+          />
+        </StrictMode>,
+      );
+      const targetNode = container.querySelector<HTMLElement>(
+        "[data-message-uuid='strict-initial-focus-message']",
+      );
+
+      expect(scrollIntoView).toHaveBeenCalledOnce();
+      expect(onFocusedMessageApplied).toHaveBeenCalledOnce();
+      expect(targetNode).toHaveAttribute("data-workspace-message-anchor-highlight", "true");
+    } finally {
+      if (previousScrollIntoView == null) {
+        Reflect.deleteProperty(HTMLElement.prototype, "scrollIntoView");
+      } else {
+        Object.defineProperty(HTMLElement.prototype, "scrollIntoView", previousScrollIntoView);
+      }
+    }
+  });
+
+  it("keeps the browser scroll caused by focus inside the programmatic window", () => {
+    const scheduledFrames: FrameRequestCallback[] = [];
+    const requestFrame = vi
+      .spyOn(window, "requestAnimationFrame")
+      .mockImplementation((callback) => {
+        scheduledFrames.push(callback);
+        return scheduledFrames.length;
+      });
+    const onLoadOlder = vi.fn();
+    const onLoadNewer = vi.fn();
+    const onUnreadMessagesVisible = vi.fn();
+    const onUnreadMessagesAtBottom = vi.fn();
+    const onFocusedMessageApplied = vi.fn();
+    const target = createWorkspaceMessage({ uuid: "programmatic-focus-message" });
+    const { container, rerender } = render(
+      <WorkspaceMessageList
+        messages={[target]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        initialPositionReady={false}
+        scrollToBottomKey="programmatic-focus"
+        focusedMessageTarget={{
+          intentId: 101,
+          messageUuid: target.uuid,
+          focusAttempt: 0,
+        }}
+        hasOlderMessages
+        hasNewerMessages
+        onLoadOlder={onLoadOlder}
+        onLoadNewer={onLoadNewer}
+        onUnreadMessagesVisible={onUnreadMessagesVisible}
+        onUnreadMessagesAtBottom={onUnreadMessagesAtBottom}
+        onFocusedMessageApplied={onFocusedMessageApplied}
+      />,
+    );
+    const feed = container.querySelector<HTMLElement>("[role='feed']");
+    const targetNode = container.querySelector<HTMLElement>(
+      "[data-message-uuid='programmatic-focus-message']",
+    );
+    if (feed == null || targetNode == null) throw new Error("Expected focus test nodes");
+    Object.defineProperty(feed, "clientHeight", { configurable: true, value: 200 });
+    Object.defineProperty(feed, "scrollHeight", { configurable: true, value: 1000 });
+    feed.scrollTop = 0;
+    targetNode.scrollIntoView = vi.fn();
+    fireEvent.wheel(feed, { deltaY: -1 });
+    onLoadOlder.mockClear();
+    onLoadNewer.mockClear();
+
+    rerender(
+      <WorkspaceMessageList
+        messages={[target]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        initialPositionReady
+        scrollToBottomKey="programmatic-focus"
+        focusedMessageTarget={{
+          intentId: 101,
+          messageUuid: target.uuid,
+          focusAttempt: 0,
+        }}
+        hasOlderMessages
+        hasNewerMessages
+        onLoadOlder={onLoadOlder}
+        onLoadNewer={onLoadNewer}
+        onUnreadMessagesVisible={onUnreadMessagesVisible}
+        onUnreadMessagesAtBottom={onUnreadMessagesAtBottom}
+        onFocusedMessageApplied={onFocusedMessageApplied}
+      />,
+    );
+    fireEvent.scroll(feed);
+
+    expect(onFocusedMessageApplied).toHaveBeenCalledOnce();
+    expect(onLoadOlder).not.toHaveBeenCalled();
+    expect(onLoadNewer).not.toHaveBeenCalled();
+    expect(onUnreadMessagesVisible).not.toHaveBeenCalled();
+    expect(onUnreadMessagesAtBottom).not.toHaveBeenCalled();
+
+    const firstFrame = scheduledFrames.shift();
+    firstFrame?.(0);
+    const secondFrame = scheduledFrames.shift();
+    secondFrame?.(0);
+    fireEvent.wheel(feed, { deltaY: -1 });
+    fireEvent.scroll(feed);
+
+    expect(onLoadOlder).toHaveBeenCalledOnce();
+    requestFrame.mockRestore();
+  });
+
+  it("keeps the focused DOM node at the same offset after a before-page prepend", () => {
+    const scheduledFrames: FrameRequestCallback[] = [];
+    const requestFrame = vi
+      .spyOn(window, "requestAnimationFrame")
+      .mockImplementation((callback) => {
+        scheduledFrames.push(callback);
+        return scheduledFrames.length;
+      });
+    const onFocusedMessageApplied = vi.fn();
+    const onLoadOlder = vi.fn();
+    const target = createWorkspaceMessage({ uuid: "prepend-focused-target" });
+    const older = createWorkspaceMessage({
+      uuid: "prepend-older-message",
+      createdAt: "2026-07-03T08:59:00.000Z",
+    });
+    const focusTarget = {
+      intentId: 103,
+      messageUuid: target.uuid,
+      focusAttempt: 0,
+    };
+    const renderList = (messages: readonly MessengerMessage[], initialPositionReady: boolean) => (
+      <WorkspaceMessageList
+        messages={messages}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        initialPositionReady={initialPositionReady}
+        focusedMessageTarget={focusTarget}
+        hasOlderMessages
+        onLoadOlder={onLoadOlder}
+        onFocusedMessageApplied={onFocusedMessageApplied}
+      />
+    );
+
+    try {
+      const { container, rerender } = render(renderList([target], false));
+      const feed = container.querySelector<HTMLElement>("[role='feed']");
+      const targetNode = container.querySelector<HTMLElement>(
+        "[data-message-uuid='prepend-focused-target']",
+      );
+      if (feed == null || targetNode == null) throw new Error("Expected prepend test nodes");
+      let scrollHeight = 1000;
+      let targetTop = 40;
+      Object.defineProperty(feed, "clientHeight", { configurable: true, value: 200 });
+      Object.defineProperty(feed, "scrollHeight", { configurable: true, get: () => scrollHeight });
+      feed.getBoundingClientRect = () =>
+        ({ top: 0, bottom: 200, left: 0, right: 200, width: 200, height: 200 }) as DOMRect;
+      targetNode.getBoundingClientRect = () =>
+        ({
+          top: targetTop,
+          bottom: targetTop + 40,
+          left: 0,
+          right: 200,
+          width: 200,
+          height: 40,
+        }) as DOMRect;
+      targetNode.scrollIntoView = vi.fn();
+      rerender(renderList([target], true));
+      expect(onFocusedMessageApplied).toHaveBeenCalledOnce();
+      while (scheduledFrames.length > 0) scheduledFrames.shift()?.(0);
+
+      feed.scrollTop = 50;
+      fireEvent.wheel(feed, { deltaY: -1 });
+      fireEvent.scroll(feed);
+      expect(onLoadOlder).toHaveBeenCalledOnce();
+
+      scrollHeight = 1200;
+      targetTop = 140;
+      rerender(renderList([older, target], true));
+
+      expect(feed.scrollTop).toBe(150);
+      expect(container.querySelector("[data-message-uuid='prepend-focused-target']")).toBe(
+        targetNode,
+      );
+      expect(onFocusedMessageApplied).toHaveBeenCalledOnce();
+    } finally {
+      requestFrame.mockRestore();
+    }
+  });
+
+  it.each([
+    { label: "without StrictMode", strictMode: false },
+    { label: "with StrictMode", strictMode: true },
+  ])("tracks user movement during deferred prepend $label", ({ strictMode }) => {
+    const scheduledFrames: FrameRequestCallback[] = [];
+    const requestFrame = vi
+      .spyOn(window, "requestAnimationFrame")
+      .mockImplementation((callback) => {
+        scheduledFrames.push(callback);
+        return scheduledFrames.length;
+      });
+    const onFocusedMessageApplied = vi.fn();
+    const onLoadOlder = vi.fn();
+    const target = createWorkspaceMessage({ uuid: "deferred-prepend-target" });
+    const realtime = createWorkspaceMessage({
+      uuid: "deferred-prepend-realtime",
+      createdAt: "2026-07-03T09:01:00.000Z",
+      updatedAt: "2026-07-03T09:01:00.000Z",
+    });
+    const older = createWorkspaceMessage({
+      uuid: "deferred-prepend-older",
+      createdAt: "2026-07-03T08:59:00.000Z",
+      updatedAt: "2026-07-03T08:59:00.000Z",
+    });
+    const focusTarget = {
+      intentId: 104,
+      messageUuid: target.uuid,
+      focusAttempt: 0,
+    };
+    const renderList = (
+      messages: readonly MessengerMessage[],
+      initialPositionReady: boolean,
+      isLoadingOlder: boolean,
+    ) => {
+      const list = (
+        <WorkspaceMessageList
+          messages={messages}
+          currentUserUuid="current-user-uuid"
+          conversationId="topic:stream-uuid-1:topic-uuid-1"
+          initialPositionReady={initialPositionReady}
+          focusedMessageTarget={focusTarget}
+          hasOlderMessages
+          isLoadingOlder={isLoadingOlder}
+          onLoadOlder={onLoadOlder}
+          onFocusedMessageApplied={onFocusedMessageApplied}
+        />
+      );
+      return strictMode ? <StrictMode>{list}</StrictMode> : list;
+    };
+
+    try {
+      const { container, rerender } = render(renderList([target], false, false));
+      const feed = container.querySelector<HTMLElement>("[role='feed']");
+      const targetNode = container.querySelector<HTMLElement>(
+        "[data-message-uuid='deferred-prepend-target']",
+      );
+      if (feed == null || targetNode == null) throw new Error("Expected deferred prepend nodes");
+      let scrollHeight = 1000;
+      let targetDocumentTop = 90;
+      Object.defineProperty(feed, "clientHeight", { configurable: true, value: 200 });
+      Object.defineProperty(feed, "scrollHeight", { configurable: true, get: () => scrollHeight });
+      feed.getBoundingClientRect = () =>
+        ({ top: 0, bottom: 200, left: 0, right: 200, width: 200, height: 200 }) as DOMRect;
+      targetNode.getBoundingClientRect = () =>
+        ({
+          top: targetDocumentTop - feed.scrollTop,
+          bottom: targetDocumentTop - feed.scrollTop + 40,
+          left: 0,
+          right: 200,
+          width: 200,
+          height: 40,
+        }) as DOMRect;
+      targetNode.scrollIntoView = vi.fn();
+      rerender(renderList([target], true, false));
+      while (scheduledFrames.length > 0) scheduledFrames.shift()?.(0);
+
+      feed.scrollTop = 50;
+      fireEvent.wheel(feed, { deltaY: -1 });
+      fireEvent.scroll(feed);
+      expect(onLoadOlder).toHaveBeenCalledOnce();
+
+      rerender(renderList([target], true, true));
+      feed.scrollTop = 20;
+      fireEvent.scroll(feed);
+
+      scrollHeight = 1040;
+      rerender(renderList([target, realtime], true, true));
+      scrollHeight = 1240;
+      targetDocumentTop = 290;
+      rerender(renderList([older, target, realtime], true, true));
+
+      expect(feed.scrollTop).toBe(220);
+      expect(container.querySelector("[data-message-uuid='deferred-prepend-target']")).toBe(
+        targetNode,
+      );
+      expect(onFocusedMessageApplied).toHaveBeenCalledOnce();
+    } finally {
+      requestFrame.mockRestore();
+    }
+  });
+
+  it("keeps the StrictMode anchor handoff scroll inside one programmatic window", () => {
+    const scheduledFrames: FrameRequestCallback[] = [];
+    const requestFrame = vi
+      .spyOn(window, "requestAnimationFrame")
+      .mockImplementation((callback) => {
+        scheduledFrames.push(callback);
+        return scheduledFrames.length;
+      });
+    const scrollIntoView = vi.fn();
+    const previousScrollIntoView = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      "scrollIntoView",
+    );
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: scrollIntoView,
+    });
+    const onFocusedMessageApplied = vi.fn();
+    const onLoadOlder = vi.fn();
+    const onLoadNewer = vi.fn();
+    const onLoadLatestWindow = vi.fn();
+    const onCancelLatestWindowLoad = vi.fn();
+    const onUnreadMessagesVisible = vi.fn();
+    const onUnreadMessagesAtBottom = vi.fn();
+    const target = createWorkspaceMessage({ uuid: "strict-programmatic-focus-message" });
+    const renderList = (anchorHandoffPending: boolean) => (
+      <StrictMode>
+        <WorkspaceMessageList
+          messages={[target]}
+          currentUserUuid="current-user-uuid"
+          conversationId="topic:stream-uuid-1:topic-uuid-1"
+          initialPositionReady
+          anchorHandoffPending={anchorHandoffPending}
+          scrollToBottomKey="strict-programmatic-focus"
+          focusedMessageTarget={{
+            intentId: 102,
+            messageUuid: target.uuid,
+            focusAttempt: 0,
+          }}
+          hasOlderMessages
+          hasNewerMessages
+          lastMessageUuid="tail-outside-window"
+          onLoadOlder={onLoadOlder}
+          onLoadNewer={onLoadNewer}
+          onLoadLatestWindow={onLoadLatestWindow}
+          onCancelLatestWindowLoad={onCancelLatestWindowLoad}
+          onUnreadMessagesVisible={onUnreadMessagesVisible}
+          onUnreadMessagesAtBottom={onUnreadMessagesAtBottom}
+          onFocusedMessageApplied={onFocusedMessageApplied}
+        />
+      </StrictMode>
+    );
+
+    try {
+      const { container, rerender } = render(renderList(true));
+      const feed = container.querySelector<HTMLElement>("[role='feed']");
+      if (feed == null) throw new Error("Expected StrictMode handoff feed");
+      Object.defineProperty(feed, "clientHeight", { configurable: true, value: 200 });
+      Object.defineProperty(feed, "scrollHeight", { configurable: true, value: 1000 });
+      feed.scrollTop = 0;
+
+      expect(scrollIntoView).toHaveBeenCalledOnce();
+      expect(onFocusedMessageApplied).not.toHaveBeenCalled();
+
+      while (scheduledFrames.length > 0) {
+        const frame = scheduledFrames.shift();
+        act(() => frame?.(0));
+      }
+
+      expect(onFocusedMessageApplied).toHaveBeenCalledOnce();
+
+      rerender(renderList(false));
+      expect(scrollIntoView).toHaveBeenCalledOnce();
+      expect(onFocusedMessageApplied).toHaveBeenCalledOnce();
+    } finally {
+      requestFrame.mockRestore();
+      if (previousScrollIntoView == null) {
+        Reflect.deleteProperty(HTMLElement.prototype, "scrollIntoView");
+      } else {
+        Object.defineProperty(HTMLElement.prototype, "scrollIntoView", previousScrollIntoView);
+      }
+    }
+  });
+
+  it("suppresses pending anchor navigation side effects and restores them after reveal", () => {
+    const onLoadOlder = vi.fn();
+    const onLoadNewer = vi.fn();
+    const onLoadLatestWindow = vi.fn();
+    const onCancelLatestWindowLoad = vi.fn();
+    const onUnreadMessagesVisible = vi.fn();
+    const onUnreadMessagesAtBottom = vi.fn();
+    useUsersStore.getState().replaceUsers([
+      createWorkspaceUser({
+        uuid: "author-uuid-1",
+        avatarUrl: "urn:url:https://cdn.example/a.png",
+      }),
+    ]);
+    const target = createWorkspaceMessage({ uuid: "pending-gate-message" });
+    const renderList = (anchorHandoffPending: boolean) => (
+      <WorkspaceMessageList
+        messages={[target]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        initialPositionReady={false}
+        anchorHandoffPending={anchorHandoffPending}
+        hasOlderMessages
+        hasNewerMessages
+        lastMessageUuid="tail-outside-window"
+        onLoadOlder={onLoadOlder}
+        onLoadNewer={onLoadNewer}
+        onLoadLatestWindow={onLoadLatestWindow}
+        onCancelLatestWindowLoad={onCancelLatestWindowLoad}
+        onUnreadMessagesVisible={onUnreadMessagesVisible}
+        onUnreadMessagesAtBottom={onUnreadMessagesAtBottom}
+      />
+    );
+    const { container, rerender } = render(renderList(true));
+    const feed = container.querySelector<HTMLElement>("[role='feed']");
+    if (feed == null) throw new Error("Expected pending feed");
+    Object.defineProperty(feed, "clientHeight", { configurable: true, value: 200 });
+    Object.defineProperty(feed, "scrollHeight", { configurable: true, value: 1000 });
+    feed.getBoundingClientRect = () =>
+      ({ top: 0, bottom: 200, left: 0, right: 200, width: 200, height: 200 }) as DOMRect;
+    const readBoundary = container.querySelector<HTMLElement>("[data-message-read-boundary]");
+    if (readBoundary == null) throw new Error("Expected unread boundary");
+    readBoundary.getBoundingClientRect = () =>
+      ({ top: 100, bottom: 110, left: 0, right: 200, width: 200, height: 10 }) as DOMRect;
+    feed.scrollTop = 0;
+
+    fireEvent.wheel(feed, { deltaY: -1 });
+    fireEvent.scroll(feed);
+    feed.scrollTop = 800;
+    fireEvent.scroll(feed);
+    expect(screen.queryByRole("button", { name: "Scroll to bottom" })).toBeNull();
+    expect(onLoadOlder).not.toHaveBeenCalled();
+    expect(onLoadNewer).not.toHaveBeenCalled();
+    expect(onLoadLatestWindow).not.toHaveBeenCalled();
+    expect(onCancelLatestWindowLoad).not.toHaveBeenCalled();
+    expect(onUnreadMessagesVisible).not.toHaveBeenCalled();
+    expect(onUnreadMessagesAtBottom).not.toHaveBeenCalled();
+    expect(container.querySelector("[data-workspace-peer-avatar='true'] img")).toBeNull();
+
+    rerender(renderList(false));
+    expect(container.querySelector("[data-workspace-peer-avatar='true'] img")).toHaveAttribute(
+      "src",
+      "https://cdn.example/a.png",
+    );
+    feed.scrollTop = 0;
+    fireEvent.wheel(feed, { deltaY: -1 });
+    fireEvent.scroll(feed);
+    feed.scrollTop = 800;
+    fireEvent.scroll(feed);
+    fireEvent.click(screen.getByRole("button", { name: "Scroll to bottom" }));
+
+    expect(onLoadOlder).toHaveBeenCalledOnce();
+    expect(onLoadNewer).toHaveBeenCalledOnce();
+    expect(onLoadLatestWindow).toHaveBeenCalledWith("tail-outside-window");
+  });
+
+  it("reports a missing focused message once after initial positioning is ready", () => {
+    const onFocusedMessageMissing = vi.fn();
+    const visibleMessage = createWorkspaceMessage({ uuid: "visible-message" });
+    const { rerender } = render(
+      <WorkspaceMessageList
+        messages={[visibleMessage]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        initialPositionReady={false}
+        scrollToBottomKey="missing-focused-position"
+        focusedMessageTarget={{
+          intentId: 41,
+          messageUuid: "missing-focused-message",
+          focusAttempt: 0,
+        }}
+        onFocusedMessageMissing={onFocusedMessageMissing}
+      />,
+    );
+
+    expect(onFocusedMessageMissing).not.toHaveBeenCalled();
+
+    rerender(
+      <WorkspaceMessageList
+        messages={[visibleMessage]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        initialPositionReady
+        scrollToBottomKey="missing-focused-position"
+        focusedMessageTarget={{
+          intentId: 41,
+          messageUuid: "missing-focused-message",
+          focusAttempt: 0,
+        }}
+        onFocusedMessageMissing={onFocusedMessageMissing}
+      />,
+    );
+
+    expect(onFocusedMessageMissing).toHaveBeenCalledOnce();
+    expect(onFocusedMessageMissing).toHaveBeenCalledWith({
+      intentId: 41,
+      messageUuid: "missing-focused-message",
+      focusAttempt: 0,
+    });
+
+    rerender(
+      <WorkspaceMessageList
+        messages={[visibleMessage, createWorkspaceMessage({ uuid: "another-visible-message" })]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        initialPositionReady
+        scrollToBottomKey="missing-focused-position"
+        focusedMessageTarget={{
+          intentId: 41,
+          messageUuid: "missing-focused-message",
+          focusAttempt: 0,
+        }}
+        onFocusedMessageMissing={onFocusedMessageMissing}
+      />,
+    );
+
+    expect(onFocusedMessageMissing).toHaveBeenCalledOnce();
+
+    rerender(
+      <WorkspaceMessageList
+        messages={[visibleMessage]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        initialPositionReady
+        scrollToBottomKey="missing-focused-position"
+        focusedMessageTarget={{
+          intentId: 41,
+          messageUuid: "missing-focused-message",
+          focusAttempt: 1,
+        }}
+        onFocusedMessageMissing={onFocusedMessageMissing}
+      />,
+    );
+
+    expect(onFocusedMessageMissing).toHaveBeenCalledTimes(2);
+    expect(onFocusedMessageMissing).toHaveBeenLastCalledWith({
+      intentId: 41,
+      messageUuid: "missing-focused-message",
+      focusAttempt: 1,
+    });
+  });
+
+  it("opens at the bottom after readiness when there are no unread messages", () => {
+    const message = createWorkspaceMessage({ uuid: "read-tail", read: true });
+    const { container, rerender } = render(
+      <WorkspaceMessageList
+        messages={[message]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        initialPositionReady={false}
+        scrollToBottomKey="bottom-position"
+        unreadCount={0}
+      />,
+    );
+    const feed = container.querySelector<HTMLElement>("[role='feed']");
+    if (feed == null) throw new Error("Expected message feed");
+    Object.defineProperty(feed, "scrollHeight", { configurable: true, value: 480 });
+    feed.scrollTop = 17;
+
+    rerender(
+      <WorkspaceMessageList
+        messages={[message]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        initialPositionReady
+        scrollToBottomKey="bottom-position"
+        unreadCount={0}
+      />,
+    );
+
+    expect(feed.scrollTop).toBe(480);
+  });
+
+  it("scrolls to the bottom after send without repeating the initial unread position", () => {
+    const unreadMessage = createWorkspaceMessage({ uuid: "send-after-unread" });
+    const onTailNavigationRequested = vi.fn();
+    const { container, rerender } = render(
+      <WorkspaceMessageList
+        messages={[unreadMessage]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        initialPositionReady={false}
+        scrollToBottomKey="send-position"
+        scrollToBottomAfterSendNonce={0}
+        firstUnreadUuid="send-after-unread"
+        unreadCount={1}
+        onTailNavigationRequested={onTailNavigationRequested}
+      />,
+    );
+    const feed = container.querySelector<HTMLElement>("[role='feed']");
+    const unreadNode = container.querySelector<HTMLElement>(
+      "[data-message-uuid='send-after-unread']",
+    );
+    if (feed == null || unreadNode == null) throw new Error("Expected message list nodes");
+    const unreadScrollIntoView = vi.fn();
+    unreadNode.scrollIntoView = unreadScrollIntoView;
+
+    rerender(
+      <WorkspaceMessageList
+        messages={[unreadMessage]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        initialPositionReady
+        scrollToBottomKey="send-position"
+        scrollToBottomAfterSendNonce={0}
+        firstUnreadUuid="send-after-unread"
+        unreadCount={1}
+        onTailNavigationRequested={onTailNavigationRequested}
+      />,
+    );
+    expect(unreadScrollIntoView).toHaveBeenCalledOnce();
+
+    Object.defineProperty(feed, "scrollHeight", { configurable: true, value: 640 });
+    feed.scrollTop = 120;
+    fireEvent.wheel(feed, { deltaY: -100 });
+    rerender(
+      <WorkspaceMessageList
+        messages={[unreadMessage]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        initialPositionReady
+        scrollToBottomKey="send-position"
+        scrollToBottomAfterSendNonce={1}
+        firstUnreadUuid="send-after-unread"
+        unreadCount={1}
+        onTailNavigationRequested={onTailNavigationRequested}
+      />,
+    );
+
+    expect(feed.scrollTop).toBe(640);
+    expect(unreadScrollIntoView).toHaveBeenCalledOnce();
+    expect(onTailNavigationRequested).not.toHaveBeenCalled();
+  });
+
+  it("resets the unread divider anchor when entering another conversation", () => {
+    const { container, rerender } = render(
+      <WorkspaceMessageList
+        key="topic:stream-uuid-1:topic-uuid-1"
+        messages={[createWorkspaceMessage({ uuid: "first-conversation-anchor" })]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        firstUnreadUuid="first-conversation-anchor"
+        unreadCount={1}
+      />,
+    );
+
+    rerender(
+      <WorkspaceMessageList
+        key="topic:stream-uuid-2:topic-uuid-2"
+        messages={[
+          createWorkspaceMessage({
+            uuid: "second-conversation-anchor",
+            conversationId: "topic:stream-uuid-2:topic-uuid-2",
+            streamUuid: "stream-uuid-2",
+            topicUuid: "topic-uuid-2",
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-2:topic-uuid-2"
+        firstUnreadUuid="second-conversation-anchor"
+        unreadCount={1}
+      />,
+    );
+
+    const unreadDivider = container.querySelector<HTMLElement>("[data-unread-divider='true']");
+    const secondAnchor = container.querySelector<HTMLElement>(
+      "[data-message-uuid='second-conversation-anchor']",
+    );
+
+    expect(unreadDivider?.nextElementSibling as HTMLElement | null).toContainElement(secondAnchor);
+  });
+
+  it("captures a new first unread message after the conversation is re-entered", () => {
+    const conversationId = "topic:stream-uuid-1:topic-uuid-1";
+    const initial = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "initial-anchor",
+            createdAt: "2026-07-03T09:00:00.000Z",
+          }),
+          createWorkspaceMessage({
+            uuid: "next-anchor",
+            createdAt: "2026-07-03T09:01:00.000Z",
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId={conversationId}
+        firstUnreadUuid="initial-anchor"
+        unreadCount={2}
+      />,
+    );
+
+    initial.rerender(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({ uuid: "initial-anchor", read: true }),
+          createWorkspaceMessage({
+            uuid: "next-anchor",
+            createdAt: "2026-07-03T09:01:00.000Z",
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId={conversationId}
+        firstUnreadUuid="next-anchor"
+        unreadCount={1}
+      />,
+    );
+
+    initial.unmount();
+
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({ uuid: "initial-anchor", read: true }),
+          createWorkspaceMessage({
+            uuid: "next-anchor",
+            createdAt: "2026-07-03T09:01:00.000Z",
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId={conversationId}
+        firstUnreadUuid="next-anchor"
+        unreadCount={1}
+      />,
+    );
+
+    const unreadDivider = container.querySelector<HTMLElement>("[data-unread-divider='true']");
+    const nextAnchor = container.querySelector<HTMLElement>("[data-message-uuid='next-anchor']");
+
+    expect(unreadDivider?.nextElementSibling as HTMLElement | null).toContainElement(nextAnchor);
+  });
+
+  it("does not create an unread divider for messages received after entering a read chat", () => {
+    const { container, rerender } = render(
+      <WorkspaceMessageList
+        messages={[createWorkspaceMessage({ uuid: "read-message", read: true })]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        unreadCount={0}
+      />,
+    );
+
+    rerender(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({ uuid: "read-message", read: true }),
+          createWorkspaceMessage({ uuid: "new-unread-message" }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        firstUnreadUuid="new-unread-message"
+        unreadCount={1}
+      />,
+    );
+
+    expect(container.querySelector("[data-unread-divider='true']")).not.toBeInTheDocument();
+  });
+
+  it("dismisses the divider only after a user scroll passes its boundary", async () => {
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[createWorkspaceMessage({ uuid: "unread-anchor" })]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        firstUnreadUuid="unread-anchor"
+        unreadCount={1}
+      />,
+    );
+
+    const feed = container.querySelector("[role='feed']");
+    const unreadDivider = container.querySelector<HTMLElement>("[data-unread-divider='true']");
+
+    if (feed == null || unreadDivider == null) {
+      throw new Error("Unread divider test nodes were not found");
+    }
+
+    Object.defineProperty(feed, "clientHeight", { configurable: true, value: 100 });
+    vi.spyOn(feed, "getBoundingClientRect").mockReturnValue({
+      top: 0,
+      bottom: 100,
+      left: 0,
+      right: 100,
+      width: 100,
+      height: 100,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    });
+    vi.spyOn(unreadDivider, "getBoundingClientRect").mockReturnValue({
+      top: -20,
+      bottom: -1,
+      left: 0,
+      right: 100,
+      width: 100,
+      height: 19,
+      x: 0,
+      y: -20,
+      toJSON: () => ({}),
+    });
+
+    expect(unreadDivider).toBeInTheDocument();
+
+    fireEvent.wheel(feed, { deltaY: 120 });
+
+    await waitFor(() => {
+      expect(container.querySelector("[data-unread-divider='true']")).not.toBeInTheDocument();
+    });
+  });
+
+  it("reports a tall unread message after its bottom boundary enters the viewport", () => {
+    const hasFocus = vi.spyOn(document, "hasFocus").mockReturnValue(false);
+    Object.defineProperty(document, "visibilityState", {
+      value: "visible",
+      configurable: true,
+    });
+    const onUnreadMessagesVisible = vi.fn();
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[createWorkspaceMessage({ uuid: "focus-unread-message" })]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        onUnreadMessagesVisible={onUnreadMessagesVisible}
+      />,
+    );
+    const feed = container.querySelector<HTMLElement>("[role='feed']");
+    const message = container.querySelector<HTMLElement>(
+      "[data-message-uuid='focus-unread-message']",
+    );
+    const readBoundary = container.querySelector<HTMLElement>(
+      "[data-message-read-boundary='focus-unread-message']",
+    );
+
+    if (feed == null || message == null || readBoundary == null) {
+      throw new Error("Unread focus test nodes were not found");
+    }
+
+    vi.spyOn(feed, "getBoundingClientRect").mockReturnValue({
+      top: 0,
+      bottom: 100,
+      left: 0,
+      right: 100,
+      width: 100,
+      height: 100,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    });
+    vi.spyOn(message, "getBoundingClientRect").mockReturnValue({
+      top: -300,
+      bottom: 200,
+      left: 0,
+      right: 100,
+      width: 100,
+      height: 500,
+      x: 0,
+      y: -300,
+      toJSON: () => ({}),
+    });
+    const readBoundaryRect = vi.spyOn(readBoundary, "getBoundingClientRect");
+    readBoundaryRect.mockReturnValue({
+      top: 99,
+      bottom: 100,
+      left: 0,
+      right: 100,
+      width: 100,
+      height: 1,
+      x: 0,
+      y: 99,
+      toJSON: () => ({}),
+    });
+
+    hasFocus.mockReturnValue(true);
+    act(() => {
+      window.dispatchEvent(new Event("focus"));
+    });
+
+    expect(onUnreadMessagesVisible).toHaveBeenCalledWith(["focus-unread-message"]);
+
+    onUnreadMessagesVisible.mockClear();
+    readBoundaryRect.mockReturnValue({
+      top: 100,
+      bottom: 101,
+      left: 0,
+      right: 100,
+      width: 100,
+      height: 1,
+      x: 0,
+      y: 100,
+      toJSON: () => ({}),
+    });
+
+    act(() => {
+      window.dispatchEvent(new Event("focus"));
+    });
+
+    expect(onUnreadMessagesVisible).not.toHaveBeenCalled();
+    hasFocus.mockRestore();
+  });
+
+  it("reports an unread message authored by the current user when it is visible", () => {
+    const hasFocus = vi.spyOn(document, "hasFocus").mockReturnValue(false);
+    Object.defineProperty(document, "visibilityState", {
+      value: "visible",
+      configurable: true,
+    });
+    const onUnreadMessagesVisible = vi.fn();
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "own-unread-message",
+            authorUuid: "current-user-uuid",
+            userUuid: "current-user-uuid",
+            isOwn: true,
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        onUnreadMessagesVisible={onUnreadMessagesVisible}
+      />,
+    );
+    const feed = container.querySelector<HTMLElement>("[role='feed']");
+    const readBoundary = container.querySelector<HTMLElement>(
+      "[data-message-read-boundary='own-unread-message']",
+    );
+
+    if (feed == null || readBoundary == null) {
+      throw new Error("Own unread visibility test nodes were not found");
+    }
+
+    vi.spyOn(feed, "getBoundingClientRect").mockReturnValue({
+      top: 0,
+      bottom: 100,
+      left: 0,
+      right: 100,
+      width: 100,
+      height: 100,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    });
+    vi.spyOn(readBoundary, "getBoundingClientRect").mockReturnValue({
+      top: 99,
+      bottom: 100,
+      left: 0,
+      right: 100,
+      width: 100,
+      height: 1,
+      x: 0,
+      y: 99,
+      toJSON: () => ({}),
+    });
+
+    hasFocus.mockReturnValue(true);
+    act(() => {
+      window.dispatchEvent(new Event("focus"));
+    });
+
+    expect(onUnreadMessagesVisible).toHaveBeenCalledWith(["own-unread-message"]);
+    hasFocus.mockRestore();
+  });
+
+  it("starts observing unread messages when the initial position becomes ready", () => {
+    const observers: ReadyIntersectionObserver[] = [];
+
+    class ReadyIntersectionObserver implements IntersectionObserver {
+      readonly root: Element | Document | null;
+      readonly rootMargin = "0px";
+      readonly scrollMargin = "";
+      readonly thresholds: readonly number[] = [0];
+      readonly callback: IntersectionObserverCallback;
+      readonly observedElements = new Set<Element>();
+
+      constructor(callback: IntersectionObserverCallback, options?: IntersectionObserverInit) {
+        this.callback = callback;
+        this.root = options?.root ?? null;
+        observers.push(this);
+      }
+
+      observe = (element: Element) => {
+        this.observedElements.add(element);
+      };
+      unobserve = (element: Element) => {
+        this.observedElements.delete(element);
+      };
+      disconnect = () => {
+        this.observedElements.clear();
+      };
+      takeRecords = (): IntersectionObserverEntry[] => [];
+    }
+
+    vi.stubGlobal("IntersectionObserver", ReadyIntersectionObserver);
+    const onUnreadMessagesVisible = vi.fn();
+    const ownUnread = createWorkspaceMessage({
+      uuid: "ready-own-unread-message",
+      authorUuid: "current-user-uuid",
+      userUuid: "current-user-uuid",
+      isOwn: true,
+    });
+    const renderList = (initialPositionReady: boolean) => (
+      <WorkspaceMessageList
+        messages={[ownUnread]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        initialPositionReady={initialPositionReady}
+        scrollToBottomKey="ready-transition"
+        firstUnreadUuid={ownUnread.uuid}
+        unreadCount={1}
+        onUnreadMessagesVisible={onUnreadMessagesVisible}
+      />
+    );
+    const { container, rerender } = render(renderList(false));
+    const messageNode = container.querySelector<HTMLElement>(
+      "[data-message-uuid='ready-own-unread-message']",
+    );
+    if (messageNode == null) throw new Error("Unread message node was not rendered");
+    messageNode.scrollIntoView = vi.fn();
+
+    expect(observers).toHaveLength(0);
+
+    rerender(renderList(true));
+
+    const observer = observers[0];
+    const readBoundary = container.querySelector<HTMLElement>(
+      "[data-message-read-boundary='ready-own-unread-message']",
+    );
+    if (observer == null || readBoundary == null) {
+      throw new Error("Unread observer was not created after initial positioning");
+    }
+    expect(observer.observedElements.has(readBoundary)).toBe(true);
+
+    act(() => {
+      observer.callback(
+        [
+          {
+            boundingClientRect: readBoundary.getBoundingClientRect(),
+            intersectionRect: readBoundary.getBoundingClientRect(),
+            isIntersecting: true,
+            intersectionRatio: 1,
+            rootBounds: null,
+            target: readBoundary,
+            time: 1,
+          },
+        ],
+        observer,
+      );
+    });
+
+    expect(onUnreadMessagesVisible).toHaveBeenCalledWith([ownUnread.uuid]);
+  });
+
+  it("renders neighboring author groups separately", () => {
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "author-a-first",
+            authorUuid: "author-a",
+            createdAt: "2026-07-03T09:00:00.000Z",
+          }),
+          createWorkspaceMessage({
+            uuid: "author-a-second",
+            authorUuid: "author-a",
+            createdAt: "2026-07-03T09:01:00.000Z",
+          }),
+          createWorkspaceMessage({
+            uuid: "author-b-message",
+            authorUuid: "author-b",
+            createdAt: "2026-07-03T09:02:00.000Z",
+          }),
+          createWorkspaceMessage({
+            uuid: "author-a-third",
+            authorUuid: "author-a",
+            createdAt: "2026-07-03T09:03:00.000Z",
+          }),
+        ]}
+        currentUserUuid="author-a"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+
+    const authorGroups = Array.from(container.querySelectorAll("[data-author-group='true']"));
+
+    expect(authorGroups.map((group) => group.getAttribute("data-author-uuid"))).toEqual([
+      "author-a",
+      "author-b",
+      "author-a",
+    ]);
+    expect(authorGroups.map((group) => group.getAttribute("data-message-owner"))).toEqual([
+      "own",
+      "peer",
+      "own",
+    ]);
+    expect(authorGroups[0]?.querySelectorAll("article")).toHaveLength(2);
+    expect(authorGroups[1]?.querySelectorAll("article")).toHaveLength(1);
+    expect(authorGroups[2]?.querySelectorAll("article")).toHaveLength(1);
+  });
+
+  it("keeps a media row mounted when an earlier unrelated author group appears", () => {
+    const fileUuid = "11111111-1111-4111-8111-111111111111";
+    const mediaMessage = createWorkspaceMessage({
+      uuid: "media-message",
+      authorUuid: "author-a",
+      markdown: `![screen.png](urn:image:${fileUuid}?name=screen.png&content_type=image%2Fpng)`,
+      createdAt: "2026-07-03T09:01:00.000Z",
+    });
+    const { container, rerender } = render(
+      <WorkspaceMessageList
+        messages={[mediaMessage]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+    const mediaArticle = container.querySelector("[data-message-uuid='media-message']");
+    const mediaNode = mediaArticle?.querySelector("[data-workspace-file-kind='media']");
+    expect(mediaNode).toBeInTheDocument();
+
+    rerender(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "earlier-author-b",
+            authorUuid: "author-b",
+            createdAt: "2026-07-03T09:00:00.000Z",
+          }),
+          mediaMessage,
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+
+    const currentArticle = container.querySelector("[data-message-uuid='media-message']");
+    expect(currentArticle).toBe(mediaArticle);
+    expect(currentArticle?.querySelector("[data-workspace-file-kind='media']")).toBe(mediaNode);
+  });
+
+  it("keeps a repeated-author media group mounted when an earlier matching group appears", () => {
+    const fileUuid = "22222222-2222-4222-8222-222222222222";
+    const separatorMessage = createWorkspaceMessage({
+      uuid: "separator-author-b",
+      authorUuid: "author-b",
+      createdAt: "2026-07-03T09:01:00.000Z",
+    });
+    const mediaMessage = createWorkspaceMessage({
+      uuid: "later-author-a-media",
+      authorUuid: "author-a",
+      markdown: `![screen.png](urn:image:${fileUuid}?name=screen.png&content_type=image%2Fpng)`,
+      createdAt: "2026-07-03T09:02:00.000Z",
+    });
+    const { container, rerender } = render(
+      <WorkspaceMessageList
+        messages={[separatorMessage, mediaMessage]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+    const mediaArticle = container.querySelector("[data-message-uuid='later-author-a-media']");
+    const mediaNode = mediaArticle?.querySelector("[data-workspace-file-kind='media']");
+    expect(mediaNode).toBeInTheDocument();
+
+    rerender(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "earlier-author-a",
+            authorUuid: "author-a",
+            createdAt: "2026-07-03T09:00:00.000Z",
+          }),
+          separatorMessage,
+          mediaMessage,
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+
+    const currentArticle = container.querySelector("[data-message-uuid='later-author-a-media']");
+    expect(currentArticle).toBe(mediaArticle);
+    expect(currentArticle?.querySelector("[data-workspace-file-kind='media']")).toBe(mediaNode);
+  });
+
+  it("renders own and peer bubbles with resolved author label only for peer group start", () => {
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "own-message",
+            authorUuid: "current-user-uuid",
+            userUuid: "current-user-uuid",
+            isOwn: true,
+            markdown: "Own message",
+            createdAt: "2026-07-03T09:00:00.000Z",
+          }),
+          createWorkspaceMessage({
+            uuid: "peer-message",
+            authorUuid: "peer-user-uuid-1",
+            userUuid: "peer-user-uuid-1",
+            markdown: "Peer message",
+            createdAt: "2026-07-03T09:01:00.000Z",
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        resolveAuthorLabel={(authorUuid) => (authorUuid === "peer-user-uuid-1" ? "Bob Reed" : null)}
+      />,
+    );
+
+    const ownArticle = container.querySelector("[data-message-uuid='own-message']");
+    const peerArticle = container.querySelector("[data-message-uuid='peer-message']");
+
+    expect(ownArticle).toHaveAttribute("data-message-owner", "own");
+    expect(peerArticle).toHaveAttribute("data-message-owner", "peer");
+    expect(ownArticle?.querySelector("[data-workspace-message-bubble='true']")).toHaveClass(
+      "bg-msg-own-bg",
+    );
+    expect(peerArticle?.querySelector("[data-workspace-message-bubble='true']")).toHaveClass(
+      "bg-msg-bg",
+    );
+    expect(ownArticle?.querySelector("[data-workspace-message-bubble='true']")).not.toHaveAttribute(
+      "role",
+      "button",
+    );
+    expect(
+      peerArticle?.querySelector("[data-workspace-message-bubble='true']"),
+    ).not.toHaveAttribute("role", "button");
+    expect(ownArticle?.querySelector("[data-peer-author-label='true']")).not.toBeInTheDocument();
+    expect(peerArticle?.querySelector("[data-peer-author-label='true']")).toHaveTextContent(
+      "Bob Reed",
+    );
+  });
+
+  it("renders row-level selection controls in one rail without changing the bubble contract", () => {
+    const onToggleMessageSelection = vi.fn();
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "own-selection-message",
+            authorUuid: "current-user-uuid",
+            userUuid: "current-user-uuid",
+            isOwn: true,
+            markdown: "Own selected message",
+          }),
+          createWorkspaceMessage({
+            uuid: "peer-selection-message",
+            authorUuid: "peer-user-uuid-1",
+            userUuid: "peer-user-uuid-1",
+            markdown: "Peer message",
+            createdAt: "2026-07-03T09:01:00.000Z",
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        selectionMode
+        selectedMessageUuids={new Set(["own-selection-message", "peer-selection-message"])}
+        actions={{ onToggleMessageSelection }}
+      />,
+    );
+
+    const ownArticle = container.querySelector("[data-message-uuid='own-selection-message']");
+    const peerArticle = container.querySelector("[data-message-uuid='peer-selection-message']");
+    const controls = container.querySelectorAll(
+      "[data-workspace-message-selection-control='true']",
+    );
+    const ownControl = ownArticle?.querySelector(
+      "[data-workspace-message-selection-control='true']",
+    );
+    const peerControl = peerArticle?.querySelector(
+      "[data-workspace-message-selection-control='true']",
+    );
+    const ownGroup = ownArticle?.closest("[data-author-group='true']");
+    const peerGroup = peerArticle?.closest("[data-author-group='true']");
+    const ownBubble = ownArticle?.querySelector("[data-workspace-message-bubble='true']");
+    const peerBubble = peerArticle?.querySelector("[data-workspace-message-bubble='true']");
+
+    expect(controls).toHaveLength(2);
+    expect(ownControl).toBeInTheDocument();
+    expect(peerControl).toBeInTheDocument();
+    for (const article of [ownArticle, peerArticle]) {
+      expect(article).toHaveAttribute("data-workspace-message-selectable-row", "true");
+      expect(article).toHaveClass(
+        "w-full",
+        "cursor-pointer",
+        "rounded-lg",
+        "transition-colors",
+        "hover:bg-card-bg-active",
+      );
+      expect(article).not.toHaveAttribute("role", "button");
+    }
+    expect(ownArticle?.firstElementChild?.nextElementSibling).toBe(ownControl);
+    expect(peerArticle?.firstElementChild?.nextElementSibling).toBe(peerControl);
+    expect(ownControl).toHaveClass("mb-0.5", "h-8", "w-8", "shrink-0", "items-center");
+    expect(peerControl).toHaveClass("mb-0.5", "h-8", "w-8", "shrink-0", "items-center");
+    expect(ownControl?.getAttribute("class")).toBe(peerControl?.getAttribute("class"));
+    for (const control of controls) {
+      expect(control).not.toHaveClass("absolute", "left-0", "right-0", "-left-7", "-right-7");
+    }
+    expect(ownGroup).toHaveClass("w-full");
+    expect(ownGroup).not.toHaveClass("pl-14");
+    expect(peerGroup).toHaveClass("relative", "w-full");
+    expect(peerGroup).not.toHaveClass("gap-2");
+    expect(
+      peerGroup?.querySelector("[data-workspace-peer-avatar='true']")?.parentElement,
+    ).toHaveClass("pointer-events-none", "absolute", "inset-y-0", "left-0", "w-12");
+    expect(peerGroup?.querySelector("[data-workspace-peer-avatar='true']")).toHaveClass(
+      "pointer-events-auto",
+      "sticky",
+      "bottom-2",
+    );
+    const ownOuterRail = ownArticle?.querySelector(
+      "[data-workspace-message-selection-outer-rail='true']",
+    );
+    const peerOuterRail = peerArticle?.querySelector(
+      "[data-workspace-message-selection-outer-rail='true']",
+    );
+    expect(ownOuterRail).toHaveClass("w-14", "self-stretch");
+    expect(peerOuterRail).toHaveClass("w-14", "self-stretch");
+    expect(ownOuterRail?.parentElement).toBe(ownArticle);
+    expect(peerOuterRail?.parentElement).toBe(peerArticle);
+    expect(
+      ownArticle?.querySelector(
+        "[data-workspace-message-bubble='true'] [data-workspace-message-selection-control='true']",
+      ),
+    ).not.toBeInTheDocument();
+    expect(
+      ownArticle?.querySelector<HTMLInputElement>(
+        "[data-workspace-message-selection-control='true'] input",
+      ),
+    ).toBeChecked();
+    expect(
+      peerArticle?.querySelector<HTMLInputElement>(
+        "[data-workspace-message-selection-control='true'] input",
+      ),
+    ).toBeChecked();
+    const backgroundClassNames = [
+      "bg-msg-own-bg",
+      "bg-msg-bg",
+      "bg-msg-call-bg",
+      "bg-msg-selected",
+      "bg-card-bg-active",
+    ];
+    expect(
+      backgroundClassNames.filter((className) => ownBubble?.classList.contains(className)),
+    ).toEqual(["bg-msg-selected"]);
+    expect(
+      backgroundClassNames.filter((className) => peerBubble?.classList.contains(className)),
+    ).toEqual(["bg-card-bg-active"]);
+    expect(ownBubble).not.toHaveClass("ring-2");
+    expect(peerBubble).not.toHaveClass("ring-2");
+    const ownCheckbox = ownControl?.querySelector<HTMLInputElement>("input[type='checkbox']");
+    const peerCheckbox = peerArticle?.querySelector<HTMLInputElement>(
+      "[data-workspace-message-selection-control='true'] input",
+    );
+    const ownContextId = ownCheckbox?.getAttribute("aria-describedby");
+    const peerContextId = peerCheckbox?.getAttribute("aria-describedby");
+    expect(ownContextId).toBeTruthy();
+    expect(peerContextId).toBeTruthy();
+    expect(ownContextId).not.toBe(peerContextId);
+    if (ownContextId == null || peerContextId == null) {
+      throw new Error("Selection context ids must be present");
+    }
+    expect(ownCheckbox).toHaveAccessibleDescription();
+    expect(peerCheckbox).toHaveAccessibleDescription();
+    expect(document.getElementById(ownContextId)).toHaveTextContent("#current-");
+    expect(document.getElementById(peerContextId)).toHaveTextContent("#peer-us");
+    expect(document.getElementById(ownContextId)).not.toHaveTextContent("Own selected message");
+    expect(document.getElementById(peerContextId)).not.toHaveTextContent("Peer message");
+    expect(peerCheckbox).not.toBeNull();
+    fireEvent.click(peerCheckbox as HTMLInputElement);
+    expect(onToggleMessageSelection).toHaveBeenCalledTimes(1);
+    expect(onToggleMessageSelection).toHaveBeenCalledWith("peer-selection-message");
+    fireEvent.click(peerGroup?.querySelector("[data-workspace-peer-avatar='true']") as HTMLElement);
+    expect(onToggleMessageSelection).toHaveBeenCalledTimes(1);
+  });
+
+  it("toggles the correct own and peer UUID from the full-width outer rail", () => {
+    const onToggleMessageSelection = vi.fn();
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "own-row-selection-message",
+            authorUuid: "current-user-uuid",
+            userUuid: "current-user-uuid",
+            isOwn: true,
+            markdown: "Own selectable body",
+          }),
+          createWorkspaceMessage({
+            uuid: "peer-row-selection-message",
+            authorUuid: "peer-user-uuid",
+            userUuid: "peer-user-uuid",
+            markdown: "Peer selectable body",
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        selectionMode
+        actions={{ onToggleMessageSelection }}
+      />,
+    );
+    const ownOuterRail = container.querySelector(
+      "[data-message-uuid='own-row-selection-message'] [data-workspace-message-selection-outer-rail='true']",
+    );
+    const peerOuterRail = container.querySelector(
+      "[data-message-uuid='peer-row-selection-message'] [data-workspace-message-selection-outer-rail='true']",
+    );
+
+    fireEvent.click(ownOuterRail as HTMLElement);
+    fireEvent.click(peerOuterRail as HTMLElement);
+
+    expect(onToggleMessageSelection).toHaveBeenCalledTimes(2);
+    expect(onToggleMessageSelection).toHaveBeenNthCalledWith(1, "own-row-selection-message");
+    expect(onToggleMessageSelection).toHaveBeenNthCalledWith(2, "peer-row-selection-message");
+  });
+
+  it("keeps bubble text inside the full-row selection target", () => {
+    const onToggleMessageSelection = vi.fn();
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "bubble-body-row-selection-message",
+            markdown: "Selectable bubble body",
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        selectionMode
+        actions={{ onToggleMessageSelection }}
+      />,
+    );
+    const body = container.querySelector(
+      "[data-message-uuid='bubble-body-row-selection-message'] [data-message-body='true']",
+    );
+
+    fireEvent.click(body as HTMLElement);
+
+    expect(onToggleMessageSelection).toHaveBeenCalledOnce();
+    expect(onToggleMessageSelection).toHaveBeenCalledWith("bubble-body-row-selection-message");
+  });
+
+  it("unselects a selected message on the second row click", () => {
+    const { container } = render(
+      <WorkspaceMessageSelectionHarness
+        message={createWorkspaceMessage({
+          uuid: "repeated-row-selection-message",
+          markdown: "Toggle this row twice",
+        })}
+      />,
+    );
+    const article = container.querySelector("[data-message-uuid='repeated-row-selection-message']");
+    const checkbox = article?.querySelector<HTMLInputElement>("input[type='checkbox']");
+
+    expect(checkbox).not.toBeChecked();
+    fireEvent.click(article as HTMLElement);
+    expect(checkbox).toBeChecked();
+    fireEvent.click(article as HTMLElement);
+    expect(checkbox).not.toBeChecked();
+  });
+
+  it("keeps interactive message descendants independent from row selection", () => {
+    const onToggleMessageSelection = vi.fn();
+    const onOpenAuthorProfile = vi.fn();
+    const onToggleMessageReaction = vi.fn();
+    const onOpenWorkspaceMedia = vi.fn();
+    const open = vi.fn();
+    vi.stubGlobal("open", open);
+    const fileUuid = "44444444-4444-4444-8444-444444444444";
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "interactive-row-selection-message",
+            authorUuid: "peer-user-uuid",
+            userUuid: "peer-user-uuid",
+            markdown: `[Docs](https://example.com/docs)\n\n![screen.png](urn:image:${fileUuid}?name=screen.png&content_type=image%2Fpng)`,
+            reactions: { "👍": 1 },
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        selectionMode
+        actions={{
+          onToggleMessageSelection,
+          onOpenAuthorProfile,
+          onToggleMessageReaction,
+          onOpenWorkspaceMedia,
+        }}
+      />,
+    );
+    const article = container.querySelector(
+      "[data-message-uuid='interactive-row-selection-message']",
+    );
+    const authorButton = article?.querySelector("button[data-peer-author-label='true']");
+    const link = article?.querySelector("a[href='https://example.com/docs']");
+    const reactionButton = article?.querySelector(
+      "button[data-workspace-message-reaction-chip='true']",
+    );
+    const mediaButton = article?.querySelector("[data-workspace-file-kind='media']");
+
+    fireEvent.click(authorButton as HTMLElement);
+    fireEvent.click(link as HTMLElement);
+    fireEvent.click(reactionButton as HTMLElement);
+    fireEvent.click(mediaButton as HTMLElement);
+
+    expect(onToggleMessageSelection).not.toHaveBeenCalled();
+    expect(onOpenAuthorProfile).toHaveBeenCalledTimes(1);
+    expect(open).toHaveBeenCalledTimes(1);
+    expect(onToggleMessageReaction).toHaveBeenCalledTimes(1);
+    expect(onOpenWorkspaceMedia).toHaveBeenCalledTimes(1);
+  });
+
+  it("ignores synthetic clicks from a real portal outside the message row", async () => {
+    const onToggleMessageSelection = vi.fn();
+    const onToggleMessageReaction = vi.fn();
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "portal-row-selection-message",
+            markdown: "Portal selection guard",
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        selectionMode
+        actions={{ onToggleMessageSelection, onToggleMessageReaction }}
+      />,
+    );
+    const article = container.querySelector("[data-message-uuid='portal-row-selection-message']");
+
+    openWorkspaceMessageMenu();
+    fireEvent.click(await screen.findByLabelText("More reactions"));
+    const portalBackdrop = await screen.findByTestId(
+      "workspace-message-reaction-emoji-picker-backdrop",
+    );
+    expect(article).not.toContainElement(portalBackdrop);
+
+    fireEvent.click(portalBackdrop);
+
+    expect(onToggleMessageSelection).not.toHaveBeenCalled();
+  });
+
+  it("does not toggle a selectable row after selecting message text", () => {
+    const onToggleMessageSelection = vi.fn();
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "text-selection-row-message",
+            markdown: "Keep this selected text",
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        selectionMode
+        actions={{ onToggleMessageSelection }}
+      />,
+    );
+    const body = container.querySelector(
+      "[data-message-uuid='text-selection-row-message'] [data-message-body='true']",
+    );
+
+    selectMessageBodyText(container, "text-selection-row-message", "selected text");
+    fireEvent.click(body as HTMLElement);
+
+    expect(onToggleMessageSelection).not.toHaveBeenCalled();
+    window.getSelection()?.removeAllRanges();
+  });
+
+  it("toggles normally when the selection API is unavailable", () => {
+    const onToggleMessageSelection = vi.fn();
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "missing-selection-api-message",
+            markdown: "No selection API",
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        selectionMode
+        actions={{ onToggleMessageSelection }}
+      />,
+    );
+    const outerRail = container.querySelector(
+      "[data-message-uuid='missing-selection-api-message'] [data-workspace-message-selection-outer-rail='true']",
+    );
+    const getSelectionDescriptor = Object.getOwnPropertyDescriptor(window, "getSelection");
+    Object.defineProperty(window, "getSelection", {
+      configurable: true,
+      value: undefined,
+    });
+
+    try {
+      fireEvent.click(outerRail as HTMLElement);
+      expect(onToggleMessageSelection).toHaveBeenCalledWith("missing-selection-api-message");
+    } finally {
+      if (getSelectionDescriptor == null) {
+        Reflect.deleteProperty(window, "getSelection");
+      } else {
+        Object.defineProperty(window, "getSelection", getSelectionDescriptor);
+      }
+    }
+  });
+
+  it("centers the hit area on a short bubble and bottom-anchors it on a tall bubble", () => {
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "short-control-alignment-message",
+            authorUuid: "current-user-uuid",
+            userUuid: "current-user-uuid",
+            isOwn: true,
+            markdown: "Short",
+          }),
+          createWorkspaceMessage({
+            uuid: "tall-control-alignment-message",
+            authorUuid: "peer-user-uuid",
+            userUuid: "peer-user-uuid",
+            markdown: "Tall message\nwith multiple lines\nand a stable bottom edge",
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        selectionMode
+      />,
+    );
+    const shortArticle = container.querySelector(
+      "[data-message-uuid='short-control-alignment-message']",
+    );
+    const tallArticle = container.querySelector(
+      "[data-message-uuid='tall-control-alignment-message']",
+    );
+    const shortControl = shortArticle?.querySelector(
+      "[data-workspace-message-selection-control='true']",
+    );
+    const tallControl = tallArticle?.querySelector(
+      "[data-workspace-message-selection-control='true']",
+    );
+    const shortBubble = shortArticle?.querySelector("[data-workspace-message-bubble='true']");
+
+    expect(shortBubble).toHaveClass("py-2", "text-sm");
+    for (const article of [shortArticle, tallArticle]) {
+      expect(article).toHaveClass("items-end");
+      expect(article).not.toHaveClass("items-center");
+    }
+    for (const control of [shortControl, tallControl]) {
+      expect(control).toHaveClass("mb-0.5", "h-8", "items-center");
+      expect(control).not.toHaveClass("items-end");
+    }
+  });
+
+  it("does not render selection controls outside selection mode or for outgoing messages", () => {
+    const outgoingMessage = createOutgoingMessage({
+      placementUuid: "outgoing-selection-message",
+    });
+    const onToggleMessageSelection = vi.fn();
+    const { container, rerender } = render(
+      <WorkspaceMessageList
+        messages={[createWorkspaceMessage({ uuid: "normal-message" })]}
+        outgoingMessages={[outgoingMessage]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onToggleMessageSelection }}
+      />,
+    );
+
+    expect(
+      container.querySelectorAll("[data-workspace-message-selection-control='true']"),
+    ).toHaveLength(0);
+    const normalArticle = container.querySelector("[data-message-uuid='normal-message']");
+    const outgoingArticle = container.querySelector(
+      "[data-outgoing-message-id='outgoing-selection-message']",
+    );
+    expect(normalArticle).not.toHaveAttribute("data-workspace-message-selectable-row");
+    expect(normalArticle).not.toHaveClass(
+      "cursor-pointer",
+      "transition-colors",
+      "hover:bg-card-bg-active",
+    );
+    expect(outgoingArticle).not.toHaveAttribute("data-workspace-message-selectable-row");
+    fireEvent.click(normalArticle as HTMLElement);
+    fireEvent.click(outgoingArticle as HTMLElement);
+    expect(onToggleMessageSelection).not.toHaveBeenCalled();
+
+    rerender(
+      <WorkspaceMessageList
+        messages={[createWorkspaceMessage({ uuid: "normal-message" })]}
+        outgoingMessages={[outgoingMessage]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        selectionMode
+        actions={{ onToggleMessageSelection }}
+      />,
+    );
+
+    expect(
+      container.querySelector(
+        "[data-outgoing-message-id='outgoing-selection-message'] [data-workspace-message-selection-control='true']",
+      ),
+    ).not.toBeInTheDocument();
+    expect(
+      container.querySelectorAll("[data-workspace-message-selection-control='true']"),
+    ).toHaveLength(1);
+    const selectableArticle = container.querySelector("[data-message-uuid='normal-message']");
+    const selectionOutgoingArticle = container.querySelector(
+      "[data-outgoing-message-id='outgoing-selection-message']",
+    );
+    expect(selectableArticle).toHaveAttribute("data-workspace-message-selectable-row", "true");
+    expect(selectableArticle).toHaveClass(
+      "cursor-pointer",
+      "rounded-lg",
+      "transition-colors",
+      "hover:bg-card-bg-active",
+    );
+    expect(selectableArticle).not.toHaveAttribute("role", "button");
+    expect(selectionOutgoingArticle).not.toHaveAttribute("data-workspace-message-selectable-row");
+    expect(selectionOutgoingArticle).not.toHaveClass("cursor-pointer", "hover:bg-card-bg-active");
+    fireEvent.click(selectionOutgoingArticle as HTMLElement);
+    expect(onToggleMessageSelection).not.toHaveBeenCalled();
+  });
+
+  it("builds selection context only for a rendered server-message control", () => {
+    const message = createWorkspaceMessage({
+      uuid: "selection-context-message",
+      authorUuid: "current-user-uuid",
+      userUuid: "current-user-uuid",
+      isOwn: true,
+    });
+    const outgoingMessage = createOutgoingMessage({
+      placementUuid: "selection-context-outgoing",
+    });
+    const resolveAuthorLabel = vi.fn(() => "Current user");
+    const actions = { onToggleMessageSelection: vi.fn() };
+    const toLocaleTimeString = vi
+      .spyOn(Date.prototype, "toLocaleTimeString")
+      .mockReturnValue("09:00");
+
+    try {
+      const { container, rerender } = render(
+        <WorkspaceMessageList
+          messages={[message]}
+          currentUserUuid="current-user-uuid"
+          conversationId="topic:stream-uuid-1:topic-uuid-1"
+          resolveAuthorLabel={resolveAuthorLabel}
+          actions={actions}
+        />,
+      );
+
+      expect(toLocaleTimeString).not.toHaveBeenCalled();
+      expect(
+        container.querySelector("[data-workspace-message-selection-context='true']"),
+      ).not.toBeInTheDocument();
+
+      rerender(
+        <WorkspaceMessageList
+          messages={[message]}
+          currentUserUuid="current-user-uuid"
+          conversationId="topic:stream-uuid-1:topic-uuid-1"
+          resolveAuthorLabel={resolveAuthorLabel}
+          selectionMode
+          actions={actions}
+        />,
+      );
+
+      expect(toLocaleTimeString).toHaveBeenCalledTimes(1);
+      expect(
+        container.querySelector("[data-workspace-message-selection-context='true']"),
+      ).toBeInTheDocument();
+
+      toLocaleTimeString.mockClear();
+      rerender(
+        <WorkspaceMessageList
+          messages={[]}
+          outgoingMessages={[outgoingMessage]}
+          currentUserUuid="current-user-uuid"
+          conversationId="topic:stream-uuid-1:topic-uuid-1"
+          resolveAuthorLabel={resolveAuthorLabel}
+          selectionMode
+          actions={actions}
+        />,
+      );
+
+      expect(toLocaleTimeString).not.toHaveBeenCalled();
+      expect(
+        container.querySelector("[data-workspace-message-selection-context='true']"),
+      ).not.toBeInTheDocument();
+    } finally {
+      toLocaleTimeString.mockRestore();
+    }
+  });
+
+  it("falls back to a short uuid label when a peer author is unresolved", () => {
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "peer-message",
+            authorUuid: "peer-user-uuid-1",
+            userUuid: "peer-user-uuid-1",
+            markdown: "Peer message",
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        resolveAuthorLabel={() => null}
+      />,
+    );
+
+    const peerArticle = container.querySelector("[data-message-uuid='peer-message']");
+
+    expect(peerArticle?.querySelector("[data-peer-author-label='true']")).toHaveTextContent(
+      "#peer-us",
+    );
+  });
+
+  it("renders plain Workspace message body through the render core", () => {
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "plain-message",
+            markdown: "Workspace text message",
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+
+    const body = container.querySelector("[data-message-body='true']");
+
+    expect(body).toHaveAttribute("data-message-content-kind", "plain");
+    expect(body?.querySelector("p")).toHaveTextContent("Workspace text message");
+  });
+
+  it("renders inline-rich Workspace markdown and keeps time inline", () => {
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "inline-rich-message",
+            markdown: "Hello **bold** and [docs](https://example.com/docs)",
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+
+    const article = container.querySelector("[data-message-uuid='inline-rich-message']");
+    const body = article?.querySelector("[data-message-body='true']");
+    const link = body?.querySelector("a");
+
+    expect(body).toHaveAttribute("data-message-content-kind", "inline-rich");
+    expect(body?.querySelector("strong")).toHaveTextContent("bold");
+    expect(link).toHaveAttribute("href", "https://example.com/docs");
+    expect(article?.querySelector("[data-message-time='true']")).toHaveAttribute(
+      "data-message-meta-placement",
+      "inline",
+    );
+    expect(article?.querySelector("[data-workspace-message-bubble='true']")).not.toHaveAttribute(
+      "role",
+      "button",
+    );
+  });
+
+  it("opens safe external links without treating the bubble as a button", () => {
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "safe-link-message",
+            markdown: "Open [docs](https://example.com/docs)",
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+
+    const article = container.querySelector("[data-message-uuid='safe-link-message']");
+    const bubble = article?.querySelector("[data-workspace-message-bubble='true']");
+    const link = article?.querySelector<HTMLAnchorElement>("a[href='https://example.com/docs']");
+
+    expect(bubble).not.toHaveAttribute("role", "button");
+    expect(bubble).toHaveAttribute("data-workspace-message-interactive-body", "true");
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(link).toHaveAttribute("rel", "noopener noreferrer");
+
+    fireEvent.click(link!);
+
+    expect(openSpy).toHaveBeenCalledWith(
+      "https://example.com/docs",
+      "_blank",
+      "noopener,noreferrer",
+    );
+
+    openSpy.mockRestore();
+  });
+
+  it("opens trusted Workspace message permalinks with their full scope", () => {
+    const onOpenMessagePermalink = vi.fn();
+    const path = "/org/org-a/project/project-b/message/11111111-1111-4111-8111-111111111111";
+    render(
+      <WorkspaceMessageList
+        messages={[createWorkspaceMessage({ markdown: `https://workspace.example${path}` })]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ messageWebOrigin: "https://workspace.example", onOpenMessagePermalink }}
+      />,
+    );
+    const link = screen.getByRole("link");
+    expect(link).toHaveAttribute("target", "_blank");
+    fireEvent.click(link);
+    expect(onOpenMessagePermalink).toHaveBeenCalledExactlyOnceWith(path);
+  });
+
+  it("opens canonical Workspace URN entities through UUID callbacks", () => {
+    const userUuid = "11111111-1111-4111-8111-111111111111";
+    const messageUuid = "22222222-2222-4222-8222-222222222222";
+    const onOpenMentionUser = vi.fn();
+    const onOpenMessageInChat = vi.fn();
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "workspace-urn-entities-message",
+            markdown: `> [Alice](urn:user:${userUuid}) [jump](urn:message:${messageUuid}):\n> quoted`,
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onOpenMentionUser, onOpenMessageInChat }}
+      />,
+    );
+
+    const mention = container.querySelector<HTMLElement>("[data-workspace-mention='true']");
+    const messageLink = container.querySelector<HTMLAnchorElement>(
+      "[data-workspace-message-link='true']",
+    );
+
+    expect(mention).toHaveAttribute("data-workspace-user-uuid", userUuid);
+    expect(messageLink).toHaveAttribute("data-workspace-message-uuid", messageUuid);
+
+    fireEvent.click(mention!);
+    fireEvent.click(messageLink!);
+
+    expect(onOpenMentionUser).toHaveBeenCalledWith(userUuid);
+    expect(onOpenMessageInChat).toHaveBeenCalledWith(messageUuid);
+  });
+
+  it.each([
+    ["paragraph", (markdown: string) => markdown],
+    ["blockquote", (markdown: string) => `> ${markdown}`],
+    ["historical quote", (markdown: string) => `\`\`\`quote\n${markdown}\n\`\`\``],
+    [
+      "forward snapshot",
+      (markdown: string) =>
+        `[Saved author](${buildWorkspaceForwardUrn("22222222-2222-4222-8222-222222222222", markdown)})`,
+    ],
+    [
+      "nested forward snapshot",
+      (markdown: string) => {
+        const nested = buildWorkspaceForwardUrn("33333333-3333-4333-8333-333333333333", markdown);
+        const nestedMarkdown = `[Nested author](${nested})`;
+        const snapshot = buildWorkspaceForwardUrn(
+          "22222222-2222-4222-8222-222222222222",
+          nestedMarkdown,
+        );
+        return `[Saved author](${snapshot})`;
+      },
+    ],
+  ])("opens silent user links from a %s through the existing UUID callback", async (kind, wrap) => {
+    const userUuid = "11111111-1111-4111-8111-111111111111";
+    const onOpenMentionUser = vi.fn();
+    const onOpenMessageInChat = vi.fn();
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "silent-user-link-message",
+            markdown: wrap(
+              `[Admin Example](urn:user:${userUuid} "silent") and [Alice](urn:user:${userUuid})`,
+            ),
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onOpenMentionUser, onOpenMessageInChat }}
+      />,
+    );
+
+    const mentions = container.querySelectorAll<HTMLButtonElement>(
+      "[data-workspace-mention='true']",
+    );
+    expect(mentions).toHaveLength(2);
+    const silent = mentions[0]!;
+    expect(silent).toHaveTextContent(/^Admin Example$/);
+    expect(silent).toHaveAttribute("data-workspace-user-uuid", userUuid);
+    expect(mentions[1]).toHaveTextContent(/^@Alice$/);
+
+    fireEvent.click(silent);
+    expect(onOpenMentionUser).toHaveBeenCalledExactlyOnceWith(userUuid);
+    expect(onOpenMessageInChat).not.toHaveBeenCalled();
+
+    silent.focus();
+    await userEvent.keyboard("{Enter}");
+    expect(onOpenMentionUser).toHaveBeenCalledTimes(2);
+    expect(onOpenMentionUser).toHaveBeenLastCalledWith(userUuid);
+    expect(onOpenMessageInChat).not.toHaveBeenCalled();
+
+    const quoteHeader = container.querySelector<HTMLElement>("[data-workspace-quote-open='true']");
+    if (kind.includes("snapshot")) {
+      expect(quoteHeader).not.toBeNull();
+      fireEvent.click(quoteHeader!);
+      expect(onOpenMessageInChat).toHaveBeenCalledExactlyOnceWith(
+        "22222222-2222-4222-8222-222222222222",
+      );
+    }
+  });
+
+  it("keeps silent user names in a forward snapshot as text without a profile callback", () => {
+    const userUuid = "11111111-1111-4111-8111-111111111111";
+    const forwardUrn = buildWorkspaceForwardUrn(
+      "22222222-2222-4222-8222-222222222222",
+      `[Admin Example](urn:user:${userUuid} "silent") and [Alice](urn:user:${userUuid})`,
+    );
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[createWorkspaceMessage({ markdown: `[Saved author](${forwardUrn})` })]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+
+    expect(container.querySelector("[data-workspace-mention='true']")).toBeNull();
+    expect(container.querySelector("[data-workspace-quote='true']")).toHaveTextContent(
+      "Admin Example and @Alice",
+    );
+  });
+
+  it("opens stream and topic URNs through the Workspace reference callback", () => {
+    const streamUuid = "33333333-3333-4333-8333-333333333333";
+    const topicUuid = "44444444-4444-4444-8444-444444444444";
+    const onOpenWorkspaceReference = vi.fn();
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "workspace-conversation-urn-message",
+            markdown: `[general](urn:stream:${streamUuid}) [Bugs](urn:topic:${streamUuid}:${topicUuid})`,
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onOpenWorkspaceReference }}
+      />,
+    );
+
+    const references = container.querySelectorAll<HTMLElement>("[data-workspace-reference='true']");
+
+    expect(references).toHaveLength(2);
+    expect(references[0]).toHaveAttribute("data-workspace-reference-kind", "stream");
+    expect(references[0]).toHaveAttribute("data-workspace-stream-uuid", streamUuid);
+    expect(references[1]).toHaveAttribute("data-workspace-reference-kind", "topic");
+    expect(references[1]).toHaveAttribute("data-workspace-topic-uuid", topicUuid);
+
+    fireEvent.click(references[0]!);
+    fireEvent.click(references[1]!);
+
+    expect(onOpenWorkspaceReference).toHaveBeenNthCalledWith(1, {
+      kind: "stream",
+      streamUuid,
+    });
+    expect(onOpenWorkspaceReference).toHaveBeenNthCalledWith(2, {
+      kind: "topic",
+      streamUuid,
+      topicUuid,
+    });
+  });
+
+  it("opens a canonical topic URN through the Workspace reference callback", () => {
+    const topicUuid = "44444444-4444-4444-8444-444444444444";
+    const onOpenWorkspaceReference = vi.fn();
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "workspace-canonical-topic-urn-message",
+            markdown: `[Bugs](urn:topic:${topicUuid})`,
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onOpenWorkspaceReference }}
+      />,
+    );
+
+    const reference = container.querySelector<HTMLAnchorElement>("a[href]");
+
+    expect(reference).not.toBeNull();
+    expect(reference).toHaveAttribute("data-workspace-reference", "true");
+    expect(reference).toHaveAttribute("data-workspace-reference-kind", "topic");
+    expect(reference).toHaveAttribute("data-workspace-topic-uuid", topicUuid);
+    expect(reference).not.toHaveAttribute("data-workspace-stream-uuid");
+
+    fireEvent.click(reference!);
+
+    expect(onOpenWorkspaceReference).toHaveBeenCalledWith({
+      kind: "topic",
+      topicUuid,
+    });
+  });
+
+  it("keeps a Workspace conversation reference safe when no open callback is wired", () => {
+    const streamUuid = "55555555-5555-4555-8555-555555555555";
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "workspace-conversation-urn-without-callback",
+            markdown: `[general](urn:stream:${streamUuid})`,
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+
+    const reference = container.querySelector<HTMLElement>("[data-workspace-reference='true']");
+    const initialHash = window.location.hash;
+
+    expect(reference).toHaveAttribute("href", `#workspace-reference-stream-${streamUuid}`);
+    fireEvent.click(reference!);
+
+    expect(window.location.hash).toBe(initialHash);
+  });
+
+  it("does not render dangerous protocols as navigable links", () => {
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "dangerous-link-message",
+            markdown: [
+              "[data](data:text/html;base64,PHNjcmlwdD4=)",
+              "[file](file:///etc/passwd)",
+              "[blob](blob:https://example.com/id)",
+              "[js](javascript:alert(1))",
+              "[protocol-relative](//evil.example/path)",
+            ].join(" "),
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+
+    const body = container.querySelector("[data-message-body='true']");
+
+    expect(body).toHaveTextContent("data file blob js protocol-relative");
+    expect(body?.querySelector("a[href]")).not.toBeInTheDocument();
+
+    fireEvent.click(body!);
+
+    expect(openSpy).not.toHaveBeenCalled();
+
+    openSpy.mockRestore();
+  });
+
+  it("downloads Workspace attachment references through UUID-based file action", () => {
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
+    const onDownloadFile = vi.fn();
+    const fileUuid = "33333333-3333-4333-8333-333333333333";
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "workspace-attachment-message",
+            markdown: `[report.pdf](urn:file:${fileUuid}?name=report.pdf&content_type=application%2Fpdf&size=1258291)`,
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onDownloadFile }}
+      />,
+    );
+
+    const article = container.querySelector("[data-message-uuid='workspace-attachment-message']");
+    const attachment = screen.getByRole("button", { name: "Файл: report.pdf" });
+
+    expect(attachment).toHaveAttribute("data-workspace-file-uuid", fileUuid);
+    expect(attachment).toHaveAttribute("data-workspace-file-kind", "attachment");
+    expect(attachment).toHaveAttribute("title", "Файл: report.pdf");
+    expect(attachment.querySelector("[role='presentation']")).toHaveClass("h-[58px]", "w-60");
+    expect(attachment).toHaveTextContent("PDF · 1.2 MB");
+    expect(attachment).not.toHaveAttribute("href");
+    expect(container).not.toHaveTextContent(`urn:file:${fileUuid}`);
+    expect(container.innerHTML).not.toContain("/api/workspace/v1/messenger/files");
+    expect(
+      container.querySelector(`[${["data", "message", "id"].join("-")}]`),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(attachment);
+
+    expect(openSpy).not.toHaveBeenCalled();
+    expect(onDownloadFile).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "attachment",
+        fileUuid,
+        name: "report.pdf",
+      }),
+    );
+    expect(article).toHaveAttribute("data-message-uuid", "workspace-attachment-message");
+
+    openSpy.mockRestore();
+  });
+
+  it.each(["svg", "svg path"])(
+    "downloads Workspace attachments when clicking the file icon %s",
+    (selector) => {
+      const onDownloadFile = vi.fn();
+      const fileUuid = "33333333-3333-4333-8333-333333333333";
+      render(
+        <WorkspaceMessageList
+          messages={[
+            createWorkspaceMessage({
+              uuid: "workspace-attachment-icon-message",
+              markdown: `[report.docx](urn:file:${fileUuid})`,
+            }),
+          ]}
+          currentUserUuid="current-user-uuid"
+          conversationId="topic:stream-uuid-1:topic-uuid-1"
+          actions={{ onDownloadFile }}
+        />,
+      );
+
+      const attachment = screen.getByRole("button", { name: "Файл: report.docx" });
+      const icon = attachment.querySelector(selector);
+      expect(icon).not.toBeNull();
+
+      fireEvent.click(icon!);
+
+      expect(onDownloadFile).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ kind: "attachment", fileUuid, name: "report.docx" }),
+      );
+    },
+  );
+
+  it("shows native attachment progress and opens the saved file with the original focused target", () => {
+    vi.useFakeTimers();
+    const fileUuid = "33333333-3333-4333-8333-333333333333";
+    const ownerKey = "attachment-owner";
+    const open = vi.fn().mockResolvedValue({ ok: true });
+    vi.stubGlobal("electronAPI", { downloads: { open } });
+    const download = {
+      id: "native-download",
+      fileUuid,
+      ownerKey,
+      accountId: "account",
+      fileName: "report.pdf",
+    };
+    const onDownloadFile = vi.fn(() => {
+      useDownloadStore.getState().startDownload(download);
+    });
+
+    render(
+      <WorkspaceMessageList
+        messages={[createWorkspaceMessage({ markdown: `[report.pdf](urn:file:${fileUuid})` })]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onDownloadFile, downloadOwnerKey: ownerKey }}
+      />,
+    );
+
+    const attachment = screen.getByRole("button", { name: "Файл: report.pdf" });
+    act(() => {
+      useDownloadStore
+        .getState()
+        .startDownload({ ...download, id: "other-download", ownerKey: "other-owner" });
+      useDownloadStore
+        .getState()
+        .setProgress("other-download", { receivedBytes: 90, totalBytes: 100 });
+      attachment.focus();
+    });
+    expect(attachment).not.toHaveTextContent("90%");
+
+    fireEvent.keyDown(attachment, { key: "Enter" });
+    expect(attachment).toHaveAttribute("aria-disabled", "true");
+    expect(attachment).toHaveAttribute("aria-busy", "true");
+    expect(attachment).toHaveTextContent("Downloading…");
+
+    act(() => {
+      useDownloadStore.getState().setProgress(download.id, { receivedBytes: 45, totalBytes: 100 });
+    });
+    expect(attachment).toHaveTextContent("45%");
+    fireEvent.click(attachment);
+    expect(onDownloadFile).toHaveBeenCalledOnce();
+
+    act(() => {
+      useDownloadStore.getState().finishDownload(download.id, true);
+    });
+    expect(screen.getByRole("button", { name: "report.pdf. Open" })).toBe(attachment);
+    expect(attachment).toHaveFocus();
+    expect(attachment).not.toHaveAttribute("aria-disabled");
+    expect(attachment).not.toHaveAttribute("aria-busy");
+    act(() => vi.advanceTimersByTime(2_000));
+    expect(attachment).toHaveTextContent("PDF");
+    expect(attachment).toHaveFocus();
+    fireEvent.keyDown(attachment, { key: " " });
+    expect(open).toHaveBeenCalledExactlyOnceWith(download.id);
+    expect(onDownloadFile).toHaveBeenCalledOnce();
+  });
+
+  it("retries a failed browser attachment and restores the file preview after handoff", () => {
+    vi.useFakeTimers();
+    const fileUuid = "33333333-3333-4333-8333-333333333333";
+    const ownerKey = "attachment-owner";
+    const onDownloadFile = vi.fn(() => {
+      const id = `download-${onDownloadFile.mock.calls.length}`;
+      useDownloadStore
+        .getState()
+        .startDownload({ id, ownerKey, fileUuid, accountId: "account", fileName: "report.pdf" });
+    });
+
+    render(
+      <WorkspaceMessageList
+        messages={[createWorkspaceMessage({ markdown: `[report.pdf](urn:file:${fileUuid})` })]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onDownloadFile, downloadOwnerKey: ownerKey }}
+      />,
+    );
+    const attachment = screen.getByRole("button", { name: "Файл: report.pdf" });
+    const fileIcon = attachment.querySelector("svg")?.outerHTML;
+    expect(fileIcon).toBeDefined();
+    fireEvent.click(attachment);
+    act(() => {
+      useDownloadStore.getState().setProgress("download-1", { receivedBytes: 45, totalBytes: 100 });
+    });
+    expect(attachment).toHaveTextContent("Downloading…");
+    expect(attachment).not.toHaveTextContent("%");
+    act(() => {
+      useDownloadStore.getState().finishDownload("download-1", false, "interrupted");
+    });
+    expect(screen.getByRole("button", { name: "report.pdf. Failed. Retry" })).toBe(attachment);
+    fireEvent.click(screen.getByText("Retry", { exact: true }));
+    expect(onDownloadFile).toHaveBeenCalledTimes(2);
+
+    act(() => {
+      useDownloadStore.getState().finishDownload("download-2", true);
+    });
+    expect(attachment).toHaveTextContent("Handed off to browser");
+    expect(attachment.querySelector("svg")?.outerHTML).not.toBe(fileIcon);
+    act(() => vi.advanceTimersByTime(2_000));
+    expect(attachment).not.toHaveTextContent("Handed off to browser");
+    expect(screen.getByRole("button", { name: "report.pdf. Download again" })).toBe(attachment);
+    expect(attachment).toHaveTextContent("PDF");
+    expect(attachment.querySelector("svg")?.outerHTML).toBe(fileIcon);
+    fireEvent.click(screen.getByText("Download again", { exact: true }));
+    expect(onDownloadFile).toHaveBeenCalledTimes(3);
+    expect(attachment).toHaveTextContent("Downloading…");
+  });
+
+  it("renders video sent as a file as a card while keeping video media separate", () => {
+    const videoUuid = "11111111-1111-4111-8111-111111111111";
+    const fileUuid = "22222222-2222-4222-8222-222222222222";
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "workspace-video-card-boundary",
+            markdown: [
+              `[clip.mp4](urn:video:${videoUuid}?name=clip.mp4&content_type=video%2Fmp4)`,
+              `[attachment.mp4](urn:file:${fileUuid}?name=attachment.mp4&content_type=video%2Fmp4)`,
+            ].join("\n\n"),
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+
+    const video = container.querySelector(`[data-workspace-file-uuid='${videoUuid}']`);
+    expect(video).toHaveAttribute("data-workspace-file-kind", "media");
+    expect(video?.querySelector("[role='presentation']")).toBeNull();
+    const attachment = container.querySelector<HTMLElement>(
+      `[data-workspace-file-uuid='${fileUuid}']`,
+    );
+    expect(attachment).toHaveAttribute("data-workspace-file-kind", "attachment");
+    expect(attachment?.querySelector("[role='presentation']")).toHaveTextContent("attachment.mp4");
+    expect(attachment?.querySelector(".workspace-message-file-placeholder__label")).toHaveAttribute(
+      "hidden",
+    );
+  });
+
+  it("activates Workspace attachment placeholders with Enter and Space", () => {
+    const onDownloadFile = vi.fn();
+    const fileUuid = "33333333-3333-4333-8333-333333333333";
+    render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "workspace-keyboard-attachment-message",
+            markdown: `[report.pdf](urn:file:${fileUuid}?name=report.pdf)`,
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onDownloadFile }}
+      />,
+    );
+
+    const attachment = screen.getByRole("button", { name: "Файл: report.pdf" });
+
+    fireEvent.keyDown(attachment, { key: "Enter" });
+    fireEvent.keyDown(attachment, { key: " " });
+
+    expect(onDownloadFile).toHaveBeenCalledTimes(2);
+    expect(onDownloadFile).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ kind: "attachment", fileUuid, name: "report.pdf" }),
+    );
+    expect(onDownloadFile).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ kind: "attachment", fileUuid, name: "report.pdf" }),
+    );
+  });
+
+  it("does not start a duplicate Workspace file download while the callback is active", async () => {
+    const fileUuid = "33333333-3333-4333-8333-333333333333";
+    const resolveDownloads: (() => void)[] = [];
+    const onDownloadFile = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveDownloads.push(resolve);
+        }),
+    );
+    render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "workspace-duplicate-attachment-message",
+            markdown: `[report.pdf](urn:file:${fileUuid}?name=report.pdf)`,
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onDownloadFile }}
+      />,
+    );
+
+    const attachment = screen.getByRole("button", { name: "Файл: report.pdf" });
+
+    fireEvent.click(attachment);
+    fireEvent.click(attachment);
+
+    expect(onDownloadFile).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolveDownloads[0]?.();
+      await Promise.resolve();
+    });
+
+    fireEvent.click(attachment);
+
+    expect(onDownloadFile).toHaveBeenCalledTimes(2);
+  });
+
+  it("downloads Workspace media placeholders without opening unsupported viewer", () => {
+    const onDownloadFile = vi.fn();
+    const onOpenUnsupportedFilePreview = vi.fn();
+    const fileUuid = "44444444-4444-4444-8444-444444444444";
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "workspace-media-message",
+            markdown: `![screen.png](urn:image:${fileUuid}?name=screen.png&content_type=image%2Fpng)`,
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onDownloadFile, onOpenUnsupportedFilePreview }}
+      />,
+    );
+
+    const article = container.querySelector("[data-message-uuid='workspace-media-message']");
+    const media = screen.getByRole("button", { name: "Изображение" });
+
+    expect(media).toHaveAttribute("data-workspace-file-uuid", fileUuid);
+    expect(media).toHaveAttribute("data-workspace-file-kind", "media");
+    expect(media).toHaveAttribute("data-workspace-media-kind", "image");
+    expect(media).not.toHaveAttribute("href");
+    expect(
+      container.querySelector("img.workspace-message-file-placeholder__image"),
+    ).toHaveAttribute("src", AUTH_IMAGE_PLACEHOLDER_SRC);
+    expect(container.innerHTML).not.toContain(`urn:image:${fileUuid}`);
+    expect(container.innerHTML).not.toContain("/api/workspace/v1/messenger/files");
+
+    fireEvent.click(media);
+
+    expect(onDownloadFile).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "media",
+        fileUuid,
+        name: "screen.png",
+        mediaKind: "image",
+        contentType: "image/png",
+      }),
+    );
+    expect(onOpenUnsupportedFilePreview).not.toHaveBeenCalled();
+    expect(article).toHaveAttribute("data-message-uuid", "workspace-media-message");
+  });
+
+  it("opens Workspace image media through the viewer callback when available", () => {
+    const onDownloadFile = vi.fn();
+    const onOpenWorkspaceMedia = vi.fn();
+    const fileUuid = "44444444-4444-4444-8444-444444444444";
+    render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "workspace-media-viewer-message",
+            markdown: `![screen.png](urn:image:${fileUuid}?name=screen.png&content_type=image%2Fpng)`,
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onDownloadFile, onOpenWorkspaceMedia }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Изображение" }));
+
+    expect(onOpenWorkspaceMedia).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "media",
+        fileUuid,
+        name: "screen.png",
+        mediaKind: "image",
+        contentType: "image/png",
+      }),
+      {
+        items: [
+          {
+            messageUuid: "workspace-media-viewer-message",
+            file: expect.objectContaining({
+              fileUuid,
+              name: "screen.png",
+              mediaKind: "image",
+            }),
+          },
+        ],
+        startIndex: 0,
+      },
+    );
+    expect(onDownloadFile).not.toHaveBeenCalled();
+  });
+
+  it("opens a Workspace image gallery with all conversation images and clicked index", () => {
+    const onOpenWorkspaceMedia = vi.fn();
+    const firstFileUuid = "11111111-1111-4111-8111-111111111111";
+    const secondFileUuid = "22222222-2222-4222-8222-222222222222";
+    render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "workspace-gallery-first-message",
+            markdown: `![first.png](urn:image:${firstFileUuid}?name=first.png&content_type=image%2Fpng)`,
+            createdAt: "2026-07-03T09:00:00.000Z",
+          }),
+          createWorkspaceMessage({
+            uuid: "workspace-gallery-second-message",
+            markdown: `![second.png](urn:image:${secondFileUuid}?name=second.png&content_type=image%2Fpng)`,
+            createdAt: "2026-07-03T09:01:00.000Z",
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onOpenWorkspaceMedia }}
+      />,
+    );
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Изображение" })[1]!);
+
+    expect(onOpenWorkspaceMedia).toHaveBeenCalledWith(
+      expect.objectContaining({
+        fileUuid: secondFileUuid,
+        name: "second.png",
+      }),
+      {
+        items: [
+          {
+            messageUuid: "workspace-gallery-first-message",
+            file: expect.objectContaining({
+              fileUuid: firstFileUuid,
+              name: "first.png",
+            }),
+          },
+          {
+            messageUuid: "workspace-gallery-second-message",
+            file: expect.objectContaining({
+              fileUuid: secondFileUuid,
+              name: "second.png",
+            }),
+          },
+        ],
+        startIndex: 1,
+      },
+    );
+  });
+
+  it("dedupes Workspace gallery images by fileUuid while preserving first occurrence", () => {
+    const onOpenWorkspaceMedia = vi.fn();
+    const fileUuid = "33333333-3333-4333-8333-333333333333";
+    render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "workspace-gallery-original-message",
+            markdown: `![original.png](urn:image:${fileUuid}?name=original.png&content_type=image%2Fpng)`,
+            createdAt: "2026-07-03T09:00:00.000Z",
+          }),
+          createWorkspaceMessage({
+            uuid: "workspace-gallery-duplicate-message",
+            markdown: `![duplicate.png](urn:image:${fileUuid}?name=duplicate.png&content_type=image%2Fpng)`,
+            createdAt: "2026-07-03T09:01:00.000Z",
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onOpenWorkspaceMedia }}
+      />,
+    );
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Изображение" })[1]!);
+
+    expect(onOpenWorkspaceMedia).toHaveBeenCalledWith(
+      expect.objectContaining({
+        fileUuid,
+        name: "duplicate.png",
+      }),
+      {
+        items: [
+          {
+            messageUuid: "workspace-gallery-original-message",
+            file: expect.objectContaining({
+              fileUuid,
+              name: "original.png",
+            }),
+          },
+        ],
+        startIndex: 0,
+      },
+    );
+  });
+
+  it("does not collect Workspace gallery items from plain rendered text", () => {
+    const onOpenWorkspaceMedia = vi.fn();
+    const fakeFileUuid = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const realFileUuid = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+    render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "workspace-gallery-code-message",
+            markdown: `\`urn:image:${fakeFileUuid}?name=fake.png&content_type=image%2Fpng\``,
+            createdAt: "2026-07-03T09:00:00.000Z",
+          }),
+          createWorkspaceMessage({
+            uuid: "workspace-gallery-real-message",
+            markdown: `![real.png](urn:image:${realFileUuid}?name=real.png&content_type=image%2Fpng)`,
+            createdAt: "2026-07-03T09:01:00.000Z",
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onOpenWorkspaceMedia }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Изображение" }));
+
+    expect(onOpenWorkspaceMedia).toHaveBeenCalledWith(
+      expect.objectContaining({
+        fileUuid: realFileUuid,
+      }),
+      {
+        items: [
+          {
+            messageUuid: "workspace-gallery-real-message",
+            file: expect.objectContaining({
+              fileUuid: realFileUuid,
+            }),
+          },
+        ],
+        startIndex: 0,
+      },
+    );
+    expect(onOpenWorkspaceMedia).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        fileUuid: fakeFileUuid,
+      }),
+      expect.anything(),
+    );
+  });
+
+  it("loads Workspace image previews through an authorized blob loader", async () => {
+    const fileUuid = "44444444-4444-4444-8444-444444444444";
+    const createObjectURL = vi
+      .spyOn(URL, "createObjectURL")
+      .mockReturnValue("blob:workspace-image-preview");
+    const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    const onLoadWorkspaceFilePreview = vi.fn().mockResolvedValue(
+      new Blob(["image-bytes"], {
+        type: "image/png",
+      }),
+    );
+    const { container, unmount } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "workspace-media-preview-message",
+            markdown: `![screen.png](urn:image:${fileUuid}?name=screen.png&content_type=image%2Fpng)`,
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onLoadWorkspaceFilePreview }}
+      />,
+    );
+
+    const placeholder = screen.getByRole("button", { name: "Изображение" });
+
+    expect(onLoadWorkspaceFilePreview).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "media",
+        fileUuid,
+        name: "screen.png",
+        mediaKind: "image",
+        contentType: "image/png",
+      }),
+      expect.any(AbortSignal),
+    );
+    await waitFor(() => {
+      expect(createObjectURL).toHaveBeenCalledTimes(1);
+    });
+    await waitFor(() => {
+      expect(container.querySelector("img[data-workspace-file-preview='true']")).not.toBeNull();
+    });
+    const previewImage = container.querySelector<HTMLImageElement>(
+      "img[data-workspace-file-preview='true']",
+    );
+    expect(previewImage).not.toBeNull();
+    expect(previewImage).toHaveAttribute("loading", "eager");
+
+    const image = await screen.findByRole("img", { name: "screen.png" });
+    expect(image).toHaveClass("message-media-preview");
+    expect(image).toHaveClass("workspace-message-file-preview-image");
+    expect(image).toHaveAttribute("src", "blob:workspace-image-preview");
+    expect(image).not.toHaveAttribute("aria-hidden");
+    expect(image).not.toHaveAttribute("data-workspace-preview-pending");
+    expect(placeholder).toHaveAttribute("data-workspace-preview-status", "loaded");
+    expect(placeholder).toHaveClass("workspace-message-file-preview-loaded");
+    expect(placeholder.querySelectorAll("img:not([hidden])")).toHaveLength(1);
+    const upgradedPlaceholderImage = placeholder.querySelector(
+      "img.workspace-message-file-placeholder__image",
+    );
+    expect(upgradedPlaceholderImage).toBe(image);
+    expect(upgradedPlaceholderImage).not.toHaveAttribute("hidden");
+    expect(upgradedPlaceholderImage).toHaveAttribute("src", "blob:workspace-image-preview");
+    expect(container.innerHTML).not.toContain(`urn:image:${fileUuid}`);
+    expect(container.innerHTML).not.toContain("/api/workspace/v1/messenger/files");
+
+    unmount();
+
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:workspace-image-preview");
+
+    createObjectURL.mockRestore();
+    revokeObjectURL.mockRestore();
+  });
+
+  it("shows a translated busy video placeholder while protected preview loading is pending", async () => {
+    const fileUuid = "11111111-2222-4333-8444-555555555555";
+    let resolvePreview!: (blob: Blob) => void;
+    const previewPromise = new Promise<Blob>((resolve) => {
+      resolvePreview = resolve;
+    });
+    const onLoadWorkspaceFilePreview = vi.fn(
+      (_file: unknown, _signal: AbortSignal) => previewPromise,
+    );
+    const { unmount } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "workspace-video-preview-loading-message",
+            markdown: `[clip.mp4](urn:video:${fileUuid}?name=clip.mp4&content_type=video%2Fmp4)`,
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onLoadWorkspaceFilePreview }}
+      />,
+    );
+
+    const placeholder = await screen.findByRole("button", { name: "Video is loading…" });
+    expect(placeholder).toHaveAttribute("data-workspace-preview-status", "loading");
+    expect(placeholder).toHaveAttribute("aria-busy", "true");
+    expect(placeholder.querySelector(".workspace-message-file-placeholder__label")).toHaveClass(
+      "sr-only",
+    );
+    expect(
+      placeholder.querySelector(".workspace-message-file-placeholder__video-visual"),
+    ).not.toHaveAttribute("hidden");
+    expect(
+      placeholder.querySelector(".workspace-message-file-placeholder__video-icon"),
+    ).toHaveAttribute("aria-hidden", "true");
+    expect(
+      placeholder.querySelector(".workspace-message-file-placeholder__label")?.parentElement,
+    ).toHaveClass("workspace-message-file-placeholder__video-visual");
+
+    const signal = onLoadWorkspaceFilePreview.mock.calls[0]?.[1];
+    expect(signal).toBeInstanceOf(AbortSignal);
+    expect(signal?.aborted).toBe(false);
+    unmount();
+    expect(signal?.aborted).toBe(true);
+    expect(placeholder).not.toHaveAttribute("data-workspace-preview-status");
+    expect(placeholder).not.toHaveAttribute("aria-busy");
+    expect(placeholder).toHaveAttribute("aria-label", "Видео");
+    expect(
+      placeholder.querySelector(".workspace-message-file-placeholder__label"),
+    ).toHaveTextContent("Видео");
+    expect(
+      placeholder.querySelector(".workspace-message-file-placeholder__video-visual"),
+    ).not.toHaveAttribute("hidden");
+
+    resolvePreview(new Blob(["late-video"], { type: "video/mp4" }));
+  });
+
+  it("loads protected Workspace video previews through the shared blob loader", async () => {
+    const user = userEvent.setup();
+    const fileUuid = "33333333-3333-4333-8333-333333333333";
+    const createObjectURL = vi.spyOn(URL, "createObjectURL").mockImplementation((value) => {
+      expect(value).toBeInstanceOf(Blob);
+      expect((value as Blob).type).toBe("video/mp4");
+      return "blob:workspace-video-preview";
+    });
+    const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    const onLoadWorkspaceFilePreview = vi.fn().mockResolvedValue(
+      new Blob(["video-bytes"], {
+        type: "application/octet-stream",
+      }),
+    );
+    const onDownloadFile = vi.fn();
+    const onOpenWorkspaceMedia = vi.fn();
+    const { container, unmount } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "workspace-video-preview-message",
+            markdown: `[clip.mp4](urn:video:${fileUuid}?name=clip.mp4&content_type=video%2Fmp4&w=1920&h=1080)`,
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onDownloadFile, onLoadWorkspaceFilePreview, onOpenWorkspaceMedia }}
+      />,
+    );
+
+    const placeholder = container.querySelector<HTMLElement>(
+      `[data-workspace-file-uuid="${fileUuid}"]`,
+    );
+    expect(placeholder).not.toBeNull();
+    await waitFor(() => {
+      expect(container.querySelector("video[data-workspace-file-preview='true']")).not.toBeNull();
+    });
+
+    expect(onLoadWorkspaceFilePreview).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "media",
+        fileUuid,
+        name: "clip.mp4",
+        mediaKind: "video",
+        contentType: "video/mp4",
+      }),
+      expect.any(AbortSignal),
+    );
+    const video = container.querySelector<HTMLVideoElement>(
+      "video[data-workspace-file-preview='true']",
+    );
+    expect(video).toHaveAttribute("src", "blob:workspace-video-preview");
+    expect(video).toHaveAttribute("controls");
+    expect(video).toHaveAttribute("preload", "metadata");
+    expect(video).not.toHaveAttribute("autoplay");
+    expect(video).toHaveAttribute("playsinline");
+    expect(video).toHaveAttribute("aria-label", "clip.mp4");
+    const expandControl = container.querySelector<HTMLButtonElement>(
+      "button[data-workspace-video-expand='true']",
+    );
+    expect(expandControl).toHaveAccessibleName("Open video viewer");
+    expect(expandControl).toHaveAttribute("title", "Open video viewer");
+    expect(placeholder).toHaveStyle({ width: "320px" });
+    const videoVisual = placeholder?.querySelector<HTMLElement>(
+      ".workspace-message-file-placeholder__video-visual",
+    );
+    expect(videoVisual).toHaveStyle({ aspectRatio: `${16 / 9}` });
+    expect(videoVisual?.style.width).toBe("");
+    expect(videoVisual?.style.height).toBe("");
+    expect(videoVisual).toHaveAttribute("hidden");
+    expect(placeholder).toHaveAttribute("data-workspace-preview-status", "loaded");
+    expect(placeholder).not.toHaveAttribute("aria-busy");
+    expect(container.innerHTML).not.toContain("/api/workspace/v1/messenger/files");
+    fireEvent.click(video!);
+    expect(onDownloadFile).not.toHaveBeenCalled();
+    expect(onOpenWorkspaceMedia).not.toHaveBeenCalled();
+
+    await user.click(expandControl!);
+    expect(onOpenWorkspaceMedia).toHaveBeenCalledTimes(1);
+    expect(onOpenWorkspaceMedia).toHaveBeenLastCalledWith(
+      expect.objectContaining({ fileUuid, mediaKind: "video" }),
+      expect.objectContaining({ startIndex: 0 }),
+    );
+
+    onOpenWorkspaceMedia.mockClear();
+    expandControl!.focus();
+    await user.keyboard("{Enter}");
+    expect(onOpenWorkspaceMedia).toHaveBeenCalledTimes(1);
+    onOpenWorkspaceMedia.mockClear();
+    await user.keyboard(" ");
+    expect(onOpenWorkspaceMedia).toHaveBeenCalledTimes(1);
+
+    unmount();
+
+    expect(expandControl?.isConnected).toBe(false);
+    expect(videoVisual).not.toHaveAttribute("hidden");
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:workspace-video-preview");
+    createObjectURL.mockRestore();
+    revokeObjectURL.mockRestore();
+  });
+
+  it("does not show a video error when an aborted preview rejects during cleanup", async () => {
+    const fileUuid = "11111111-2222-4333-8444-555555555556";
+    let rejectPreview!: (error: Error) => void;
+    const previewPromise = new Promise<Blob>((_resolve, reject) => {
+      rejectPreview = reject;
+    });
+    const onLoadWorkspaceFilePreview = vi.fn(() => previewPromise);
+    const { container, unmount } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "workspace-video-preview-aborted-message",
+            markdown: `[clip.mp4](urn:video:${fileUuid}?name=clip.mp4&content_type=video%2Fmp4)`,
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onLoadWorkspaceFilePreview }}
+      />,
+    );
+
+    const placeholder = await screen.findByRole("button", { name: "Video is loading…" });
+    expect(placeholder).toHaveAttribute("data-workspace-preview-status", "loading");
+
+    unmount();
+    const abortError = new Error("preview aborted");
+    abortError.name = "AbortError";
+    rejectPreview(abortError);
+    await Promise.resolve();
+
+    expect(placeholder).not.toHaveAttribute("data-workspace-preview-status");
+    expect(placeholder).toHaveAccessibleName("Видео");
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it("restores the Workspace video visual when the loaded video cannot be decoded", async () => {
+    const fileUuid = "33333333-3333-4333-8333-333333333334";
+    const createObjectURL = vi
+      .spyOn(URL, "createObjectURL")
+      .mockReturnValue("blob:workspace-video-decode-error");
+    const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    const onLoadWorkspaceFilePreview = vi.fn().mockResolvedValue(
+      new Blob(["video-bytes"], {
+        type: "video/mp4",
+      }),
+    );
+    const { container, unmount } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "workspace-video-preview-decode-error-message",
+            markdown: `[clip.mp4](urn:video:${fileUuid}?name=clip.mp4&content_type=video%2Fmp4)`,
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onLoadWorkspaceFilePreview }}
+      />,
+    );
+
+    const placeholder = container.querySelector<HTMLElement>(
+      `[data-workspace-file-uuid="${fileUuid}"]`,
+    );
+    const videoVisual = placeholder?.querySelector<HTMLElement>(
+      ".workspace-message-file-placeholder__video-visual",
+    );
+    await waitFor(() => {
+      expect(container.querySelector("video[data-workspace-file-preview='true']")).not.toBeNull();
+    });
+    expect(videoVisual).toHaveAttribute("hidden");
+
+    fireEvent.error(container.querySelector("video[data-workspace-file-preview='true']")!);
+
+    await waitFor(() => {
+      expect(placeholder).toHaveAttribute("data-workspace-preview-status", "display-error");
+    });
+    expect(placeholder).toHaveAccessibleName("This video cannot be played");
+    expect(placeholder?.querySelector(".workspace-message-file-placeholder__label")).toHaveClass(
+      "sr-only",
+    );
+    expect(videoVisual).not.toHaveAttribute("hidden");
+    expect(container.querySelector("video[data-workspace-file-preview='true']")).toBeNull();
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:workspace-video-decode-error");
+
+    unmount();
+
+    createObjectURL.mockRestore();
+    revokeObjectURL.mockRestore();
+  });
+
+  it("shows a display error when preparing a loaded video blob for display fails", async () => {
+    const fileUuid = "33333333-3333-4333-8333-333333333335";
+    const createObjectURL = vi.spyOn(URL, "createObjectURL").mockImplementation(() => {
+      throw new Error("display URL failed");
+    });
+    const onLoadWorkspaceFilePreview = vi.fn().mockResolvedValue(
+      new Blob(["video-bytes"], {
+        type: "video/mp4",
+      }),
+    );
+    const onDownloadFile = vi.fn();
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "workspace-video-preview-display-url-error-message",
+            markdown: `[clip.mp4](urn:video:${fileUuid}?name=clip.mp4&content_type=video%2Fmp4)`,
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onDownloadFile, onLoadWorkspaceFilePreview }}
+      />,
+    );
+
+    const placeholder = await screen.findByRole("group", {
+      name: "This video cannot be played",
+    });
+    expect(onLoadWorkspaceFilePreview).toHaveBeenCalledTimes(1);
+    expect(placeholder).toHaveAttribute("data-workspace-preview-status", "display-error");
+    expect(placeholder).not.toHaveAttribute("aria-busy");
+    expect(
+      placeholder.querySelector(".workspace-message-file-placeholder__label"),
+    ).toHaveTextContent("This video cannot be played");
+    expect(
+      placeholder.querySelector(".workspace-message-file-placeholder__video-icon"),
+    ).toBeInTheDocument();
+    expect(container.querySelector("video[data-workspace-file-preview='true']")).toBeNull();
+
+    fireEvent.click(placeholder);
+    expect(onDownloadFile).toHaveBeenCalledWith(
+      expect.objectContaining({ fileUuid, mediaKind: "video" }),
+    );
+
+    createObjectURL.mockRestore();
+  });
+
+  it("keeps the downloadable video placeholder when protected preview loading fails", async () => {
+    const onDownloadFile = vi.fn();
+    const onLoadWorkspaceFilePreview = vi.fn().mockRejectedValue(new Error("preview failed"));
+    const fileUuid = "22222222-2222-4222-8222-222222222222";
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "workspace-video-preview-failed-message",
+            markdown: `[clip.mp4](urn:video:${fileUuid}?name=clip.mp4&content_type=video%2Fmp4)`,
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onDownloadFile, onLoadWorkspaceFilePreview }}
+      />,
+    );
+
+    const placeholder = await screen.findByRole("group", { name: "Failed to load video" });
+    await waitFor(() => {
+      expect(placeholder).toHaveAttribute("data-workspace-preview-status", "load-error");
+    });
+    expect(placeholder).not.toHaveAttribute("aria-busy");
+    expect(placeholder.querySelector(".workspace-message-file-placeholder__label")).toHaveClass(
+      "sr-only",
+    );
+    expect(container.querySelector("video[data-workspace-file-preview='true']")).toBeNull();
+    expect(container.querySelector("[data-workspace-video-expand='true']")).toBeNull();
+    expect(
+      placeholder.querySelector(".workspace-message-file-placeholder__video-visual"),
+    ).not.toHaveAttribute("hidden");
+    expect(
+      placeholder.querySelector(".workspace-message-file-placeholder__video-icon"),
+    ).toBeInTheDocument();
+
+    fireEvent.click(placeholder);
+    expect(onDownloadFile).toHaveBeenCalledWith(
+      expect.objectContaining({
+        fileUuid,
+        mediaKind: "video",
+      }),
+    );
+  });
+
+  it("loads Workspace image preview when download blob has octet-stream MIME", async () => {
+    const fileUuid = "44444444-4444-4444-8444-444444444444";
+    const createObjectURL = vi.spyOn(URL, "createObjectURL").mockImplementation((value) => {
+      expect(value).toBeInstanceOf(Blob);
+      expect((value as Blob).type).toBe("image/png");
+      return "blob:workspace-image-preview";
+    });
+    const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    const onLoadWorkspaceFilePreview = vi.fn().mockResolvedValue(
+      new Blob(["image-bytes"], {
+        type: "application/octet-stream",
+      }),
+    );
+    const { container, unmount } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "workspace-media-preview-octet-stream-message",
+            markdown: `![screen.png](urn:image:${fileUuid}?name=screen.png&content_type=image%2Fpng)`,
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onLoadWorkspaceFilePreview }}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(container.querySelector("img[data-workspace-file-preview='true']")).not.toBeNull();
+    });
+
+    const image = container.querySelector<HTMLImageElement>(
+      "img[data-workspace-file-preview='true']",
+    );
+    expect(image).toHaveAttribute("src", "blob:workspace-image-preview");
+
+    unmount();
+
+    createObjectURL.mockRestore();
+    revokeObjectURL.mockRestore();
+  });
+
+  it("revokes a Workspace preview URL only once when image fallback runs before unmount", async () => {
+    const fileUuid = "44444444-4444-4444-8444-444444444444";
+    const createObjectURL = vi
+      .spyOn(URL, "createObjectURL")
+      .mockReturnValue("blob:workspace-fallback-preview");
+    const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    const onLoadWorkspaceFilePreview = vi.fn().mockResolvedValue(
+      new Blob(["image-bytes"], {
+        type: "image/png",
+      }),
+    );
+    const { container, unmount } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "workspace-media-preview-fallback-cleanup-message",
+            markdown: `![screen.png](urn:image:${fileUuid}?name=screen.png&content_type=image%2Fpng)`,
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onLoadWorkspaceFilePreview }}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(container.querySelector("img[data-workspace-file-preview='true']")).not.toBeNull();
+    });
+
+    const previewImage = container.querySelector<HTMLImageElement>(
+      "img[data-workspace-file-preview='true']",
+    );
+    expect(previewImage).not.toBeNull();
+
+    fireEvent.error(previewImage!);
+
+    await waitFor(() => {
+      expect(screen.getByRole("group", { name: "Изображение" })).toHaveAttribute(
+        "data-workspace-preview-status",
+        "display-error",
+      );
+    });
+    expect(revokeObjectURL).toHaveBeenCalledTimes(1);
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:workspace-fallback-preview");
+
+    unmount();
+
+    expect(revokeObjectURL).toHaveBeenCalledTimes(1);
+
+    createObjectURL.mockRestore();
+    revokeObjectURL.mockRestore();
+  });
+
+  it("defers Workspace image preview loading until the placeholder enters the viewport", async () => {
+    const observers: DeferredIntersectionObserver[] = [];
+    const disconnect = vi.fn();
+
+    class DeferredIntersectionObserver implements IntersectionObserver {
+      readonly root: Element | Document | null = null;
+      readonly rootMargin: string;
+      readonly scrollMargin = "";
+      readonly thresholds: readonly number[] = [];
+      readonly callback: IntersectionObserverCallback;
+      observedElement: Element | null = null;
+      observe = vi.fn((element: Element) => {
+        this.observedElement = element;
+      });
+      unobserve = vi.fn();
+      disconnect = disconnect;
+      takeRecords = vi.fn((): IntersectionObserverEntry[] => []);
+
+      constructor(callback: IntersectionObserverCallback, options?: IntersectionObserverInit) {
+        this.callback = callback;
+        this.rootMargin = options?.rootMargin ?? "";
+        observers.push(this);
+      }
+    }
+
+    vi.stubGlobal("IntersectionObserver", DeferredIntersectionObserver);
+
+    const fileUuid = "44444444-4444-4444-8444-444444444444";
+    const createObjectURL = vi
+      .spyOn(URL, "createObjectURL")
+      .mockReturnValue("blob:workspace-image-preview");
+    const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    const onLoadWorkspaceFilePreview = vi.fn().mockResolvedValue(
+      new Blob(["image-bytes"], {
+        type: "image/png",
+      }),
+    );
+    const { container, unmount } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "workspace-media-preview-message",
+            markdown: `![screen.png](urn:image:${fileUuid}?name=screen.png&content_type=image%2Fpng)`,
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onLoadWorkspaceFilePreview }}
+      />,
+    );
+
+    const placeholder = screen.getByRole("button", { name: "Изображение" });
+
+    expect(placeholder).toHaveAttribute("data-workspace-preview-status", "queued");
+    const observer = observers.find((candidate) => candidate.observedElement === placeholder);
+    expect(observer).not.toBeUndefined();
+    expect(observer?.observe).toHaveBeenCalledWith(placeholder);
+    expect(onLoadWorkspaceFilePreview).not.toHaveBeenCalled();
+
+    act(() => {
+      observer?.callback(
+        [
+          {
+            boundingClientRect: placeholder.getBoundingClientRect(),
+            intersectionRect: placeholder.getBoundingClientRect(),
+            isIntersecting: true,
+            intersectionRatio: 1,
+            rootBounds: null,
+            target: placeholder,
+            time: 1,
+          },
+        ],
+        observer,
+      );
+    });
+
+    await waitFor(() => {
+      expect(onLoadWorkspaceFilePreview).toHaveBeenCalledTimes(1);
+    });
+    await waitFor(() => {
+      expect(container.querySelector("img[data-workspace-file-preview='true']")).not.toBeNull();
+    });
+
+    expect(disconnect).toHaveBeenCalled();
+
+    unmount();
+
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:workspace-image-preview");
+
+    createObjectURL.mockRestore();
+    revokeObjectURL.mockRestore();
+  });
+
+  it("keeps Workspace image preview mounted when file references rebuild with the same file key", async () => {
+    const fileUuid = "44444444-4444-4444-8444-444444444444";
+    const createObjectURL = vi
+      .spyOn(URL, "createObjectURL")
+      .mockReturnValue("blob:workspace-stable-preview");
+    const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    const onLoadWorkspaceFilePreview = vi.fn().mockResolvedValue(
+      new Blob(["image-bytes"], {
+        type: "image/png",
+      }),
+    );
+    const message = createWorkspaceMessage({
+      uuid: "workspace-media-stable-preview-message",
+      markdown: `![screen.png](urn:image:${fileUuid}?name=screen.png&content_type=image%2Fpng)`,
+    });
+    const { container, rerender, unmount } = render(
+      <WorkspaceMessageList
+        messages={[message]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        resolveMention={() => null}
+        actions={{ onLoadWorkspaceFilePreview }}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(container.querySelector("img[data-workspace-file-preview='true']")).not.toBeNull();
+    });
+    const previewImage = container.querySelector<HTMLImageElement>(
+      "img[data-workspace-file-preview='true']",
+    );
+    expect(previewImage).not.toBeNull();
+    expect(onLoadWorkspaceFilePreview).toHaveBeenCalledTimes(1);
+    expect(createObjectURL).toHaveBeenCalledTimes(1);
+
+    rerender(
+      <WorkspaceMessageList
+        messages={[message]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        resolveMention={() => null}
+        actions={{ onLoadWorkspaceFilePreview }}
+      />,
+    );
+
+    expect(container.querySelector("img[data-workspace-file-preview='true']")).toBe(previewImage);
+    expect(onLoadWorkspaceFilePreview).toHaveBeenCalledTimes(1);
+    expect(createObjectURL).toHaveBeenCalledTimes(1);
+    expect(revokeObjectURL).not.toHaveBeenCalled();
+
+    unmount();
+
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:workspace-stable-preview");
+
+    createObjectURL.mockRestore();
+    revokeObjectURL.mockRestore();
+  });
+
+  it("cleans the old Workspace image preview when the runtime loader callback changes", async () => {
+    const fileUuid = "44444444-4444-4444-8444-444444444444";
+    const createObjectURL = vi
+      .spyOn(URL, "createObjectURL")
+      .mockReturnValueOnce("blob:workspace-old-loader-preview")
+      .mockReturnValueOnce("blob:workspace-new-loader-preview");
+    const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    const firstLoadWorkspaceFilePreview = vi.fn().mockResolvedValue(
+      new Blob(["image-bytes"], {
+        type: "image/png",
+      }),
+    );
+    const secondLoadWorkspaceFilePreview = vi.fn().mockResolvedValue(
+      new Blob(["next-image-bytes"], {
+        type: "image/png",
+      }),
+    );
+    const message = createWorkspaceMessage({
+      uuid: "workspace-media-loader-stable-preview-message",
+      markdown: `![screen.png](urn:image:${fileUuid}?name=screen.png&content_type=image%2Fpng)`,
+    });
+    const { container, rerender, unmount } = render(
+      <WorkspaceMessageList
+        messages={[message]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onLoadWorkspaceFilePreview: firstLoadWorkspaceFilePreview }}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(container.querySelector("img[data-workspace-file-preview='true']")).not.toBeNull();
+    });
+    const previewImage = container.querySelector<HTMLImageElement>(
+      "img[data-workspace-file-preview='true']",
+    );
+    expect(previewImage).not.toBeNull();
+    expect(firstLoadWorkspaceFilePreview).toHaveBeenCalledTimes(1);
+
+    rerender(
+      <WorkspaceMessageList
+        messages={[message]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onLoadWorkspaceFilePreview: secondLoadWorkspaceFilePreview }}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(secondLoadWorkspaceFilePreview).toHaveBeenCalledTimes(1);
+      expect(createObjectURL).toHaveBeenCalledTimes(2);
+    });
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:workspace-old-loader-preview");
+    expect(container.querySelector("img[data-workspace-file-preview='true']")).toBe(previewImage);
+    expect(container.querySelector("img[data-workspace-file-preview='true']")).toHaveAttribute(
+      "src",
+      "blob:workspace-new-loader-preview",
+    );
+    expect(container.querySelector("img[src='blob:workspace-old-loader-preview']")).toBeNull();
+
+    unmount();
+
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:workspace-new-loader-preview");
+
+    createObjectURL.mockRestore();
+    revokeObjectURL.mockRestore();
+  });
+
+  it("recreates Workspace image preview when the file UUID changes", async () => {
+    const firstFileUuid = "44444444-4444-4444-8444-444444444444";
+    const secondFileUuid = "77777777-7777-4777-8777-777777777777";
+    const createObjectURL = vi
+      .spyOn(URL, "createObjectURL")
+      .mockReturnValueOnce("blob:workspace-first-preview")
+      .mockReturnValueOnce("blob:workspace-second-preview");
+    const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    const onLoadWorkspaceFilePreview = vi.fn().mockResolvedValue(
+      new Blob(["image-bytes"], {
+        type: "image/png",
+      }),
+    );
+    const { container, rerender, unmount } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "workspace-media-changing-preview-message",
+            markdown: `![screen.png](urn:image:${firstFileUuid}?name=screen.png&content_type=image%2Fpng)`,
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onLoadWorkspaceFilePreview }}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(createObjectURL).toHaveBeenCalledTimes(1);
+    });
+    expect(container.querySelector("img[data-workspace-file-preview='true']")).toHaveAttribute(
+      "src",
+      "blob:workspace-first-preview",
+    );
+
+    rerender(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "workspace-media-changing-preview-message",
+            markdown: `![screen.png](urn:image:${secondFileUuid}?name=screen.png&content_type=image%2Fpng)`,
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onLoadWorkspaceFilePreview }}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(createObjectURL).toHaveBeenCalledTimes(2);
+    });
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:workspace-first-preview");
+    expect(container.querySelector("img[data-workspace-file-preview='true']")).toHaveAttribute(
+      "src",
+      "blob:workspace-second-preview",
+    );
+    expect(onLoadWorkspaceFilePreview).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ fileUuid: firstFileUuid }),
+      expect.any(AbortSignal),
+    );
+    expect(onLoadWorkspaceFilePreview).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ fileUuid: secondFileUuid }),
+      expect.any(AbortSignal),
+    );
+
+    unmount();
+
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:workspace-second-preview");
+
+    createObjectURL.mockRestore();
+    revokeObjectURL.mockRestore();
+  });
+
+  it("keeps Workspace image preview source on blob URL when the loader knows a backend URL", async () => {
+    const fileUuid = "55555555-5555-4555-8555-555555555555";
+    const backendUrl = `/api/workspace/v1/messenger/files/${fileUuid}/actions/download`;
+    const createObjectURL = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:workspace-safe");
+    const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    const onLoadWorkspaceFilePreview = vi.fn().mockResolvedValue(new Blob([backendUrl]));
+
+    const { container, unmount } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "workspace-media-safe-src-message",
+            markdown: `![screen.png](urn:image:${fileUuid}?name=screen.png&content_type=image%2Fpng)`,
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onLoadWorkspaceFilePreview }}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(container.querySelector("img[data-workspace-file-preview='true']")).not.toBeNull();
+    });
+    const previewImage = container.querySelector<HTMLImageElement>(
+      "img[data-workspace-file-preview='true']",
+    );
+    expect(previewImage).not.toBeNull();
+
+    const image = await screen.findByRole("img", { name: "screen.png" });
+
+    expect(image.getAttribute("src")).toBe("blob:workspace-safe");
+    expect(image.getAttribute("src")).not.toContain("/api/workspace/v1/messenger/files");
+
+    unmount();
+
+    createObjectURL.mockRestore();
+    revokeObjectURL.mockRestore();
+  });
+
+  it("falls back to downloadable Workspace media placeholder when preview load fails", async () => {
+    const onDownloadFile = vi.fn();
+    const onLoadWorkspaceFilePreview = vi.fn().mockRejectedValue(new Error("preview failed"));
+    const fileUuid = "66666666-6666-4666-8666-666666666666";
+    render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "workspace-media-preview-failed-message",
+            markdown: `![screen.png](urn:image:${fileUuid}?name=screen.png&content_type=image%2Fpng)`,
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onDownloadFile, onLoadWorkspaceFilePreview }}
+      />,
+    );
+
+    const placeholder = screen.getByRole("button", { name: "Изображение" });
+
+    await waitFor(() => {
+      expect(placeholder).toHaveAttribute("data-workspace-preview-status", "load-error");
+    });
+    expect(screen.queryByRole("img", { name: "screen.png" })).not.toBeInTheDocument();
+
+    fireEvent.click(placeholder);
+
+    expect(onDownloadFile).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "media",
+        fileUuid,
+        name: "screen.png",
+        mediaKind: "image",
+        contentType: "image/png",
+      }),
+    );
+  });
+
+  it.each(["click", "keyboard"])(
+    "retries failed media with %s without opening or downloading it",
+    async (interaction) => {
+      const user = userEvent.setup();
+      const onDownloadFile = vi.fn();
+      const onOpenWorkspaceMedia = vi.fn();
+      const onLoadWorkspaceFilePreview = vi
+        .fn()
+        .mockRejectedValueOnce(new Error("404"))
+        .mockResolvedValue(new Blob(["image"], { type: "image/png" }));
+      render(
+        <WorkspaceMessageList
+          messages={[
+            createWorkspaceMessage({
+              uuid: "preview-retry-interaction",
+              markdown:
+                "![image.png](urn:image:66666666-6666-4666-8666-666666666666?name=image.png&content_type=image%2Fpng)",
+            }),
+          ]}
+          currentUserUuid="current-user-uuid"
+          conversationId="topic:stream-uuid-1:topic-uuid-1"
+          actions={{ onDownloadFile, onOpenWorkspaceMedia, onLoadWorkspaceFilePreview }}
+        />,
+      );
+      const retry = await screen.findByRole("button", { name: "Retry" });
+      if (interaction === "keyboard") {
+        retry.focus();
+        await user.keyboard("{Enter}");
+      } else {
+        await user.click(retry);
+      }
+      await waitFor(() => expect(onLoadWorkspaceFilePreview).toHaveBeenCalledTimes(2));
+      await waitFor(() =>
+        expect(screen.queryByRole("button", { name: "Retry" })).not.toBeInTheDocument(),
+      );
+      expect(onDownloadFile).not.toHaveBeenCalled();
+      expect(onOpenWorkspaceMedia).not.toHaveBeenCalled();
+    },
+  );
+
+  it("opens resolved Workspace mentions through UUID-only callback", () => {
+    const onOpenMentionUser = vi.fn();
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "resolved-mention-message",
+            markdown: "Привет @**Alice Reed**",
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        resolveMention={(displayText) =>
+          displayText === "Alice Reed"
+            ? {
+                userUuid: "alice-workspace-uuid",
+                displayText: "Alice Reed",
+              }
+            : null
+        }
+        actions={{ onOpenMentionUser }}
+      />,
+    );
+
+    const mention = screen.getByRole("button", { name: "@Alice Reed" });
+
+    expect(mention).toHaveAttribute("data-workspace-user-uuid", "alice-workspace-uuid");
+    expect(mention).not.toHaveAttribute("data-user-id");
+
+    fireEvent.click(mention);
+
+    expect(onOpenMentionUser).toHaveBeenCalledWith("alice-workspace-uuid");
+    expect(container.querySelector("[data-user-id]")).not.toBeInTheDocument();
+  });
+
+  it("keeps unresolved Workspace mentions as text without numeric identity", () => {
+    const onOpenMentionUser = vi.fn();
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "unresolved-mention-message",
+            markdown: "Привет @**Unknown User**",
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        resolveMention={() => null}
+        actions={{ onOpenMentionUser }}
+      />,
+    );
+
+    expect(screen.getByText("Привет @Unknown User")).toBeInTheDocument();
+    expect(container.querySelector("[data-workspace-user-uuid]")).not.toBeInTheDocument();
+    expect(container.querySelector("[data-user-id]")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("Привет @Unknown User"));
+
+    expect(onOpenMentionUser).not.toHaveBeenCalled();
+  });
+
+  it("opens unresolved canonical UUID Workspace mentions through the UUID callback", () => {
+    const onOpenMentionUser = vi.fn();
+    const userUuid = "33333333-3333-4333-8333-333333333333";
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "unresolved-canonical-mention-message",
+            markdown: `Привет <@${userUuid}>`,
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        resolveMention={() => null}
+        actions={{ onOpenMentionUser }}
+      />,
+    );
+
+    const mention = screen.getByRole("button", { name: `@${userUuid}` });
+
+    expect(mention).toHaveAttribute("data-workspace-user-uuid", userUuid);
+    expect(mention).not.toHaveAttribute("data-user-id");
+
+    fireEvent.click(mention);
+
+    expect(onOpenMentionUser).toHaveBeenCalledWith(userUuid);
+    expect(container.querySelector("[data-user-id]")).not.toBeInTheDocument();
+  });
+
+  it("renders a copy button for fenced code blocks and copies code text", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "code-copy-message",
+            markdown: ["```ts", "const value = 1;", "```"].join("\n"),
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+
+    await waitFor(() => {
+      const button = container.querySelector<HTMLButtonElement>("[data-code-copy-button='true']");
+      expect(button).toBeInTheDocument();
+    });
+    const copyButton = container.querySelector<HTMLButtonElement>("[data-code-copy-button='true']");
+    if (copyButton == null) {
+      throw new Error("Code copy button was not rendered");
+    }
+
+    fireEvent.click(copyButton);
+
+    await waitFor(() => {
+      expect(writeText).toHaveBeenCalledWith("const value = 1;");
+    });
+  });
+
+  it("renders block-rich Workspace markdown and moves time to row placement", () => {
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "block-rich-message",
+            markdown: ["- one", "- two"].join("\n"),
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+
+    const article = container.querySelector("[data-message-uuid='block-rich-message']");
+    const body = article?.querySelector("[data-message-body='true']");
+
+    expect(body).toHaveAttribute("data-message-content-kind", "block-rich");
+    expect(body?.querySelectorAll("li")).toHaveLength(2);
+    expect(article?.querySelector("[data-message-time='true']")).toHaveAttribute(
+      "data-message-meta-placement",
+      "row",
+    );
+  });
+
+  it("keeps old bubble rich-text body classes for lists and paragraphs after lists", () => {
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "ordered-list-message",
+            markdown: [
+              "Intro paragraph",
+              "",
+              "1. First item",
+              "   - Nested A",
+              "2. Second item",
+              "",
+              "Outro paragraph",
+            ].join("\n"),
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+
+    const body = container.querySelector("[data-message-body='true']");
+    const orderedList = body?.querySelector("ol");
+    const preservedGap = orderedList?.nextElementSibling;
+    const outroParagraph = preservedGap?.nextElementSibling;
+    const time = container.querySelector("[data-message-time='true']");
+
+    expect(body).toHaveClass("message-body");
+    expect(body).toHaveClass("[&_ol]:list-decimal");
+    expect(body).toHaveClass("[&_ol]:list-outside");
+    expect(body).toHaveClass("[&_ul]:list-disc");
+    expect(body).toHaveClass("[&_li>p]:mb-0");
+    expect(body).toHaveClass("[&_ol+p]:mt-1");
+    expect(orderedList).toBeTruthy();
+    expect(body?.querySelector("ol li ul")).toBeTruthy();
+    expect(preservedGap).toHaveClass("workspace-message-gap", "workspace-message-gap--1");
+    expect(outroParagraph?.tagName.toLowerCase()).toBe("p");
+    expect(outroParagraph).toHaveTextContent("Outro paragraph");
+    expect(outroParagraph).toHaveAttribute("data-workspace-message-meta-anchor", "true");
+    expect(time).toHaveAttribute("data-message-meta-placement", "inline");
+  });
+
+  it("renders nested Workspace quote blocks without legacy message anchors", () => {
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "nested-quote-message",
+            markdown: ["> Alice: outer", ">", "> > Bob: nested", "", "Own reply"].join("\n"),
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+
+    const article = container.querySelector("[data-message-uuid='nested-quote-message']");
+    const body = article?.querySelector("[data-message-body='true']");
+
+    expect(article).toHaveAttribute("data-message-uuid", "nested-quote-message");
+    expect(body?.querySelectorAll("blockquote.workspace-message-quote")).toHaveLength(2);
+    expect(body).toHaveClass("message-body");
+    expect(article).not.toHaveAttribute(["data", "message", "id"].join("-"));
+  });
+
+  it("renders Workspace inline code and code blocks with old bubble code controls", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "workspace-code-message",
+            markdown: ["Inline `value`", "", "```ts", "const value = 1;", "```"].join("\n"),
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+
+    const body = container.querySelector("[data-message-body='true']");
+    const inlineCode = body?.querySelector("p code");
+    const blockCode = body?.querySelector("pre > code");
+
+    expect(inlineCode).toHaveTextContent("value");
+    expect(blockCode).toHaveClass("hljs", "language-ts");
+
+    await waitFor(() => {
+      expect(body?.querySelector('[data-code-copy-button="true"]')).toBeInTheDocument();
+    });
+    const copyButton = body?.querySelector<HTMLButtonElement>('[data-code-copy-button="true"]');
+    expect(copyButton).toHaveClass("message-code-copy-btn");
+
+    fireEvent.click(copyButton as HTMLButtonElement);
+
+    await waitFor(() => {
+      expect(writeText).toHaveBeenCalledWith("const value = 1;");
+    });
+  });
+
+  it("renders Workspace mentions with old visual class shell and UUID data attr", () => {
+    const userUuid = "11111111-1111-4111-8111-111111111111";
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "workspace-mention-message",
+            markdown: "Привет @**Alice Reed**",
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        resolveMention={(displayText) =>
+          displayText === "Alice Reed" ? { displayText, userUuid } : null
+        }
+        actions={{ onOpenMentionUser: vi.fn() }}
+      />,
+    );
+
+    const mention = container.querySelector("[data-workspace-mention='true']");
+
+    expect(mention).toHaveClass("workspace-message-mention");
+    expect(mention).toHaveAttribute("data-workspace-user-uuid", userUuid);
+    expect(mention).not.toHaveAttribute("data-user-id");
+  });
+
+  it("toggles Workspace inline and block spoilers", () => {
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "workspace-spoiler-message",
+            markdown: ["Before ||secret|| after", "", "```spoiler Hidden", "payload", "```"].join(
+              "\n",
+            ),
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+
+    const inlineSpoiler = container.querySelector(".inline-spoiler");
+    const spoilerBlock = container.querySelector(".spoiler-block");
+    const spoilerHeader = container.querySelector(".spoiler-header");
+
+    expect(inlineSpoiler).toHaveAttribute("data-workspace-spoiler-inline", "true");
+    expect(spoilerHeader).toHaveAttribute("data-workspace-spoiler-toggle", "true");
+    expect(inlineSpoiler).not.toHaveClass("open");
+    expect(spoilerBlock).not.toHaveClass("open");
+
+    fireEvent.click(inlineSpoiler as HTMLElement);
+    fireEvent.click(spoilerHeader as HTMLElement);
+
+    expect(inlineSpoiler).toHaveClass("open");
+    expect(spoilerBlock).toHaveClass("open");
+  });
+
+  it("does not execute or inject html from Workspace message text", () => {
+    const htmlText = '<img src=x onerror="alert(1)">safe text';
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "html-like-message",
+            markdown: htmlText,
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+
+    expect(container.querySelector("img")).not.toBeInTheDocument();
+    expect(container.querySelector("[data-message-body='true']")).toHaveTextContent(htmlText);
+  });
+
+  it("renders a simple message time inside the Workspace bubble", () => {
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "message-with-time",
+            createdAt: "2026-07-03T09:05:00.000Z",
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+
+    const time = container.querySelector("[data-message-time='true']");
+
+    expect(time).toHaveAttribute("dateTime", "2026-07-03T09:05:00.000Z");
+    expect(time?.textContent).toMatch(/^\d{2}:\d{2}$/);
+  });
+
+  it("renders simple text message time inline inside the Workspace bubble", () => {
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "simple-inline-message",
+            markdown: "Short text",
+            createdAt: "2026-07-03T09:06:00.000Z",
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+
+    const article = container.querySelector("[data-message-uuid='simple-inline-message']");
+    const body = article?.querySelector("[data-message-body='true']");
+    const time = article?.querySelector("[data-message-time='true']");
+
+    expect(time).toHaveAttribute("data-message-meta-placement", "inline");
+    expect(body).toHaveClass("workspace-message-bubble-inline-text");
+    expect(body?.querySelector("[data-workspace-message-meta-anchor='true']")?.tagName).toBe("P");
+  });
+
+  it("renders multiline plain message time inline inside the Workspace bubble", () => {
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "multiline-inline-message",
+            markdown: "First line\nSecond line",
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+
+    const article = container.querySelector("[data-message-uuid='multiline-inline-message']");
+    const body = article?.querySelector("[data-message-body='true']");
+    const time = article?.querySelector("[data-message-time='true']");
+
+    expect(time).toHaveAttribute("data-message-meta-placement", "inline");
+    expect(body).toHaveClass("workspace-message-bubble-inline-text");
+    expect(body?.textContent).toBe("First lineSecond line");
+  });
+
+  it("keeps inline meta for the paragraph that follows a quote card", () => {
+    const quotedMessageUuid = "11111111-1111-4111-8111-111111111111";
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "quote-then-text-message",
+            markdown: [
+              `[Old Bob](urn:quote:${quotedMessageUuid})`,
+              "",
+              "это нормально. сервер закрыл сокет на своей стороне",
+            ].join("\n"),
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+
+    const article = container.querySelector("[data-message-uuid='quote-then-text-message']");
+    const body = article?.querySelector("[data-message-body='true']");
+    const anchor = body?.querySelector("[data-workspace-message-meta-anchor='true']");
+
+    expect(article?.querySelector("[data-message-time='true']")).toHaveAttribute(
+      "data-message-meta-placement",
+      "inline",
+    );
+    expect(body).toHaveClass("workspace-message-bubble-inline-text");
+    expect(anchor?.tagName.toLowerCase()).toBe("p");
+    expect(anchor).toHaveTextContent("сервер закрыл сокет");
+    expect(article?.querySelector("[data-workspace-message-reaction-footer='true']")).toBeNull();
+  });
+
+  it("moves the inline meta anchor when an edit adds or removes a leading quote", () => {
+    const quotedMessageUuid = "33333333-3333-4333-8333-333333333333";
+    const renderList = (markdown: string): React.ReactElement => (
+      <WorkspaceMessageList
+        messages={[createWorkspaceMessage({ uuid: "edited-quote-message", markdown })]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />
+    );
+    const readAnchors = (): HTMLElement[] => [
+      ...container.querySelectorAll<HTMLElement>("[data-workspace-message-meta-anchor='true']"),
+    ];
+
+    // The tail HTML stays `<p>Same tail</p>` in both variants, so only the segment
+    // structure tells the bubble that React swapped the paragraph node.
+    const { container, rerender } = render(renderList("Same tail"));
+
+    expect(readAnchors()).toHaveLength(1);
+
+    rerender(renderList(`[Old Bob](urn:quote:${quotedMessageUuid})\n\nSame tail`));
+
+    const quotedAnchors = readAnchors();
+    const body = container.querySelector("[data-message-body='true']");
+
+    expect(quotedAnchors).toHaveLength(1);
+    expect(quotedAnchors[0]).toHaveTextContent("Same tail");
+    expect(body).toContainElement(quotedAnchors[0] ?? null);
+    expect(body?.querySelectorAll("p")).toHaveLength(1);
+
+    rerender(renderList("Same tail"));
+
+    const restoredAnchors = readAnchors();
+
+    expect(restoredAnchors).toHaveLength(1);
+    expect(restoredAnchors[0]).toHaveTextContent("Same tail");
+  });
+
+  it("falls back to row meta when the message ends with a quote card", () => {
+    const quotedMessageUuid = "22222222-2222-4222-8222-222222222222";
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "text-then-quote-message",
+            markdown: ["смотри тут", "", `[Old Bob](urn:quote:${quotedMessageUuid})`].join("\n"),
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+
+    const article = container.querySelector("[data-message-uuid='text-then-quote-message']");
+
+    expect(article?.querySelector("[data-message-time='true']")).toHaveAttribute(
+      "data-message-meta-placement",
+      "row",
+    );
+    expect(article?.querySelector("[data-workspace-message-meta-anchor='true']")).toBeNull();
+  });
+
+  it("uses render metadata for long plain message meta placement", () => {
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "long-word-row-message",
+            markdown: "word-without-breaks-abcdefghijklmnopqrstuvwxyz",
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+
+    const article = container.querySelector("[data-message-uuid='long-word-row-message']");
+
+    expect(article?.querySelector("[data-message-time='true']")).toHaveAttribute(
+      "data-message-meta-placement",
+      "inline",
+    );
+  });
+
+  it("renders reaction message time as a row fallback", () => {
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "reaction-row-message",
+            markdown: "Reacted text",
+            reactions: { thumbs_up: 1 },
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+
+    const article = container.querySelector("[data-message-uuid='reaction-row-message']");
+
+    expect(article?.querySelector("[data-message-time='true']")).toHaveAttribute(
+      "data-message-meta-placement",
+      "row",
+    );
+  });
+
+  // Regression: empty reaction row returned null, so justify-between left the lone meta at the start.
+  // The last block must not be a paragraph, otherwise placement switches to inline.
+  it("keeps row meta right-aligned when the message has no reaction chips", () => {
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "own-row-meta-no-reactions",
+            authorUuid: "current-user-uuid",
+            userUuid: "current-user-uuid",
+            isOwn: true,
+            markdown: "- first item\n- second item",
+          }),
+          createWorkspaceMessage({
+            uuid: "peer-row-meta-no-reactions",
+            authorUuid: "peer-user-uuid",
+            userUuid: "peer-user-uuid",
+            isOwn: false,
+            markdown: "a follow-up\n\n> quoted tail",
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+
+    for (const messageUuid of ["own-row-meta-no-reactions", "peer-row-meta-no-reactions"]) {
+      const article = container.querySelector(`[data-message-uuid='${messageUuid}']`);
+      const footer = article?.querySelector("[data-workspace-message-reaction-footer='true']");
+      const meta = footer?.querySelector("[data-message-meta-placement='row']");
+
+      expect(meta).toBeInTheDocument();
+      expect(meta).toHaveClass("ml-auto");
+      expect(article?.querySelector("[data-workspace-message-reaction-chip='true']")).toBeNull();
+    }
+  });
+
+  it("renders Workspace reaction chips inside the message bubble", () => {
+    const onToggleMessageReaction = vi.fn();
+    useUsersStore.getState().replaceUsers([
+      createWorkspaceUser(),
+      createWorkspaceUser({
+        uuid: "second-peer-user-uuid",
+        username: "sam",
+        displayName: "Sam Lee",
+      }),
+    ]);
+
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "reaction-chip-message",
+            markdown: "Reacted text",
+            reactions: { "👍": 1 },
+            ownReactionUuidsByEmojiName: { "👍": "reaction-uuid-1" },
+          }),
+          createWorkspaceMessage({
+            uuid: "peer-reaction-chip-message",
+            markdown: "Peer reacted text",
+            reactions: { "👏": 2 },
+            reactionUserUuidsByEmojiName: {
+              "👏": ["peer-user-uuid", "second-peer-user-uuid"],
+            },
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onToggleMessageReaction }}
+      />,
+    );
+
+    const article = container.querySelector("[data-message-uuid='reaction-chip-message']");
+    const reactionChip = article?.querySelector("[data-workspace-message-reaction-chip='true']");
+    const reactionFooter = article?.querySelector(
+      "[data-workspace-message-reaction-footer='true']",
+    );
+    const messageTime = article?.querySelector("[data-message-time='true']");
+    const peerArticle = container.querySelector("[data-message-uuid='peer-reaction-chip-message']");
+    const peerReactionChip = peerArticle?.querySelector(
+      "[data-workspace-message-reaction-chip='true']",
+    );
+    const peerReactionUsers = peerReactionChip?.querySelectorAll("[data-reaction-user-uuid]");
+
+    expect(reactionChip).toBeInTheDocument();
+    expect(reactionChip).toHaveTextContent("👍");
+    expect(reactionChip).toHaveTextContent("1");
+    expect(reactionFooter).toContainElement(reactionChip as HTMLElement);
+    expect(reactionFooter).toContainElement(messageTime as HTMLElement);
+    // Idle chips use card hover tokens so they stay visible on white peer bubbles
+    expect(peerReactionChip).toHaveClass("bg-card-bg", "hover:bg-card-bg-active");
+    expect(peerReactionUsers).toHaveLength(2);
+    expect(peerReactionChip).toHaveAttribute("aria-label", "👏 Bob Reed, Sam Lee");
+    expect(
+      peerReactionChip?.querySelector("[data-workspace-reaction-user-list='true']"),
+    ).toBeInTheDocument();
+
+    fireEvent.click(reactionChip!);
+
+    expect(onToggleMessageReaction).toHaveBeenCalledWith("reaction-chip-message", "👍");
+  });
+
+  it.each(["native", "zulip"] as const)(
+    "switches %s reaction avatars to a count and back as server snapshots cross five users",
+    (sourceName) => {
+      const users = Array.from({ length: 6 }, (_, index) =>
+        createWorkspaceUser({
+          uuid: `reaction-user-${index}`,
+          username: `reactor-${index}`,
+          displayName: `Reactor ${index}`,
+        }),
+      );
+      useUsersStore.getState().replaceUsers(users);
+      const onToggleMessageReaction = vi.fn();
+      const message = createWorkspaceMessage({
+        uuid: "bounded-reaction-message",
+        sourceName,
+        provider: sourceName === "zulip" ? { kind: "zulip", external_id: "42" } : null,
+        reactions: { heart: 5, eyes: 1 },
+        reactionUserUuidsByEmojiName: {
+          heart: users.slice(0, 5).map((user) => user.uuid),
+          eyes: [users[0]!.uuid],
+        },
+        ownReactionUuidsByEmojiName: { heart: "own-heart-reaction" },
+      });
+      const renderList = (snapshot: MessengerMessage) => (
+        <WorkspaceMessageList
+          messages={[snapshot]}
+          currentUserUuid={users[0]!.uuid}
+          conversationId={message.conversationId}
+          actions={{ onToggleMessageReaction }}
+        />
+      );
+      const { container, rerender } = render(renderList(message));
+      const getHeartChip = () =>
+        screen
+          .getAllByRole("button")
+          .find((button) => button.getAttribute("aria-label")?.startsWith("❤️ "))!;
+
+      expect(getHeartChip().querySelectorAll("[data-reaction-user-uuid]")).toHaveLength(5);
+      expect(getHeartChip()).toHaveAttribute("aria-pressed", "true");
+
+      rerender(
+        renderList({
+          ...message,
+          reactions: { heart: 6, eyes: 1 },
+          reactionUserUuidsByEmojiName: { eyes: [users[0]!.uuid] },
+        }),
+      );
+      expect(getHeartChip()).toHaveTextContent("6");
+      expect(getHeartChip().querySelector("[data-workspace-reaction-user-list]")).toBeNull();
+      expect(getHeartChip()).toHaveAttribute("aria-label", "❤️ 6");
+      expect(container.querySelectorAll("[data-reaction-user-uuid]")).toHaveLength(1);
+      fireEvent.click(getHeartChip());
+      expect(onToggleMessageReaction).toHaveBeenCalledWith(message.uuid, "heart");
+
+      rerender(renderList(message));
+      expect(getHeartChip().querySelectorAll("[data-reaction-user-uuid]")).toHaveLength(5);
+      expect(getHeartChip()).toHaveAttribute(
+        "aria-label",
+        "❤️ Reactor 0, Reactor 1, Reactor 2, Reactor 3, Reactor 4",
+      );
+    },
+  );
+
+  it("optimistically adds the current user avatar until the backend replaces the list", () => {
+    useUsersStore.getState().replaceUsers([
+      createWorkspaceUser(),
+      createWorkspaceUser({
+        uuid: "current-user-uuid",
+        username: "ada",
+        displayName: "Ada Lovelace",
+        avatarUrl: "urn:gravatar:7ec7606c46a14a7ef514d1f1f9038823",
+      }),
+    ]);
+
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "pending-add-reaction",
+            reactions: { "👍": 2 },
+            reactionUserUuidsByEmojiName: { "👍": ["peer-user-uuid"] },
+            optimisticReactionUserUuidsByEmojiName: {
+              "👍": ["peer-user-uuid", "current-user-uuid"],
+            },
+            pendingOwnReactionsByEmojiName: {
+              "👍": {
+                requestId: "add-request",
+                operation: "add",
+                previousCount: 1,
+                previousOwnReactionUuid: null,
+              },
+            },
+          }),
+          createWorkspaceMessage({
+            uuid: "pending-remove-reaction",
+            reactions: { "👏": 1 },
+            reactionUserUuidsByEmojiName: {
+              "👏": ["peer-user-uuid", "current-user-uuid"],
+            },
+            optimisticReactionUserUuidsByEmojiName: { "👏": ["peer-user-uuid"] },
+            pendingOwnReactionsByEmojiName: {
+              "👏": {
+                requestId: "remove-request",
+                operation: "remove",
+                previousCount: 2,
+                previousOwnReactionUuid: "reaction-uuid",
+              },
+            },
+          }),
+          createWorkspaceMessage({
+            uuid: "settled-add-reaction",
+            reactions: { "🔥": 2 },
+            reactionUserUuidsByEmojiName: { "🔥": ["peer-user-uuid"] },
+            optimisticReactionUserUuidsByEmojiName: {
+              "🔥": ["peer-user-uuid", "current-user-uuid"],
+            },
+            ownReactionUuidsByEmojiName: { "🔥": "reaction-uuid" },
+          }),
+          createWorkspaceMessage({
+            uuid: "backend-count-reaction",
+            reactions: { "🚀": 5 },
+            reactionUserUuidsByEmojiName: {},
+            ownReactionUuidsByEmojiName: { "🚀": "reaction-uuid" },
+          }),
+          createWorkspaceMessage({
+            uuid: "new-optimistic-reaction",
+            reactions: { "✨": 1 },
+            reactionUserUuidsByEmojiName: {},
+            optimisticReactionUserUuidsByEmojiName: {
+              "✨": ["current-user-uuid"],
+            },
+            pendingOwnReactionsByEmojiName: {
+              "✨": {
+                requestId: "new-add-request",
+                operation: "add",
+                previousCount: 0,
+                previousOwnReactionUuid: null,
+              },
+            },
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onToggleMessageReaction: vi.fn() }}
+      />,
+    );
+
+    const pendingAddChip = container.querySelector(
+      "[data-message-uuid='pending-add-reaction'] [data-workspace-message-reaction-chip='true']",
+    );
+    const pendingRemoveChip = container.querySelector(
+      "[data-message-uuid='pending-remove-reaction'] [data-workspace-message-reaction-chip='true']",
+    );
+    const settledAddChip = container.querySelector(
+      "[data-message-uuid='settled-add-reaction'] [data-workspace-message-reaction-chip='true']",
+    );
+    const backendCountChip = container.querySelector(
+      "[data-message-uuid='backend-count-reaction'] [data-workspace-message-reaction-chip='true']",
+    );
+    const newOptimisticChip = container.querySelector(
+      "[data-message-uuid='new-optimistic-reaction'] [data-workspace-message-reaction-chip='true']",
+    );
+
+    expect(pendingAddChip).toHaveAttribute("aria-pressed", "true");
+    expect(pendingAddChip).toHaveAttribute("aria-busy", "true");
+    expect(pendingAddChip).toBeDisabled();
+    expect(pendingAddChip).toHaveAttribute("aria-label", "👍 Bob Reed, Ada Lovelace");
+    expect(pendingAddChip?.querySelectorAll("[data-reaction-user-uuid]")).toHaveLength(2);
+    expect(
+      pendingAddChip?.querySelector("[data-reaction-user-uuid='current-user-uuid']"),
+    ).toBeInTheDocument();
+    expect(pendingRemoveChip).toHaveAttribute("aria-pressed", "false");
+    expect(pendingRemoveChip).toHaveAttribute("aria-busy", "true");
+    expect(pendingRemoveChip).toBeDisabled();
+    expect(pendingRemoveChip).toHaveAttribute("aria-label", "👏 Bob Reed");
+    expect(pendingRemoveChip?.querySelectorAll("[data-reaction-user-uuid]")).toHaveLength(1);
+    expect(settledAddChip).toHaveAttribute("aria-label", "🔥 Bob Reed, Ada Lovelace");
+    expect(settledAddChip?.querySelectorAll("[data-reaction-user-uuid]")).toHaveLength(2);
+    expect(backendCountChip).toHaveTextContent("5");
+    expect(
+      backendCountChip?.querySelector("[data-workspace-reaction-user-list='true']"),
+    ).toBeNull();
+    expect(newOptimisticChip).toHaveAttribute("aria-label", "✨ Ada Lovelace");
+    expect(
+      newOptimisticChip?.querySelector("[data-reaction-user-uuid='current-user-uuid']"),
+    ).toBeInTheDocument();
+    expect(
+      newOptimisticChip?.querySelector("[data-reaction-user-uuid='current-user-uuid'] img"),
+    ).toHaveAttribute("loading", "eager");
+  });
+
+  it("does not render a hover ellipsis trigger and opens the menu from right click", async () => {
+    const onReplyMessage = vi.fn();
+    const onForwardMessage = vi.fn();
+    const onEditMessage = vi.fn();
+    const onRequestDeleteMessage = vi.fn();
+    const onToggleMessageReaction = vi.fn();
+
+    render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "own-menu-message",
+            authorUuid: "current-user-uuid",
+            userUuid: "current-user-uuid",
+            isOwn: true,
+            markdown: "Own menu message",
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{
+          onReplyMessage,
+          onForwardMessage,
+          onEditMessage,
+          onRequestDeleteMessage,
+          onToggleMessageReaction,
+        }}
+      />,
+    );
+
+    expect(screen.queryByLabelText("Message menu")).not.toBeInTheDocument();
+    expect(
+      document.querySelector('[data-context-menu-trigger-source="trigger"]'),
+    ).not.toBeInTheDocument();
+
+    openWorkspaceMessageMenu();
+
+    expect(await screen.findByRole("menu")).toHaveClass("bg-bg-elevated");
+    const replyItem = await screen.findByRole("menuitem", { name: "Reply" });
+    const forwardItem = await screen.findByRole("menuitem", { name: "Forward" });
+    expect(replyItem).toBeInTheDocument();
+    expect(forwardItem).toBeInTheDocument();
+    expect(replyItem.querySelector("svg")).not.toHaveClass("rotate-180");
+    expect(forwardItem.querySelector("svg")).not.toHaveClass("rotate-180");
+    expect(replyItem.querySelector("svg")).toHaveAttribute("viewBox", "3 5 22 18");
+    expect(forwardItem.querySelector("svg")).toHaveAttribute("viewBox", "3 5 22 18");
+    expect(screen.getByRole("menuitem", { name: "Copy text" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Edit message" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Delete" })).toBeInTheDocument();
+
+    const quickReaction = screen.getByLabelText("Thumbs up");
+    expect(quickReaction.parentElement?.parentElement).toHaveClass(
+      "overflow-x-auto",
+      "scrollbar-none",
+    );
+    fireEvent.click(quickReaction);
+    expect(onToggleMessageReaction).toHaveBeenCalledWith("own-menu-message", "👍");
+  });
+
+  it("does not offer editing for immutable forward snapshots", async () => {
+    const forwardUrn = buildWorkspaceForwardUrn(
+      "22222222-2222-4222-8222-222222222222",
+      "Forwarded text",
+    );
+    expect(forwardUrn).not.toBeNull();
+
+    render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "own-forward-message",
+            authorUuid: "current-user-uuid",
+            userUuid: "current-user-uuid",
+            isOwn: true,
+            markdown: `[Original Author](${forwardUrn})`,
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{
+          onEditMessage: vi.fn(),
+          onRequestDeleteMessage: vi.fn(),
+        }}
+      />,
+    );
+
+    openWorkspaceMessageMenu();
+
+    expect(await screen.findByRole("menu")).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Edit message" })).not.toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Delete" })).toBeInTheDocument();
+  });
+
+  it("sends native emoji from the Workspace reaction picker", async () => {
+    const onToggleMessageReaction = vi.fn();
+
+    render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "picker-reaction-message",
+            markdown: "Picker reaction message",
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onToggleMessageReaction }}
+      />,
+    );
+
+    openWorkspaceMessageMenu();
+    fireEvent.click(screen.getByLabelText("More reactions"));
+    fireEvent.click(await screen.findByRole("button", { name: "Pick emoji" }));
+
+    expect(onToggleMessageReaction).toHaveBeenCalledWith("picker-reaction-message", "😀");
+  });
+
+  it("opens the Workspace bubble menu from right click", async () => {
+    render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "context-menu-message",
+            markdown: "Context menu message",
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+
+    const bubble = screen
+      .getByText("Context menu message")
+      .closest("[data-workspace-message-bubble='true']");
+
+    fireEvent.contextMenu(bubble!, { clientX: 120, clientY: 80 });
+
+    expect(await screen.findByRole("menuitem", { name: "Copy text" })).toBeInTheDocument();
+  });
+
+  it("offers a peer message permalink separately from the URL under the cursor", async () => {
+    const onCopyMessageLink = vi.fn();
+    const uuid = "11111111-1111-4111-8111-111111111111";
+    render(
+      <WorkspaceMessageList
+        messages={[createWorkspaceMessage({ uuid, markdown: "[docs](https://example.com)" })]}
+        currentUserUuid="other-user"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onCopyMessageLink }}
+      />,
+    );
+    fireEvent.contextMenu(screen.getByRole("link"), { clientX: 120, clientY: 80 });
+    expect(await screen.findByRole("menuitem", { name: "Copy link" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy message link" }));
+    expect(onCopyMessageLink).toHaveBeenCalledExactlyOnceWith(uuid);
+  });
+
+  it.each(["sending", "failed"] as const)(
+    "does not offer a permalink for %s outbox entries with valid UUIDs",
+    (status) => {
+      const uuid = "11111111-1111-4111-8111-111111111111";
+      const { container } = render(
+        <WorkspaceMessageList
+          messages={[]}
+          outgoingMessages={[
+            createOutgoingMessage({ canonicalMessageUuid: uuid, placementUuid: uuid, status }),
+          ]}
+          currentUserUuid="current-user-uuid"
+          conversationId="topic:stream-uuid-1:topic-uuid-1"
+          actions={{ onCopyMessageLink: vi.fn() }}
+        />,
+      );
+      fireEvent.contextMenu(container.querySelector("[data-workspace-message-bubble='true']")!);
+      expect(screen.queryByRole("menuitem", { name: "Copy message link" })).not.toBeInTheDocument();
+    },
+  );
+
+  it("does not offer a permalink for a nonpersistent message identifier", async () => {
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[createWorkspaceMessage({ uuid: "local-message" })]}
+        currentUserUuid="other-user"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onCopyMessageLink: vi.fn() }}
+      />,
+    );
+    fireEvent.contextMenu(container.querySelector("[data-workspace-message-bubble='true']")!);
+    expect(await screen.findByRole("menuitem", { name: "Copy text" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Copy message link" })).not.toBeInTheDocument();
+  });
+
+  it("offers to copy a safe link from its right-click context", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    const url = "https://example.com/docs?section=messenger#links";
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "copy-link-context-message",
+            markdown: `Open [docs](${url})`,
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+
+    const link = screen.getByRole("link", { name: "docs" });
+    const bubble = container.querySelector("[data-workspace-message-bubble='true']");
+
+    fireEvent.contextMenu(link, { clientX: 120, clientY: 80 });
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Copy link" }));
+
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(url));
+
+    fireEvent.contextMenu(bubble!, { clientX: 120, clientY: 80 });
+
+    expect(await screen.findByRole("menuitem", { name: "Copy text" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Copy link" })).not.toBeInTheDocument();
+  });
+
+  it("offers to copy image bytes only from an image context", async () => {
+    let clipboardItemData: Record<string, string | Blob | PromiseLike<string | Blob>> | undefined;
+    vi.stubGlobal(
+      "ClipboardItem",
+      class ClipboardItemMock {
+        constructor(data: Record<string, string | Blob | PromiseLike<string | Blob>>) {
+          clipboardItemData = data;
+        }
+      },
+    );
+    const write = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { write },
+    });
+    const imageUuid = "44444444-4444-4444-8444-444444444444";
+    const fileUuid = "55555555-5555-4555-8555-555555555555";
+    const imageBlob = new Blob(["png-bytes"], { type: "image/png" });
+    const onLoadWorkspaceFilePreview = vi.fn().mockResolvedValue(imageBlob);
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "copy-image-context-message",
+            markdown: `![screen.png](urn:image:${imageUuid}?name=screen.png&content_type=image%2Fpng)`,
+          }),
+          createWorkspaceMessage({
+            uuid: "copy-file-context-message",
+            markdown: `[notes.pdf](urn:file:${fileUuid}?name=notes.pdf&content_type=application%2Fpdf)`,
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onLoadWorkspaceFilePreview }}
+      />,
+    );
+    const imagePlaceholder = container.querySelector<HTMLElement>(
+      `[data-workspace-file-uuid="${imageUuid}"]`,
+    );
+    const filePlaceholder = container.querySelector<HTMLElement>(
+      `[data-workspace-file-uuid="${fileUuid}"]`,
+    );
+
+    fireEvent.contextMenu(imagePlaceholder!, { clientX: 120, clientY: 80 });
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Copy image" }));
+
+    await waitFor(() => expect(write).toHaveBeenCalledTimes(1));
+    expect(await clipboardItemData?.["image/png"]).toBe(imageBlob);
+    expect(onLoadWorkspaceFilePreview).toHaveBeenCalledWith(
+      expect.objectContaining({ fileUuid: imageUuid, mediaKind: "image" }),
+      expect.any(AbortSignal),
+    );
+
+    fireEvent.contextMenu(filePlaceholder!, { clientX: 120, clientY: 80 });
+
+    expect(await screen.findByRole("menuitem", { name: "Copy text" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Copy image" })).not.toBeInTheDocument();
+  });
+
+  it("downloads a legacy HEIC from its context menu without a viewer", async () => {
+    const fileUuid = "44444444-4444-4444-8444-444444444444";
+    const href = `urn:file:${fileUuid}?name=photo.heic&content_type=application%2Foctet-stream`;
+    const onDownloadFile = vi.fn();
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "heic-context-message",
+            markdown: `[photo.heic](${href})`,
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onDownloadFile }}
+      />,
+    );
+
+    const placeholder = container.querySelector(`[data-workspace-file-uuid="${fileUuid}"]`);
+    expect(placeholder).toHaveAttribute("data-workspace-media-kind", "image");
+    fireEvent.contextMenu(placeholder!, { clientX: 120, clientY: 80 });
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Download" }));
+    expect(onDownloadFile).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ fileUuid, href, name: "photo.heic" }),
+    );
+  });
+
+  it("opens the Workspace bubble menu from keyboard context menu shortcut", async () => {
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "keyboard-context-menu-message",
+            markdown: "Keyboard context menu message",
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+
+    const bubble = container.querySelector("[data-workspace-message-bubble='true']");
+    fireEvent.keyDown(bubble!, { key: "F10", shiftKey: true });
+
+    expect(await screen.findByRole("menuitem", { name: "Copy text" })).toBeInTheDocument();
+  });
+
+  it("passes selected body text to Workspace reply and copy callbacks", async () => {
+    const onReplyMessage = vi.fn();
+    const onAddReplyMessage = vi.fn();
+    const onCopyMessageText = vi.fn();
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "selected-callback-message",
+            markdown: "Keep this selected phrase inside the body",
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{
+          onReplyMessage,
+          onAddReplyMessage,
+          onCopyMessageText,
+        }}
+      />,
+    );
+
+    const bubble = container.querySelector("[data-workspace-message-bubble='true']");
+
+    selectMessageBodyText(container, "selected-callback-message", "selected phrase");
+    fireEvent.contextMenu(bubble!, { clientX: 120, clientY: 80 });
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Reply" }));
+    expect(onReplyMessage).toHaveBeenCalledWith("selected-callback-message", "selected phrase");
+
+    selectMessageBodyText(container, "selected-callback-message", "selected phrase");
+    fireEvent.contextMenu(bubble!, { clientX: 120, clientY: 80 });
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Add reply" }));
+    expect(onAddReplyMessage).toHaveBeenCalledWith("selected-callback-message", "selected phrase");
+
+    selectMessageBodyText(container, "selected-callback-message", "selected phrase");
+    fireEvent.contextMenu(bubble!, { clientX: 120, clientY: 80 });
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Copy text" }));
+    expect(onCopyMessageText).toHaveBeenCalledWith("selected-callback-message", "selected phrase");
+  });
+
+  it("groups Workspace menu actions with old divider order", async () => {
+    render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "11111111-1111-4111-8111-111111111111",
+            authorUuid: "current-user-uuid",
+            userUuid: "current-user-uuid",
+            isOwn: true,
+            markdown: "Divider order body",
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{
+          onCopyMessageLink: vi.fn(),
+          onReplyMessage: vi.fn(),
+          onAddReplyMessage: vi.fn(),
+          onForwardMessage: vi.fn(),
+          onToggleMessageSelection: vi.fn(),
+          onEditMessage: vi.fn(),
+          onRequestDeleteMessage: vi.fn(),
+          onToggleMessageReaction: vi.fn(),
+        }}
+      />,
+    );
+
+    openWorkspaceMessageMenu();
+
+    const menu = await screen.findByRole("menu");
+    const actionAndSeparatorNodes = Array.from(
+      menu.querySelectorAll('[role="menuitem"], [role="separator"]'),
+    );
+
+    expect(
+      actionAndSeparatorNodes.map((node) =>
+        node.getAttribute("role") === "separator" ? "separator" : node.textContent,
+      ),
+    ).toEqual([
+      "Reply",
+      "Add reply",
+      "Forward",
+      "separator",
+      "Copy text",
+      "Copy message link",
+      "Select",
+      "separator",
+      "Edit message",
+      "Delete",
+    ]);
+  });
+
+  it("calls Workspace menu callbacks with message uuid", async () => {
+    const onReplyMessage = vi.fn();
+    const onAddReplyMessage = vi.fn();
+    const onForwardMessage = vi.fn();
+    const onOpenMessageInChat = vi.fn();
+    const onToggleMessageSelection = vi.fn();
+    const onEditMessage = vi.fn();
+    const onRequestDeleteMessage = vi.fn();
+    const onCopyMessageText = vi.fn();
+
+    render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "uuid-callback-message",
+            authorUuid: "current-user-uuid",
+            userUuid: "current-user-uuid",
+            isOwn: true,
+            markdown: "Callback body",
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{
+          onReplyMessage,
+          onAddReplyMessage,
+          onForwardMessage,
+          onOpenMessageInChat,
+          onToggleMessageSelection,
+          onEditMessage,
+          onRequestDeleteMessage,
+          onCopyMessageText,
+        }}
+      />,
+    );
+
+    openWorkspaceMessageMenu();
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Reply" }));
+    expect(onReplyMessage).toHaveBeenCalledWith("uuid-callback-message", undefined);
+
+    openWorkspaceMessageMenu();
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Add reply" }));
+    expect(onAddReplyMessage).toHaveBeenCalledWith("uuid-callback-message", undefined);
+
+    openWorkspaceMessageMenu();
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Forward" }));
+    expect(onForwardMessage).toHaveBeenCalledWith("uuid-callback-message", undefined);
+
+    // In-chat bubble menu must not offer "Open in chat" — the message is already here.
+    // onOpenMessageInChat stays wired for quotes and in-body message links only.
+    openWorkspaceMessageMenu();
+    expect(screen.queryByRole("menuitem", { name: "Open in chat" })).not.toBeInTheDocument();
+    expect(onOpenMessageInChat).not.toHaveBeenCalled();
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Copy text" }));
+    expect(onCopyMessageText).toHaveBeenCalledWith("uuid-callback-message", undefined);
+
+    openWorkspaceMessageMenu();
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Select" }));
+    expect(onToggleMessageSelection).toHaveBeenCalledWith("uuid-callback-message");
+
+    openWorkspaceMessageMenu();
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Edit message" }));
+    expect(onEditMessage).toHaveBeenCalledWith("uuid-callback-message");
+
+    openWorkspaceMessageMenu();
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Delete" }));
+    expect(onRequestDeleteMessage).toHaveBeenCalledWith("uuid-callback-message");
+  });
+
+  it("does not show own-only actions for peer messages", async () => {
+    render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "peer-menu-message",
+            authorUuid: "peer-user-uuid",
+            userUuid: "peer-user-uuid",
+            isOwn: false,
+            markdown: "Peer menu message",
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{
+          onEditMessage: vi.fn(),
+          onRequestDeleteMessage: vi.fn(),
+        }}
+      />,
+    );
+
+    openWorkspaceMessageMenu();
+
+    expect(await screen.findByRole("menuitem", { name: "Copy text" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Edit message" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Delete" })).not.toBeInTheDocument();
+  });
+
+  it("renders Workspace Jitsi URLs with the old call bubble visual surface", () => {
+    const jitsiUrl = "https://meet.workspace.example.com/workspace-design-sync-room";
+    const onOpenJitsiCall = vi.fn();
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "workspace-jitsi-message",
+            authorUuid: "peer-user-uuid",
+            userUuid: "peer-user-uuid",
+            isOwn: false,
+            markdown: jitsiUrl,
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        resolveAuthorLabel={() => "Bob Reed"}
+        actions={{
+          jitsiServerBaseUrl: "https://meet.workspace.example.com/jitsi/",
+          jitsiLocationName: "Roadmap",
+          onOpenJitsiCall,
+        }}
+      />,
+    );
+
+    const jitsiCallButton = screen.getByRole("button", { name: "Join call" });
+    const bubble = jitsiCallButton.closest("[data-workspace-message-bubble='true']");
+    expect(bubble).toHaveClass("rounded-[18px]");
+    expect(bubble).toHaveClass("rounded-bl-[6px]");
+    expect(bubble).toHaveClass("bg-msg-call-bg");
+    expect(bubble).not.toHaveClass("bg-msg-bg");
+    expect(bubble).not.toHaveClass("bg-bg-elevated");
+    expect(jitsiCallButton).toHaveTextContent(/workspace design sync room/i);
+    expect(jitsiCallButton).toHaveTextContent(/roadmap/i);
+    expect(
+      screen.getByTestId("workspace-jitsi-call-participants-workspace-jitsi-message"),
+    ).toBeInTheDocument();
+    expect(container.querySelector("[data-workspace-jitsi-call='true']")).toBeNull();
+
+    fireEvent.click(jitsiCallButton);
+
+    expect(onOpenJitsiCall).toHaveBeenCalledWith(jitsiUrl, "Roadmap");
+  });
+});

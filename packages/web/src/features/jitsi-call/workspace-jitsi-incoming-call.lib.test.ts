@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import type { MessengerMessage, MessengerStream } from "~/entities/messenger/messenger.types";
+import type {
+  MessengerMessage,
+  MessengerStream,
+} from "~/applications/messenger/model/messenger.types";
 import type { UsersById } from "~/entities/user/user.types";
 import { buildWorkspaceIncomingDmCallInvite } from "./workspace-jitsi-incoming-call.lib";
 

@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useMessengerStore } from "~/entities/messenger/messenger.model";
-import type { MessengerStream } from "~/entities/messenger/messenger.types";
+import { useMessengerStore } from "~/applications/messenger/model/chats/messenger.model";
+import type { MessengerStream } from "~/applications/messenger/model/messenger.types";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { setLocale, useTranslation } from "~/i18n/i18n";
@@ -17,7 +17,7 @@ vi.mock("react-router-dom", () => ({
   Outlet: () => <div data-testid="layout-main-outlet" />,
 }));
 
-vi.mock("~/widgets/sidebar/sidebar-shell.ui", () => ({
+vi.mock("~/applications/messenger/features/sidebar/sidebar-shell.ui", () => ({
   SidebarShell: ({
     sidebarStyle,
     sidebarResizeControl,

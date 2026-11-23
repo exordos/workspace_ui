@@ -23,7 +23,7 @@ An async result may arrive after account, organization, project or user changes,
 
 The getter used for validation must return the **current** runtime, not always the captured snapshot. Pass it down from the owning layer; shared modules should not import the auth store.
 
-See [catalog bootstrap](../packages/web/src/entities/messenger/messenger-bootstrap.lib.ts) and [message loaders](../packages/web/src/entities/messenger/messenger-messages-loader.lib.ts) for working examples. Prefer extending these flows rather than copying a new lifecycle into a page.
+See [catalog bootstrap](../packages/web/src/applications/messenger/runtime/sync/messenger-bootstrap.lib.ts) and [message loaders](../packages/web/src/applications/messenger/model/messages/history/messenger-messages-loader.lib.ts) for working examples. Prefer extending these flows rather than copying a new lifecycle into a page.
 
 ## Login completion
 

@@ -13,7 +13,7 @@ export type WorkspaceMessengerEpochVersion = number;
 export type WorkspaceMessengerRole = "guest" | "member" | "moderator" | "administrator" | "owner";
 
 // DTO в этом файле повторяют JSON от сервера как есть.
-// В UI их не тащим: сначала переводим в доменные типы из entities/messenger.
+// Адаптеры в applications/messenger/model/chats и model/messages переводят их в доменные типы.
 export type WorkspaceMessengerSourceName = "native" | "zulip";
 export type WorkspaceMessengerStreamNotificationMode = "mentions_only" | "muted" | "all_messages";
 export type WorkspaceMessengerTopicNotificationMode = "mute" | "default" | "unmute" | "follow";
