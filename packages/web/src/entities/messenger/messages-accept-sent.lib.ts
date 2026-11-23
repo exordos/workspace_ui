@@ -1,8 +1,9 @@
 import type { WorkspaceMessageStoreState } from "~/entities/message/message.model";
-import { isLaterMessageTimestamp, type AppliedServerMessages } from "./messages-server-state.lib";
+import { isLaterMessageTimestamp } from "~/shared/lib/workspace-messenger-message-time";
 import { conversationIdForStream } from "./messenger-ids.lib";
 import { applyMessengerReadBoundary } from "./messenger-read-boundary.lib";
 import { useMessengerStore } from "./messenger.model";
+import type { AppliedServerMessages } from "./messages-server-state.lib";
 import type { MessengerConversationId, MessengerMessage } from "./messenger.types";
 
 // Запись канонического тела и указателей в кеш после успешной отправки.

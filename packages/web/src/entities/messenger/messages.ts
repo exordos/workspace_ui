@@ -10,10 +10,12 @@ import {
 } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContextGetter } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
+import type { MessengerPollAction } from "~/shared/api/messenger-messages.api";
 import {
   loadMessengerConversationMessages,
   loadMessengerMessageWindowPage,
 } from "./messenger-messages-loader.lib";
+import { getMessengerPollVoters, mutateMessengerPoll } from "./messenger-poll-actions.lib";
 import type {
   MessengerConversationMessagesResult,
   MessengerMessageWindowPageResult,
@@ -75,8 +77,28 @@ export type MessagesOperationResult =
       reason: UnavailableReason | "invalid-conversation" | "stale-window" | "busy" | "no-boundary";
     };
 
-// Публичный доступ к истории сообщений для одной сессии.
+export type MessagesPollAction = MessengerPollAction;
+
+// Команды опроса одной сессии. Подтверждённое состояние приходит в снимке сообщения.
+interface MessagesPolls {
+  mutate(options: {
+    messageUuid: MessengerUuid; // Публичный UUID размещения опроса.
+    action: MessagesPollAction; // Голос, вариант, настройки или закрытие.
+    signal?: AbortSignal; // Отмена владельцем запроса.
+  }): ReturnType<typeof mutateMessengerPoll>;
+  getVoters(options: {
+    messageUuid: MessengerUuid; // Опрос, которому принадлежит вариант.
+    questionUuid: MessengerUuid; // Вопрос в этом опросе.
+    optionUuid: MessengerUuid; // Вариант, для которого загружается страница.
+    pageMarker?: string; // Маркер продолжения списка.
+    pageLimit?: number; // Запрошенный размер страницы.
+    signal?: AbortSignal; // Отмена при смене видимой страницы.
+  }): ReturnType<typeof getMessengerPollVoters>;
+}
+
+// Публичный доступ к сообщениям для одной сессии.
 export interface Messages {
+  polls: MessagesPolls; // Команды опроса и чтение страницы голосовавших.
   getWindow(conversationId: MessengerConversationId): MessageWindowSnapshot; // Стабильный снимок окна.
   // Вызывает обработчик при смене снимка и возвращает функцию отписки.
   subscribeWindow(conversationId: MessengerConversationId, listener: () => void): () => void;
@@ -181,6 +203,11 @@ export function createMessages({
   }
 
   return {
+    polls: {
+      mutate: (options) => mutateMessengerPoll({ ...options, runtimeContext, getRuntimeContext }),
+      getVoters: (options) =>
+        getMessengerPollVoters({ ...options, runtimeContext, getRuntimeContext }),
+    },
     getWindow,
     subscribeWindow(conversationId, listener) {
       let previous = getWindow(conversationId);

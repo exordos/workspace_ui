@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { getMessengerPollVoters } from "~/entities/messenger/messenger-poll-actions.lib";
+import { createMessages } from "~/entities/messenger/messages";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import {
   captureWorkspaceRuntimeRequestContext,
@@ -67,9 +67,8 @@ export function usePollVoterList(
         request.current !== controller ||
         isWorkspaceRuntimeRequestInvalidated(guard, getRuntimeContext, controller.signal);
       try {
-        const result = await getMessengerPollVoters({
-          runtimeContext: context,
-          getRuntimeContext,
+        const { polls } = createMessages({ runtimeContext: context, getRuntimeContext });
+        const result = await polls.getVoters({
           messageUuid,
           questionUuid,
           optionUuid,

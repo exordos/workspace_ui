@@ -87,6 +87,22 @@ function withoutRuntimeReactionState(message: MessengerMessage): MessengerMessag
   return snapshot;
 }
 
+// A body fallback may start from the live store while an own reaction is pending.
+export function withoutOptimisticMessageReactionCounts(
+  message: MessengerMessage,
+): MessengerMessage {
+  const pending = message.pendingOwnReactionsByEmojiName;
+  const optimisticUsers = message.optimisticReactionUserUuidsByEmojiName;
+  if (pending == null || optimisticUsers == null) return message;
+  const reactions = { ...message.reactions };
+  for (const emojiName of Object.keys(optimisticUsers)) {
+    const previousCount = pending[emojiName]?.previousCount;
+    if (previousCount === 0) delete reactions[emojiName];
+    else if (previousCount != null) reactions[emojiName] = previousCount;
+  }
+  return { ...message, reactions };
+}
+
 function normalizeCachedMessages(
   messages: readonly WorkspaceMessengerCachedMessage[],
 ): MessengerMessage[] {
@@ -594,12 +610,31 @@ export async function patchMessengerCachedMessage(
   ownerKey: string,
   message: MessengerMessage,
   isWriteCurrent: () => boolean = () => true,
+  currentPoll?: () => MessengerMessage | undefined,
 ): Promise<void> {
   if (isStreamCacheRemoved(ownerKey, message.streamUuid)) return;
+  let liveFallback: MessengerMessage | undefined;
+  let cacheFallback: MessengerMessage | undefined;
+  // Reuse the sanitized snapshot until the live fallback changes during the transaction.
+  const getPollFallback =
+    currentPoll == null
+      ? undefined
+      : () => {
+          const latest = currentPoll();
+          if (latest !== liveFallback) {
+            liveFallback = latest;
+            cacheFallback =
+              latest == null
+                ? undefined
+                : withoutRuntimeReactionState(withoutOptimisticMessageReactionCounts(latest));
+          }
+          return cacheFallback;
+        };
   await patchCachedMessage(
     ownerKey,
     withoutRuntimeReactionState(message),
     () => isWriteCurrent() && !isStreamCacheRemoved(ownerKey, message.streamUuid),
+    getPollFallback,
   );
   if (isStreamCacheRemoved(ownerKey, message.streamUuid)) {
     await purgeRemovedStreamCaches(ownerKey, [message.streamUuid]);

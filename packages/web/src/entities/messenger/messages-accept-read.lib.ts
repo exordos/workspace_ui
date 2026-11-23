@@ -1,4 +1,5 @@
 import type { WorkspaceMessageStoreState } from "~/entities/message/message.model";
+import { withoutOptimisticMessageReactionCounts } from "./messenger-cache.lib";
 import { conversationIdForStream, conversationIdForTopic } from "./messenger-ids.lib";
 import {
   advanceMessengerReadBoundary,
@@ -62,20 +63,6 @@ function writeReadCacheBestEffort(write: () => Promise<void> | void): Promise<vo
   }
 }
 
-// Body-based cache adapters are legacy fallbacks. Strip local reaction counts from their snapshot.
-function readCacheSnapshot(message: MessengerMessage): MessengerMessage {
-  const pending = message.pendingOwnReactionsByEmojiName;
-  const optimisticUsers = message.optimisticReactionUserUuidsByEmojiName;
-  if (pending == null || optimisticUsers == null) return message;
-  const reactions = { ...message.reactions };
-  for (const emojiName of Object.keys(optimisticUsers)) {
-    const previousCount = pending[emojiName]?.previousCount;
-    if (previousCount === 0) delete reactions[emojiName];
-    else if (previousCount != null) reactions[emojiName] = previousCount;
-  }
-  return { ...message, reactions };
-}
-
 // Prefer atomic flag-only writes to preserve the canonical body already in IndexedDB.
 function persistReadFlags(
   { cache, ownerKey, store }: AcceptMessageReadInput,
@@ -95,7 +82,7 @@ function persistReadFlags(
     if (!isCurrent()) break;
     const message = store.getState().messagesById[uuid];
     if (message?.read !== true) continue;
-    const snapshot = readCacheSnapshot(message);
+    const snapshot = withoutOptimisticMessageReactionCounts(message);
     const write = writeReadCacheBestEffort(() =>
       patchCache(ownerKey, snapshot, () => {
         const latest = store.getState().messagesById[uuid];
@@ -111,7 +98,7 @@ function persistReadFlags(
           latest.reactionUserUuidsByEmojiName !== message.reactionUserUuidsByEmojiName
         )
           return false;
-        const { reactions } = readCacheSnapshot(latest);
+        const { reactions } = withoutOptimisticMessageReactionCounts(latest);
         const counts = Object.entries(snapshot.reactions);
         return (
           counts.length === Object.keys(reactions).length &&

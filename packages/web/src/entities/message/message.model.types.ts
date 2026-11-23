@@ -17,6 +17,7 @@ export interface WorkspaceMessageStoreData {
   messageMutationRevision: number;
   messageMutationRevisionById: Record<MessengerUuid, number>;
   deletedMessageRevisionById: Record<MessengerUuid, number>;
+  messagePlacementRevisionById: Record<MessengerUuid, number>; // Last move or removal of a UUID.
 }
 
 export interface WorkspaceMessageBucketIndexOptions {
@@ -104,6 +105,7 @@ export interface WorkspaceMessageStoreState extends WorkspaceMessageStoreData {
   applyLiveKnownBodyMutation: (
     message: MessengerMessage,
     capturedMutationRevision?: number,
+    source?: "poll-response",
   ) => MessengerMessage | null | false;
   upsertMessageBodyFromSnapshot: (
     message: MessengerMessage,

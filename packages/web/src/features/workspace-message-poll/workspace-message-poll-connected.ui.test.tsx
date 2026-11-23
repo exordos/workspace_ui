@@ -37,9 +37,8 @@ vi.mock("~/entities/messenger/messenger.model", () => ({
   useMessengerStore: (selector: (state: typeof mocks.messenger) => unknown) =>
     selector(mocks.messenger),
 }));
-vi.mock("~/entities/messenger/messenger-poll-actions.lib", () => ({
-  mutateMessengerPoll: mocks.mutate,
-  getMessengerPollVoters: mocks.voters,
+vi.mock("~/entities/messenger/messages", () => ({
+  createMessages: () => ({ polls: { mutate: mocks.mutate, getVoters: mocks.voters } }),
 }));
 
 const message = {

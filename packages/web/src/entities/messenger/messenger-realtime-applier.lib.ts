@@ -73,6 +73,7 @@ interface GuardedRealtimeApplication {
   cacheWrite: Promise<void> | void; // Optional authoritative message cache write.
   shouldProject: () => boolean; // Whether the event's body is still current.
   currentRead?: () => boolean | undefined; // Read flag of the latest accepted update.
+  currentPollUpdatedAt?: () => string | undefined; // Timestamp of the latest poll metadata.
 }
 
 type ActiveRealtimeApplication = Promise<void> | void | false | GuardedRealtimeApplication;
@@ -455,7 +456,8 @@ function applyMessageRealtimeEvent(
       patchCache: activeCache.patchCachedMessage,
     });
     if (accepted.status === "stale-owner") return false;
-    const { eventMessage, previous, shouldProject, cacheWrite, currentRead } = accepted;
+    const { eventMessage, previous, shouldProject, cacheWrite, currentRead, currentPollUpdatedAt } =
+      accepted;
     if (
       eventMessage != null &&
       previous != null &&
@@ -467,7 +469,7 @@ function applyMessageRealtimeEvent(
         options.onMessageReactionAggregateUpdated?.(ownerKey, eventMessage),
       );
     }
-    return { cacheWrite, shouldProject, currentRead };
+    return { cacheWrite, shouldProject, currentRead, currentPollUpdatedAt };
   }
 
   const isCurrent = () => isActiveCurrentOwner(context, options);
@@ -808,12 +810,17 @@ export function createMessengerRealtimeActiveApplier(
         if (!isProjectionCurrent()) return;
         const isMessageUpdate = event.type === "message" && event.kind === "message.updated";
         if (guarded?.shouldProject() !== false) {
-          const read = guarded?.currentRead?.();
-          const projected =
-            isMessageUpdate && read != null && event.message.read !== read
-              ? { ...event, message: { ...event.message, read } }
-              : event;
-          applyLightweightProjectionEvent(projected, context);
+          if (isMessageUpdate) {
+            const read = guarded?.currentRead?.() ?? event.message.read;
+            const updatedAt = guarded?.currentPollUpdatedAt?.() ?? event.message.updated_at;
+            const projected =
+              read === event.message.read && updatedAt === event.message.updated_at
+                ? event
+                : { ...event, message: { ...event.message, read, updated_at: updatedAt } };
+            applyLightweightProjectionEvent(projected, context);
+          } else {
+            applyLightweightProjectionEvent(event, context);
+          }
         }
         if (guarded != null && !isProjectionCurrent()) return;
         store.setRealtimeCursor(context.ownerKey, event.epoch_version);

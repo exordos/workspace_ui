@@ -12,7 +12,7 @@ import {
   type MessengerCollectionPage,
 } from "~/shared/api/messenger-client";
 import type { WorkspaceMessengerMessageDto } from "~/shared/api/messenger.types";
-import { isLaterMessageTimestamp } from "./messages-server-state.lib";
+import { isLaterMessageTimestamp } from "~/shared/lib/workspace-messenger-message-time";
 import { adaptMessengerMessage } from "./messenger-adapters.lib";
 import { conversationIdForStream, conversationIdForTopic } from "./messenger-ids.lib";
 import {

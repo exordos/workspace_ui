@@ -9,6 +9,7 @@ import type { WorkspaceRuntimeContextGetter } from "~/entities/workspace-runtime
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import { getPollVoters, invokePollAction } from "~/shared/api/messenger-messages.api";
 import type { MessengerPollAction } from "~/shared/api/messenger-messages.api";
+import { acceptMessageUpdate } from "./messages-accept-update.lib";
 import { adaptMessengerMessage } from "./messenger-adapters.lib";
 import { messengerMessageActionCache } from "./messenger-cache.lib";
 import { buildMessengerRequestOptions } from "./messenger-request-options.lib";
@@ -89,12 +90,17 @@ export async function mutateMessengerPoll(options: PollOptions & { action: Messe
   const owner = workspaceRuntimeOwnerKey(context);
   const stale = () => isPollRequestStale(context, options);
   if (stale()) return { status: "skipped" as const };
-  const original = useWorkspaceMessageStore.getState().messagesById[messageUuid];
+  const initial = useWorkspaceMessageStore.getState();
+  const original = initial.messagesById[messageUuid];
   if (original?.payload.kind !== "poll") throw new Error("A loaded poll is required");
-  const currentMessage = () => {
-    const message = useWorkspaceMessageStore.getState().messagesById[messageUuid];
+  const placementRevision = initial.messagePlacementRevisionById[messageUuid];
+  const isCurrent = () => {
+    const state = useWorkspaceMessageStore.getState();
+    const message = state.messagesById[messageUuid];
     return (
       !stale() &&
+      state.messagePlacementRevisionById[messageUuid] === placementRevision &&
+      state.deletedMessageRevisionById[messageUuid] == null &&
       message?.streamUuid === original.streamUuid &&
       message.topicUuid === original.topicUuid &&
       message.payload.kind === "poll"
@@ -105,7 +111,7 @@ export async function mutateMessengerPoll(options: PollOptions & { action: Messe
     messageUuid,
     action,
   );
-  if (!currentMessage()) return { status: "skipped" as const };
+  if (!isCurrent()) return { status: "skipped" as const };
   if (
     dto.uuid !== messageUuid ||
     dto.project_id !== runtimeContext.projectId ||
@@ -117,20 +123,24 @@ export async function mutateMessengerPoll(options: PollOptions & { action: Messe
     dto.poll_state == null
   )
     throw new Error("invalid-message");
-  // The revision merge chooses the poll snapshot independently of reaction/read fields.
-  useWorkspaceMessageStore.getState().applyLiveKnownBodyMutation(adaptMessengerMessage(dto));
-  const message = useWorkspaceMessageStore.getState().messagesById[messageUuid];
-  if (message && !stale()) {
-    useMessengerStore
-      .getState()
-      .applyMessagePointer(owner, message, useWorkspaceMessageStore.getState().messagesById);
-    try {
-      await messengerMessageActionCache.patchCachedMessage?.(owner, message, currentMessage);
-    } catch {
-      /* Cache is best effort. */
-    }
-  }
-  return { status: "applied" as const, message };
+  const accepted = acceptMessageUpdate({
+    source: "poll-response",
+    ownerKey: owner,
+    message: adaptMessengerMessage(dto),
+    store: useWorkspaceMessageStore,
+    isCurrent,
+    project: (message, messagesById) =>
+      useMessengerStore.getState().applyMessagePointer(owner, message, messagesById),
+    patchCache: messengerMessageActionCache.patchCachedMessage,
+  });
+  if (accepted.status === "stale-owner") return { status: "skipped" as const };
+  if (accepted.cacheWrite != null) await accepted.cacheWrite;
+  return isCurrent()
+    ? {
+        status: "applied" as const,
+        message: useWorkspaceMessageStore.getState().messagesById[messageUuid],
+      }
+    : { status: "skipped" as const };
 }
 
 export async function getMessengerPollVoters(

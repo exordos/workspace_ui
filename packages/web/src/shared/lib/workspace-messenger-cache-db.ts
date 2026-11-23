@@ -3,6 +3,7 @@ import {
   runWorkspaceMessengerCacheDbUpgrade,
   WORKSPACE_MESSENGER_CACHE_STORES,
 } from "./workspace-messenger-cache-db-upgrade.lib";
+import { reconcileWorkspacePollSnapshot } from "./workspace-messenger-poll-snapshot";
 import type { WorkspaceMessengerTopicSummaryReasoningEffort } from "../api/messenger.types";
 
 const DB_NAME = "workspace-messenger-cache-v1";
@@ -886,31 +887,16 @@ function toMessageRow(
   message: WorkspaceMessengerCachedMessage,
   previous?: WorkspaceMessengerMessageCacheRow,
 ): WorkspaceMessengerMessageCacheRow {
-  let snapshot = message;
   const old = previous?.message;
-  if (
-    old?.payload.kind === "poll" &&
-    message.payload.kind === "poll" &&
-    old.pollState &&
-    message.pollState
-  ) {
-    if (old.pollState.revision > message.pollState.revision) {
-      snapshot = { ...message, payload: old.payload, pollState: old.pollState };
-    } else if (
-      old.pollState.revision === message.pollState.revision &&
-      old.pollState.isClosed &&
-      !message.pollState.isClosed
-    ) {
-      snapshot = { ...message, pollState: { ...message.pollState, isClosed: true } };
-    }
-  }
+  const poll = old == null ? null : reconcileWorkspacePollSnapshot(old, message);
+  const snapshot = poll == null ? message : { ...message, ...poll };
   return {
     id: cacheRowId(ownerKey, message.uuid),
     ownerKey,
     messageUuid: message.uuid,
     message: snapshot,
-    createdAt: message.createdAt,
-    updatedAt: updatedAtOrNow(message.updatedAt),
+    createdAt: snapshot.createdAt,
+    updatedAt: updatedAtOrNow(snapshot.updatedAt),
     version: (previous?.version ?? 0) + 1,
   };
 }
@@ -2799,9 +2785,11 @@ export async function patchCachedMessage(
   ownerKey: string,
   message: WorkspaceMessengerCachedMessage,
   isWriteCurrent: () => boolean = () => true,
+  getPollFallback?: () => WorkspaceMessengerCachedMessage | undefined,
 ): Promise<void> {
   if (!isIndexedDBAvailable()) return;
 
+  let retryPollFallback = false;
   try {
     const db = await openWorkspaceMessengerCacheDb();
     if (!isWriteCurrent()) return;
@@ -2810,24 +2798,52 @@ export async function patchCachedMessage(
       [stores.messages, stores.messageBuckets, stores.messageWindows, stores.readBoundaries],
       "readwrite",
     );
+    const messageStore = transaction.objectStore(stores.messages);
+    const previous = await requestToPromise<WorkspaceMessengerMessageCacheRow | undefined>(
+      messageStore.get(cacheRowId(ownerKey, message.uuid)),
+    );
+    const moved =
+      previous != null &&
+      (previous.message.streamUuid !== message.streamUuid ||
+        previous.message.topicUuid !== message.topicUuid);
+    if (getPollFallback != null && previous != null) {
+      // The row may already have the result of a concurrent read or reaction write.
+      if (!moved && previous.message.payload.kind === "poll") {
+        messageStore.put(
+          toMessageRow(
+            ownerKey,
+            {
+              ...previous.message,
+              payload: message.payload,
+              pollState: message.pollState,
+              updatedAt: message.updatedAt,
+            },
+            previous,
+          ),
+        );
+      }
+      if (!isWriteCurrent()) transaction.abort();
+      await transactionDone(transaction);
+      return;
+    }
+
     const existingBuckets = await requestToPromise<WorkspaceMessengerMessageBucketRow[]>(
       transaction
         .objectStore(stores.messageBuckets)
         .index("byMessage")
         .getAll([ownerKey, message.uuid]),
     );
-    const previous = await requestToPromise<WorkspaceMessengerMessageCacheRow | undefined>(
-      transaction.objectStore(stores.messages).get(cacheRowId(ownerKey, message.uuid)),
-    );
-    const moved =
-      previous != null &&
-      (previous.message.streamUuid !== message.streamUuid ||
-        previous.message.topicUuid !== message.topicUuid);
+    const fallback = getPollFallback?.();
+    if (getPollFallback != null && fallback == null) {
+      await transactionDone(transaction);
+      return;
+    }
+    const currentMessage = fallback ?? message;
     const targetConversationIds =
       previous != null && !moved
         ? existingBuckets.map((bucket) => bucket.conversationId)
-        : bucketConversationIdsForMessage(message);
-    await putMessageRows(transaction, ownerKey, [message]);
+        : bucketConversationIdsForMessage(currentMessage);
+    await putMessageRows(transaction, ownerKey, [currentMessage]);
     const bucketStore = transaction.objectStore(stores.messageBuckets);
     const changedConversations = new Set<string>();
     if (moved) {
@@ -2844,23 +2860,33 @@ export async function patchCachedMessage(
       );
       if (
         !hasMembership &&
-        !(await cachedMessageFitsWindow(transaction, ownerKey, bucketConversationId, message, {
-          allowUncached: false,
-        }))
+        !(await cachedMessageFitsWindow(
+          transaction,
+          ownerKey,
+          bucketConversationId,
+          currentMessage,
+          {
+            allowUncached: false,
+          },
+        ))
       )
         continue;
-      bucketStore.put(toBucketRow(ownerKey, bucketConversationId, message));
+      bucketStore.put(toBucketRow(ownerKey, bucketConversationId, currentMessage));
       if (!hasMembership) changedConversations.add(bucketConversationId);
     }
 
     for (const conversationId of changedConversations) {
       await retainConversationMessages(transaction, ownerKey, conversationId, 0);
     }
-    if (!isWriteCurrent()) transaction.abort();
+    const valid = isWriteCurrent();
+    retryPollFallback = valid && getPollFallback != null && getPollFallback() !== fallback;
+    if (!valid || retryPollFallback) transaction.abort();
     await transactionDone(transaction);
   } catch {
-    return;
+    // Aborting a superseded fallback lets its read or reaction update win on retry.
   }
+  if (retryPollFallback)
+    await patchCachedMessage(ownerKey, message, isWriteCurrent, getPollFallback);
 }
 
 export async function markCachedMessagesRead(

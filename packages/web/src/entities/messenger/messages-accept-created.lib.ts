@@ -1,5 +1,6 @@
 import { useWorkspaceMessageStore } from "~/entities/message/message.model";
-import { isLaterMessageTimestamp, type AppliedServerMessages } from "./messages-server-state.lib";
+import { isLaterMessageTimestamp } from "~/shared/lib/workspace-messenger-message-time";
+import type { AppliedServerMessages } from "./messages-server-state.lib";
 import type { MessengerMessage, MessengerUuid } from "./messenger.types";
 
 // Вход активного realtime. Сообщения уже нормализованы, пачка приходит из проверенного буфера.

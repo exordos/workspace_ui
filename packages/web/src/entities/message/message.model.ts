@@ -11,6 +11,7 @@ import type {
   MessengerUuid,
 } from "~/entities/messenger/messenger.types";
 import { logStoreAction } from "~/shared/lib/logger";
+import { reconcileWorkspacePollSnapshot } from "~/shared/lib/workspace-messenger-poll-snapshot";
 import {
   conversationBucketsForWorkspaceMessage,
   compareWorkspaceMessages,
@@ -55,6 +56,7 @@ const EMPTY_MESSAGES_LOADING_BY_CONVERSATION_ID: Record<MessengerConversationId,
 const EMPTY_MESSAGES_ERROR_BY_CONVERSATION_ID: Record<MessengerConversationId, string | null> = {};
 const EMPTY_MESSAGE_MUTATION_REVISIONS_BY_ID: Record<MessengerUuid, number> = {};
 const EMPTY_DELETED_MESSAGE_REVISIONS_BY_ID: Record<MessengerUuid, number> = {};
+const EMPTY_MESSAGE_PLACEMENT_REVISIONS_BY_ID: Record<MessengerUuid, number> = {};
 
 const EMPTY_STATUS: WorkspaceConversationMessagesStatus = {
   loading: false,
@@ -99,22 +101,11 @@ function mergeWorkspaceMessageSnapshot(
   };
   if (previousMessage == null) return incomingSnapshot;
 
-  if (
-    previousMessage.payload.kind === "poll" &&
-    incomingSnapshot.payload.kind === "poll" &&
-    previousMessage.pollState &&
-    incomingSnapshot.pollState
-  ) {
-    if (previousMessage.pollState.revision > incomingSnapshot.pollState.revision) {
-      incomingSnapshot.payload = previousMessage.payload;
-      incomingSnapshot.pollState = previousMessage.pollState;
-    } else if (
-      previousMessage.pollState.revision === incomingSnapshot.pollState.revision &&
-      previousMessage.pollState.isClosed &&
-      !incomingSnapshot.pollState.isClosed
-    ) {
-      incomingSnapshot.pollState = { ...incomingSnapshot.pollState, isClosed: true };
-    }
+  const poll = reconcileWorkspacePollSnapshot(previousMessage, incomingSnapshot);
+  if (poll != null) {
+    incomingSnapshot.payload = poll.payload;
+    incomingSnapshot.pollState = poll.pollState;
+    incomingSnapshot.updatedAt = poll.updatedAt ?? previousMessage.updatedAt;
   }
   const incomingOwnProjection = incomingSnapshot.ownReactionUuidsByEmojiName;
   if (Object.keys(incomingOwnProjection).length > 0) return incomingSnapshot;
@@ -208,6 +199,7 @@ function createEmptyWorkspaceMessageData(): WorkspaceMessageStoreData {
     messageMutationRevision: 0,
     messageMutationRevisionById: EMPTY_MESSAGE_MUTATION_REVISIONS_BY_ID,
     deletedMessageRevisionById: EMPTY_DELETED_MESSAGE_REVISIONS_BY_ID,
+    messagePlacementRevisionById: EMPTY_MESSAGE_PLACEMENT_REVISIONS_BY_ID,
   };
 }
 
@@ -643,7 +635,7 @@ export const useWorkspaceMessageStore = create<WorkspaceMessageStoreState>((set,
     });
   },
 
-  applyLiveKnownBodyMutation(message, capturedMutationRevision) {
+  applyLiveKnownBodyMutation(message, capturedMutationRevision, source) {
     if (removedStreamUuids.has(message.streamUuid)) return false;
     logStoreAction("workspaceMessage", "applyLiveKnownBodyMutation", {
       messageUuid: message.uuid,
@@ -659,16 +651,36 @@ export const useWorkspaceMessageStore = create<WorkspaceMessageStoreState>((set,
       }
       const mutationRevision = state.messageMutationRevision + 1;
       const previousMessage = state.messagesById[message.uuid];
-      const merged =
-        previousMessage == null ? null : mergeWorkspaceMessageSnapshot(previousMessage, message);
+      const moved =
+        previousMessage != null &&
+        (previousMessage.streamUuid !== message.streamUuid ||
+          previousMessage.topicUuid !== message.topicUuid);
+      let merged: MessengerMessage | null = null;
+      if (source === "poll-response") {
+        if (
+          previousMessage == null ||
+          moved ||
+          state.deletedMessageRevisionById[message.uuid] != null
+        )
+          return state;
+        const poll = reconcileWorkspacePollSnapshot(previousMessage, message);
+        if (
+          poll == null ||
+          (previousMessage.payload === poll.payload && previousMessage.pollState === poll.pollState)
+        )
+          return state;
+        merged = {
+          ...previousMessage,
+          ...poll,
+          updatedAt: poll.updatedAt ?? previousMessage.updatedAt,
+        };
+      } else if (previousMessage != null) {
+        merged = mergeWorkspaceMessageSnapshot(previousMessage, message);
+      }
       const messagesById =
         merged == null ? state.messagesById : { ...state.messagesById, [message.uuid]: merged };
       let conversationWindowsById = state.conversationWindowsById;
-      if (
-        previousMessage != null &&
-        (previousMessage.streamUuid !== message.streamUuid ||
-          previousMessage.topicUuid !== message.topicUuid)
-      ) {
+      if (moved) {
         conversationWindowsById = moveMessageBetweenLoadedWindows(
           state.conversationWindowsById,
           previousMessage,
@@ -686,6 +698,9 @@ export const useWorkspaceMessageStore = create<WorkspaceMessageStoreState>((set,
           ...state.messageMutationRevisionById,
           [message.uuid]: mutationRevision,
         },
+        messagePlacementRevisionById: moved
+          ? { ...state.messagePlacementRevisionById, [message.uuid]: mutationRevision }
+          : state.messagePlacementRevisionById,
       };
     });
     return applied;
@@ -744,6 +759,10 @@ export const useWorkspaceMessageStore = create<WorkspaceMessageStoreState>((set,
         },
         deletedMessageRevisionById: {
           ...state.deletedMessageRevisionById,
+          [messageUuid]: mutationRevision,
+        },
+        messagePlacementRevisionById: {
+          ...state.messagePlacementRevisionById,
           [messageUuid]: mutationRevision,
         },
       };
@@ -1008,6 +1027,10 @@ export const useWorkspaceMessageStore = create<WorkspaceMessageStoreState>((set,
         },
         deletedMessageRevisionById: {
           ...state.deletedMessageRevisionById,
+          [messageUuid]: mutationRevision,
+        },
+        messagePlacementRevisionById: {
+          ...state.messagePlacementRevisionById,
           [messageUuid]: mutationRevision,
         },
       };

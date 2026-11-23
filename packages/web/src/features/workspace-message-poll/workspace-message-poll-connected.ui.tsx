@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { mutateMessengerPoll } from "~/entities/messenger/messenger-poll-actions.lib";
+import { createMessages, type MessagesPollAction } from "~/entities/messenger/messages";
 import type { MessengerMessage } from "~/entities/messenger/messenger.types";
 import { selectUserDisplayName } from "~/entities/user/user-selectors.lib";
 import type { UsersById } from "~/entities/user/user.types";
@@ -73,10 +73,7 @@ export function WorkspaceMessagePollConnected({
 
   if (poll == null) return <p role="status">{t("pollBubble.unavailable")}</p>;
 
-  const run = async (
-    action: Parameters<typeof mutateMessengerPoll>[0]["action"],
-    questionId?: string,
-  ) => {
+  const run = async (action: MessagesPollAction, questionId?: string) => {
     const context = getRuntimeContext();
     if (
       !context ||
@@ -95,12 +92,11 @@ export function WorkspaceMessagePollConnected({
       setError(undefined);
     }
     try {
-      await mutateMessengerPoll({
+      const { polls } = createMessages({
         runtimeContext: context,
         getRuntimeContext,
-        messageUuid: message.uuid,
-        action,
       });
+      await polls.mutate({ messageUuid: message.uuid, action });
     } catch (err) {
       if (alive.current && !isWorkspaceRuntimeRequestInvalidated(guard, getRuntimeContext)) {
         if (questionId)
