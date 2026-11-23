@@ -1286,10 +1286,12 @@ describe("messenger realtime active applier", () => {
 
     expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]).toBeUndefined();
     expect(useMessengerStore.getState().lastEpochVersion).toBe(13);
-    expect(cache.deleteCachedMessage).toHaveBeenCalledWith(ownerKey, MESSAGE_A, [
-      `stream:${STREAM_A}`,
-      `topic:${STREAM_A}:${TOPIC_A}`,
-    ]);
+    expect(cache.deleteCachedMessage).toHaveBeenCalledWith(
+      ownerKey,
+      MESSAGE_A,
+      [`stream:${STREAM_A}`, `topic:${STREAM_A}:${TOPIC_A}`],
+      { allMemberships: true, isWriteCurrent: expect.any(Function) },
+    );
     expect(cache.writeRealtimeCursor).toHaveBeenCalledTimes(3);
     expect(cache.writeRealtimeCursor).toHaveBeenNthCalledWith(1, ownerKey, 11);
     expect(cache.writeRealtimeCursor).toHaveBeenNthCalledWith(2, ownerKey, 12);

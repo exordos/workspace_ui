@@ -11,6 +11,7 @@ import type {
   WorkspaceRealtimeSkipReason,
   WorkspaceRealtimeSkippedEvent,
 } from "~/shared/lib/workspace-realtime/workspace-realtime-runtime.lib";
+import { acceptMessageDeletion } from "./messages-accept-deletion.lib";
 import { acceptServerMessages } from "./messages-accept-server.lib";
 import { acceptMessageUpdate, type KnownMessageCacheWriter } from "./messages-accept-update.lib";
 import {
@@ -25,11 +26,8 @@ import {
   messengerRealtimeActiveCache,
   messengerRealtimeBackgroundCache,
   restoreMessengerStreamCache,
+  type MessengerMessageCacheDeletion,
 } from "./messenger-cache.lib";
-import {
-  captureDeletedMessagePointerRepair,
-  type DeletedMessagePointerRepairPlan,
-} from "./messenger-deleted-message-pointer-repair.lib";
 import { conversationIdForStream, conversationIdForTopic } from "./messenger-ids.lib";
 import { resolveMessengerMessageLiveEffectPolicy } from "./messenger-live-effects.lib";
 import { settleMessengerOutgoingMessage } from "./messenger-outbox.model";
@@ -45,6 +43,7 @@ import {
 import { preserveConfirmedStreamKeySharing } from "./messenger-stream-key-sharing.lib";
 import { removeMessengerStreamProjection } from "./messenger-stream-projection-cleanup.lib";
 import { restoreMessengerStream, useMessengerStore } from "./messenger.model";
+import type { DeletedMessagePointerRepairPlan } from "./messenger-deleted-message-pointer-repair.lib";
 import type {
   MessengerConversationId,
   MessengerDeletedMessage,
@@ -96,11 +95,7 @@ export interface MessengerRealtimeActiveCacheWriter {
     messageUuids: readonly MessengerUuid[],
   ) => Promise<void> | void;
   patchCachedMessage?: KnownMessageCacheWriter;
-  deleteCachedMessage?: (
-    ownerKey: string,
-    messageUuid: MessengerUuid,
-    conversationIds: readonly MessengerConversationId[],
-  ) => Promise<void> | void;
+  deleteCachedMessage?: MessengerMessageCacheDeletion;
   writeConversationMessagePage?: (
     ownerKey: string,
     conversationId: MessengerConversationId,
@@ -145,6 +140,7 @@ export interface MessengerRealtimeActiveApplierOptions {
     message: MessengerDeletedMessage,
     repairPlan: DeletedMessagePointerRepairPlan,
     context: WorkspaceRealtimeEventContext,
+    isCurrent: () => boolean,
   ) => void | Promise<void>;
   // message.updated приносит только новый aggregate счетчиков, но не reactionUuid
   // текущего пользователя. Этот hook оставляет точку подключения для SWR-слоя:
@@ -373,7 +369,36 @@ function removeTopicMessagesFromWorkspaceStore(
   return removedMessages;
 }
 
-// Применяет одно событие сообщения. false останавливает эффекты отклонённого создания.
+// Realtime waits for cache cleanup but starts catalog repair independently of the cursor.
+function applyMessageDeletedRealtimeEvent(
+  event: Extract<MessengerMessageRealtimeEvent, { kind: "message.deleted" }>,
+  ownerKey: string,
+  context: WorkspaceRealtimeEventContext,
+  activeCache: MessengerRealtimeActiveCacheWriter,
+  options: MessengerRealtimeActiveApplierOptions,
+): ActiveRealtimeApplication {
+  const accepted = acceptMessageDeletion({
+    ownerKey,
+    reported: {
+      uuid: event.message.uuid,
+      streamUuid: event.message.stream_uuid,
+      topicUuid: event.message.topic_uuid,
+    },
+    isCurrent: () => isActiveCurrentOwner(context, options),
+    store: useWorkspaceMessageStore,
+    deleteCache: activeCache.deleteCachedMessage,
+  });
+  if (accepted.status === "stale-owner") return false;
+  for (const plan of accepted.plans) {
+    if (!accepted.isCurrent()) return false;
+    void writeRealtimeCacheBestEffort(() =>
+      options.onMessageDeleted?.(ownerKey, plan.message, plan, context, accepted.isCurrent),
+    );
+  }
+  return { cacheWrite: accepted.cacheWrite, shouldProject: accepted.isCurrent };
+}
+
+// Applies a message event and tracks active projection work for its cursor.
 function applyMessageRealtimeEvent(
   event: MessengerMessageRealtimeEvent,
   ownerKey: string,
@@ -381,25 +406,11 @@ function applyMessageRealtimeEvent(
   activeCache: MessengerRealtimeActiveCacheWriter,
   options: MessengerRealtimeActiveApplierOptions,
 ): ActiveRealtimeApplication {
+  if (event.kind === "message.deleted")
+    return applyMessageDeletedRealtimeEvent(event, ownerKey, context, activeCache, options);
+
   const store = useMessengerStore.getState();
   const messageStore = useWorkspaceMessageStore.getState();
-
-  if (event.kind === "message.deleted") {
-    const deletedMessage = {
-      uuid: event.message.uuid,
-      streamUuid: event.message.stream_uuid,
-      topicUuid: event.message.topic_uuid,
-    };
-    const pointerRepairPlan = captureDeletedMessagePointerRepair(ownerKey, deletedMessage);
-    messageStore.removeMessage(event.message.uuid);
-    store.clearMessagePointer(ownerKey, deletedMessage);
-    const cacheWrite = deleteRealtimeCachedMessage(activeCache, ownerKey, deletedMessage);
-    void writeRealtimeCacheBestEffort(() =>
-      options.onMessageDeleted?.(ownerKey, deletedMessage, pointerRepairPlan, context),
-    );
-    return cacheWrite;
-  }
-
   const message = applyMessengerReadBoundary(adaptMessengerMessage(event.message), ownerKey);
   const stream = store.streamsById[message.streamUuid] ?? null;
   const previousMessage = messageStore.messagesById[message.uuid];
@@ -778,7 +789,7 @@ export function createMessengerRealtimeActiveApplier(
         if (guarded != null && !isActiveCurrentOwner(context, options)) return;
         store.setRealtimeCursor(context.ownerKey, event.epoch_version);
         if (guarded != null && !isActiveCurrentOwner(context, options)) return;
-        if (isMessageUpdate) {
+        if (isMessageUpdate || (event.type === "message" && event.kind === "message.deleted")) {
           const latestEpoch = useMessengerStore.getState().lastEpochVersion;
           if (latestEpoch != null && latestEpoch > event.epoch_version) return;
         }

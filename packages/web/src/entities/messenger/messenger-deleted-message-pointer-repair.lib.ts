@@ -12,6 +12,7 @@ import {
   type MessengerCollectionPage,
 } from "~/shared/api/messenger-client";
 import type { WorkspaceMessengerMessageDto } from "~/shared/api/messenger.types";
+import { isLaterMessageTimestamp } from "./messages-server-state.lib";
 import { adaptMessengerMessage } from "./messenger-adapters.lib";
 import { conversationIdForStream, conversationIdForTopic } from "./messenger-ids.lib";
 import {
@@ -23,7 +24,11 @@ import {
   useMessengerStore,
   type MessengerDeletedMessagePointerTargets,
 } from "./messenger.model";
-import type { MessengerMessagePointerCacheTargets } from "./messenger-cache.lib";
+import type { KnownMessageCacheWriter } from "./messages-accept-update.lib";
+import type {
+  MessengerMessagePointerCacheRepair,
+  MessengerMessagePointerCacheTargets,
+} from "./messenger-cache.lib";
 import type { MessengerDeletedMessage, MessengerMessage, MessengerUuid } from "./messenger.types";
 
 export interface DeletedMessagePointerRepairPlan {
@@ -46,12 +51,8 @@ interface DeletedMessagePointerRepairClientDeps {
 }
 
 interface DeletedMessagePointerRepairCacheDeps {
-  patchCachedMessage?: (ownerKey: string, message: MessengerMessage) => Promise<void> | void;
-  repairMessagePointers?: (
-    ownerKey: string,
-    message: MessengerMessage,
-    targets: MessengerMessagePointerCacheTargets,
-  ) => Promise<void> | void;
+  patchCachedMessage?: KnownMessageCacheWriter;
+  repairMessagePointers?: MessengerMessagePointerCacheRepair;
 }
 
 export interface RepairDeletedMessagePointersOptions {
@@ -62,6 +63,7 @@ export interface RepairDeletedMessagePointersOptions {
   client?: DeletedMessagePointerRepairClientDeps;
   cache?: DeletedMessagePointerRepairCacheDeps;
   signal?: AbortSignal;
+  isCurrent?: () => boolean; // Optional guard from the accepted deletion.
 }
 
 type DeletedMessagePointerScope = "stream" | "topic";
@@ -146,6 +148,7 @@ async function writeRepairCacheBestEffort(
   ownerKey: string,
   plan: DeletedMessagePointerRepairPlan,
   replacements: Partial<Record<DeletedMessagePointerScope, MessengerMessage>>,
+  isCurrent: () => boolean,
 ): Promise<void> {
   if (cache == null) return;
   const writes: { message: MessengerMessage; targets: MessengerMessagePointerCacheTargets }[] = [];
@@ -173,18 +176,74 @@ async function writeRepairCacheBestEffort(
   }
 
   await Promise.all(
-    writes.map(async ({ message, targets }) => {
+    writes.map(async ({ message, targets: requested }) => {
+      const currentBody = () => {
+        if (!isCurrent()) return;
+        const messages = useWorkspaceMessageStore.getState();
+        const latest = messages.messagesById[message.uuid];
+        return messages.deletedMessageRevisionById[message.uuid] == null &&
+          latest?.conversationId === message.conversationId &&
+          latest.updatedAt === message.updatedAt &&
+          latest.payload === message.payload &&
+          latest.pollState === message.pollState &&
+          latest.pinned === message.pinned &&
+          latest.starred === message.starred
+          ? latest
+          : undefined;
+      };
       try {
-        if (cache.repairMessagePointers != null) {
-          await cache.repairMessagePointers(ownerKey, message, targets);
-        } else {
-          await cache.patchCachedMessage?.(ownerKey, message);
+        let latest = currentBody();
+        while (latest != null) {
+          const targets = currentRepairTargets(message, requested);
+          if (!targets.stream && !targets.topic && !targets.conversationIds?.length) return;
+
+          const { read } = latest;
+          const isWriteCurrent = () => currentBody()?.read === read;
+          // A read-only update can invalidate the transaction without superseding this body.
+          const snapshot = message.read === read ? message : { ...message, read };
+          if (cache.repairMessagePointers != null) {
+            await cache.repairMessagePointers(ownerKey, snapshot, targets, {
+              isWriteCurrent,
+              replacingDeletedUuid: plan.message.uuid,
+            });
+          } else {
+            await cache.patchCachedMessage?.(ownerKey, snapshot, isWriteCurrent);
+          }
+          latest = currentBody();
+          if (latest?.read === read) return;
         }
       } catch {
         // A cache failure must not turn a successful delete into a failed action.
       }
     }),
   );
+}
+
+// Recheck each target on a retry so a newer live pointer stays in place.
+function currentRepairTargets(
+  message: MessengerMessage,
+  requested: MessengerMessagePointerCacheTargets,
+): MessengerMessagePointerCacheTargets {
+  const state = useMessengerStore.getState();
+  return {
+    ...(requested.stream == null
+      ? {}
+      : {
+          stream:
+            requested.stream &&
+            state.streamsById[message.streamUuid]?.lastMessageUuid === message.uuid,
+        }),
+    ...(requested.topic == null
+      ? {}
+      : {
+          topic:
+            requested.topic &&
+            state.topicsById[message.topicUuid]?.lastMessageUuid === message.uuid,
+        }),
+    conversationIds: requested.conversationIds?.filter(
+      (id) => state.conversationsById[id]?.lastMessageUuid === message.uuid,
+    ),
+  };
 }
 
 export function captureDeletedMessagePointerRepair(
@@ -222,16 +281,21 @@ export async function repairDeletedMessagePointers({
   client = {},
   cache,
   signal,
+  isCurrent = () => true,
 }: RepairDeletedMessagePointersOptions): Promise<void> {
   if (!hasPointerTargets(plan.targets)) return;
-  const knownReplacements = collectKnownReplacementMessages(plan);
-  const capturedMutationRevision = useWorkspaceMessageStore.getState().messageMutationRevision;
-
   const requestContext = captureWorkspaceRuntimeRequestContext(() => runtimeContext);
   if (requestContext == null || workspaceRuntimeOwnerKey(requestContext) !== plan.ownerKey) return;
-  const isStale = (): boolean =>
-    isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, signal);
-  if (isStale()) return;
+  const initialStore = useWorkspaceMessageStore.getState();
+  const canWrite = () =>
+    isCurrent() &&
+    !isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, signal) &&
+    useMessengerStore.getState().ownerKey === plan.ownerKey &&
+    useWorkspaceMessageStore.getState().ownerKey === initialStore.ownerKey;
+  if ((initialStore.ownerKey != null && initialStore.ownerKey !== plan.ownerKey) || !canWrite())
+    return;
+  const knownReplacements = collectKnownReplacementMessages(plan);
+  const capturedMutationRevision = initialStore.messageMutationRevision;
 
   const getMessagesPage = client.getMessagesPage ?? defaultGetMessagesPage;
   const requests: DeletedMessagePointerRequest[] = [];
@@ -266,7 +330,7 @@ export async function repairDeletedMessagePointers({
   }
 
   const settledPages = await Promise.allSettled(requests.map((request) => request.promise));
-  if (isStale()) return;
+  if (!canWrite()) return;
   const replacements = collectSettledReplacementMessages(
     requests,
     settledPages,
@@ -274,18 +338,36 @@ export async function repairDeletedMessagePointers({
     plan.message.uuid,
   );
 
-  const effectiveReplacements: Partial<Record<"stream" | "topic", MessengerMessage>> = {};
   for (const scope of ["stream", "topic"] as const) {
+    if (!canWrite()) return;
     const message = replacements[scope];
-    if (message == null) continue;
+    if (
+      message?.streamUuid !== plan.message.streamUuid ||
+      (scope === "topic" && message.topicUuid !== plan.message.topicUuid)
+    )
+      continue;
     const messageStore = useWorkspaceMessageStore.getState();
-    messageStore.upsertMessageBodyFromSnapshot(message, capturedMutationRevision);
-    const effectiveMessage = useWorkspaceMessageStore.getState().messagesById[message.uuid];
-    if (effectiveMessage != null) effectiveReplacements[scope] = effectiveMessage;
+    if (messageStore.deletedMessageRevisionById[message.uuid] != null) continue;
+    const known = messageStore.messagesById[message.uuid];
+    if (known == null || !isLaterMessageTimestamp(known.updatedAt, message.updatedAt))
+      messageStore.upsertMessageBodyFromSnapshot(message, capturedMutationRevision);
   }
+  if (!canWrite()) return;
+  // Both requests can supply the same UUID, or a subscriber may delete it during publication.
+  const updatedStore = useWorkspaceMessageStore.getState();
+  const effective = (scope: DeletedMessagePointerScope) => {
+    const uuid = replacements[scope]?.uuid;
+    if (uuid == null || updatedStore.deletedMessageRevisionById[uuid] != null) return undefined;
+    const message = updatedStore.messagesById[uuid];
+    return message?.streamUuid === plan.message.streamUuid &&
+      (scope === "stream" || message.topicUuid === plan.message.topicUuid)
+      ? message
+      : undefined;
+  };
+  const effectiveReplacements = { stream: effective("stream"), topic: effective("topic") };
   applyDeletedMessagePointerRepair(plan.ownerKey, plan.message, plan.targets, {
     stream: effectiveReplacements.stream ?? null,
     topic: effectiveReplacements.topic ?? null,
   });
-  await writeRepairCacheBestEffort(cache, plan.ownerKey, plan, effectiveReplacements);
+  await writeRepairCacheBestEffort(cache, plan.ownerKey, plan, effectiveReplacements, canWrite);
 }

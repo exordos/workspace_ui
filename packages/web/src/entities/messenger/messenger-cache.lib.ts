@@ -612,6 +612,35 @@ export interface MessengerMessagePointerCacheTargets {
   conversationIds?: readonly MessengerConversationId[];
 }
 
+// Scoped repair can use a cached replacement only while its body still exists.
+export interface MessengerMessagePointerCacheRepairOptions {
+  isWriteCurrent?: () => boolean; // Runtime and replacement validity at commit.
+  requireExistingBody?: boolean; // Cached fallback cannot recreate a deleted body.
+  replacingDeletedUuid?: MessengerUuid; // An acknowledged delete can still be clearing its old pointer.
+}
+
+// Reuses cached catalog priority checks for network and local repairs.
+export type MessengerMessagePointerCacheRepair = (
+  ownerKey: string,
+  message: MessengerMessage,
+  targets: MessengerMessagePointerCacheTargets,
+  options?: MessengerMessagePointerCacheRepairOptions,
+) => Promise<void> | void;
+
+// An authoritative delete removes every membership of this UUID for one live owner.
+export interface MessengerMessageCacheDeleteOptions {
+  allMemberships: true;
+  isWriteCurrent: () => boolean; // Runtime and tombstone validity at commit.
+}
+
+// Legacy bucket-filtered callers omit the authoritative deletion options.
+export type MessengerMessageCacheDeletion = (
+  ownerKey: string,
+  messageUuid: MessengerUuid,
+  conversationIds: readonly MessengerConversationId[],
+  options?: MessengerMessageCacheDeleteOptions,
+) => Promise<void> | void;
+
 interface CachedDeletedMessagePointerRepair {
   replacement: MessengerMessage;
   targets: MessengerMessagePointerCacheTargets;
@@ -688,10 +717,21 @@ export async function repairMessengerCachedMessagePointers(
   ownerKey: string,
   message: MessengerMessage,
   targets: MessengerMessagePointerCacheTargets,
+  {
+    isWriteCurrent = () => true,
+    requireExistingBody = false,
+    replacingDeletedUuid,
+  }: MessengerMessagePointerCacheRepairOptions = {},
 ): Promise<void> {
-  if (isStreamCacheRemoved(ownerKey, message.streamUuid)) return;
-  await repairMessengerMessagePointerCache(ownerKey, withoutRuntimeReactionState(message), targets);
-  if (isStreamCacheRemoved(ownerKey, message.streamUuid)) {
+  const isCurrent = () => isWriteCurrent() && !isStreamCacheRemoved(ownerKey, message.streamUuid);
+  if (!isCurrent()) return;
+  await repairMessengerMessagePointerCache(
+    ownerKey,
+    withoutRuntimeReactionState(message),
+    targets,
+    { isWriteCurrent: isCurrent, requireExistingBody, replacingDeletedUuid },
+  );
+  if (isWriteCurrent() && isStreamCacheRemoved(ownerKey, message.streamUuid)) {
     await purgeRemovedStreamCaches(ownerKey, [message.streamUuid]);
   }
 }
@@ -735,16 +775,41 @@ export async function deleteMessengerCachedMessage(
   ownerKey: string,
   messageUuid: MessengerUuid,
   conversationIds: readonly MessengerConversationId[],
+  options?: MessengerMessageCacheDeleteOptions,
 ): Promise<void> {
+  const isWriteCurrent = options?.isWriteCurrent ?? (() => true);
+  const allMemberships = options?.allMemberships === true;
+  if (!isWriteCurrent()) return;
+  const [cachedBody] = allMemberships
+    ? await readMessengerMessageBodyCache(ownerKey, [messageUuid])
+    : [];
+  if (!isWriteCurrent()) return;
   const repairs = await captureCachedDeletedMessagePointerRepairs(
     ownerKey,
     messageUuid,
-    conversationIds,
+    cachedBody == null
+      ? conversationIds
+      : [
+          ...conversationIds,
+          cachedBody.conversationId,
+          conversationIdForStream(cachedBody.streamUuid),
+        ],
   );
-  await deleteCachedMessage(ownerKey, messageUuid, conversationIds);
-  await clearMessengerMessagePointerCache(ownerKey, messageUuid);
+  if (!isWriteCurrent()) return;
+  await deleteCachedMessage(
+    ownerKey,
+    messageUuid,
+    allMemberships ? [] : conversationIds,
+    isWriteCurrent,
+  );
+  if (!isWriteCurrent()) return;
+  await clearMessengerMessagePointerCache(ownerKey, messageUuid, isWriteCurrent);
   for (const repair of repairs) {
-    await repairMessengerCachedMessagePointers(ownerKey, repair.replacement, repair.targets);
+    if (!isWriteCurrent()) return;
+    await repairMessengerCachedMessagePointers(ownerKey, repair.replacement, repair.targets, {
+      isWriteCurrent,
+      requireExistingBody: allMemberships,
+    });
   }
 }
 

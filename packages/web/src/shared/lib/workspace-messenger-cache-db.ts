@@ -1164,33 +1164,33 @@ function updateCatalogRowsAtomically<TRow extends { id: string }>(
   return transactionDone(transaction);
 }
 
-function updateRowById<TRow>(
+async function updateRowById<TRow>(
   store: IDBObjectStore,
   id: string,
   update: (row: TRow) => TRow | null,
-): void {
-  const request = store.get(id);
-  request.onsuccess = () => {
-    const row = request.result as TRow | undefined;
-    if (row == null) return;
-    const nextRow = update(row);
-    if (nextRow != null) store.put(nextRow);
-  };
+): Promise<void> {
+  const row = await requestToPromise<TRow | undefined>(store.get(id));
+  if (row == null) return;
+  const nextRow = update(row);
+  if (nextRow != null) store.put(nextRow);
 }
 
 function updateRowsByOwner<TRow>(
   store: IDBObjectStore,
   ownerKey: string,
   update: (row: TRow) => TRow | null,
-): void {
-  const request = store.index("byOwner").openCursor(IDBKeyRange.only(ownerKey));
-  request.onsuccess = () => {
-    const cursor = request.result;
-    if (cursor == null) return;
-    const nextRow = update(cursor.value as TRow);
-    if (nextRow != null) cursor.update(nextRow);
-    cursor.continue();
-  };
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const request = store.index("byOwner").openCursor(IDBKeyRange.only(ownerKey));
+    request.onerror = () => reject(idbError(request.error));
+    request.onsuccess = () => {
+      const cursor = request.result;
+      if (cursor == null) return resolve();
+      const nextRow = update(cursor.value as TRow);
+      if (nextRow != null) cursor.update(nextRow);
+      cursor.continue();
+    };
+  });
 }
 
 async function deleteMissingCatalogRows(
@@ -2087,6 +2087,15 @@ export async function repairMessengerMessagePointerCache(
   ownerKey: string,
   message: WorkspaceMessengerCachedMessage,
   targets: WorkspaceMessengerMessagePointerCacheTargets,
+  {
+    isWriteCurrent = () => true,
+    requireExistingBody = false,
+    replacingDeletedUuid,
+  }: {
+    isWriteCurrent?: () => boolean;
+    requireExistingBody?: boolean;
+    replacingDeletedUuid?: string;
+  } = {},
 ): Promise<void> {
   const conversationIds = [...new Set(targets.conversationIds ?? [])];
   if (
@@ -2098,68 +2107,93 @@ export async function repairMessengerMessagePointerCache(
 
   try {
     const db = await openWorkspaceMessengerCacheDb();
+    if (!isWriteCurrent()) return;
     const stores = WORKSPACE_MESSENGER_CACHE_STORES;
     const transaction = db.transaction(
       [stores.messages, stores.streams, stores.topics, stores.conversations],
       "readwrite",
     );
     const messageStore = transaction.objectStore(stores.messages);
-    const messageRequest = messageStore.get(cacheRowId(ownerKey, message.uuid));
-    messageRequest.onsuccess = () => {
-      const previous = messageRequest.result as WorkspaceMessengerMessageCacheRow | undefined;
-      if (shouldReplaceCachedMessage(previous, message)) {
-        messageStore.put(toMessageRow(ownerKey, message, previous));
-      }
-    };
+    const previous = await requestToPromise<WorkspaceMessengerMessageCacheRow | undefined>(
+      messageStore.get(cacheRowId(ownerKey, message.uuid)),
+    );
+    // A cached fallback is no longer a valid replacement after deletion or a move.
+    if (
+      requireExistingBody &&
+      (previous?.message.streamUuid !== message.streamUuid ||
+        previous.message.topicUuid !== message.topicUuid)
+    ) {
+      await transactionDone(transaction);
+      return;
+    }
+    if (!requireExistingBody && shouldReplaceCachedMessage(previous, message)) {
+      messageStore.put(toMessageRow(ownerKey, message, previous));
+    }
 
     const cacheUpdatedAt = nextCatalogCacheUpdatedAt();
+    // Realtime can receive its replacement while deletion of the previous pointer is pending.
+    const shouldRepair = (
+      row: { updatedAt: string; lastMessageCreatedAt?: string | null },
+      pointer: string | null | undefined,
+    ) =>
+      (replacingDeletedUuid != null && pointer === replacingDeletedUuid) ||
+      shouldRepairMessagePointer(row, pointer, message);
+    const pointerWrites: Promise<void>[] = [];
     if (targets.stream === true) {
-      updateRowById<WorkspaceMessengerStreamCacheRow>(
-        transaction.objectStore(stores.streams),
-        cacheRowId(ownerKey, message.streamUuid),
-        (row) =>
-          shouldRepairMessagePointer(row, row.stream.lastMessageUuid, message)
-            ? {
-                ...row,
-                stream: { ...row.stream, lastMessageUuid: message.uuid },
-                lastMessageCreatedAt: message.createdAt,
-                cacheUpdatedAt,
-              }
-            : null,
+      pointerWrites.push(
+        updateRowById<WorkspaceMessengerStreamCacheRow>(
+          transaction.objectStore(stores.streams),
+          cacheRowId(ownerKey, message.streamUuid),
+          (row) =>
+            shouldRepair(row, row.stream.lastMessageUuid)
+              ? {
+                  ...row,
+                  stream: { ...row.stream, lastMessageUuid: message.uuid },
+                  lastMessageCreatedAt: message.createdAt,
+                  cacheUpdatedAt,
+                }
+              : null,
+        ),
       );
     }
     if (targets.topic === true) {
-      updateRowById<WorkspaceMessengerTopicCacheRow>(
-        transaction.objectStore(stores.topics),
-        cacheRowId(ownerKey, message.topicUuid),
-        (row) =>
-          shouldRepairMessagePointer(row, row.topic.lastMessageUuid, message)
-            ? {
-                ...row,
-                topic: { ...row.topic, lastMessageUuid: message.uuid },
-                lastMessageCreatedAt: message.createdAt,
-                cacheUpdatedAt,
-              }
-            : null,
+      pointerWrites.push(
+        updateRowById<WorkspaceMessengerTopicCacheRow>(
+          transaction.objectStore(stores.topics),
+          cacheRowId(ownerKey, message.topicUuid),
+          (row) =>
+            shouldRepair(row, row.topic.lastMessageUuid)
+              ? {
+                  ...row,
+                  topic: { ...row.topic, lastMessageUuid: message.uuid },
+                  lastMessageCreatedAt: message.createdAt,
+                  cacheUpdatedAt,
+                }
+              : null,
+        ),
       );
     }
     const conversationStore = transaction.objectStore(stores.conversations);
     for (const conversationId of conversationIds) {
-      updateRowById<WorkspaceMessengerConversationCacheRow>(
-        conversationStore,
-        cacheRowId(ownerKey, conversationId),
-        (row) =>
-          shouldRepairMessagePointer(row, row.lastMessageUuid, message)
-            ? {
-                ...row,
-                conversation: { ...row.conversation, lastMessageUuid: message.uuid },
-                lastMessageUuid: message.uuid,
-                lastMessageCreatedAt: message.createdAt,
-                cacheUpdatedAt,
-              }
-            : null,
+      pointerWrites.push(
+        updateRowById<WorkspaceMessengerConversationCacheRow>(
+          conversationStore,
+          cacheRowId(ownerKey, conversationId),
+          (row) =>
+            shouldRepair(row, row.lastMessageUuid)
+              ? {
+                  ...row,
+                  conversation: { ...row.conversation, lastMessageUuid: message.uuid },
+                  lastMessageUuid: message.uuid,
+                  lastMessageCreatedAt: message.createdAt,
+                  cacheUpdatedAt,
+                }
+              : null,
+        ),
       );
     }
+    await Promise.all(pointerWrites);
+    if (!isWriteCurrent()) transaction.abort();
     await transactionDone(transaction);
   } catch {
     return;
@@ -2169,11 +2203,13 @@ export async function repairMessengerMessagePointerCache(
 export async function clearMessengerMessagePointerCache(
   ownerKey: string,
   messageUuid: string,
+  isWriteCurrent: () => boolean = () => true,
 ): Promise<void> {
   if (!isIndexedDBAvailable()) return;
 
   try {
     const db = await openWorkspaceMessengerCacheDb();
+    if (!isWriteCurrent()) return;
     const stores = WORKSPACE_MESSENGER_CACHE_STORES;
     const transaction = db.transaction(
       [stores.streams, stores.topics, stores.conversations],
@@ -2181,27 +2217,35 @@ export async function clearMessengerMessagePointerCache(
     );
     const cacheUpdatedAt = nextCatalogCacheUpdatedAt();
     const streamStore = transaction.objectStore(stores.streams);
-    updateRowsByOwner<WorkspaceMessengerStreamCacheRow>(streamStore, ownerKey, (row) => {
-      if (row.stream.lastMessageUuid !== messageUuid) return null;
-      return {
-        ...row,
-        stream: { ...row.stream, lastMessageUuid: null },
-        lastMessageCreatedAt: null,
-        cacheUpdatedAt,
-      };
-    });
+    const streamWrite = updateRowsByOwner<WorkspaceMessengerStreamCacheRow>(
+      streamStore,
+      ownerKey,
+      (row) => {
+        if (row.stream.lastMessageUuid !== messageUuid) return null;
+        return {
+          ...row,
+          stream: { ...row.stream, lastMessageUuid: null },
+          lastMessageCreatedAt: null,
+          cacheUpdatedAt,
+        };
+      },
+    );
     const topicStore = transaction.objectStore(stores.topics);
-    updateRowsByOwner<WorkspaceMessengerTopicCacheRow>(topicStore, ownerKey, (row) => {
-      if (row.topic.lastMessageUuid !== messageUuid) return null;
-      return {
-        ...row,
-        topic: { ...row.topic, lastMessageUuid: null },
-        lastMessageCreatedAt: null,
-        cacheUpdatedAt,
-      };
-    });
+    const topicWrite = updateRowsByOwner<WorkspaceMessengerTopicCacheRow>(
+      topicStore,
+      ownerKey,
+      (row) => {
+        if (row.topic.lastMessageUuid !== messageUuid) return null;
+        return {
+          ...row,
+          topic: { ...row.topic, lastMessageUuid: null },
+          lastMessageCreatedAt: null,
+          cacheUpdatedAt,
+        };
+      },
+    );
     const conversationStore = transaction.objectStore(stores.conversations);
-    updateRowsByOwner<WorkspaceMessengerConversationCacheRow>(
+    const conversationWrite = updateRowsByOwner<WorkspaceMessengerConversationCacheRow>(
       conversationStore,
       ownerKey,
       (row) => {
@@ -2220,6 +2264,8 @@ export async function clearMessengerMessagePointerCache(
         };
       },
     );
+    await Promise.all([streamWrite, topicWrite, conversationWrite]);
+    if (!isWriteCurrent()) transaction.abort();
     await transactionDone(transaction);
   } catch {
     return;
@@ -3024,35 +3070,50 @@ export async function deleteCachedMessage(
   ownerKey: string,
   messageUuid: string,
   conversationIds: readonly string[],
+  isWriteCurrent: () => boolean = () => true,
 ): Promise<void> {
   if (!isIndexedDBAvailable()) return;
 
   try {
     const db = await openWorkspaceMessengerCacheDb();
-    const existingBuckets = await readMessageBucketsByMessage(db, ownerKey, messageUuid);
-    const targetConversationIds =
-      conversationIds.length > 0
-        ? new Set(conversationIds)
-        : new Set(existingBuckets.map((bucket) => bucket.conversationId));
-    const bucketsToDelete = existingBuckets.filter((bucket) =>
-      targetConversationIds.has(bucket.conversationId),
+    if (!isWriteCurrent()) return;
+    const allMemberships = conversationIds.length === 0;
+    const stores = WORKSPACE_MESSENGER_CACHE_STORES;
+    const names: string[] = [stores.messages, stores.messageBuckets, stores.ownMessageReactions];
+    if (allMemberships) names.push(stores.messageWindows);
+    const transaction = db.transaction(names, "readwrite");
+    const bucketStore = transaction.objectStore(stores.messageBuckets);
+    const byMessage = IDBKeyRange.only([ownerKey, messageUuid]);
+    // Read membership in the write transaction so a move cannot slip between read and delete.
+    const existingBuckets = await requestToPromise<WorkspaceMessengerMessageBucketRow[]>(
+      bucketStore.index("byMessage").getAll(byMessage),
+    );
+    const targetConversationIds = new Set(conversationIds);
+    const bucketsToDelete = existingBuckets.filter(
+      (bucket) => allMemberships || targetConversationIds.has(bucket.conversationId),
     );
     const shouldDeleteBody = bucketsToDelete.length === existingBuckets.length;
-    const stores = WORKSPACE_MESSENGER_CACHE_STORES;
-    const transaction = db.transaction([stores.messages, stores.messageBuckets], "readwrite");
-    const bucketStore = transaction.objectStore(stores.messageBuckets);
 
     for (const bucket of bucketsToDelete) {
       bucketStore.delete(bucket.id);
     }
     if (shouldDeleteBody) {
       transaction.objectStore(stores.messages).delete(cacheRowId(ownerKey, messageUuid));
+      const reactionStore = transaction.objectStore(stores.ownMessageReactions);
+      const keys = await requestToPromise(
+        reactionStore.index("byOwnerMessage").getAllKeys(byMessage),
+      );
+      for (const key of keys) reactionStore.delete(key);
+    }
+    if (allMemberships) {
+      const affected = new Set(bucketsToDelete.map((bucket) => bucket.conversationId));
+      await Promise.all(
+        [...affected].map((id) => retainConversationMessages(transaction, ownerKey, id, 0)),
+      );
     }
 
+    if (!isWriteCurrent()) transaction.abort();
     await transactionDone(transaction);
-    if (shouldDeleteBody) {
-      await deleteOwnMessageReactionsForMessage(ownerKey, messageUuid);
-    }
   } catch {
     return;
   }

@@ -210,7 +210,7 @@ function isAbortSignalAborted(signal: AbortSignal | undefined): boolean {
 
 const repairDeletedMessagePointersFromRealtime: NonNullable<
   MessengerRealtimeActiveApplierOptions["onMessageDeleted"]
-> = (ownerKey, _message, repairPlan, eventContext) => {
+> = (ownerKey, _message, repairPlan, eventContext, isCurrent) => {
   const currentRuntimeContext = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
   if (
     currentRuntimeContext == null ||
@@ -225,6 +225,7 @@ const repairDeletedMessagePointersFromRealtime: NonNullable<
     getRuntimeContext: () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
     cache: messengerRealtimeActiveCache,
     signal: eventContext.signal,
+    isCurrent,
   });
 };
 

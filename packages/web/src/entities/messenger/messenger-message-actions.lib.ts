@@ -28,18 +28,20 @@ import type {
 } from "~/shared/api/messenger.types";
 import { hasWorkspaceSecretDraft } from "~/shared/lib/workspace-secret-draft.lib";
 import { decodeChatE2eePayload, encodeChatE2eePayload } from "./chat-e2ee-payload-adapters.lib";
+import { acceptMessageDeletion } from "./messages-accept-deletion.lib";
 import { acceptServerMessages } from "./messages-accept-server.lib";
 import { acceptMessageUpdate, type KnownMessageCacheWriter } from "./messages-accept-update.lib";
 import { adaptMessengerMessage } from "./messenger-adapters.lib";
 import {
   messengerMessageActionCache,
-  type MessengerMessagePointerCacheTargets,
+  type MessengerMessageCacheDeletion,
+  type MessengerMessagePointerCacheRepair,
 } from "./messenger-cache.lib";
 import {
   captureDeletedMessagePointerRepair,
   repairDeletedMessagePointers,
 } from "./messenger-deleted-message-pointer-repair.lib";
-import { conversationIdForStream, conversationIdForTopic } from "./messenger-ids.lib";
+import { conversationIdForStream } from "./messenger-ids.lib";
 import {
   createMessengerPlacementUuid,
   normalizeMessengerMessageUuid,
@@ -103,20 +105,12 @@ export type { MessengerMessageActionCacheConversationPage } from "./messages-acc
 export interface MessengerMessageActionCacheWriter {
   advanceReadBoundary?: (boundary: MessengerReadBoundary) => Promise<void> | void;
   patchCachedMessage?: KnownMessageCacheWriter;
-  repairMessagePointers?: (
-    ownerKey: string,
-    message: MessengerMessage,
-    targets: MessengerMessagePointerCacheTargets,
-  ) => Promise<void> | void;
+  repairMessagePointers?: MessengerMessagePointerCacheRepair;
   markCachedMessagesRead?: (
     ownerKey: string,
     messageUuids: readonly MessengerUuid[],
   ) => Promise<void> | void;
-  deleteCachedMessage?: (
-    ownerKey: string,
-    messageUuid: MessengerUuid,
-    conversationIds: readonly MessengerConversationId[],
-  ) => Promise<void> | void;
+  deleteCachedMessage?: MessengerMessageCacheDeletion;
   writeConversationMessagePage?: SentMessageCacheWriter;
 }
 
@@ -209,13 +203,6 @@ function captureMessageAction(
     ownerKey: workspaceRuntimeOwnerKey(requestContext),
     isStale: () => isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, signal),
   };
-}
-
-function conversationIdsForDeletedMessage(
-  streamUuid: MessengerUuid,
-  topicUuid: MessengerUuid,
-): MessengerConversationId[] {
-  return [conversationIdForStream(streamUuid), conversationIdForTopic(streamUuid, topicUuid)];
 }
 
 async function writeActionCacheBestEffort(write: () => Promise<void> | void): Promise<void> {
@@ -626,26 +613,31 @@ export async function deleteMessengerMessage({
   if (action.isStale())
     return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
 
-  store.getState().removeMessage(messageUuid);
-  useMessengerStore.getState().clearMessagePointer(action.ownerKey, deletedMessage);
-  if (cache?.deleteCachedMessage != null) {
-    await writeActionCacheBestEffort(() =>
-      cache.deleteCachedMessage?.(
-        action.ownerKey,
-        messageUuid,
-        conversationIdsForDeletedMessage(streamUuid, topicUuid),
-      ),
-    );
-  }
-  await repairDeletedMessagePointers({
-    runtimeContext,
-    plan: pointerRepairPlan,
-    getRuntimeContext,
-    clientOptions,
-    client,
-    cache,
-    signal,
+  const accepted = acceptMessageDeletion({
+    ownerKey: action.ownerKey,
+    reported: deletedMessage,
+    beforeRequest: pointerRepairPlan,
+    isCurrent: () => !action.isStale(),
+    store,
+    deleteCache: cache.deleteCachedMessage,
   });
+  if (accepted.status === "stale-owner")
+    return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
+  if (accepted.cacheWrite != null) await accepted.cacheWrite;
+  await Promise.all(
+    accepted.plans.map((plan) =>
+      repairDeletedMessagePointers({
+        runtimeContext,
+        plan,
+        getRuntimeContext,
+        clientOptions,
+        client,
+        cache,
+        signal,
+        isCurrent: accepted.isCurrent,
+      }),
+    ),
+  );
   return { status: "applied", ownerKey: action.ownerKey, message: null };
 }
 

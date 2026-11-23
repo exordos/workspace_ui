@@ -17,6 +17,7 @@ import type {
 } from "~/shared/api/messenger.types";
 import {
   openWorkspaceMessengerCacheDb,
+  deleteCachedMessage,
   resetWorkspaceMessengerCacheDbSingletonForTests,
 } from "~/shared/lib/workspace-messenger-cache-db";
 import {
@@ -29,11 +30,16 @@ import {
 import { useMessengerBackgroundProjectionStore } from "./messenger-background-projection.model";
 import {
   markMessengerCachedMessagesRead,
+  deleteMessengerCachedMessage,
   patchMessengerCachedMessage,
+  readMessengerCatalogPayloadCache,
   readMessengerConversationWindowCache,
   readMessengerMessageBodyCache,
+  repairMessengerCachedMessagePointers,
+  writeMessengerCatalogPayloadCache,
   writeMessengerConversationWindowCache,
 } from "./messenger-cache.lib";
+import { repairDeletedMessagePointers } from "./messenger-deleted-message-pointer-repair.lib";
 import {
   deleteMessengerMessage,
   editMessengerMessage,
@@ -705,7 +711,7 @@ describe("messenger message actions", () => {
     ).toBe("New realtime body");
   });
 
-  describe("edit and move cache reconciliation", () => {
+  describe("message mutation cache reconciliation", () => {
     beforeEach(() => {
       vi.stubGlobal("indexedDB", new IDBFactory());
       vi.stubGlobal("IDBKeyRange", IDBKeyRange);
@@ -729,6 +735,381 @@ describe("messenger message actions", () => {
       });
       return message.conversationId;
     }
+
+    async function seedDeletionPointers(ownerKey: string) {
+      const stream = createStreamDto({ last_message_uuid: MESSAGE_A });
+      const topic = createTopicDto({ last_message_uuid: MESSAGE_A });
+      const payload = {
+        streams: [adaptMessengerStream(stream)],
+        streamBindings: [],
+        topics: [adaptMessengerTopic(topic)],
+        conversations: [
+          { ...adaptStreamToMessengerConversation(stream), updatedAt: DATE },
+          { ...adaptTopicToMessengerConversation(topic, stream), updatedAt: DATE },
+        ],
+        folders: [],
+      };
+      useMessengerStore.getState().replaceBootstrapState(ownerKey, payload);
+      await writeMessengerCatalogPayloadCache(ownerKey, payload);
+      await seedMessageWindow(ownerKey, createMessageDto());
+    }
+
+    async function expectCachedTail(ownerKey: string, uuid: string | null) {
+      const cached = await readMessengerCatalogPayloadCache(ownerKey);
+      const catalog = cached?.payload;
+      expect(catalog?.streams[0]?.lastMessageUuid).toBe(uuid);
+      expect(catalog?.topics[0]?.lastMessageUuid).toBe(uuid);
+      expect(catalog?.conversations.map((conversation) => conversation.lastMessageUuid)).toEqual([
+        uuid,
+        uuid,
+      ]);
+    }
+
+    it.each(["http", "realtime"] as const)(
+      "keeps a moved UUID deleted through late history when %s acknowledges first",
+      async (first) => {
+        const runtimeContext = createRuntimeContext();
+        const ownerKey = prepareStoreOwner(runtimeContext);
+        useWorkspaceMessageStore.getState().setOwner(ownerKey, false);
+        const original = createMessageDto();
+        const originalId = await seedMessageWindow(ownerKey, original);
+        const moved = createMessageDto({
+          topic_uuid: "ed25f944-8106-4386-b2f9-65e9db32d465",
+          updated_at: "2026-06-22T10:12:00Z",
+        });
+        const sibling = createMessageDto({ uuid: MESSAGE_B, topic_uuid: moved.topic_uuid });
+        const destinationId = await seedMessageWindow(ownerKey, sibling);
+        const streamId = `stream:${STREAM_A}` as const;
+        const streamMessages = [adaptMessengerMessage(original), adaptMessengerMessage(sibling)];
+        replaceTailWindow(streamId, streamMessages);
+        await writeMessengerConversationWindowCache(ownerKey, streamId, {
+          messages: streamMessages,
+          hasMore: false,
+        });
+
+        const response = createDeferred<void>();
+        const requestDelete = vi.fn(() => response.promise);
+        const deleting = deleteMessengerMessage({
+          runtimeContext,
+          messageUuid: MESSAGE_A,
+          streamUuid: STREAM_A,
+          topicUuid: TOPIC_A,
+          client: { deleteMessage: requestDelete },
+        });
+        expect(requestDelete).toHaveBeenCalledOnce();
+        const context = {
+          owner: runtimeContext,
+          ownerKey,
+          surface: "active",
+          source: "websocket",
+        } as const;
+        const applier = createMessengerRealtimeActiveApplier();
+        await applier.applyEvent(
+          { type: "message", kind: "message.updated", epoch_version: 1, message: moved },
+          context,
+        );
+        const movedWindow = await readMessengerConversationWindowCache(ownerKey, destinationId);
+        expect(movedWindow.messages.some((message) => message.uuid === MESSAGE_A)).toBe(true);
+
+        const historyResponse = createDeferred<{
+          items: WorkspaceMessengerMessageDto[];
+          nextPageMarker: null;
+          pageLimit: number;
+        }>();
+        const historyClient = vi
+          .fn(() => Promise.resolve({ items: [sibling], nextPageMarker: null, pageLimit: 50 }))
+          .mockImplementationOnce(() => historyResponse.promise);
+        const history = loadMessengerConversationMessages({
+          runtimeContext,
+          conversationId: destinationId,
+          client: { getMessagesPage: historyClient },
+        });
+        await vi.waitFor(() => expect(historyClient).toHaveBeenCalledOnce());
+
+        const acknowledgeRealtime = () =>
+          applier.applyEvent(
+            {
+              type: "message",
+              kind: "message.deleted",
+              epoch_version: 2,
+              message: { uuid: MESSAGE_A, stream_uuid: STREAM_A, topic_uuid: moved.topic_uuid },
+            },
+            context,
+          );
+        const acknowledgeHttp = async () => {
+          response.resolve();
+          await expect(deleting).resolves.toMatchObject({ status: "applied", message: null });
+        };
+        const assertDeleted = async () => {
+          const state = useWorkspaceMessageStore.getState();
+          expect(state.messagesById[MESSAGE_A]).toBeUndefined();
+          expect(state.deletedMessageRevisionById[MESSAGE_A]).toBeGreaterThan(0);
+          for (const id of [originalId, destinationId, streamId]) {
+            expect(state.conversationWindowsById[id]?.messageUuids).not.toContain(MESSAGE_A);
+            const cachedWindow = await readMessengerConversationWindowCache(ownerKey, id);
+            expect(cachedWindow.messages.map((message) => message.uuid)).not.toContain(MESSAGE_A);
+          }
+          await expect(readMessengerMessageBodyCache(ownerKey, [MESSAGE_A])).resolves.toEqual([]);
+        };
+
+        if (first === "http") await acknowledgeHttp();
+        else await acknowledgeRealtime();
+        await assertDeleted();
+        const revived = vi.fn();
+        const unsubscribe = useWorkspaceMessageStore.subscribe((state) => {
+          if (state.messagesById[MESSAGE_A] != null) revived();
+        });
+        try {
+          historyResponse.resolve({ items: [moved, sibling], nextPageMarker: null, pageLimit: 50 });
+          await expect(history).resolves.toMatchObject({ status: "applied" });
+        } finally {
+          unsubscribe();
+        }
+        expect(revived).not.toHaveBeenCalled();
+        await assertDeleted();
+        if (first === "http") await acknowledgeRealtime();
+        else await acknowledgeHttp();
+        await assertDeleted();
+        expect(useMessengerStore.getState().lastEpochVersion).toBe(2);
+      },
+    );
+
+    it("repairs both durable pointers when realtime receives a replacement before cache deletion", async () => {
+      const runtimeContext = createRuntimeContext();
+      const ownerKey = prepareStoreOwner(runtimeContext);
+      useWorkspaceMessageStore.getState().setOwner(ownerKey, false);
+      await seedDeletionPointers(ownerKey);
+      const releaseDelete = createDeferred<void>();
+      const older = createMessageDto({ uuid: MESSAGE_B, created_at: "2026-06-22T10:05:00Z" });
+      const completedRepair = vi.fn();
+      const writeRealtimeCursor = vi.fn();
+      const applier = createMessengerRealtimeActiveApplier({
+        cache: {
+          deleteCachedMessage: async (...args) => {
+            await releaseDelete.promise;
+            await deleteMessengerCachedMessage(...args);
+          },
+          writeRealtimeCursor,
+        },
+        onMessageDeleted: (_owner, _message, plan, _event, isCurrent) =>
+          repairDeletedMessagePointers({
+            runtimeContext,
+            plan,
+            isCurrent,
+            client: {
+              getMessagesPage: () =>
+                Promise.resolve({ items: [older], nextPageMarker: null, pageLimit: 1 }),
+            },
+            cache: { repairMessagePointers: repairMessengerCachedMessagePointers },
+          }).then(completedRepair),
+      });
+      const realtime = applier.applyEvent(
+        {
+          type: "message",
+          kind: "message.deleted",
+          epoch_version: 2,
+          message: { uuid: MESSAGE_A, stream_uuid: STREAM_A, topic_uuid: TOPIC_A },
+        },
+        { owner: runtimeContext, ownerKey, surface: "active", source: "websocket" },
+      );
+      try {
+        await vi.waitFor(() => expect(completedRepair).toHaveBeenCalledOnce());
+        await expectCachedTail(ownerKey, MESSAGE_B);
+        expect(writeRealtimeCursor).not.toHaveBeenCalled();
+      } finally {
+        releaseDelete.resolve();
+        await realtime;
+      }
+      await expectCachedTail(ownerKey, MESSAGE_B);
+      await expect(readMessengerMessageBodyCache(ownerKey, [MESSAGE_A])).resolves.toEqual([]);
+      expect(writeRealtimeCursor).toHaveBeenCalledExactlyOnceWith(ownerKey, 2);
+    });
+
+    it("repairs the same durable tail after its read flag changes during the transaction", async () => {
+      const runtimeContext = createRuntimeContext();
+      const ownerKey = prepareStoreOwner(runtimeContext);
+      useWorkspaceMessageStore.getState().setOwner(ownerKey, false);
+      await seedDeletionPointers(ownerKey);
+      const replacement = createMessageDto({ uuid: MESSAGE_B });
+      const beforeCommit = vi.fn(() => {
+        const store = useWorkspaceMessageStore.getState();
+        store.markMessagesRead([MESSAGE_B]);
+        store.beginOptimisticOwnMessageReaction(MESSAGE_B, "eyes", "add", "local-reaction", USER_A);
+      });
+      const repairMessagePointers = vi.fn<typeof repairMessengerCachedMessagePointers>();
+      repairMessagePointers
+        .mockImplementationOnce((owner, message, targets, options) => {
+          let checks = 0;
+          return repairMessengerCachedMessagePointers(owner, message, targets, {
+            ...options,
+            isWriteCurrent: () => {
+              // The wrapper, transaction entry and precommit checks run in that order.
+              checks += 1;
+              if (checks === 3) beforeCommit();
+              return options?.isWriteCurrent?.() ?? false;
+            },
+          });
+        })
+        .mockImplementation(repairMessengerCachedMessagePointers);
+
+      await expect(
+        deleteMessengerMessage({
+          runtimeContext,
+          messageUuid: MESSAGE_A,
+          streamUuid: STREAM_A,
+          topicUuid: TOPIC_A,
+          client: {
+            deleteMessage: () => Promise.resolve(),
+            getMessagesPage: () =>
+              Promise.resolve({ items: [replacement], nextPageMarker: null, pageLimit: 1 }),
+          },
+          cache: { deleteCachedMessage: deleteMessengerCachedMessage, repairMessagePointers },
+        }),
+      ).resolves.toMatchObject({ status: "applied" });
+
+      expect(beforeCommit).toHaveBeenCalledOnce();
+      expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_B]).toMatchObject({
+        read: true,
+        reactions: { eyes: 1 },
+      });
+      await expectCachedTail(ownerKey, MESSAGE_B);
+      await expect(readMessengerMessageBodyCache(ownerKey, [MESSAGE_B])).resolves.toEqual([
+        expect.objectContaining({
+          uuid: MESSAGE_B,
+          payload: replacement.payload,
+          read: true,
+          reactions: {},
+        }),
+      ]);
+    });
+
+    it.each(["newer pointer", "replacement deletion"] as const)(
+      "protects a %s while HTTP waits for a delayed replacement",
+      async (change) => {
+        const runtimeContext = createRuntimeContext();
+        const ownerKey = prepareStoreOwner(runtimeContext);
+        useWorkspaceMessageStore.getState().setOwner(ownerKey, false);
+        await seedDeletionPointers(ownerKey);
+        const response = createDeferred<{
+          items: WorkspaceMessengerMessageDto[];
+          nextPageMarker: null;
+          pageLimit: number;
+        }>();
+        const requestReplacement = vi.fn(() => response.promise);
+        const deleting = deleteMessengerMessage({
+          runtimeContext,
+          messageUuid: MESSAGE_A,
+          streamUuid: STREAM_A,
+          topicUuid: TOPIC_A,
+          client: { deleteMessage: () => Promise.resolve(), getMessagesPage: requestReplacement },
+        });
+        await vi.waitFor(() => expect(requestReplacement).toHaveBeenCalledTimes(2));
+        const applier = createMessengerRealtimeActiveApplier();
+        const context = {
+          owner: runtimeContext,
+          ownerKey,
+          surface: "active",
+          source: "websocket",
+        } as const;
+        let expected: string | null = null;
+        if (change === "newer pointer") {
+          expected = MESSAGE_C;
+          const newer = createMessageDto({ uuid: MESSAGE_C, created_at: "2026-06-22T10:20:00Z" });
+          await applier.applyEvent(
+            { type: "message", kind: "message.created", epoch_version: 2, message: newer },
+            context,
+          );
+        } else {
+          await applier.applyEvent(
+            {
+              type: "message",
+              kind: "message.deleted",
+              epoch_version: 2,
+              message: { uuid: MESSAGE_B, stream_uuid: STREAM_A, topic_uuid: TOPIC_A },
+            },
+            context,
+          );
+        }
+        response.resolve({
+          items: [createMessageDto({ uuid: MESSAGE_B })],
+          nextPageMarker: null,
+          pageLimit: 1,
+        });
+        await expect(deleting).resolves.toMatchObject({ status: "applied" });
+        const state = useMessengerStore.getState();
+        expect(state.streamsById[STREAM_A]?.lastMessageUuid).toBe(expected);
+        expect(state.topicsById[TOPIC_A]?.lastMessageUuid).toBe(expected);
+        await expectCachedTail(ownerKey, expected);
+        if (change === "replacement deletion") {
+          expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_B]).toBeUndefined();
+          await expect(readMessengerMessageBodyCache(ownerKey, [MESSAGE_B])).resolves.toEqual([]);
+        }
+      },
+    );
+
+    it.each(["http abort", "realtime generation"] as const)(
+      "aborts the deletion transaction on %s at commit",
+      async (invalidation) => {
+        const runtimeContext = createRuntimeContext();
+        const ownerKey = prepareStoreOwner(runtimeContext);
+        useWorkspaceMessageStore.getState().setOwner(ownerKey, false);
+        const original = createMessageDto();
+        const conversationId = await seedMessageWindow(ownerKey, original);
+        const signal = new AbortController();
+        let currentGeneration = runtimeContext.runtimeGeneration;
+        let checks = 0;
+        const patchCache: NonNullable<MessengerMessageActionCacheWriter["deleteCachedMessage"]> = (
+          owner,
+          uuid,
+          _ids,
+          options,
+        ) =>
+          deleteCachedMessage(owner, uuid, [], () => {
+            checks += 1;
+            if (checks === 2) {
+              if (invalidation === "http abort") signal.abort();
+              else currentGeneration += 1;
+            }
+            return options?.isWriteCurrent() ?? false;
+          });
+        const writeRealtimeCursor = vi.fn();
+        if (invalidation === "http abort") {
+          await expect(
+            deleteMessengerMessage({
+              runtimeContext,
+              messageUuid: MESSAGE_A,
+              streamUuid: STREAM_A,
+              topicUuid: TOPIC_A,
+              signal: signal.signal,
+              client: { deleteMessage: () => Promise.resolve() },
+              cache: { deleteCachedMessage: patchCache },
+            }),
+          ).resolves.toMatchObject({ status: "applied" });
+        } else {
+          const applier = createMessengerRealtimeActiveApplier({
+            isOwnerCurrent: (owner) => owner.runtimeGeneration === currentGeneration,
+            cache: { writeRealtimeCursor, deleteCachedMessage: patchCache },
+          });
+          await applier.applyEvent(
+            {
+              type: "message",
+              kind: "message.deleted",
+              epoch_version: 2,
+              message: { uuid: MESSAGE_A, stream_uuid: STREAM_A, topic_uuid: TOPIC_A },
+            },
+            { owner: runtimeContext, ownerKey, surface: "active", source: "websocket" },
+          );
+        }
+        expect(checks).toBe(2);
+        expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]).toBeUndefined();
+        const window = await readMessengerConversationWindowCache(ownerKey, conversationId);
+        expect(window.messages).toEqual([
+          expect.objectContaining({ uuid: MESSAGE_A, payload: original.payload }),
+        ]);
+        expect(writeRealtimeCursor).not.toHaveBeenCalled();
+        expect(useMessengerStore.getState().lastEpochVersion).toBeNull();
+      },
+    );
 
     it("keeps a realtime move in loaded and cached windows through a late edit and duplicate event", async () => {
       const runtimeContext = createRuntimeContext();
@@ -1155,10 +1536,12 @@ describe("messenger message actions", () => {
     });
 
     expect(deleteMessage).toHaveBeenCalledWith(expect.any(Object), MESSAGE_A);
-    expect(cache.deleteCachedMessage).toHaveBeenCalledWith(ownerKey, MESSAGE_A, [
-      `stream:${STREAM_A}`,
-      `topic:${STREAM_A}:${TOPIC_A}`,
-    ]);
+    expect(cache.deleteCachedMessage).toHaveBeenCalledWith(
+      ownerKey,
+      MESSAGE_A,
+      [`stream:${STREAM_A}`, `topic:${STREAM_A}:${TOPIC_A}`],
+      { allMemberships: true, isWriteCurrent: expect.any(Function) },
+    );
     expect(useMessengerStore.getState().ownerKey).toBe(ownerKey);
     expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]).toBeUndefined();
   });
@@ -1217,14 +1600,26 @@ describe("messenger message actions", () => {
     );
     expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_C]).toBeDefined();
     expect(getMessagesPage).toHaveBeenCalledTimes(2);
-    expect(repairMessagePointers).toHaveBeenNthCalledWith(1, ownerKey, expect.any(Object), {
-      stream: true,
-      conversationIds: [`stream:${STREAM_A}`],
-    });
-    expect(repairMessagePointers).toHaveBeenNthCalledWith(2, ownerKey, expect.any(Object), {
-      topic: true,
-      conversationIds: [`topic:${STREAM_A}:${TOPIC_A}`],
-    });
+    expect(repairMessagePointers).toHaveBeenNthCalledWith(
+      1,
+      ownerKey,
+      expect.any(Object),
+      {
+        stream: true,
+        conversationIds: [`stream:${STREAM_A}`],
+      },
+      { isWriteCurrent: expect.any(Function), replacingDeletedUuid: MESSAGE_A },
+    );
+    expect(repairMessagePointers).toHaveBeenNthCalledWith(
+      2,
+      ownerKey,
+      expect.any(Object),
+      {
+        topic: true,
+        conversationIds: [`topic:${STREAM_A}:${TOPIC_A}`],
+      },
+      { isWriteCurrent: expect.any(Function), replacingDeletedUuid: MESSAGE_A },
+    );
   });
 
   it("uses read_up_to and updates loaded messages after the response", async () => {
