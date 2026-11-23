@@ -10,6 +10,7 @@ import type {
   MessageComposerCapabilities,
   MessageComposerAttachmentView,
   MessageComposerReplyClearReason,
+  MessageComposerProps,
   MessageComposerSendResult,
   ReplyQuote,
 } from "~/widgets/message-composer/message-composer.types";
@@ -37,7 +38,7 @@ export interface ChatPageComposerSectionProps {
     files?: File[],
     options?: MessengerSendOptions,
   ) => void | MessageComposerSendResult | Promise<void | MessageComposerSendResult>;
-  optimisticClearOnSend?: boolean;
+  optimisticClearOnSend?: MessageComposerProps["optimisticClearOnSend"];
   sendDisabled?: boolean;
   attachments?: readonly MessageComposerAttachmentView[];
   attachmentsBlockSend?: boolean;

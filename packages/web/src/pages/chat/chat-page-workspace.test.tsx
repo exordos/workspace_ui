@@ -94,6 +94,7 @@ const captured = vi.hoisted(() => ({
   directHeaderProps: null as ChatDirectHeaderProps | null,
   messageListProps: null as ChatPageWorkspaceMessageListSectionProps | null,
   renderRealMessageList: false,
+  renderRealComposerSection: false,
   holdRealListFocusedMessageApplied: false,
   omitFetchedAnchorFromWindow: false,
   realListFocusedMessageApplied: vi.fn(),
@@ -471,12 +472,19 @@ vi.mock("./chat-page-workspace-message-list-section.ui", async (importOriginal) 
   };
 });
 
-vi.mock("./chat-page-composer-section.ui", () => ({
-  ChatPageComposerSection: (props: ChatPageComposerSectionProps) => {
-    captured.composerProps = props;
-    return <div data-testid="old-composer-section" />;
-  },
-}));
+vi.mock("./chat-page-composer-section.ui", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./chat-page-composer-section.ui")>();
+  return {
+    ChatPageComposerSection: (props: ChatPageComposerSectionProps) => {
+      captured.composerProps = props;
+      return captured.renderRealComposerSection ? (
+        <actual.ChatPageComposerSection {...props} />
+      ) : (
+        <div data-testid="old-composer-section" />
+      );
+    },
+  };
+});
 
 function createSession(): WorkspaceAuthSession {
   return {
@@ -1051,6 +1059,7 @@ describe("ChatPage Workspace route", () => {
     captured.directHeaderProps = null;
     captured.messageListProps = null;
     captured.renderRealMessageList = false;
+    captured.renderRealComposerSection = false;
     captured.holdRealListFocusedMessageApplied = false;
     captured.omitFetchedAnchorFromWindow = false;
     captured.realListFocusedMessageApplied.mockReset();
@@ -2060,6 +2069,49 @@ describe("ChatPage Workspace route", () => {
     },
   );
 
+  it("preserves the protected draft typed while preparing the previous send", async () => {
+    const { owner, keyUuid, prepareFragmentKey } = seedPartialEdit();
+    const keyPreparation = createDeferred<string>();
+    prepareFragmentKey.mockReturnValueOnce(keyPreparation.promise);
+    const conversationId = `topic:${STREAM_UUID}:${TOPIC_UUID}`;
+    const first = "Public :::first secret:::";
+    const second = "Public :::next secret:::";
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+    await waitFor(() => expect(captured.composerProps?.secretFragments?.canRotate).toBe(true));
+    act(() => captured.composerProps?.onComposerValueChange(first));
+    const onSend = captured.composerProps?.onSend;
+    if (onSend == null) throw new Error("Expected composer");
+    let sendPromise: Promise<unknown> = Promise.resolve();
+    act(() => {
+      sendPromise = Promise.resolve(onSend(first));
+    });
+    await waitFor(() => expect(prepareFragmentKey).toHaveBeenCalledOnce());
+    act(() => captured.composerProps?.onComposerValueChange(second));
+    await act(async () => {
+      keyPreparation.resolve(keyUuid);
+      await sendPromise;
+    });
+
+    await expect(sendPromise).resolves.toEqual({ shouldClearComposer: false });
+    expect(captured.composerProps?.draftInitialValue).toBe(second);
+    expect(
+      selectWorkspaceComposerDraft(
+        useWorkspaceComposerDraftStore.getState(),
+        owner,
+        conversationId,
+      ),
+    ).toBeNull();
+    expect(captured.syncWorkspaceComposerDraft).not.toHaveBeenCalled();
+    expect(
+      Object.values(useMessengerOutboxStore.getState().outgoingMessagesByPlacementUuid)[0],
+    ).toMatchObject({
+      markdown: first,
+      encryption: { keyUuid, mode: "fragments" },
+    });
+  });
+
   it("retains uploaded attachments when async secret key preparation fails before enqueue", async () => {
     const prepareFragmentKey = vi.fn().mockRejectedValue(new Error("storage-failed"));
     captured.openRealChatSession.mockResolvedValue({
@@ -2799,7 +2851,7 @@ describe("ChatPage Workspace route", () => {
     expect(captured.messageListProps?.onOpenWorkspaceMedia).toEqual(expect.any(Function));
     expect(captured.messageListProps?.onOpenUnsupportedFilePreview).toEqual(expect.any(Function));
     expect(captured.composerProps?.readOnlyReason).toBeUndefined();
-    expect(captured.composerProps?.optimisticClearOnSend).toBe(true);
+    expect(captured.composerProps?.optimisticClearOnSend).toBe("after-acceptance");
     expect(captured.composerProps?.composerCapabilities?.upload?.mode).toBe("enabled");
     expect(captured.composerProps?.composerCapabilities?.preview?.mode).toBe("enabled");
     expect(captured.composerProps?.resolveMention?.("Bob Reed")).toMatchObject({
@@ -6904,6 +6956,56 @@ describe("ChatPage Workspace route", () => {
     expect(captured.sendMessengerMessage).not.toHaveBeenCalled();
   });
 
+  it("keeps the accepted upload when the outbox subscriber closes the composer before HTTP", async () => {
+    const file = new File(["pdf"], "report.pdf", { type: "application/pdf" });
+    const fileUuid = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    captured.uploadWorkspaceFileWithProgress.mockResolvedValueOnce({
+      uuid: fileUuid,
+      name: "report.pdf",
+      content_type: "application/pdf",
+      size_bytes: 3,
+    });
+    const request = createDeferred<never>();
+    captured.sendMessengerMessage.mockReturnValueOnce(request.promise);
+    const view = renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+    await waitFor(() =>
+      expect(captured.composerProps?.onAddAttachments).toEqual(expect.any(Function)),
+    );
+    act(() => captured.composerProps?.onAddAttachments?.([file]));
+    await waitFor(() => expect(captured.composerProps?.attachments?.[0]?.status).toBe("ready"));
+
+    const onSend = captured.composerProps?.onSend;
+    if (onSend == null) throw new Error("Expected composer");
+    const unsubscribe = useMessengerOutboxStore.subscribe((state) => {
+      if (Object.keys(state.outgoingMessagesByPlacementUuid).length === 0) return;
+      unsubscribe();
+      view.unmount();
+    });
+    let outcome: Promise<unknown> = Promise.resolve();
+    try {
+      act(() => {
+        outcome = Promise.resolve(onSend("attached message")).catch((error: unknown) => error);
+      });
+      await waitFor(() => expect(captured.sendMessengerMessage).toHaveBeenCalledOnce());
+      expect(view.queryByTestId("old-composer-section")).not.toBeInTheDocument();
+      await act(async () => {
+        request.reject(new Error("response was lost"));
+        await outcome;
+      });
+      await expect(outcome).resolves.toMatchObject({ message: t("message.sendFailed") });
+      const row = Object.values(
+        useMessengerOutboxStore.getState().outgoingMessagesByPlacementUuid,
+      )[0];
+      expect(row).toMatchObject({ status: "failed" });
+      expect(row?.markdown).toContain(`urn:file:${fileUuid}`);
+      expect(captured.deleteWorkspaceFile).not.toHaveBeenCalled();
+    } finally {
+      unsubscribe();
+    }
+  });
+
   it("retries a failed message POST without uploading the attachment again", async () => {
     const file = new File(["pdf"], "report.pdf", { type: "application/pdf" });
     captured.uploadWorkspaceFileWithProgress.mockResolvedValueOnce({
@@ -7802,9 +7904,13 @@ describe("ChatPage Workspace route", () => {
     act(() => {
       captured.composerProps?.onComposerValueChange("sent reply");
     });
-    act(() => {
-      captured.composerProps?.onClearReply("submit");
+    const onSend = captured.composerProps?.onSend;
+    const outgoingBody = captured.composerProps?.outgoingBodyOverride;
+    if (onSend == null || outgoingBody == null) throw new Error("Expected an outgoing reply");
+    await act(async () => {
+      await onSend(outgoingBody);
     });
+    act(() => captured.composerProps?.onClearReply("submit"));
 
     await waitFor(() => {
       expect(captured.composerProps?.workspaceReplySession).toEqual({
@@ -7865,7 +7971,10 @@ describe("ChatPage Workspace route", () => {
         });
         await waitFor(() => expect(captured.composerProps?.draftInitialValue).toBe(text));
         expect(captured.composerProps?.workspaceReplySession).toEqual(replySession);
-        act(() => captured.composerProps?.onClearReply("submit"));
+        act(() => {
+          captured.composerProps?.onClearReply();
+          captured.composerProps?.onComposerValueChange("");
+        });
       }
     },
   );
@@ -8355,6 +8464,92 @@ describe("ChatPage Workspace route", () => {
     );
   });
 
+  it.each(["late realtime", "retry", "new runtime"] as const)(
+    "reconciles an accepted draft after a failed HTTP request through %s",
+    async (result) => {
+      const session = createSession();
+      const ownerKey = workspaceRuntimeOwnerKey(session);
+      const conversationId = `topic:${STREAM_UUID}:${TOPIC_UUID}`;
+      const readDraft = () =>
+        selectWorkspaceComposerDraft(
+          useWorkspaceComposerDraftStore.getState(),
+          ownerKey,
+          conversationId,
+        );
+      useWorkspaceComposerDraftStore.getState().setDraft(ownerKey, conversationId, {
+        text: "accepted draft",
+        replySession: { tabs: [], activeTabId: null },
+      });
+      const acceptedDraft = readDraft();
+      captured.sendMessengerMessage.mockRejectedValueOnce(new Error("response was lost"));
+      renderWorkspaceChatPageWithShellContexts(
+        `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+      );
+      await waitFor(() => expect(captured.composerProps?.draftInitialValue).toBe("accepted draft"));
+      const onSend = captured.composerProps?.onSend;
+      if (onSend == null) throw new Error("Expected composer");
+      await act(async () => {
+        await expect(onSend("accepted draft")).rejects.toThrow(t("message.sendFailed"));
+      });
+      const outgoing = captured.messageListProps?.outgoingMessages?.[0];
+      if (outgoing == null) throw new Error("Expected failed outgoing");
+      expect(outgoing.status).toBe("failed");
+      expect(readDraft()?.snapshotId).toBe(acceptedDraft?.snapshotId);
+
+      if (result === "retry") {
+        act(() => captured.messageListProps?.onReplyMessage?.(MESSAGE_UUID));
+        act(() => captured.composerProps?.onComposerValueChange("newer reply"));
+        const newer = readDraft();
+        act(() => captured.messageListProps?.onRetryOutgoingMessage?.(outgoing.placementUuid));
+        await waitFor(() => expect(captured.messageListProps?.outgoingMessages).toEqual([]));
+        expect(captured.sendMessengerMessage).toHaveBeenCalledTimes(2);
+        expect(captured.sendMessengerMessage.mock.calls[1]?.[0]).toMatchObject({
+          canonicalMessageUuid: outgoing.canonicalMessageUuid,
+        });
+        expect(readDraft()).toEqual(newer);
+        expect(readDraft()?.content.replySession.tabs[0]?.answer).toBe("newer reply");
+        expect(captured.deleteWorkspaceComposerDraftFromServer).not.toHaveBeenCalled();
+        return;
+      }
+
+      if (result === "new runtime") {
+        act(() => {
+          useWorkspaceAuthStore.setState({
+            sessions: [{ ...session, runtimeGeneration: 3 }],
+            runtimeGeneration: 3,
+          });
+        });
+      }
+      const owner = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
+      if (owner == null) throw new Error("Expected runtime for realtime");
+      await act(async () => {
+        await createMessengerRealtimeActiveApplier({ cache: {} }).applyEvent(
+          {
+            type: "message",
+            kind: "message.created",
+            epoch_version: 1,
+            message: toMarkdownMessageDto(createSentMessage(outgoing)),
+          },
+          { owner, ownerKey, surface: "active", source: "websocket" },
+        );
+      });
+      expect(captured.messageListProps?.outgoingMessages).toEqual([]);
+      expect(captured.sendMessengerMessage).toHaveBeenCalledOnce();
+      if (result === "new runtime") {
+        expect(readDraft()?.snapshotId).toBe(acceptedDraft?.snapshotId);
+        expect(captured.deleteWorkspaceComposerDraftFromServer).not.toHaveBeenCalled();
+      } else {
+        expect(readDraft()).toBeNull();
+        expect(captured.composerProps?.draftInitialValue).toBe("");
+        expect(captured.deleteWorkspaceComposerDraftFromServer).toHaveBeenCalledWith(
+          expect.objectContaining({
+            draft: expect.objectContaining({ snapshotId: acceptedDraft?.snapshotId }),
+          }),
+        );
+      }
+    },
+  );
+
   it("keeps a newer draft when an earlier send succeeds", async () => {
     const ownerKey = workspaceRuntimeOwnerKey(createSession());
     const conversationId = `topic:${STREAM_UUID}:${TOPIC_UUID}`;
@@ -8452,6 +8647,102 @@ describe("ChatPage Workspace route", () => {
         conversationId,
       ),
     ).toBeNull();
+  });
+
+  it("clears the presented reply after enqueue and keeps its exact draft until confirmation", async () => {
+    captured.renderRealComposerSection = true;
+    const ownerKey = workspaceRuntimeOwnerKey(createSession());
+    const conversationId = `topic:${STREAM_UUID}:${TOPIC_UUID}`;
+    const request = createDeferred<never>();
+    captured.sendMessengerMessage.mockReturnValueOnce(request.promise);
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+    const textbox = await screen.findByRole("textbox");
+    await waitFor(() => expect(captured.composerProps?.draftSessionKey).toContain(":hydrated:"));
+    act(() => captured.messageListProps?.onReplyMessage?.(MESSAGE_UUID));
+    await waitFor(() => expect(captured.composerProps?.replyQuote).not.toBeNull());
+    fireEvent.change(textbox, { target: { value: "First reply" } });
+    const replied = selectWorkspaceComposerDraft(
+      useWorkspaceComposerDraftStore.getState(),
+      ownerKey,
+      conversationId,
+    );
+    if (replied == null) throw new Error("Expected an editable reply");
+
+    fireEvent.click(screen.getByRole("button", { name: t("chat.sendPlaceholder") }));
+    await waitFor(() => {
+      expect(captured.sendMessengerMessage).toHaveBeenCalledOnce();
+      expect(captured.composerProps?.replyQuote).toBeNull();
+      expect(textbox).toHaveValue("");
+      expect(textbox).not.toBeDisabled();
+    });
+    expect(useWorkspaceComposerDraftStore.getState().draftsByKey[replied.key]).toMatchObject({
+      snapshotId: replied.snapshotId,
+      disposition: "editable",
+      content: replied.content,
+    });
+    expect(captured.deleteWorkspaceComposerDraftFromServer).not.toHaveBeenCalled();
+
+    fireEvent.change(textbox, { target: { value: "Next message" } });
+    const next = selectWorkspaceComposerDraft(
+      useWorkspaceComposerDraftStore.getState(),
+      ownerKey,
+      conversationId,
+    );
+    expect(next?.draftUuid).not.toBe(replied.draftUuid);
+    expect(next?.content).toEqual({
+      text: "Next message",
+      replySession: { activeTabId: null, tabs: [] },
+    });
+    await act(async () => {
+      request.reject(new Error("response was lost"));
+      await request.promise.catch(() => undefined);
+    });
+
+    await waitFor(() =>
+      expect(captured.messageListProps?.outgoingMessages?.[0]?.status).toBe("failed"),
+    );
+    expect(useWorkspaceComposerDraftStore.getState().draftsByKey[replied.key]?.snapshotId).toBe(
+      replied.snapshotId,
+    );
+    expect(textbox).toHaveValue("Next message");
+    expect(captured.deleteWorkspaceComposerDraftFromServer).not.toHaveBeenCalled();
+  });
+
+  it("preserves the displayed text when an enqueue subscriber enters a newer draft", async () => {
+    captured.renderRealComposerSection = true;
+    const request = createDeferred<never>();
+    captured.sendMessengerMessage.mockReturnValueOnce(request.promise);
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+    const textbox = await screen.findByRole("textbox");
+    await waitFor(() => expect(captured.composerProps?.draftSessionKey).toContain(":hydrated:"));
+    fireEvent.change(textbox, { target: { value: "First draft" } });
+    const unsubscribe = useMessengerOutboxStore.subscribe((state) => {
+      if (Object.keys(state.outgoingMessagesByPlacementUuid).length === 0) return;
+      unsubscribe();
+      fireEvent.change(textbox, { target: { value: "Typed during enqueue" } });
+    });
+
+    try {
+      fireEvent.click(screen.getByRole("button", { name: t("chat.sendPlaceholder") }));
+      await waitFor(() => {
+        expect(captured.sendMessengerMessage).toHaveBeenCalledOnce();
+        expect(textbox).toHaveValue("Typed during enqueue");
+        expect(textbox).not.toBeDisabled();
+      });
+      expect(captured.composerProps?.draftInitialValue).toBe("Typed during enqueue");
+      await act(async () => {
+        request.reject(new Error("response was lost"));
+        await request.promise.catch(() => undefined);
+      });
+      expect(textbox).toHaveValue("Typed during enqueue");
+      expect(captured.deleteWorkspaceComposerDraftFromServer).not.toHaveBeenCalled();
+    } finally {
+      unsubscribe();
+    }
   });
 
   it("keeps a newer reply draft when an earlier send finishes", async () => {

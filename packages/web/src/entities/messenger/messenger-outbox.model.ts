@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { logStoreAction } from "~/shared/lib/logger";
+import { createLogger, logStoreAction } from "~/shared/lib/logger";
 import { encodeChatE2eePayload } from "./chat-e2ee-payload-adapters.lib";
 import { createMessengerMessageIdentity } from "./messenger-message-identity.lib";
 import type { ChatEncryptedPayload } from "./chat-e2ee.types";
@@ -13,6 +13,9 @@ const EMPTY_OUTGOING_MESSAGES: readonly MessengerOutgoingMessage[] = [];
 const EMPTY_PLACEMENT_UUIDS: readonly MessengerUuid[] = [];
 // Transient evidence for attempts awaiting their transport response.
 const receiptObservers = new Map<string, Set<{ confirmed: boolean }>>();
+// Завершение черновика живёт столько же, сколько операция в исходящих.
+const outgoingConfirmations = new Map<string, () => void>();
+const outboxLog = createLogger("messenger-outbox");
 
 // Receipts are scoped to the same outgoing operation across transport attempts.
 function outgoingReceiptKey(ownerKey: string, placementUuid: MessengerUuid): string {
@@ -45,7 +48,10 @@ export interface MessengerOutboxStoreState {
     readonly MessengerUuid[]
   >;
 
-  enqueueOutgoingMessage: (draft: MessengerOutgoingMessageDraft) => MessengerOutgoingMessage;
+  enqueueOutgoingMessage: (
+    draft: MessengerOutgoingMessageDraft,
+    onConfirmed?: () => void,
+  ) => MessengerOutgoingMessage;
   markOutgoingMessageSending: (
     placementUuid: MessengerUuid,
     patch?: { markdown?: string; sourceMarkdown?: string },
@@ -137,7 +143,7 @@ function createEmptyOutboxState(): Pick<
 export const useMessengerOutboxStore = create<MessengerOutboxStoreState>((set, get) => ({
   ...createEmptyOutboxState(),
 
-  enqueueOutgoingMessage(draft) {
+  enqueueOutgoingMessage(draft, onConfirmed) {
     const { canonicalMessageUuid, placementUuid } = createMessengerMessageIdentity(draft.topicUuid);
     const createdAt = draft.createdAt ?? new Date().toISOString();
     const message: MessengerOutgoingMessage = {
@@ -166,6 +172,9 @@ export const useMessengerOutboxStore = create<MessengerOutboxStoreState>((set, g
       conversationId: draft.conversationId,
       status: draft.status,
     });
+    // Подписчики могут увидеть и подтвердить строку прямо во время публикации.
+    if (onConfirmed != null)
+      outgoingConfirmations.set(outgoingReceiptKey(draft.ownerKey, placementUuid), onConfirmed);
     set((state) => ({
       outgoingMessagesByPlacementUuid: {
         ...state.outgoingMessagesByPlacementUuid,
@@ -265,6 +274,9 @@ export const useMessengerOutboxStore = create<MessengerOutboxStoreState>((set, g
 
   removeOutgoingMessage(placementUuid) {
     logStoreAction("messengerOutbox", "removeOutgoingMessage", { placementUuid });
+    const outgoing = get().outgoingMessagesByPlacementUuid[placementUuid];
+    if (outgoing != null)
+      outgoingConfirmations.delete(outgoingReceiptKey(outgoing.ownerKey, placementUuid));
     set((state) => removeOutgoingMessageFromState(state, placementUuid));
   },
 
@@ -276,6 +288,7 @@ export const useMessengerOutboxStore = create<MessengerOutboxStoreState>((set, g
 
       for (const message of Object.values(state.outgoingMessagesByPlacementUuid)) {
         if (message.ownerKey === ownerKey) {
+          outgoingConfirmations.delete(outgoingReceiptKey(ownerKey, message.placementUuid));
           nextPlacementUuidsByConversationId = removePlacementUuid(
             nextPlacementUuidsByConversationId,
             message.conversationId,
@@ -295,6 +308,7 @@ export const useMessengerOutboxStore = create<MessengerOutboxStoreState>((set, g
 
   clear() {
     logStoreAction("messengerOutbox", "clear", {});
+    outgoingConfirmations.clear();
     set(createEmptyOutboxState());
   },
 }));
@@ -361,7 +375,16 @@ export function settleMessengerOutgoingMessage(
   if (observers != null) {
     for (const receiver of observers) receiver.confirmed = true;
   }
+  const onConfirmed = outgoingConfirmations.get(outgoingReceiptKey(ownerKey, message.uuid));
   state.removeOutgoingMessage(message.uuid);
+  try {
+    onConfirmed?.();
+  } catch (error) {
+    // Завершение черновика не может отменить приём сообщения или курсора.
+    outboxLog.warn("Outgoing confirmation effect failed", {
+      errorType: error instanceof Error ? error.name : typeof error,
+    });
+  }
   return true;
 }
 

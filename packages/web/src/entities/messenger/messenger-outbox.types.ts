@@ -5,6 +5,8 @@ export interface MessengerSendOptions {
   createNewKey?: boolean;
   // Ownership transfers before network delivery finishes.
   onAccepted?: () => void;
+  onEditorAccepted?: (canClear: boolean) => void; // The current editor can leave its visual state unchanged.
+  beginNextDraftOnAcceptance?: boolean; // The current editor is ready for new input after enqueue.
 }
 
 export interface MessengerOutgoingEncryption {

@@ -12,6 +12,7 @@ import {
 import type { WorkspaceRuntimeContextGetter } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import type { MessengerPollAction } from "~/shared/api/messenger-messages.api";
+import { sendMessengerDraft } from "./messages-send-draft.lib";
 import {
   openMessengerMessageWindow,
   type MessengerMessageWindowOpenResult,
@@ -20,7 +21,10 @@ import {
   loadMessengerConversationMessages,
   loadMessengerMessageWindowPage,
 } from "./messenger-messages-loader.lib";
+import { deliverMessengerOutgoingMessage } from "./messenger-outbox-delivery.lib";
+import { useMessengerOutboxStore } from "./messenger-outbox.model";
 import { getMessengerPollVoters, mutateMessengerPoll } from "./messenger-poll-actions.lib";
+export { MessagesDraftSendError } from "./messages-send-draft.lib";
 import type {
   MessengerConversationMessagesResult,
   MessengerMessageWindowPageResult,
@@ -127,6 +131,11 @@ interface MessagesPolls {
 // Публичный доступ к сообщениям для одной сессии.
 export interface Messages {
   polls: MessagesPolls; // Команды опроса и чтение страницы голосовавших.
+  sendDraft(
+    options: Parameters<typeof sendMessengerDraft>[2],
+  ): ReturnType<typeof sendMessengerDraft>; // Предлагает версии черновика очереди.
+  retryOutgoing(placementUuid: MessengerUuid): Promise<boolean>; // Повтор той же операции доставки.
+  dismissOutgoing(placementUuid: MessengerUuid): void; // Удаление локальной строки этой сессии.
   getMessage(messageUuid: MessengerUuid): MessengerMessage | null; // Уже индексированное тело этой сессии.
   getWindow(conversationId: MessengerConversationId): MessageWindowSnapshot; // Стабильный снимок окна.
   // Вызывает обработчик при смене снимка и возвращает функцию отписки.
@@ -262,11 +271,30 @@ export function createMessages({
     };
   }
 
+  const isRuntimeCurrent = () =>
+    isWorkspaceRuntimeRequestContextCurrent(runtimeContext, getRuntimeContext);
+  const getOwnedOutgoing = (placementUuid: MessengerUuid) => {
+    if (!isRuntimeCurrent()) return null;
+    const outgoing =
+      useMessengerOutboxStore.getState().outgoingMessagesByPlacementUuid[placementUuid];
+    return outgoing?.ownerKey === ownerKey ? outgoing : null;
+  };
+
   return {
     polls: {
       mutate: (options) => mutateMessengerPoll({ ...options, runtimeContext, getRuntimeContext }),
       getVoters: (options) =>
         getMessengerPollVoters({ ...options, runtimeContext, getRuntimeContext }),
+    },
+    sendDraft: (options) => sendMessengerDraft(runtimeContext, isRuntimeCurrent, options),
+    retryOutgoing(placementUuid) {
+      return getOwnedOutgoing(placementUuid) == null
+        ? Promise.resolve(false)
+        : deliverMessengerOutgoingMessage(runtimeContext, placementUuid);
+    },
+    dismissOutgoing(placementUuid) {
+      if (getOwnedOutgoing(placementUuid) != null)
+        useMessengerOutboxStore.getState().removeOutgoingMessage(placementUuid);
     },
     getMessage(messageUuid) {
       return isWorkspaceRuntimeRequestContextCurrent(runtimeContext, getOwnedRuntimeContext)

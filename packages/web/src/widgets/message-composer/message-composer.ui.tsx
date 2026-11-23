@@ -599,7 +599,7 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
     },
     [imageAliases, onValueChange],
   );
-  const { value, setValue, isEditing } = useComposerDraft({
+  const { value, setValue, setDisplayedValue, isEditing } = useComposerDraft({
     initialValue,
     draftSessionKey,
     editSession,
@@ -1232,21 +1232,16 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
 
     setSendInFlight(true);
 
-    let sendResult: MessageComposerSendResult | void | Promise<void | MessageComposerSendResult>;
-    try {
-      sendResult = hasWorkspaceSecretDraft(bodyToSend)
-        ? onSend?.(bodyToSend, subject, filesToSend, { createNewKey: createNewSecretKey })
-        : onSend?.(bodyToSend, subject, filesToSend);
-    } catch {
-      setSendInFlight(false);
-      return;
-    }
+    const hasSecretDraft = hasWorkspaceSecretDraft(bodyToSend);
+    const clearOnAcceptance = optimisticClearOnSend === "after-acceptance" && !hasSecretDraft;
+    let acceptedLocally = false;
 
-    if (optimisticClearOnSend && !hasWorkspaceSecretDraft(bodyToSend)) {
+    function clearAfterOptimisticSend(displayOnly: boolean): void {
       setSendInFlight(false);
       resetMentionState();
       resetWorkspaceReferenceState();
-      setValue("");
+      if (displayOnly) setDisplayedValue("");
+      else setValue("");
       setFiles([]);
       setMode("write");
       setSendFocusRequest((request) => request + 1);
@@ -1257,6 +1252,44 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
       setScheduleMenuOpen(false);
       setSavedSnippetsMenuOpen(false);
       setMediaPickerOpen(false);
+    }
+
+    let sendResult: MessageComposerSendResult | void | Promise<void | MessageComposerSendResult>;
+    try {
+      if (hasSecretDraft) {
+        sendResult = onSend?.(bodyToSend, subject, filesToSend, {
+          createNewKey: createNewSecretKey,
+        });
+      } else if (clearOnAcceptance) {
+        sendResult = onSend?.(bodyToSend, subject, filesToSend, {
+          beginNextDraftOnAcceptance: true,
+          onEditorAccepted: (canClear) => {
+            if (activeSendScopeRef.current !== sendScope) return;
+            acceptedLocally = true;
+            if (canClear) clearAfterOptimisticSend(true);
+            else setSendInFlight(false);
+          },
+        });
+      } else {
+        sendResult = onSend?.(bodyToSend, subject, filesToSend);
+      }
+    } catch {
+      setSendInFlight(false);
+      return;
+    }
+
+    if (clearOnAcceptance) {
+      const releaseRejectedSend = () => {
+        if (!acceptedLocally) {
+          if (activeSendScopeRef.current !== sendScope) suppressEnableFocusRef.current = true;
+          setSendInFlight(false);
+        }
+      };
+      void Promise.resolve(sendResult).then(releaseRejectedSend, releaseRejectedSend);
+      return;
+    }
+    if (optimisticClearOnSend === true && !hasSecretDraft) {
+      clearAfterOptimisticSend(false);
       void Promise.resolve(sendResult).catch(() => undefined);
       return;
     }
@@ -2035,7 +2068,7 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
         inlineImageLocalIds={inlineImageLocalIds}
         uploadProgress={uploadProgress}
         uploadProgressPercent={uploadProgressPercent}
-        separateUploadProgress={optimisticClearOnSend}
+        separateUploadProgress={Boolean(optimisticClearOnSend)}
         files={files}
         filePreviewUrls={filePreviewUrls}
         showFiles={mode === "write"}

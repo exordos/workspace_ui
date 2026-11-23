@@ -9,20 +9,9 @@ import React, {
 } from "react";
 import { NavigationType, useLocation, useNavigate, useNavigationType } from "react-router-dom";
 import {
-  deleteWorkspaceComposerDraftFromServer,
-  syncWorkspaceComposerDraft,
-  protectWorkspaceComposerDraft,
-} from "~/entities/composer-draft/composer-draft-sync.lib";
-import {
-  createWorkspaceComposerDraftKey,
-  EMPTY_WORKSPACE_COMPOSER_DRAFT_CONTENT,
-  isWorkspaceComposerDraftContentEmpty,
-  hasWorkspaceComposerDraftSecret,
-} from "~/entities/composer-draft/composer-draft.lib";
-import {
-  selectWorkspaceComposerDraft,
-  useWorkspaceComposerDraftStore,
-} from "~/entities/composer-draft/composer-draft.model";
+  createWorkspaceComposerDrafts,
+  getEmptyWorkspaceComposerDraftSnapshot,
+} from "~/entities/composer-draft/composer-draft-actions.lib";
 import type { WorkspaceComposerDraftContent } from "~/entities/composer-draft/composer-draft.types";
 import {
   selectWorkspaceMessageById,
@@ -34,7 +23,11 @@ import {
   decryptRealChatMessage,
 } from "~/entities/messenger/chat-crypto-runtime.lib";
 import { acquireChatCryptoSession } from "~/entities/messenger/chat-crypto-session.lib";
-import { createMessages, EMPTY_MESSAGE_WINDOW } from "~/entities/messenger/messages";
+import {
+  createMessages,
+  EMPTY_MESSAGE_WINDOW,
+  MessagesDraftSendError,
+} from "~/entities/messenger/messages";
 import { selectWorkspaceChatHeaderView } from "~/entities/messenger/messenger-chat-header.lib";
 import {
   conversationIdForStream,
@@ -50,7 +43,6 @@ import {
 } from "~/entities/messenger/messenger-message-actions.lib";
 import { canPrepareMessengerEncryptedMessage } from "~/entities/messenger/messenger-message-content.lib";
 import { toggleMessengerMessageReaction } from "~/entities/messenger/messenger-message-reactions-actions.lib";
-import { deliverMessengerOutgoingMessage } from "~/entities/messenger/messenger-outbox-delivery.lib";
 import { useMessengerOutboxStore } from "~/entities/messenger/messenger-outbox.model";
 import type {
   MessengerSendOptions,
@@ -171,7 +163,6 @@ import {
   createWorkspaceFileResourceCache,
   type WorkspaceFileResourceCache,
 } from "~/shared/lib/workspace-file-loader.lib";
-import { isWorkspaceMessageWithinLimit } from "~/shared/lib/workspace-message-limits.lib";
 import {
   buildWorkspaceMessagePermalink,
   resolveWorkspaceMessageWebOrigin,
@@ -276,7 +267,6 @@ interface WorkspaceEncryptedComposerState {
 interface WorkspaceComposerSendCleanup {
   ownerKey: string;
   conversationId: string;
-  snapshotId: string;
   ignoresValueClear: boolean;
   ignoresReplyClear: boolean;
 }
@@ -320,8 +310,10 @@ const EMPTY_OUTGOING_MESSAGES: MessengerOutgoingMessage[] = [];
 const EMPTY_OUTGOING_MESSAGE_PLACEMENT_UUIDS: readonly MessengerUuid[] = [];
 const EMPTY_USERS_BY_ID: UsersById = {};
 const WORKSPACE_COMPOSER_EDIT_SESSION_ID = 1;
+// Нет владельца черновика для редактора вне обычного разговора.
+const subscribeEmptySnapshot = () => () => undefined;
+
 const workspacePreviewLoaderLog = createLogger("chat-page:workspace-preview-loader");
-const workspaceComposerDraftLog = createLogger("chat-page:workspace-composer-draft");
 
 const noop = () => undefined;
 
@@ -607,10 +599,6 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
   );
   const [successfullyHydratedComposerDraftScopeKey, setSuccessfullyHydratedComposerDraftScopeKey] =
     useState<string | null>(null);
-  const [workspaceComposerDraftShadow, setWorkspaceComposerDraftShadow] = useState<{
-    scopeKey: string;
-    content: WorkspaceComposerDraftContent;
-  } | null>(null);
   const [workspaceReplyTabFocusKeySuppressed, setWorkspaceReplyTabFocusKeySuppressed] =
     useState(false);
   const [scrollToBottomAfterSendNonce, setScrollToBottomAfterSendNonce] = useState(0);
@@ -673,10 +661,6 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
     [],
   );
   const workspaceComposerSendCleanupRef = useRef<WorkspaceComposerSendCleanup | null>(null);
-  const workspaceComposerDraftShadowRef = useRef<{
-    scopeKey: string;
-    content: WorkspaceComposerDraftContent;
-  } | null>(null);
   const workspaceReplyHandoffClaimRef = useRef<WorkspaceReplyHandoffClaim | null>(null);
   const workspaceReplyTabSequenceRef = useRef(0);
   const workspaceReplyEditRestoreController = useMemo(
@@ -1035,25 +1019,20 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
     },
     [conversationId, runtimeContext, workspaceReplyEditRestoreController],
   );
-  const workspaceComposerDraftScopeKey =
-    ownerKey == null || conversationId == null || stream?.encryption === true
-      ? null
-      : createWorkspaceComposerDraftKey(ownerKey, conversationId);
+  const drafts = useMemo(
+    () =>
+      runtimeContext == null || conversationId == null || stream?.encryption === true
+        ? null
+        : createWorkspaceComposerDrafts(
+            { runtimeContext, getRuntimeContext: getCurrentWorkspaceRuntimeContext },
+            conversationId,
+          ),
+    [conversationId, getCurrentWorkspaceRuntimeContext, runtimeContext, stream?.encryption],
+  );
+  const workspaceComposerDraftScopeKey = drafts?.scopeKey ?? null;
   const requestedWorkspaceDraftUuid = useMemo(
     () => new URLSearchParams(location.search).get("draft_uuid"),
     [location.search],
-  );
-  const workspaceComposerDraft = useWorkspaceComposerDraftStore((state) =>
-    selectWorkspaceComposerDraft(
-      state,
-      ownerKey,
-      stream?.encryption === true ? null : conversationId,
-    ),
-  );
-  const privateComposerDraftShadow = useWorkspaceComposerDraftStore((state) =>
-    workspaceComposerDraftScopeKey == null
-      ? null
-      : (state.privateShadowsByConversationKey[workspaceComposerDraftScopeKey]?.content ?? null),
   );
   const composerDraftTopicsById = useMessengerStore((state) => state.topicsById);
   const composerDraftTarget = useMemo(() => {
@@ -1066,126 +1045,21 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
       ? null
       : { streamUuid: selection.streamUuid, topicUuid: defaultTopic.uuid };
   }, [composerDraftTopicsById, selection]);
-  const workspaceComposerContent =
-    privateComposerDraftShadow ??
-    (workspaceComposerDraftShadow?.scopeKey === workspaceComposerDraftScopeKey
-      ? workspaceComposerDraftShadow.content
-      : (workspaceComposerDraft?.content ?? EMPTY_WORKSPACE_COMPOSER_DRAFT_CONTENT));
+  const { content: workspaceComposerContent, completedVisit: completedComposerDraftVisit } =
+    useSyncExternalStore(
+      drafts?.subscribe ?? subscribeEmptySnapshot,
+      drafts?.getSnapshot ?? getEmptyWorkspaceComposerDraftSnapshot,
+      getEmptyWorkspaceComposerDraftSnapshot,
+    );
   const isRestoredWorkspaceReplyEdit = composerEditSession?.preserveWorkspaceReplyContext === true;
   const workspaceReplySession: WorkspaceReplySession = isRestoredWorkspaceReplyEdit
     ? (restoredWorkspaceReplySession ?? EMPTY_WORKSPACE_REPLY_SESSION)
     : workspaceComposerContent.replySession;
   const workspaceComposerText = workspaceComposerContent.text;
-  const setComposerDraftShadow = useCallback(
-    (scopeKey: string, content: WorkspaceComposerDraftContent): void => {
-      if (
-        ownerKey == null ||
-        conversationId == null ||
-        !isWorkspaceRuntimeRequestContextCurrent(runtimeContext, getCurrentWorkspaceRuntimeContext)
-      )
-        return;
-      useWorkspaceComposerDraftStore
-        .getState()
-        .setPrivateDraftShadow(ownerKey, conversationId, content);
-      // Protected text has one owner-scoped memory source, including across page remounts.
-      const next = hasWorkspaceComposerDraftSecret(content) ? null : { scopeKey, content };
-      workspaceComposerDraftShadowRef.current = next;
-      setWorkspaceComposerDraftShadow(next);
-    },
-    [conversationId, getCurrentWorkspaceRuntimeContext, ownerKey, runtimeContext],
-  );
   const updateWorkspaceComposerDraft = useCallback(
-    (
-      update: (content: WorkspaceComposerDraftContent) => WorkspaceComposerDraftContent | null,
-    ): boolean => {
-      if (ownerKey == null || conversationId == null || workspaceComposerDraftScopeKey == null)
-        return false;
-      if (
-        !isWorkspaceRuntimeRequestContextCurrent(runtimeContext, getCurrentWorkspaceRuntimeContext)
-      )
-        return false;
-
-      const currentDraft = selectWorkspaceComposerDraft(
-        useWorkspaceComposerDraftStore.getState(),
-        ownerKey,
-        conversationId,
-      );
-      const currentContent =
-        useWorkspaceComposerDraftStore.getState().privateShadowsByConversationKey[
-          workspaceComposerDraftScopeKey
-        ]?.content ??
-        (workspaceComposerDraftShadowRef.current?.scopeKey === workspaceComposerDraftScopeKey
-          ? workspaceComposerDraftShadowRef.current.content
-          : (currentDraft?.content ?? EMPTY_WORKSPACE_COMPOSER_DRAFT_CONTENT));
-      const nextContent = update(currentContent);
-      if (nextContent == null) return false;
-      setComposerDraftShadow(workspaceComposerDraftScopeKey, nextContent);
-      if (hasWorkspaceComposerDraftSecret(nextContent)) {
-        if (currentDraft != null && runtimeContext != null) {
-          protectWorkspaceComposerDraft({
-            runtimeContext,
-            getRuntimeContext: () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
-            draft: currentDraft,
-          });
-        } else if (currentDraft != null) {
-          useWorkspaceComposerDraftStore.getState().protectDraft(ownerKey, currentDraft.draftUuid);
-        }
-        return true;
-      }
-
-      if (isWorkspaceComposerDraftContentEmpty(nextContent)) {
-        if (currentDraft == null) return true;
-
-        // Keep the record until the entity queue has either deleted it or
-        // recorded a conflict. Removing it here would lose the ETag needed
-        // after an in-flight POST/PUT.
-        if (runtimeContext != null) {
-          const deletionQueued = deleteWorkspaceComposerDraftFromServer({
-            runtimeContext,
-            getRuntimeContext: () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
-            draft: currentDraft,
-          });
-          if (!deletionQueued) {
-            workspaceComposerDraftLog.warn("Draft deletion was rejected after composer clear", {
-              draftUuid: currentDraft.draftUuid,
-              syncStatus: currentDraft.syncStatus,
-              disposition: currentDraft.disposition,
-            });
-          }
-          useWorkspaceComposerDraftStore
-            .getState()
-            .completeDraftVisit(ownerKey, conversationId, currentDraft.draftUuid);
-          return true;
-        }
-
-        useWorkspaceComposerDraftStore
-          .getState()
-          .clearDraftIfSnapshotMatches(ownerKey, conversationId, currentDraft.snapshotId);
-        return true;
-      }
-
-      const nextDraft = useWorkspaceComposerDraftStore
-        .getState()
-        .setDraft(ownerKey, conversationId, nextContent, composerDraftTarget ?? undefined);
-      if (nextDraft == null) return false;
-      if (runtimeContext == null) return true;
-
-      void syncWorkspaceComposerDraft({
-        runtimeContext,
-        getRuntimeContext: () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
-        draft: nextDraft,
-      });
-      return true;
-    },
-    [
-      composerDraftTarget,
-      conversationId,
-      getCurrentWorkspaceRuntimeContext,
-      ownerKey,
-      runtimeContext,
-      setComposerDraftShadow,
-      workspaceComposerDraftScopeKey,
-    ],
+    (update: (content: WorkspaceComposerDraftContent) => WorkspaceComposerDraftContent | null) =>
+      drafts?.update(update, composerDraftTarget ?? undefined) ?? false,
+    [composerDraftTarget, drafts],
   );
   const invalidateWorkspaceReplyHandoffClaim = useCallback(() => {
     const claim = workspaceReplyHandoffClaimRef.current;
@@ -1618,66 +1492,31 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
   }, [conversationId, runtimeContext, workspaceFileResourceCache]);
 
   useEffect(() => {
-    if (ownerKey == null || conversationId == null || workspaceComposerDraftScopeKey == null) {
-      setHydratedComposerDraftScopeKey(null);
-      setSuccessfullyHydratedComposerDraftScopeKey(null);
-      workspaceComposerDraftShadowRef.current = null;
-      setWorkspaceComposerDraftShadow(null);
-      return;
-    }
-
-    let isCurrentScope = true;
     setHydratedComposerDraftScopeKey(null);
     setSuccessfullyHydratedComposerDraftScopeKey(null);
+    if (drafts == null) return;
 
-    void useWorkspaceComposerDraftStore
-      .getState()
-      .hydrateDraft(ownerKey, conversationId, requestedWorkspaceDraftUuid)
+    let isCurrentScope = true;
+    void drafts
+      .hydrate(requestedWorkspaceDraftUuid, () => isCurrentScope)
       .then(
-        (draft) => {
+        () => {
           if (!isCurrentScope) return;
-
-          const localShadow = workspaceComposerDraftShadowRef.current;
-          setComposerDraftShadow(
-            workspaceComposerDraftScopeKey,
-            useWorkspaceComposerDraftStore.getState().privateShadowsByConversationKey[
-              workspaceComposerDraftScopeKey
-            ]?.content ??
-              (localShadow?.scopeKey === workspaceComposerDraftScopeKey
-                ? localShadow.content
-                : (draft?.content ?? EMPTY_WORKSPACE_COMPOSER_DRAFT_CONTENT)),
-          );
-          setSuccessfullyHydratedComposerDraftScopeKey(workspaceComposerDraftScopeKey);
-          setHydratedComposerDraftScopeKey(workspaceComposerDraftScopeKey);
+          setSuccessfullyHydratedComposerDraftScopeKey(drafts.scopeKey);
+          setHydratedComposerDraftScopeKey(drafts.scopeKey);
         },
         () => {
           if (!isCurrentScope) return;
           invalidateWorkspaceReplyHandoffClaim();
-          setHydratedComposerDraftScopeKey(workspaceComposerDraftScopeKey);
+          setHydratedComposerDraftScopeKey(drafts.scopeKey);
         },
       );
 
     return () => {
       isCurrentScope = false;
-      const selected = selectWorkspaceComposerDraft(
-        useWorkspaceComposerDraftStore.getState(),
-        ownerKey,
-        conversationId,
-      );
-      if (selected != null) {
-        void useWorkspaceComposerDraftStore.getState().flushDraft(ownerKey, selected.draftUuid);
-      }
-      useWorkspaceComposerDraftStore.getState().leaveConversation(ownerKey, conversationId);
+      drafts.leave();
     };
-  }, [
-    conversationId,
-    invalidateWorkspaceReplyHandoffClaim,
-    ownerKey,
-    runtimeContext?.runtimeGeneration,
-    requestedWorkspaceDraftUuid,
-    setComposerDraftShadow,
-    workspaceComposerDraftScopeKey,
-  ]);
+  }, [drafts, invalidateWorkspaceReplyHandoffClaim, requestedWorkspaceDraftUuid]);
 
   useLayoutEffect(() => {
     workspaceChatUiActionEpochRef.current += 1;
@@ -1911,12 +1750,6 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
     pollAttemptRef.current = null;
   }, [conversationId, ownerKey, runtimeContext?.runtimeGeneration]);
 
-  const deliverOutgoingMessage = useCallback(
-    (placementUuid: MessengerUuid) =>
-      deliverMessengerOutgoingMessage(runtimeContext, placementUuid),
-    [runtimeContext],
-  );
-
   const encryptedComposerCapabilities = useMemo<MessageComposerCapabilities>(
     () => ({
       ...workspaceComposerCapabilities,
@@ -1998,208 +1831,103 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
   );
   const handleSend = useCallback(
     (content: string, _subject?: string, _files?: File[], options?: MessengerSendOptions) => {
-      const hasSecrets = stream?.encryption !== true && hasWorkspaceSecretDraft(content);
-      let encryption: MessengerOutgoingMessage["encryption"] | null =
-        stream?.encryption === true
-          ? encryptedChat.session != null && encryptedChat.sendKeyUuid != null
-            ? {
-                keyUuid: encryptedChat.sendKeyUuid,
-                deviceId: encryptedChat.session.device.deviceId,
-              }
-            : null
-          : undefined;
-      if (encryption === null && !hasSecrets) {
-        const error = t("e2ee.cryptoUnavailable");
-        setSendError(error);
-        throw new Error(error);
-      }
       if (workspaceReplyHandoffBlocksSend || workspaceReplyHandoffClaimRef.current != null) {
         return { shouldClearComposer: false } satisfies MessageComposerSendResult;
       }
-      // The shared composer shell sends only through Workspace POST /messages/.
       setSendError(null);
-      if (!isWorkspaceMessageWithinLimit(content)) {
-        const error = t("composer.messageTooLong");
-        setSendError(error);
-        throw new Error(error);
+      const isUiActionCurrent = captureWorkspaceChatUiAction();
+      function rejectSend(message: string): never {
+        if (isUiActionCurrent()) setSendError(message);
+        throw new Error(message);
       }
-      if (runtimeContext == null) {
-        const error = t("workspaceMessenger.runtimeUnavailable");
-        setSendError(error);
-        throw new Error(error);
-      }
-      if (conversationId == null) {
-        const error = t("workspaceMessenger.routeUnsupportedForSend");
-        setSendError(error);
-        throw new Error(error);
-      }
-
+      if (messages == null || ownerKey == null)
+        rejectSend(t("workspaceMessenger.runtimeUnavailable"));
+      if (conversationId == null) rejectSend(t("workspaceMessenger.routeUnsupportedForSend"));
       const target = resolveSendTarget();
-      if (target.status === "blocked") {
-        setSendError(target.error);
-        throw new Error(target.error);
+      if (target.status === "blocked") return rejectSend(target.error);
+
+      function handlePreparationError(error: unknown): never {
+        if (error instanceof MessagesDraftSendError) {
+          if (error.reason === "too-long") return rejectSend(t("composer.messageTooLong"));
+          if (error.reason === "invalid-secret") return rejectSend(t("composer.invalidSecret"));
+          if (error.reason === "stale") throw new Error(t("workspaceMessenger.runtimeUnavailable"));
+          return rejectSend(t("e2ee.cryptoUnavailable"));
+        }
+        throw error;
       }
 
-      const privateDraftScopeKey = createWorkspaceComposerDraftKey(
-        workspaceRuntimeOwnerKey(runtimeContext),
-        conversationId,
-      );
-      const privateDraftAtSend =
-        useWorkspaceComposerDraftStore.getState().privateShadowsByConversationKey[
-          privateDraftScopeKey
-        ]?.content;
+      // Эти колбэки чистят только своё представление. Версию уже завершила модель.
+      function completeComposer(shouldClear: boolean): MessageComposerSendResult | void {
+        if (!shouldClear || !isUiActionCurrent()) return { shouldClearComposer: false };
+        if (drafts == null || ownerKey == null || conversationId == null) return;
+        const cleanup: WorkspaceComposerSendCleanup = {
+          ownerKey,
+          conversationId,
+          ignoresValueClear: true,
+          ignoresReplyClear: true,
+        };
+        workspaceComposerSendCleanupRef.current = cleanup;
+        window.setTimeout(() => {
+          if (workspaceComposerSendCleanupRef.current === cleanup)
+            workspaceComposerSendCleanupRef.current = null;
+        }, 0);
+      }
 
-      return (async () => {
-        if (hasSecrets) {
-          const isCurrent = captureWorkspaceChatUiAction();
-          try {
-            try {
-              parseWorkspaceSecretDraft(content);
-            } catch {
-              setSendError(t("composer.invalidSecret"));
-              throw new Error(t("composer.invalidSecret"));
-            }
-            const session = encryptedChat.session;
-            if (session == null) throw new Error(t("e2ee.cryptoUnavailable"));
-            const keyUuid = await session.prepareFragmentKey(options?.createNewKey === true);
-            if (keyUuid == null || !isCurrent()) throw new Error(t("e2ee.cryptoUnavailable"));
-            encryption = { keyUuid, deviceId: session.device.deviceId, mode: "fragments" as const };
-          } catch (error) {
-            if (isCurrent())
-              setSendError(
-                error instanceof Error && error.message === t("composer.invalidSecret")
-                  ? error.message
-                  : t("e2ee.cryptoUnavailable"),
-              );
-            throw error;
-          }
-        }
-        const sendOwnerKey = workspaceRuntimeOwnerKey(runtimeContext);
-        const sentDraftScopeKey = createWorkspaceComposerDraftKey(sendOwnerKey, conversationId);
-        if (content.trim().length === 0) return;
-        takeOpeningControl();
-        const draftAtSend =
-          encryption == null
-            ? selectWorkspaceComposerDraft(
-                useWorkspaceComposerDraftStore.getState(),
-                sendOwnerKey,
-                conversationId,
-              )
-            : null;
-        const isUiActionCurrent = captureWorkspaceChatUiAction();
-
-        const outgoing = useMessengerOutboxStore.getState().enqueueOutgoingMessage({
-          ownerKey: sendOwnerKey,
-          conversationId: target.includeStreamConversation
-            ? conversationIdForStream(target.streamUuid)
-            : conversationIdForTopic(target.streamUuid, target.topicUuid),
-          projectId: runtimeContext.projectId,
-          streamUuid: target.streamUuid,
-          topicUuid: target.topicUuid,
-          authorUuid: runtimeContext.userUuid,
+      try {
+        const accepted = messages.sendDraft({
+          target,
           markdown: content,
-          sourceMarkdown: content,
-          status: "sending",
-          includeStreamConversation: target.includeStreamConversation,
-          ...(encryption == null ? {} : { encryption }),
+          draft: drafts?.captureSubmission(),
+          crypto: {
+            encrypted: stream?.encryption === true,
+            keyUuid: encryptedChat.sendKeyUuid ?? null,
+            session: encryptedChat.session,
+            createNewKey: options?.createNewKey,
+          },
+          isIntentCurrent: isUiActionCurrent,
+          beginNextDraftOnAcceptance: options?.beginNextDraftOnAcceptance,
+          onAccepted: (canClearEditor) => {
+            options?.onAccepted?.();
+            if (
+              !isUiActionCurrent() ||
+              !isWorkspaceRuntimeRequestContextCurrent(
+                runtimeContext,
+                getCurrentWorkspaceRuntimeContext,
+              )
+            )
+              return;
+            options?.onEditorAccepted?.(canClearEditor);
+            takeOpeningControl();
+            setScrollToBottomAfterSendNonce((value) => value + 1);
+          },
         });
-
-        const shouldClearPrivateComposer =
-          !hasSecrets ||
-          useWorkspaceComposerDraftStore.getState().privateShadowsByConversationKey[
-            privateDraftScopeKey
-          ]?.content === privateDraftAtSend;
-        if (hasSecrets && shouldClearPrivateComposer) {
-          // The outbox now owns the sent snapshot; a newer draft must survive key preparation.
-          setComposerDraftShadow(sentDraftScopeKey, EMPTY_WORKSPACE_COMPOSER_DRAFT_CONTENT);
-        }
-        options?.onAccepted?.();
-        // Scroll right after the local row appears. A later server snapshot can
-        // move it by backend created_at, but the user already sees the send happened.
-        setScrollToBottomAfterSendNonce((value) => value + 1);
-        const delivery = deliverOutgoingMessage(outgoing.placementUuid).then((sent) => {
-          if (!sent) {
-            throw new Error(t("message.sendFailed"));
-          }
-          if (draftAtSend != null) {
-            const currentDraft = selectWorkspaceComposerDraft(
-              useWorkspaceComposerDraftStore.getState(),
-              sendOwnerKey,
-              conversationId,
-            );
-            if (currentDraft?.snapshotId !== draftAtSend.snapshotId) {
-              return { shouldClearComposer: false } satisfies MessageComposerSendResult;
-            }
-            if (workspaceComposerDraftShadowRef.current?.scopeKey === sentDraftScopeKey) {
-              setComposerDraftShadow(sentDraftScopeKey, EMPTY_WORKSPACE_COMPOSER_DRAFT_CONTENT);
-            }
-            if (isUiActionCurrent()) {
-              // MessageComposer clears its value and reply after this promise resolves.
-              // Both callbacks still close over the sent composer state. Only consume that
-              // cleanup while the composer that started the send is still current.
-              workspaceComposerSendCleanupRef.current = {
-                ownerKey: sendOwnerKey,
-                conversationId,
-                snapshotId: draftAtSend.snapshotId,
-                ignoresValueClear: true,
-                ignoresReplyClear: true,
-              };
-              window.setTimeout(() => {
-                const pendingCleanup = workspaceComposerSendCleanupRef.current;
-                if (pendingCleanup?.snapshotId === draftAtSend.snapshotId) {
-                  workspaceComposerSendCleanupRef.current = null;
-                }
-              }, 0);
-            }
-            // The message is already sent. Deleting its draft must not delay
-            // clearing the composer and must wait for an in-flight POST/PUT.
-            // The queue retains conflict data if the DELETE receives 412.
-            const deletionQueued = deleteWorkspaceComposerDraftFromServer({
-              runtimeContext,
-              getRuntimeContext: () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
-              draft: currentDraft,
-            });
-            if (!deletionQueued) {
-              workspaceComposerDraftLog.warn("Draft deletion was rejected after message send", {
-                draftUuid: currentDraft.draftUuid,
-                syncStatus: currentDraft.syncStatus,
-                disposition: currentDraft.disposition,
-              });
-            }
-            useWorkspaceComposerDraftStore
-              .getState()
-              .completeDraftVisit(sendOwnerKey, conversationId, currentDraft.draftUuid);
-            if (!isUiActionCurrent()) {
-              return { shouldClearComposer: false } satisfies MessageComposerSendResult;
-            }
-          } else if (encryption == null && content.trim().length > 0) {
-            workspaceComposerDraftLog.warn("Message was sent without an active draft", {
-              reason: "draft-delete-not-queued",
-            });
-          }
-        });
-        if (hasSecrets) {
-          // Key preparation is finished and the common outbox owns delivery now.
-          void delivery.catch(() => undefined);
-          return shouldClearPrivateComposer
-            ? undefined
-            : ({ shouldClearComposer: false } satisfies MessageComposerSendResult);
-        }
-        return delivery;
-      })();
+        if (accepted == null) return;
+        return Promise.resolve(accepted).then(({ clearOnAcceptance, delivery }) => {
+          // Для фрагментов редактор ждёт подготовку, а сама доставка принадлежит исходящим.
+          if (clearOnAcceptance != null) return completeComposer(clearOnAcceptance);
+          return delivery.then(({ delivered, shouldClearComposer }) => {
+            if (!delivered) throw new Error(t("message.sendFailed"));
+            return completeComposer(shouldClearComposer);
+          });
+        }, handlePreparationError);
+      } catch (error) {
+        return handlePreparationError(error);
+      }
     },
     [
-      conversationId,
       captureWorkspaceChatUiAction,
-      deliverOutgoingMessage,
+      conversationId,
+      drafts,
+      encryptedChat.sendKeyUuid,
+      encryptedChat.session,
+      getCurrentWorkspaceRuntimeContext,
+      messages,
+      ownerKey,
       resolveSendTarget,
       runtimeContext,
-      setComposerDraftShadow,
       stream?.encryption,
-      encryptedChat.session,
-      encryptedChat.sendKeyUuid,
-      workspaceReplyHandoffBlocksSend,
       takeOpeningControl,
+      workspaceReplyHandoffBlocksSend,
     ],
   );
 
@@ -2397,15 +2125,16 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
   const handleRetryOutgoingMessage = useCallback(
     (placementUuid: MessengerUuid) => {
       takeOpeningControl();
-      deliverOutgoingMessage(placementUuid).catch(() => undefined);
+      void messages?.retryOutgoing(placementUuid).catch(() => undefined);
       setScrollToBottomAfterSendNonce((value) => value + 1);
     },
-    [deliverOutgoingMessage, takeOpeningControl],
+    [messages, takeOpeningControl],
   );
 
-  const handleRemoveOutgoingMessage = useCallback((placementUuid: MessengerUuid) => {
-    useMessengerOutboxStore.getState().removeOutgoingMessage(placementUuid);
-  }, []);
+  const handleRemoveOutgoingMessage = useCallback(
+    (placementUuid: MessengerUuid) => messages?.dismissOutgoing(placementUuid),
+    [messages],
+  );
 
   const handleSubmitEditFinalMarkdown = useCallback(
     async (_editSessionId: number, markdown: string) => {
@@ -3046,7 +2775,6 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
         return;
       }
       if (reason === "submit") {
-        updateWorkspaceComposerDraft(() => EMPTY_WORKSPACE_COMPOSER_DRAFT_CONTENT);
         setWorkspaceReplyTabFocusKeySuppressed(false);
         return;
       }
@@ -4078,7 +3806,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
   const workspaceComposerDraftSessionKey =
     workspaceComposerDraftScopeKey == null
       ? null
-      : `${workspaceComposerDraftScopeKey}:${
+      : `${workspaceComposerDraftScopeKey}:${completedComposerDraftVisit ?? ""}:${
           hydratedComposerDraftScopeKey === workspaceComposerDraftScopeKey ? "hydrated" : "initial"
         }:${activeWorkspaceReplyTab == null ? "text" : `reply:${activeWorkspaceReplyTab.id}`}`;
   const activeWorkspaceReplyQuote = useMemo<ReplyQuote | null>(
@@ -4574,7 +4302,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
           streamSlug={undefined}
           onExpandStreamTopics={noop}
           uploadProgress={null}
-          optimisticClearOnSend
+          optimisticClearOnSend="after-acceptance"
           sendDisabled={workspaceReplyHandoffBlocksSend}
           onCreateCallLink={undefined}
           onCancelUpload={noop}
@@ -4846,7 +4574,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
             onExpandStreamTopics={noop}
             uploadProgress={null}
             onSend={handleSend}
-            optimisticClearOnSend
+            optimisticClearOnSend="after-acceptance"
             sendDisabled={workspaceReplyHandoffBlocksSend}
             onCreateCallLink={undefined}
             onCancelUpload={noop}

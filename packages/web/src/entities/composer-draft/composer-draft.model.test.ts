@@ -1,5 +1,5 @@
 import "fake-indexeddb/auto";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   deleteWorkspaceMessengerCacheDatabase,
   openWorkspaceMessengerCacheDb,
@@ -8,6 +8,8 @@ import {
   resetWorkspaceMessengerCacheDbSingletonForTests,
 } from "~/shared/lib/workspace-messenger-cache-db";
 import type { WorkspaceMessengerComposerDraftCacheRow } from "~/shared/lib/workspace-messenger-cache-db";
+import { createWorkspaceComposerDrafts } from "./composer-draft-actions.lib";
+import { resetWorkspaceComposerDraftSyncForTests } from "./composer-draft-sync.lib";
 import { EMPTY_WORKSPACE_COMPOSER_DRAFT_REPLY_SESSION } from "./composer-draft.lib";
 import {
   resetWorkspaceComposerDraftStoreForTests,
@@ -104,6 +106,54 @@ describe("workspace composer drafts", () => {
     expect(await store.hydrateDraft(OTHER_OWNER, CONVERSATION)).toBeNull();
     expect(useWorkspaceComposerDraftStore.getState().privateShadowsByConversationKey).toEqual({});
   });
+
+  it.each(["clear", "plain replacement"] as const)(
+    "preserves a protected update published synchronously during %s",
+    async (operation) => {
+      const runtimeContext = {
+        accountId: "a",
+        instanceId: "i",
+        organizationId: "o",
+        organizationOrigin: "https://workspace.example.com",
+        projectId: "p",
+        userUuid: "u",
+        accessToken: "test-token",
+        runtimeGeneration: 1,
+      };
+      const drafts = createWorkspaceComposerDrafts(
+        { runtimeContext, getRuntimeContext: () => runtimeContext },
+        CONVERSATION,
+      );
+      const store = useWorkspaceComposerDraftStore;
+      const first = store.getState().setDraft(OWNER, CONVERSATION, content("initial text"));
+      if (first == null) throw new Error("Expected an active draft");
+      const secret = content(":::new protected version:::");
+      const unsubscribe = store.subscribe((state) => {
+        const published = state.draftsByKey[first.key];
+        if (
+          operation === "clear"
+            ? published?.disposition !== "consumed"
+            : published?.content.text !== "plain replacement"
+        )
+          return;
+        unsubscribe();
+        drafts.update(() => secret);
+      });
+
+      try {
+        expect(drafts.update(() => content(operation === "clear" ? "" : operation))).toBe(true);
+        expect(drafts.getSnapshot().content).toBe(secret);
+        expect(drafts.getSnapshot()).toBe(drafts.getSnapshot());
+        await store.getState().flushDraft(OWNER, first.draftUuid);
+        expect(await readWorkspaceComposerDraftRecords(OWNER)).not.toContainEqual(
+          expect.objectContaining({ disposition: "editable" }),
+        );
+      } finally {
+        unsubscribe();
+        resetWorkspaceComposerDraftSyncForTests();
+      }
+    },
+  );
 
   it("keeps one current draft per owner and conversation and writes after debounce", async () => {
     const first = useWorkspaceComposerDraftStore
@@ -304,6 +354,54 @@ describe("workspace composer drafts", () => {
       selectWorkspaceComposerDraft(useWorkspaceComposerDraftStore.getState(), OWNER, CONVERSATION),
     ).toEqual(localDraft);
   });
+
+  it.each(["visit", "runtime"] as const)(
+    "guards selection and persistence when the %s ends during legacy migration",
+    async (ended) => {
+      await seedLegacyComposerDraft(OWNER, CONVERSATION, {
+        snapshotId: "legacy-snapshot",
+        updatedAt: 1,
+        content: content("Legacy text"),
+      });
+      const db = await openWorkspaceMessengerCacheDb();
+      const transaction = db.transaction.bind(db);
+      let visitCurrent = true;
+      let runtimeCurrent = true;
+      const watch = vi.spyOn(db, "transaction").mockImplementation((...args) => {
+        if (args[1] === "readwrite") {
+          if (ended === "visit") visitCurrent = false;
+          else runtimeCurrent = false;
+        }
+        return transaction(...args);
+      });
+
+      try {
+        await expect(
+          useWorkspaceComposerDraftStore.getState().hydrateDraft(OWNER, CONVERSATION, null, {
+            isRuntimeCurrent: () => runtimeCurrent,
+            isVisitCurrent: () => visitCurrent,
+          }),
+        ).resolves.toBeNull();
+      } finally {
+        watch.mockRestore();
+      }
+
+      const state = useWorkspaceComposerDraftStore.getState();
+      expect(state.activeDraftUuidByConversationKey).toEqual({});
+      if (ended === "runtime") {
+        expect(state.draftsByKey).toEqual({});
+        await expect(readWorkspaceComposerDraftRecords(OWNER)).resolves.toEqual([]);
+        await expect(readWorkspaceComposerDraft(OWNER, CONVERSATION)).resolves.toMatchObject({
+          snapshotId: "legacy-snapshot",
+        });
+      } else {
+        expect(Object.values(state.draftsByKey)).toEqual([
+          expect.objectContaining({ snapshotId: "legacy-snapshot" }),
+        ]);
+        await expect(readWorkspaceComposerDraft(OWNER, CONVERSATION)).resolves.toBeNull();
+      }
+    },
+  );
 
   it("does not restore a persisted deleting draft after reload", async () => {
     const sentDraft = useWorkspaceComposerDraftStore

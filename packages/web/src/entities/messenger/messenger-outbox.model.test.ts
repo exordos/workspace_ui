@@ -266,6 +266,75 @@ describe("messenger outbox store", () => {
     ).toBeUndefined();
   });
 
+  it("registers confirmation before publishing and isolates a failing completion effect", () => {
+    const store = useMessengerOutboxStore;
+    const onConfirmed = vi.fn(() => {
+      throw new Error("Secondary completion failed");
+    });
+    let accepted: boolean | undefined;
+    const unsubscribe = store.subscribe((state) => {
+      const row = Object.values(state.outgoingMessagesByPlacementUuid)[0];
+      if (row == null) return;
+      accepted = settleMessengerOutgoingMessage(OWNER_A, createAuthoritativeMessage(row));
+    });
+    try {
+      const outgoing = store.getState().enqueueOutgoingMessage(
+        {
+          ownerKey: OWNER_A,
+          conversationId: CONVERSATION_A,
+          projectId: "project-a",
+          streamUuid: "stream-a",
+          topicUuid: TOPIC_UUID,
+          authorUuid: "user-a",
+          markdown: "accepted text",
+          status: "sending",
+          includeStreamConversation: false,
+        },
+        onConfirmed,
+      );
+      expect(accepted).toBe(true);
+      expect(onConfirmed).toHaveBeenCalledOnce();
+      expect(settleMessengerOutgoingMessage(OWNER_A, createAuthoritativeMessage(outgoing))).toBe(
+        false,
+      );
+      expect(onConfirmed).toHaveBeenCalledOnce();
+    } finally {
+      unsubscribe();
+    }
+  });
+
+  it.each(["dismiss", "clear owner"] as const)(
+    "discards the owner-scoped confirmation when an outgoing row is removed by %s",
+    (removal) => {
+      vi.spyOn(crypto, "randomUUID").mockReturnValue(CANONICAL_MESSAGE_UUID);
+      const store = useMessengerOutboxStore.getState();
+      const onConfirmed = vi.fn();
+      const draft = {
+        ownerKey: OWNER_A,
+        conversationId: CONVERSATION_A,
+        projectId: "project-a",
+        streamUuid: "stream-a",
+        topicUuid: TOPIC_UUID,
+        authorUuid: "user-a",
+        markdown: "accepted text",
+        status: "sending" as const,
+        includeStreamConversation: false,
+      };
+      const outgoing = store.enqueueOutgoingMessage(draft, onConfirmed);
+      if (removal === "dismiss") store.removeOutgoingMessage(outgoing.placementUuid);
+      else store.clearOwner(OWNER_A);
+      const replacement = store.enqueueOutgoingMessage(draft);
+      expect(replacement.placementUuid).toBe(outgoing.placementUuid);
+      expect(settleMessengerOutgoingMessage(OWNER_B, createAuthoritativeMessage(replacement))).toBe(
+        false,
+      );
+      expect(settleMessengerOutgoingMessage(OWNER_A, createAuthoritativeMessage(replacement))).toBe(
+        true,
+      );
+      expect(onConfirmed).not.toHaveBeenCalled();
+    },
+  );
+
   it.each([
     ["owner", OWNER_B],
     ["projectId", "project-b"],

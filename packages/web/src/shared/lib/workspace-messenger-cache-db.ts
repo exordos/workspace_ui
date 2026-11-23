@@ -3269,22 +3269,32 @@ export async function migrateWorkspaceComposerDraftToRecord<TContent>(
   ownerKey: string,
   conversationId: string,
   draft: WorkspaceMessengerComposerDraftRecordCacheWrite<TContent>,
+  isWriteCurrent?: () => boolean,
 ): Promise<boolean> {
   if (!isIndexedDBAvailable()) return false;
 
   try {
     const db = await openWorkspaceMessengerCacheDb();
+    if (isWriteCurrent?.() === false) return false;
     const transaction = db.transaction(
       WORKSPACE_MESSENGER_CACHE_STORES.composerDrafts,
       "readwrite",
     );
     const store = transaction.objectStore(WORKSPACE_MESSENGER_CACHE_STORES.composerDrafts);
+    const legacyRowId = composerDraftId(ownerKey, conversationId);
+    const legacy = await requestToPromise<
+      WorkspaceMessengerComposerDraftCacheRow<TContent> | undefined
+    >(store.get(legacyRowId));
+    if (legacy?.snapshotId !== draft.snapshotId || isWriteCurrent?.() === false) {
+      await transactionDone(transaction);
+      return false;
+    }
     store.put({
       id: composerDraftRecordId(ownerKey, draft.draftUuid),
       ownerKey,
       ...draft,
     } satisfies WorkspaceMessengerComposerDraftRecordCacheRow<TContent>);
-    store.delete(composerDraftId(ownerKey, conversationId));
+    store.delete(legacyRowId);
     await transactionDone(transaction);
     return true;
   } catch {

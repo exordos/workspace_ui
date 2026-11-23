@@ -163,14 +163,25 @@ function scheduleDelete(ownerKey: string, draftUuid: string): void {
   pendingOperations.set(key, operation);
 }
 
+// Leases are independent: leaving a route ends selection, leaving a runtime stops writes.
+interface WorkspaceComposerDraftHydration {
+  isRuntimeCurrent(): boolean; // Owner and generation captured by the draft facade.
+  isVisitCurrent(): boolean; // The editor still represents this visit.
+}
+
 export interface WorkspaceComposerDraftStoreState {
   draftsByKey: Record<string, WorkspaceComposerDraft>;
   activeDraftUuidByConversationKey: Record<string, string>;
-  completedConversationVisits: Record<string, true>;
+  completedConversationVisits: Record<string, string>; // Завершённый draftUuid для сброса редактора.
   /** Composer shadows never enter the persistence or server synchronization queues. */
   privateShadowsByConversationKey: Record<
     string,
-    { ownerKey: string; conversationId: string; content: WorkspaceComposerDraftContent }
+    {
+      ownerKey: string;
+      conversationId: string;
+      content: WorkspaceComposerDraftContent;
+      snapshotId: symbol; // Только память, без преобразования в запись черновика.
+    }
   >;
   setPrivateDraftShadow: (
     ownerKey: string,
@@ -189,6 +200,7 @@ export interface WorkspaceComposerDraftStoreState {
     ownerKey: string,
     conversationId: string,
     requestedDraftUuid?: string | null,
+    hydration?: WorkspaceComposerDraftHydration,
   ) => Promise<WorkspaceComposerDraft | null>;
   hydrateOwnerDrafts: (ownerKey: string) => Promise<void>;
   selectDraftForConversation: (
@@ -197,7 +209,12 @@ export interface WorkspaceComposerDraftStoreState {
     requestedDraftUuid?: string | null,
   ) => WorkspaceComposerDraft | null;
   leaveConversation: (ownerKey: string, conversationId: string) => void;
-  completeDraftVisit: (ownerKey: string, conversationId: string, draftUuid: string) => void;
+  completeDraftVisit: (
+    ownerKey: string,
+    conversationId: string,
+    draftUuid: string,
+    expectedSnapshotId?: string,
+  ) => void;
   applyServerDrafts: (ownerKey: string, drafts: readonly WorkspaceComposerDraft[]) => void;
   markDraftSyncing: (
     ownerKey: string,
@@ -283,7 +300,12 @@ export const useWorkspaceComposerDraftStore = create<WorkspaceComposerDraftStore
         if (current?.content === content || (current == null && !isPrivate)) return state;
         const privateShadowsByConversationKey = { ...state.privateShadowsByConversationKey };
         if (isPrivate) {
-          privateShadowsByConversationKey[scopeKey] = { ownerKey, conversationId, content };
+          privateShadowsByConversationKey[scopeKey] = {
+            ownerKey,
+            conversationId,
+            content,
+            snapshotId: Symbol("private composer draft"),
+          };
         } else {
           delete privateShadowsByConversationKey[scopeKey];
         }
@@ -356,7 +378,8 @@ export const useWorkspaceComposerDraftStore = create<WorkspaceComposerDraftStore
           [scopeKey]: next.draftUuid,
         },
       }));
-      scheduleWrite(next);
+      // A subscriber may have already updated or protected this record.
+      if (get().draftsByKey[next.key] === next) scheduleWrite(next);
       return next;
     },
 
@@ -412,8 +435,16 @@ export const useWorkspaceComposerDraftStore = create<WorkspaceComposerDraftStore
       return hydration;
     },
 
-    async hydrateDraft(ownerKey, conversationId, requestedDraftUuid) {
+    async hydrateDraft(ownerKey, conversationId, requestedDraftUuid, hydration) {
+      const ownerGenerationAtStart = ownerGeneration(ownerKey);
+      const storeGenerationAtStart = storeGeneration;
+      const isScopeCurrent = () =>
+        ownerGenerationAtStart === ownerGeneration(ownerKey) &&
+        storeGenerationAtStart === storeGeneration &&
+        hydration?.isRuntimeCurrent() !== false;
+      const isVisitCurrent = () => isScopeCurrent() && hydration?.isVisitCurrent() !== false;
       await get().hydrateOwnerDrafts(ownerKey);
+      if (!isVisitCurrent()) return null;
       const selected = get().selectDraftForConversation(
         ownerKey,
         conversationId,
@@ -427,7 +458,11 @@ export const useWorkspaceComposerDraftStore = create<WorkspaceComposerDraftStore
         ownerKey,
         conversationId,
       );
-      if (legacy == null || get().selectDraftForConversation(ownerKey, conversationId) != null)
+      if (
+        !isVisitCurrent() ||
+        legacy == null ||
+        get().selectDraftForConversation(ownerKey, conversationId) != null
+      )
         return null;
       const topicParts = conversationId.split(":");
       const isTopic = topicParts[0] === "topic" && topicParts.length === 3;
@@ -466,16 +501,31 @@ export const useWorkspaceComposerDraftStore = create<WorkspaceComposerDraftStore
           serverUpdatedAt: migrated.serverUpdatedAt,
           pendingCreatePayload: migrated.pendingCreatePayload,
         },
+        () => isScopeCurrent() && !isDraftStreamRemoved(ownerKey, migrated.streamUuid),
       );
       if (!migratedInCache) return null;
+      if (!isScopeCurrent() || isDraftStreamRemoved(ownerKey, migrated.streamUuid)) {
+        // The next runtime can reload a migration that was already committed.
+        hydratedOwners.delete(ownerKey);
+        return null;
+      }
+
+      const scopeKey = createWorkspaceComposerDraftKey(ownerKey, conversationId);
       set((state) => ({
         draftsByKey: { ...state.draftsByKey, [migrated.key]: migrated },
-        activeDraftUuidByConversationKey: {
-          ...state.activeDraftUuidByConversationKey,
-          [createWorkspaceComposerDraftKey(ownerKey, conversationId)]: migrated.draftUuid,
-        },
+        // An IndexedDB migration can finish after a visit ends or a user starts typing.
+        ...(!isVisitCurrent() ||
+        state.completedConversationVisits[scopeKey] != null ||
+        findWorkspaceComposerDraft(state, ownerKey, conversationId) != null
+          ? {}
+          : {
+              activeDraftUuidByConversationKey: {
+                ...state.activeDraftUuidByConversationKey,
+                [scopeKey]: migrated.draftUuid,
+              },
+            }),
       }));
-      return migrated;
+      return isVisitCurrent() ? findWorkspaceComposerDraft(get(), ownerKey, conversationId) : null;
     },
 
     selectDraftForConversation(ownerKey, conversationId, requestedDraftUuid) {
@@ -508,15 +558,24 @@ export const useWorkspaceComposerDraftStore = create<WorkspaceComposerDraftStore
       });
     },
 
-    completeDraftVisit(ownerKey, conversationId, draftUuid) {
+    completeDraftVisit(ownerKey, conversationId, draftUuid, expectedSnapshotId) {
       const scopeKey = createWorkspaceComposerDraftKey(ownerKey, conversationId);
-      if (get().activeDraftUuidByConversationKey[scopeKey] !== draftUuid) return;
+      const state = get();
+      if (expectedSnapshotId == null) {
+        if (state.activeDraftUuidByConversationKey[scopeKey] !== draftUuid) return;
+      } else {
+        const selected = findWorkspaceComposerDraft(state, ownerKey, conversationId);
+        if (selected?.draftUuid !== draftUuid || selected.snapshotId !== expectedSnapshotId) return;
+      }
       set((state) => {
         const active = { ...state.activeDraftUuidByConversationKey };
         delete active[scopeKey];
         return {
           activeDraftUuidByConversationKey: active,
-          completedConversationVisits: { ...state.completedConversationVisits, [scopeKey]: true },
+          completedConversationVisits: {
+            ...state.completedConversationVisits,
+            [scopeKey]: draftUuid,
+          },
         };
       });
     },

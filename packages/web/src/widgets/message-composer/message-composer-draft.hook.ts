@@ -90,24 +90,29 @@ export function useComposerDraft({
     }
   }, [draftSessionKey, initialValue, isEditing]);
 
+  // Changes the editor without notifying its draft owner.
+  const setDisplayedValue = useCallback((value: string) => {
+    valueRef.current = value;
+    setRawValue(value);
+  }, []);
+
   const setValue = useCallback(
     (next: string | ((prev: string) => string)) => {
       const resolved = typeof next === "function" ? next(valueRef.current) : next;
-      valueRef.current = resolved;
-      setRawValue(resolved);
+      setDisplayedValue(resolved);
       // Controlled draft callbacks can update the parent or its stores. Keep
       // those effects outside React's state updater/render phase.
       if (!isEditing || editSession?.preserveWorkspaceReplyContext === true) {
         onValueChange?.(resolved);
       }
     },
-    [editSession?.preserveWorkspaceReplyContext, isEditing, onValueChange],
+    [editSession?.preserveWorkspaceReplyContext, isEditing, onValueChange, setDisplayedValue],
   );
 
   return {
     value,
     setValue,
-    setRawValue,
+    setDisplayedValue,
     isEditing,
   };
 }

@@ -116,8 +116,8 @@ export interface MessageComposerProps {
     files?: File[],
     options?: MessengerSendOptions,
   ) => void | MessageComposerSendResult | Promise<void | MessageComposerSendResult>;
-  /** Clears the composer after a send has been accepted locally, before the request settles. */
-  optimisticClearOnSend?: boolean;
+  /** In after-acceptance mode the owner keeps the sent draft and the editor only clears its display. */
+  optimisticClearOnSend?: boolean | "after-acceptance";
   /** Enables externally owned attachments for Workspace upload-before-send. */
   attachments?: readonly MessageComposerAttachmentView[];
   attachmentsBlockSend?: boolean;
