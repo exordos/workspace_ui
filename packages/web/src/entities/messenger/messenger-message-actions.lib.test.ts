@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { IDBFactory, IDBKeyRange } from "fake-indexeddb";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useActivityStore } from "~/entities/activity/activity.model";
 import {
   selectWorkspaceMessagesForConversation,
@@ -15,12 +16,24 @@ import type {
   WorkspaceMessengerUpdateMessageRequestBody,
 } from "~/shared/api/messenger.types";
 import {
+  openWorkspaceMessengerCacheDb,
+  resetWorkspaceMessengerCacheDbSingletonForTests,
+} from "~/shared/lib/workspace-messenger-cache-db";
+import {
   adaptMessengerMessage,
   adaptMessengerStream,
   adaptMessengerTopic,
   adaptStreamToMessengerConversation,
   adaptTopicToMessengerConversation,
 } from "./messenger-adapters.lib";
+import { useMessengerBackgroundProjectionStore } from "./messenger-background-projection.model";
+import {
+  markMessengerCachedMessagesRead,
+  patchMessengerCachedMessage,
+  readMessengerConversationWindowCache,
+  readMessengerMessageBodyCache,
+  writeMessengerConversationWindowCache,
+} from "./messenger-cache.lib";
 import {
   deleteMessengerMessage,
   editMessengerMessage,
@@ -690,6 +703,248 @@ describe("messenger message actions", () => {
     expect(
       readMarkdownPayload(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.payload),
     ).toBe("New realtime body");
+  });
+
+  describe("edit and move cache reconciliation", () => {
+    beforeEach(() => {
+      vi.stubGlobal("indexedDB", new IDBFactory());
+      vi.stubGlobal("IDBKeyRange", IDBKeyRange);
+      resetWorkspaceMessengerCacheDbSingletonForTests();
+    });
+
+    afterEach(async () => {
+      const db = await openWorkspaceMessengerCacheDb();
+      db.close();
+      resetWorkspaceMessengerCacheDbSingletonForTests();
+      vi.unstubAllGlobals();
+    });
+
+    async function seedMessageWindow(ownerKey: string, dto: WorkspaceMessengerMessageDto) {
+      const message = adaptMessengerMessage(dto);
+      replaceTailWindow(message.conversationId, [message]);
+      await writeMessengerConversationWindowCache(ownerKey, message.conversationId, {
+        messages: [message],
+        nextPageMarker: null,
+        hasMore: false,
+      });
+      return message.conversationId;
+    }
+
+    it("keeps a realtime move in loaded and cached windows through a late edit and duplicate event", async () => {
+      const runtimeContext = createRuntimeContext();
+      const ownerKey = prepareStoreOwner(runtimeContext);
+      useWorkspaceMessageStore.getState().setOwner(ownerKey, false);
+      const destinationTopic = "ed25f944-8106-4386-b2f9-65e9db32d465";
+      const originId = await seedMessageWindow(ownerKey, createMessageDto());
+      const destinationId = await seedMessageWindow(
+        ownerKey,
+        createMessageDto({ uuid: MESSAGE_B, topic_uuid: destinationTopic }),
+      );
+      const response = createDeferred<WorkspaceMessengerMessageDto>();
+      const requestEdit = vi.fn(() => response.promise);
+      const edit = editMessengerMessage({
+        runtimeContext,
+        messageUuid: MESSAGE_A,
+        markdown: "Delayed edit",
+        client: { editMessage: requestEdit },
+      });
+      expect(requestEdit).toHaveBeenCalledOnce();
+      const moved = createMessageDto({
+        topic_uuid: destinationTopic,
+        updated_at: "2026-06-22T10:12:00Z",
+        payload: { kind: "markdown", content: "Moved and edited" },
+      });
+      const event = {
+        type: "message",
+        kind: "message.updated",
+        epoch_version: 1,
+        message: moved,
+      } as const;
+      const context = {
+        owner: runtimeContext,
+        ownerKey,
+        surface: "active",
+        source: "websocket",
+      } as const;
+      const applier = createMessengerRealtimeActiveApplier();
+      await applier.applyEvent(event, context);
+      response.resolve(
+        createMessageDto({ payload: { kind: "markdown", content: "Delayed edit" } }),
+      );
+      await expect(edit).resolves.toMatchObject({
+        status: "applied",
+        message: { conversationId: destinationId, payload: moved.payload },
+      });
+      const state = useWorkspaceMessageStore.getState();
+      expect(selectWorkspaceMessagesForConversation(state, originId)).toEqual([]);
+      expect(
+        selectWorkspaceMessagesForConversation(state, destinationId)
+          .map((message) => message.uuid)
+          .sort((left, right) => left.localeCompare(right)),
+      ).toEqual([MESSAGE_A, MESSAGE_B]);
+      expect(state.messagesById[MESSAGE_A]).toMatchObject({
+        conversationId: destinationId,
+        payload: moved.payload,
+      });
+      await expect(readMessengerMessageBodyCache(ownerKey, [MESSAGE_A])).resolves.toEqual([
+        expect.objectContaining({ conversationId: destinationId, payload: moved.payload }),
+      ]);
+      const sourceCache = await readMessengerConversationWindowCache(ownerKey, originId);
+      const targetCache = await readMessengerConversationWindowCache(ownerKey, destinationId);
+      expect(sourceCache.messages).toEqual([]);
+      expect(targetCache.messages.filter((message) => message.uuid === MESSAGE_A)).toEqual([
+        expect.objectContaining({ conversationId: destinationId, payload: moved.payload }),
+      ]);
+      await applier.applyEvent({ ...event, epoch_version: 2 }, context);
+      const replayed = useWorkspaceMessageStore.getState();
+      expect(
+        replayed.conversationWindowsById[destinationId]?.messageUuids.filter(
+          (uuid) => uuid === MESSAGE_A,
+        ),
+      ).toEqual([MESSAGE_A]);
+      const replayedCache = await readMessengerConversationWindowCache(ownerKey, destinationId);
+      expect(replayedCache.messages.filter((message) => message.uuid === MESSAGE_A)).toHaveLength(
+        1,
+      );
+    });
+
+    it.each(["http", "realtime"] as const)(
+      "persists a %s body-only edit after a read-only update without persisting an optimistic reaction",
+      async (source) => {
+        const runtimeContext = createRuntimeContext();
+        const ownerKey = prepareStoreOwner(runtimeContext);
+        useWorkspaceMessageStore.getState().setOwner(ownerKey, false);
+        const conversationId = await seedMessageWindow(ownerKey, createMessageDto());
+        const entered = createDeferred<void>();
+        const release = createDeferred<void>();
+        const patchCache = vi.fn<typeof patchMessengerCachedMessage>();
+        patchCache
+          .mockImplementationOnce(async (...args) => {
+            entered.resolve();
+            await release.promise;
+            await patchMessengerCachedMessage(...args);
+          })
+          .mockImplementation(patchMessengerCachedMessage);
+        const edited = createMessageDto({ payload: { kind: "markdown", content: "Updated body" } });
+        const context = {
+          owner: runtimeContext,
+          ownerKey,
+          surface: "active",
+          source: "websocket",
+        } as const;
+        const applier = createMessengerRealtimeActiveApplier({
+          cache: {
+            patchCachedMessage: patchCache,
+            markCachedMessagesRead: markMessengerCachedMessagesRead,
+          },
+        });
+        const edit =
+          source === "http"
+            ? editMessengerMessage({
+                runtimeContext,
+                messageUuid: MESSAGE_A,
+                markdown: "Updated body",
+                client: { editMessage: () => Promise.resolve(edited) },
+                cache: { patchCachedMessage: patchCache },
+              })
+            : applier.applyEvent(
+                { type: "message", kind: "message.updated", epoch_version: 1, message: edited },
+                context,
+              );
+        try {
+          await entered.promise;
+          useWorkspaceMessageStore
+            .getState()
+            .beginOptimisticOwnMessageReaction(MESSAGE_A, "eyes", "add", "local-reaction", USER_A);
+          await applier.applyEvent(
+            {
+              type: "messages",
+              kind: "messages.read",
+              epoch_version: 2,
+              messageUuids: [MESSAGE_A],
+            },
+            context,
+          );
+        } finally {
+          release.resolve();
+        }
+        const result = await edit;
+        if (source === "http") expect(result).toMatchObject({ status: "applied" });
+        else
+          expect(
+            useMessengerBackgroundProjectionStore.getState().projectionsByOwnerKey[ownerKey]
+              ?.messageIdSnapshotsById[MESSAGE_A]?.read,
+          ).toBe(true);
+        expect(patchCache).toHaveBeenCalledTimes(2);
+        const window = await readMessengerConversationWindowCache(ownerKey, conversationId);
+        expect(window.messages).toEqual([
+          expect.objectContaining({
+            uuid: MESSAGE_A,
+            payload: edited.payload,
+            read: true,
+            reactions: {},
+          }),
+        ]);
+        expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]).toMatchObject({
+          payload: edited.payload,
+          read: true,
+          reactions: { eyes: 1 },
+        });
+      },
+    );
+
+    it.each(["abort", "same-owner generation"] as const)(
+      "aborts the realtime cache transaction and cursor on %s at commit",
+      async (invalidation) => {
+        const runtimeContext = createRuntimeContext();
+        const ownerKey = prepareStoreOwner(runtimeContext);
+        useWorkspaceMessageStore.getState().setOwner(ownerKey, false);
+        const original = createMessageDto();
+        await seedMessageWindow(ownerKey, original);
+        const controller = new AbortController();
+        let currentGeneration = runtimeContext.runtimeGeneration;
+        let calls = 0;
+        const writeRealtimeCursor = vi.fn();
+        const applier = createMessengerRealtimeActiveApplier({
+          isOwnerCurrent: (owner) => owner.runtimeGeneration === currentGeneration,
+          cache: {
+            writeRealtimeCursor,
+            patchCachedMessage: (owner, message, isWriteCurrent) =>
+              patchMessengerCachedMessage(owner, message, () => {
+                calls += 1;
+                if (calls === 2) {
+                  if (invalidation === "abort") controller.abort();
+                  else currentGeneration += 1;
+                }
+                return isWriteCurrent?.() ?? false;
+              }),
+          },
+        });
+        await applier.applyEvent(
+          {
+            type: "message",
+            kind: "message.updated",
+            epoch_version: 2,
+            message: createMessageDto({
+              payload: { kind: "markdown", content: "Aborted cache write" },
+            }),
+          },
+          {
+            owner: runtimeContext,
+            ownerKey,
+            surface: "active",
+            source: "websocket",
+            signal: controller.signal,
+          },
+        );
+        expect(calls).toBe(2);
+        await expect(readMessengerMessageBodyCache(ownerKey, [MESSAGE_A])).resolves.toEqual([
+          expect.objectContaining({ payload: original.payload }),
+        ]);
+        expect(writeRealtimeCursor).not.toHaveBeenCalled();
+        expect(useMessengerStore.getState().lastEpochVersion).toBeNull();
+      },
+    );
   });
 
   it("does not resurrect a realtime-deleted message from a late read response", async () => {

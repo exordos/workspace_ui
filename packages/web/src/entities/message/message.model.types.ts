@@ -94,10 +94,11 @@ export interface WorkspaceMessageStoreState extends WorkspaceMessageStoreData {
   mergeConversationWindowPage: (input: WorkspaceConversationWindowPageMergeInput) => number | null;
   applyLiveCreatedMessage: (message: MessengerMessage) => void;
   applyLiveCreatedMessages: (messages: readonly MessengerMessage[]) => void;
+  // Returns the merged body, null for a recorded unknown UUID, or false if rejected.
   applyLiveKnownBodyMutation: (
     message: MessengerMessage,
     capturedMutationRevision?: number,
-  ) => boolean;
+  ) => MessengerMessage | null | false;
   upsertMessageBodyFromSnapshot: (
     message: MessengerMessage,
     capturedMutationRevision: number,

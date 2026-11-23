@@ -633,7 +633,7 @@ export const useWorkspaceMessageStore = create<WorkspaceMessageStoreState>((set,
     logStoreAction("workspaceMessage", "applyLiveKnownBodyMutation", {
       messageUuid: message.uuid,
     });
-    let applied = false;
+    let applied: MessengerMessage | null | false = false;
     set((state) => {
       if (
         capturedMutationRevision != null &&
@@ -644,13 +644,10 @@ export const useWorkspaceMessageStore = create<WorkspaceMessageStoreState>((set,
       }
       const mutationRevision = state.messageMutationRevision + 1;
       const previousMessage = state.messagesById[message.uuid];
+      const merged =
+        previousMessage == null ? null : mergeWorkspaceMessageSnapshot(previousMessage, message);
       const messagesById =
-        previousMessage == null
-          ? state.messagesById
-          : {
-              ...state.messagesById,
-              [message.uuid]: mergeWorkspaceMessageSnapshot(previousMessage, message),
-            };
+        merged == null ? state.messagesById : { ...state.messagesById, [message.uuid]: merged };
       let conversationWindowsById = state.conversationWindowsById;
       if (
         previousMessage != null &&
@@ -664,7 +661,8 @@ export const useWorkspaceMessageStore = create<WorkspaceMessageStoreState>((set,
           messagesById,
         );
       }
-      applied = true;
+      // Capture the body before subscribers can synchronously publish a newer update.
+      applied = merged;
       return {
         conversationWindowsById,
         messagesById,

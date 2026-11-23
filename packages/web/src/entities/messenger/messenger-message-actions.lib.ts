@@ -29,6 +29,7 @@ import type {
 import { hasWorkspaceSecretDraft } from "~/shared/lib/workspace-secret-draft.lib";
 import { decodeChatE2eePayload, encodeChatE2eePayload } from "./chat-e2ee-payload-adapters.lib";
 import { acceptServerMessages } from "./messages-accept-server.lib";
+import { acceptMessageUpdate, type KnownMessageCacheWriter } from "./messages-accept-update.lib";
 import { adaptMessengerMessage } from "./messenger-adapters.lib";
 import {
   messengerMessageActionCache,
@@ -101,7 +102,7 @@ export type { MessengerMessageActionCacheConversationPage } from "./messages-acc
 
 export interface MessengerMessageActionCacheWriter {
   advanceReadBoundary?: (boundary: MessengerReadBoundary) => Promise<void> | void;
-  patchCachedMessage?: (ownerKey: string, message: MessengerMessage) => Promise<void> | void;
+  patchCachedMessage?: KnownMessageCacheWriter;
   repairMessagePointers?: (
     ownerKey: string,
     message: MessengerMessage,
@@ -580,21 +581,21 @@ export async function editMessengerMessage({
       throw new Error("invalid-message");
   }
 
-  const message = adaptMessengerMessage(dto);
-  store.getState().applyLiveKnownBodyMutation(message, capturedMutationRevision);
-  if (!current()) return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
-  const effectiveMessage = store.getState().messagesById[message.uuid] ?? null;
-  if (effectiveMessage != null) {
-    messengerStore
-      .getState()
-      .applyMessagePointer(action.ownerKey, effectiveMessage, store.getState().messagesById);
-  }
-  if (cache?.patchCachedMessage != null && effectiveMessage != null) {
-    await writeActionCacheBestEffort(() =>
-      cache.patchCachedMessage?.(action.ownerKey, effectiveMessage),
-    );
-  }
-  return { status: "applied", ownerKey: action.ownerKey, message: effectiveMessage };
+  const accepted = acceptMessageUpdate({
+    source: "http",
+    ownerKey: action.ownerKey,
+    isCurrent: current,
+    message: adaptMessengerMessage(dto),
+    capturedMutationRevision,
+    store,
+    patchCache: cache.patchCachedMessage,
+    project: (message, messagesById) =>
+      messengerStore.getState().applyMessagePointer(action.ownerKey, message, messagesById),
+  });
+  if (accepted.status === "stale-owner")
+    return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
+  if (accepted.cacheWrite != null) await accepted.cacheWrite;
+  return { status: "applied", ownerKey: action.ownerKey, message: accepted.message };
 }
 
 export async function deleteMessengerMessage({

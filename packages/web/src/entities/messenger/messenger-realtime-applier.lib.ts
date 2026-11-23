@@ -12,6 +12,7 @@ import type {
   WorkspaceRealtimeSkippedEvent,
 } from "~/shared/lib/workspace-realtime/workspace-realtime-runtime.lib";
 import { acceptServerMessages } from "./messages-accept-server.lib";
+import { acceptMessageUpdate, type KnownMessageCacheWriter } from "./messages-accept-update.lib";
 import {
   adaptMessengerFolder,
   adaptMessengerMessage,
@@ -68,13 +69,14 @@ type MessengerFolderRealtimeEvent = Extract<MessengerRealtimeEvent, { type: "fol
 type MessengerFolderItemRealtimeEvent = Extract<MessengerRealtimeEvent, { type: "folder_item" }>;
 type MessengerFileRealtimeEvent = Extract<MessengerRealtimeEvent, { type: "file" }>;
 
-// Created events can acknowledge a receipt without publishing or caching an older body.
-interface CreatedEventApplication {
+// Message events can advance the cursor without projecting a superseded body.
+interface GuardedRealtimeApplication {
   cacheWrite: Promise<void> | void; // Optional authoritative message cache write.
-  shouldProject: () => boolean; // Whether the created event's body is still current.
+  shouldProject: () => boolean; // Whether the event's body is still current.
+  currentRead?: () => boolean | undefined; // Read flag of the latest accepted update.
 }
 
-type ActiveRealtimeApplication = Promise<void> | void | false | CreatedEventApplication;
+type ActiveRealtimeApplication = Promise<void> | void | false | GuardedRealtimeApplication;
 
 export interface MessengerRealtimeCacheConversationPage {
   messages: readonly MessengerMessage[];
@@ -93,11 +95,7 @@ export interface MessengerRealtimeActiveCacheWriter {
     ownerKey: string,
     messageUuids: readonly MessengerUuid[],
   ) => Promise<void> | void;
-  patchCachedMessage?: (
-    ownerKey: string,
-    message: MessengerMessage,
-    isWriteCurrent?: () => boolean,
-  ) => Promise<void> | void;
+  patchCachedMessage?: KnownMessageCacheWriter;
   deleteCachedMessage?: (
     ownerKey: string,
     messageUuid: MessengerUuid,
@@ -430,25 +428,28 @@ function applyMessageRealtimeEvent(
     return settleRealtimeCacheWrites([boundaryWrite, messageWrite]);
   }
   if (event.kind === "message.updated") {
-    messageStore.applyLiveKnownBodyMutation(message);
-    let cacheWrite: Promise<void> | void = undefined;
-    if (previousMessage != null && activeCache.patchCachedMessage != null) {
-      cacheWrite = writeRealtimeCacheBestEffort(() =>
-        activeCache.patchCachedMessage?.(ownerKey, message, () =>
-          isActiveCurrentOwner(context, options),
-        ),
-      );
-    }
+    const accepted = acceptMessageUpdate({
+      source: "realtime",
+      ownerKey,
+      isCurrent: () => isActiveCurrentOwner(context, options),
+      message,
+      store: useWorkspaceMessageStore,
+      patchCache: activeCache.patchCachedMessage,
+    });
+    if (accepted.status === "stale-owner") return false;
+    const { eventMessage, previous, shouldProject, cacheWrite, currentRead } = accepted;
     if (
-      previousMessage != null &&
-      !areReactionAggregatesEqual(previousMessage.reactions, message.reactions) &&
+      eventMessage != null &&
+      previous != null &&
+      shouldProject() &&
+      !areReactionAggregatesEqual(previous.reactions, eventMessage.reactions) &&
       options.onMessageReactionAggregateUpdated != null
     ) {
       void writeRealtimeCacheBestEffort(() =>
-        options.onMessageReactionAggregateUpdated?.(ownerKey, message),
+        options.onMessageReactionAggregateUpdated?.(ownerKey, eventMessage),
       );
     }
-    return cacheWrite;
+    return { cacheWrite, shouldProject, currentRead };
   }
 
   const isCurrent = () => isActiveCurrentOwner(context, options);
@@ -762,16 +763,28 @@ export function createMessengerRealtimeActiveApplier(
         options,
       );
       if (applied === false) return;
-      const created = applied instanceof Promise ? undefined : applied;
+      const guarded = applied instanceof Promise ? undefined : applied;
       const finishApplication = (): Promise<void> | void => {
         if (!isActiveCurrentOwner(context, options)) return;
-        if (created?.shouldProject() !== false) applyLightweightProjectionEvent(event, context);
-        if (created != null && !isActiveCurrentOwner(context, options)) return;
+        const isMessageUpdate = event.type === "message" && event.kind === "message.updated";
+        if (guarded?.shouldProject() !== false) {
+          const read = guarded?.currentRead?.();
+          const projected =
+            isMessageUpdate && read != null && event.message.read !== read
+              ? { ...event, message: { ...event.message, read } }
+              : event;
+          applyLightweightProjectionEvent(projected, context);
+        }
+        if (guarded != null && !isActiveCurrentOwner(context, options)) return;
         store.setRealtimeCursor(context.ownerKey, event.epoch_version);
-        if (created != null && !isActiveCurrentOwner(context, options)) return;
+        if (guarded != null && !isActiveCurrentOwner(context, options)) return;
+        if (isMessageUpdate) {
+          const latestEpoch = useMessengerStore.getState().lastEpochVersion;
+          if (latestEpoch != null && latestEpoch > event.epoch_version) return;
+        }
         return writeRealtimeCursorCache(activeCache, context.ownerKey, event.epoch_version);
       };
-      const cacheWrite = applied instanceof Promise ? applied : created?.cacheWrite;
+      const cacheWrite = applied instanceof Promise ? applied : guarded?.cacheWrite;
       return cacheWrite instanceof Promise
         ? cacheWrite.then(finishApplication)
         : finishApplication();

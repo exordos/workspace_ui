@@ -377,7 +377,11 @@ describe("real ordinary chat orchestration", () => {
     expect(edited.payload).not.toEqual(source.payload);
     expect(await session.decrypt(edited)).toBe("Edited secret");
     expect(JSON.stringify(vi.mocked(editMessage).mock.calls)).not.toContain("Edited secret");
-    expect(cache).toHaveBeenCalledWith(workspaceRuntimeOwnerKey(f.admin), edited);
+    expect(cache).toHaveBeenCalledWith(
+      workspaceRuntimeOwnerKey(f.admin),
+      edited,
+      expect.any(Function),
+    );
     expect(JSON.stringify(cache.mock.calls)).not.toContain("Edited secret");
   });
 

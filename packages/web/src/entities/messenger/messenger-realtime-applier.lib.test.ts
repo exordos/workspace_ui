@@ -1656,6 +1656,60 @@ describe("messenger realtime active applier", () => {
     );
   });
 
+  it("keeps the newer body and cursor after a subscriber applies a second realtime edit", async () => {
+    const context = createContext();
+    useMessengerStore.getState().startBootstrap(context.ownerKey);
+    useWorkspaceMessageStore.getState().setOwner(context.ownerKey, false);
+    useWorkspaceMessageStore
+      .getState()
+      .applyLiveCreatedMessage(adaptMessengerMessage(createMessageDto()));
+    const patchCachedMessage = vi.fn();
+    const writeRealtimeCursor = vi.fn();
+    const applier = createMessengerRealtimeActiveApplier({
+      cache: { patchCachedMessage, writeRealtimeCursor },
+    });
+    const newer = createMessageDto({
+      updated_at: DATE_LATER,
+      payload: { kind: "markdown", content: "Newer edit" },
+    });
+    let nested = Promise.resolve<unknown>(undefined);
+    const unsubscribe = useWorkspaceMessageStore.subscribe((state) => {
+      if (state.messagesById[MESSAGE_A]?.updatedAt !== DATE_MIDDLE) return;
+      nested = Promise.resolve(
+        applier.applyEvent(
+          { type: "message", kind: "message.updated", epoch_version: 2, message: newer },
+          context,
+        ),
+      );
+    });
+    try {
+      await applier.applyEvent(
+        {
+          type: "message",
+          kind: "message.updated",
+          epoch_version: 1,
+          message: createMessageDto({ updated_at: DATE_MIDDLE }),
+        },
+        context,
+      );
+      await nested;
+    } finally {
+      unsubscribe();
+    }
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.payload).toEqual(
+      newer.payload,
+    );
+    expect(patchCachedMessage).toHaveBeenCalledExactlyOnceWith(
+      context.ownerKey,
+      expect.objectContaining({ payload: newer.payload }),
+      expect.any(Function),
+    );
+    expect(writeRealtimeCursor).toHaveBeenCalledExactlyOnceWith(context.ownerKey, 2);
+    const projection =
+      useMessengerBackgroundProjectionStore.getState().projectionsByOwnerKey[context.ownerKey];
+    expect(projection?.messageIdSnapshotsById[MESSAGE_A]?.updatedAt).toBe(DATE_LATER);
+  });
+
   it("notifies reaction aggregate hook when the last reaction is removed", async () => {
     const context = createContext();
     const ownerKey = context.ownerKey;
@@ -3506,6 +3560,20 @@ it("applies a personalized poll update through the message guard and realtime ap
           expect.objectContaining({ optionVoterPreviews: { [MESSAGE_C]: [initial.user_uuid] } }),
         ],
       }),
+    }),
+    expect.any(Function),
+  );
+
+  useWorkspaceMessageStore.getState().setOwnMessageReaction(MESSAGE_A, "eyes", MESSAGE_B);
+  await applier.applyEvent(
+    { epoch_version: 3, type: "message", kind: "message.updated", message: initial },
+    context,
+  );
+  expect(cache.patchCachedMessage).toHaveBeenLastCalledWith(
+    context.ownerKey,
+    expect.objectContaining({
+      pollState: expect.objectContaining({ revision: 2 }),
+      ownReactionUuidsByEmojiName: { eyes: MESSAGE_B },
     }),
     expect.any(Function),
   );
