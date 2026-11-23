@@ -80,7 +80,8 @@ export interface MessengerConversationCacheWindow {
   hasMore: boolean;
 }
 
-function withoutRuntimeReactionState(message: MessengerMessage): MessengerMessage {
+// Strip fields that belong only to a live reaction request.
+export function withoutRuntimeReactionState(message: MessengerMessage): MessengerMessage {
   const snapshot = { ...message };
   delete snapshot.pendingOwnReactionsByEmojiName;
   delete snapshot.optimisticReactionUserUuidsByEmojiName;

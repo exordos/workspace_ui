@@ -1,5 +1,7 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { IDBFactory, IDBKeyRange } from "fake-indexeddb";
+import { beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import {
+  captureWorkspaceConversationWindowBoundary,
   selectWorkspaceMessagesForConversation,
   selectWorkspaceMessageStatusForConversation,
   useWorkspaceMessageStore,
@@ -16,6 +18,11 @@ import type {
   WorkspaceMessengerMessageDto,
   WorkspaceMessengerMessageReactionDto,
 } from "~/shared/api/messenger.types";
+import {
+  openWorkspaceMessengerCacheDb,
+  readConversationMessageWindow,
+  resetWorkspaceMessengerCacheDbSingletonForTests,
+} from "~/shared/lib/workspace-messenger-cache-db";
 import { createMessages } from "./messages";
 import { adaptMessengerMessage } from "./messenger-adapters.lib";
 import * as messengerCache from "./messenger-cache.lib";
@@ -28,6 +35,7 @@ import {
   loadMessengerMessageWindowPage,
   resolveMessengerMessageAnchor,
   type MessengerFetchedMessageWindow,
+  type MessengerMessagesCacheDeps,
 } from "./messenger-messages-loader.lib";
 import {
   isMessengerOutgoingMessageReceipt,
@@ -41,7 +49,7 @@ import {
 } from "./messenger-read-boundary.lib";
 import { createMessengerRealtimeActiveApplier } from "./messenger-realtime-applier.lib";
 import { useMessengerStore } from "./messenger.model";
-import type { MessengerMessagePayload } from "./messenger.types";
+import type { MessengerConversationId, MessengerMessagePayload } from "./messenger.types";
 
 // Message loader tests keep pagination scoped to the active conversation owner.
 const ACCOUNT_A = "account-a";
@@ -61,6 +69,7 @@ const TOPIC_B = "ed25f944-8106-4386-b2f9-65e9db32d465";
 const MESSAGE_A = "a93dca35-3061-4748-bda4-7f6f8c660ea5";
 const MESSAGE_B = "78105b9e-f1ac-41f1-baf5-2975486cc7dc";
 const MESSAGE_C = "24e84035-ae0a-46ce-a20d-88dcc2612059";
+const MESSAGE_D = "ae1f6b08-1653-4c1f-84d0-582b83579650";
 const REACTION_A = "4b1213e6-4e90-4c78-9040-5a0a82a842d4";
 const REACTION_B = "c37d4128-ab06-469b-9878-886dd7cd3c26";
 const DATE = "2026-06-22T10:10:00Z";
@@ -175,6 +184,14 @@ function createFetchedWindow(
     expectedWindowRevision: state.conversationWindowsById[message.conversationId]?.revision ?? null,
     capturedMutationRevision: state.messageMutationRevision,
   };
+}
+
+// Captures the same side of an installed test window as the public messages model.
+function captureBoundary(conversationId: MessengerConversationId, direction: "before" | "after") {
+  const window = useWorkspaceMessageStore.getState().conversationWindowsById[conversationId];
+  const boundary = captureWorkspaceConversationWindowBoundary(window, direction);
+  if (boundary == null) throw new Error("Expected a pagination boundary");
+  return boundary;
 }
 
 function replaceConversationWindow({
@@ -912,7 +929,7 @@ describe("messenger conversation messages loader", () => {
       const loading = loadMessengerConversationMessages({
         runtimeContext,
         conversationId,
-        pageMarker,
+        boundary: pageMarker == null ? undefined : captureBoundary(conversationId, "before"),
         cache: { writeConversationMessagePage },
         client: { getMessagesPage },
         onServerWindowApplied,
@@ -961,6 +978,250 @@ describe("messenger conversation messages loader", () => {
     },
   );
 
+  it.each(["edit", "delete", "move"] as const)(
+    "applies a delayed older page and caches the realtime tail and %s",
+    async (mutation) => {
+      const runtimeContext = createRuntimeContext();
+      const ownerKey = prepareStoreOwner(runtimeContext);
+      const olderEdge = adaptMessengerMessage(
+        createMessageDto({ uuid: MESSAGE_B, created_at: DATE_LATER }),
+      );
+      const snapshotDto = createMessageDto({ uuid: MESSAGE_C, created_at: DATE_LATEST });
+      const { conversationId } = olderEdge;
+      replaceConversationWindow({
+        conversationId,
+        messages: [olderEdge, adaptMessengerMessage(snapshotDto)],
+        beforePageMarker: "older",
+      });
+      const response = createDeferred<MessengerCollectionPage<WorkspaceMessengerMessageDto>>();
+      const getMessagesPage = vi.fn(() => response.promise);
+      const writeConversationMessagePage =
+        vi.fn<NonNullable<MessengerMessagesCacheDeps["writeConversationMessagePage"]>>();
+      const boundary = captureBoundary(conversationId, "before");
+      const loading = loadMessengerConversationMessages({
+        runtimeContext,
+        conversationId,
+        boundary,
+        cache: { writeConversationMessagePage },
+        client: { getMessagesPage },
+      });
+      await vi.waitFor(() => expect(getMessagesPage).toHaveBeenCalledOnce());
+      const state = useWorkspaceMessageStore.getState();
+      if (mutation === "delete") {
+        state.removeMessage(MESSAGE_C);
+      } else {
+        state.applyLiveKnownBodyMutation(
+          adaptMessengerMessage({
+            ...snapshotDto,
+            topic_uuid: mutation === "move" ? TOPIC_B : TOPIC_A,
+            payload: { kind: "markdown", content: "Live content" },
+            updated_at: "2026-06-22T10:35:00Z",
+          }),
+        );
+      }
+      state.applyLiveCreatedMessage(
+        adaptMessengerMessage(
+          createMessageDto({ uuid: MESSAGE_D, created_at: "2026-06-22T10:40:00Z" }),
+        ),
+      );
+      expect(captureBoundary(conversationId, "before")).toEqual(boundary);
+      response.resolve(createMessagesPage([snapshotDto, createMessageDto()]));
+
+      await expect(loading).resolves.toMatchObject({
+        status: "applied",
+        nextPageMarker: "next-page",
+      });
+      const currentState = useWorkspaceMessageStore.getState();
+      const messages = selectWorkspaceMessagesForConversation(currentState, conversationId);
+      expect(messages.map(({ uuid }) => uuid)).toEqual(
+        mutation === "edit"
+          ? [MESSAGE_A, MESSAGE_B, MESSAGE_C, MESSAGE_D]
+          : [MESSAGE_A, MESSAGE_B, MESSAGE_D],
+      );
+      if (mutation === "delete") {
+        expect(currentState.messagesById[MESSAGE_C]).toBeUndefined();
+      } else {
+        expect(currentState.messagesById[MESSAGE_C]).toMatchObject({
+          topicUuid: mutation === "move" ? TOPIC_B : TOPIC_A,
+          payload: { kind: "markdown", content: "Live content" },
+        });
+      }
+      expect(writeConversationMessagePage).toHaveBeenCalledOnce();
+      expect(writeConversationMessagePage).toHaveBeenCalledWith(
+        ownerKey,
+        conversationId,
+        { messages, nextPageMarker: "next-page", hasMore: true },
+        expect.any(Function),
+      );
+      expect(writeConversationMessagePage.mock.calls[0]?.[3]?.()).toBe(true);
+    },
+  );
+
+  it.each(["opposite insert", "same-side delete", "replacement", "cancel"] as const)(
+    "guards the cache for a loaded older page when %s occurs during reaction hydration",
+    async (change) => {
+      const runtimeContext = createRuntimeContext();
+      const ownerKey = prepareStoreOwner(runtimeContext);
+      const tail = adaptMessengerMessage(
+        createMessageDto({ uuid: MESSAGE_B, created_at: DATE_LATER }),
+      );
+      const { conversationId } = tail;
+      replaceConversationWindow({ conversationId, messages: [tail], beforePageMarker: "older" });
+      const ready = createDeferred<void>();
+      const hydrateFromCache = vi.fn(async () => {
+        await ready.promise;
+        return { status: "applied" as const, ownerKey, messageUuids: [], reactions: 0 };
+      });
+      const controller = new AbortController();
+      const writeConversationMessagePage =
+        vi.fn<NonNullable<MessengerMessagesCacheDeps["writeConversationMessagePage"]>>();
+      if (change === "opposite insert") {
+        vi.stubGlobal("indexedDB", new IDBFactory());
+        vi.stubGlobal("IDBKeyRange", IDBKeyRange);
+        resetWorkspaceMessengerCacheDbSingletonForTests();
+        writeConversationMessagePage.mockImplementation(
+          messengerCache.writeMessengerConversationWindowCache,
+        );
+        onTestFinished(async () => {
+          const db = await openWorkspaceMessengerCacheDb();
+          db.close();
+          resetWorkspaceMessengerCacheDbSingletonForTests();
+          vi.unstubAllGlobals();
+        });
+      }
+      const loading = loadMessengerConversationMessages({
+        runtimeContext,
+        conversationId,
+        boundary: captureBoundary(conversationId, "before"),
+        signal: controller.signal,
+        cache: { writeConversationMessagePage },
+        client: {
+          getMessagesPage: () => Promise.resolve(createMessagesPage([createMessageDto()])),
+        },
+        ownReactionSync: { hydrateFromCache },
+      });
+      await vi.waitFor(() => expect(hydrateFromCache).toHaveBeenCalledOnce());
+      const state = useWorkspaceMessageStore.getState();
+      const appliedWindow = state.conversationWindowsById[conversationId];
+      const realtime = adaptMessengerMessage(
+        createMessageDto({ uuid: MESSAGE_C, created_at: DATE_LATEST, reactions: { thumbs_up: 2 } }),
+      );
+      if (change === "opposite insert") {
+        state.applyLiveCreatedMessage(realtime);
+        state.beginOptimisticOwnMessageReaction(MESSAGE_C, "thumbs_up", "add", REACTION_A, USER_A);
+        expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_C]?.reactions).toEqual({
+          thumbs_up: 3,
+        });
+      } else if (change === "same-side delete") {
+        state.removeMessage(MESSAGE_A);
+      } else if (change === "replacement") {
+        replaceConversationWindow({
+          conversationId,
+          messages: selectWorkspaceMessagesForConversation(state, conversationId),
+          beforePageMarker: appliedWindow?.beforePageMarker,
+        });
+      } else {
+        controller.abort();
+      }
+      ready.resolve();
+
+      await expect(loading).resolves.toMatchObject({
+        status: change === "cancel" ? "skipped" : "applied",
+      });
+      if (change !== "opposite insert") {
+        expect(writeConversationMessagePage).not.toHaveBeenCalled();
+        return;
+      }
+      expect(writeConversationMessagePage).toHaveBeenCalledOnce();
+      expect(writeConversationMessagePage).toHaveBeenCalledWith(
+        ownerKey,
+        conversationId,
+        {
+          messages: [expect.objectContaining({ uuid: MESSAGE_A }), tail, realtime],
+          nextPageMarker: "next-page",
+          hasMore: true,
+        },
+        expect.any(Function),
+      );
+      const isWriteCurrent = writeConversationMessagePage.mock.calls[0]?.[3];
+      expect(isWriteCurrent?.()).toBe(true);
+      await Promise.resolve(writeConversationMessagePage.mock.results[0]?.value);
+      const cached = await readConversationMessageWindow(ownerKey, conversationId);
+      expect(cached.window).toMatchObject({ nextPageMarker: "next-page", hasMore: true });
+      expect(cached.messages.map(({ uuid }) => uuid)).toEqual([MESSAGE_A, MESSAGE_B, MESSAGE_C]);
+      expect(cached.messages[2]).toMatchObject({ reactions: { thumbs_up: 2 } });
+      expect(cached.messages[2]).not.toHaveProperty("pendingOwnReactionsByEmojiName");
+      expect(cached.messages[2]).not.toHaveProperty("optimisticReactionUserUuidsByEmojiName");
+      state.applyLiveKnownBodyMutation({
+        ...realtime,
+        payload: { kind: "markdown", content: "Changed after cache snapshot" },
+      });
+      expect(isWriteCurrent?.()).toBe(false);
+    },
+  );
+
+  it("does not cache an opening after a synchronous subscriber recreates its revision", async () => {
+    const runtimeContext = createRuntimeContext();
+    prepareStoreOwner(runtimeContext);
+    const replacement = adaptMessengerMessage(
+      createMessageDto({ uuid: MESSAGE_B, created_at: DATE_LATER }),
+    );
+    const { conversationId } = replacement;
+    const writeConversationMessagePage = vi.fn();
+    const unsubscribe = useWorkspaceMessageStore.subscribe((state) => {
+      if (state.conversationWindowsById[conversationId]?.messageUuids[0] !== MESSAGE_A) return;
+      unsubscribe();
+      state.clear();
+      replaceConversationWindow({
+        conversationId,
+        messages: [replacement],
+        beforePageMarker: "replacement-marker",
+      });
+    });
+
+    try {
+      await expect(
+        loadMessengerConversationMessages({
+          runtimeContext,
+          conversationId,
+          client: {
+            getMessagesPage: () => Promise.resolve(createMessagesPage([createMessageDto()])),
+          },
+          cache: { writeConversationMessagePage },
+        }),
+      ).resolves.toMatchObject({ status: "applied" });
+      expect(
+        useWorkspaceMessageStore.getState().conversationWindowsById[conversationId],
+      ).toMatchObject({
+        revision: 1,
+        beforePageMarker: "replacement-marker",
+        messageUuids: [MESSAGE_B],
+      });
+      expect(writeConversationMessagePage).not.toHaveBeenCalled();
+    } finally {
+      unsubscribe();
+    }
+  });
+
+  it("rejects a lower boundary at the ordinary history loader before HTTP", async () => {
+    const runtimeContext = createRuntimeContext();
+    const ownerKey = prepareStoreOwner(runtimeContext);
+    const messages = [adaptMessengerMessage(createMessageDto())];
+    const conversationId = messages[0]!.conversationId;
+    replaceConversationWindow({ conversationId, messages, afterPageMarker: "newer" });
+    const getMessagesPage = vi.fn();
+
+    await expect(
+      loadMessengerConversationMessages({
+        runtimeContext,
+        conversationId,
+        boundary: captureBoundary(conversationId, "after"),
+        client: { getMessagesPage },
+      }),
+    ).resolves.toEqual({ status: "skipped", ownerKey, reason: "stale-window" });
+    expect(getMessagesPage).not.toHaveBeenCalled();
+  });
+
   it.each([
     { scenario: "opening is cancelled", pageMarker: undefined, reason: "stale-owner" },
     { scenario: "older request is cancelled", pageMarker: "older", reason: "stale-owner" },
@@ -980,7 +1241,7 @@ describe("messenger conversation messages loader", () => {
     const loading = loadMessengerConversationMessages({
       runtimeContext,
       conversationId,
-      pageMarker,
+      boundary: pageMarker == null ? undefined : captureBoundary(conversationId, "before"),
       signal: controller.signal,
       cache: { writeConversationMessagePage },
       client: { getMessagesPage },
@@ -1936,17 +2197,13 @@ describe("messenger conversation messages loader", () => {
       messages: [],
       beforePageMarker: "older-cursor",
     });
-    const expectedRevision =
-      useWorkspaceMessageStore.getState().conversationWindowsById[conversationId]!.revision;
 
     await expect(
       loadMessengerMessageWindowPage({
         runtimeContext,
         getRuntimeContext: () => runtimeContext,
         conversationId,
-        direction: "before",
-        pageMarker: "older-cursor",
-        expectedRevision,
+        boundary: captureBoundary(conversationId, "before"),
         pageLimit: 2,
         client: { getMessagesPage },
       }),
@@ -1994,8 +2251,6 @@ describe("messenger conversation messages loader", () => {
       beforePageMarker: "older-still",
       afterPageMarker: "newer-cursor",
     });
-    const expectedRevision =
-      useWorkspaceMessageStore.getState().conversationWindowsById[conversationId]!.revision;
     const getMessagesPage = vi.fn((_options: MessengerClientOptions, _query: unknown) =>
       Promise.resolve({
         items: [
@@ -2011,9 +2266,7 @@ describe("messenger conversation messages loader", () => {
       runtimeContext,
       getRuntimeContext: () => runtimeContext,
       conversationId,
-      direction: "after",
-      pageMarker: "newer-cursor",
-      expectedRevision,
+      boundary: captureBoundary(conversationId, "after"),
       pageLimit: 2,
       client: { getMessagesPage },
     });
@@ -2057,8 +2310,6 @@ describe("messenger conversation messages loader", () => {
         beforePageMarker: direction === "before" ? pageMarker : null,
         afterPageMarker: direction === "after" ? pageMarker : null,
       });
-      const expectedRevision =
-        useWorkspaceMessageStore.getState().conversationWindowsById[conversationId]!.revision;
       const outgoing = useMessengerOutboxStore.getState().enqueueOutgoingMessage({
         ownerKey,
         conversationId,
@@ -2081,9 +2332,7 @@ describe("messenger conversation messages loader", () => {
           loadMessengerMessageWindowPage({
             runtimeContext,
             conversationId,
-            direction,
-            pageMarker,
-            expectedRevision,
+            boundary: captureBoundary(conversationId, direction),
             signal: controller.signal,
             client: {
               getMessagesPage: () =>
@@ -2113,6 +2362,54 @@ describe("messenger conversation messages loader", () => {
     },
   );
 
+  it("applies a delayed newer anchor page after realtime changes the older edge", async () => {
+    const runtimeContext = createRuntimeContext();
+    prepareStoreOwner(runtimeContext);
+    const anchor = adaptMessengerMessage(
+      createMessageDto({ uuid: MESSAGE_B, created_at: DATE_LATER }),
+    );
+    const { conversationId } = anchor;
+    replaceConversationWindow({
+      conversationId,
+      messages: [anchor],
+      afterPageMarker: "newer",
+      mode: "around-anchor",
+      anchorMessageUuid: anchor.uuid,
+    });
+    const boundary = captureBoundary(conversationId, "after");
+    const page = createDeferred<MessengerCollectionPage<WorkspaceMessengerMessageDto>>();
+    const getMessagesPage = vi.fn(() => page.promise);
+    const loading = loadMessengerMessageWindowPage({
+      runtimeContext,
+      conversationId,
+      boundary,
+      client: { getMessagesPage },
+    });
+    await vi.waitFor(() => expect(getMessagesPage).toHaveBeenCalledOnce());
+    expect(getMessagesPage).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ pageMarker: "newer", sortDir: "asc" }),
+    );
+    useWorkspaceMessageStore
+      .getState()
+      .applyLiveCreatedMessage(adaptMessengerMessage(createMessageDto()));
+    expect(captureBoundary(conversationId, "after")).toEqual(boundary);
+    page.resolve(
+      createMessagesPage([createMessageDto({ uuid: MESSAGE_C, created_at: DATE_LATEST })]),
+    );
+
+    await expect(loading).resolves.toMatchObject({ status: "applied", direction: "after" });
+    expect(
+      useWorkspaceMessageStore.getState().conversationWindowsById[conversationId],
+    ).toMatchObject({
+      generation: boundary.generation,
+      revision: 3,
+      messageUuids: [MESSAGE_A, MESSAGE_B, MESSAGE_C],
+      beforePageMarker: null,
+      afterPageMarker: "next-page",
+    });
+  });
+
   it("includes realtime received while the final newer page is pending", async () => {
     const runtimeContext = createRuntimeContext();
     const ownerKey = prepareStoreOwner(runtimeContext);
@@ -2135,10 +2432,7 @@ describe("messenger conversation messages loader", () => {
     const loading = loadMessengerMessageWindowPage({
       runtimeContext,
       conversationId,
-      direction: "after",
-      pageMarker: "newer-cursor",
-      expectedRevision:
-        useWorkspaceMessageStore.getState().conversationWindowsById[conversationId]!.revision,
+      boundary: captureBoundary(conversationId, "after"),
       client: { getMessagesPage: () => pageRequest.promise },
       boundaryCache: { readReadBoundaries: () => Promise.resolve([]) },
       ownReactionSync: { hydrateFromCache: syncReactions, syncOwner: syncReactions },
@@ -2179,16 +2473,12 @@ describe("messenger conversation messages loader", () => {
       messages: [],
       beforePageMarker: "older-cursor",
     });
-    const expectedRevision =
-      useWorkspaceMessageStore.getState().conversationWindowsById[conversationId]!.revision;
 
     await expect(
       loadMessengerMessageWindowPage({
         runtimeContext,
         conversationId,
-        direction: "before",
-        pageMarker: "older-cursor",
-        expectedRevision,
+        boundary: captureBoundary(conversationId, "before"),
         client: {
           getMessagesPage: () => Promise.resolve(createMessagesPage([createMessageDto()])),
         },
@@ -2229,8 +2519,6 @@ describe("messenger conversation messages loader", () => {
       messages: [],
       beforePageMarker: "older-cursor",
     });
-    const firstRevision =
-      useWorkspaceMessageStore.getState().conversationWindowsById[conversationId]!.revision;
     const oldHydration = createDeferred<{
       status: "applied";
       ownerKey: string;
@@ -2243,9 +2531,7 @@ describe("messenger conversation messages loader", () => {
     const oldRequest = loadMessengerMessageWindowPage({
       runtimeContext,
       conversationId,
-      direction: "before",
-      pageMarker: "older-cursor",
-      expectedRevision: firstRevision,
+      boundary: captureBoundary(conversationId, "before"),
       client: {
         getMessagesPage: () => Promise.resolve(createMessagesPage([createMessageDto()])),
       },
@@ -2261,15 +2547,11 @@ describe("messenger conversation messages loader", () => {
       ).toBe("next-page"),
     );
 
-    const currentWindow =
-      useWorkspaceMessageStore.getState().conversationWindowsById[conversationId]!;
     const newerPage = createDeferred<MessengerCollectionPage<WorkspaceMessengerMessageDto>>();
     const newerRequest = loadMessengerMessageWindowPage({
       runtimeContext,
       conversationId,
-      direction: "before",
-      pageMarker: "next-page",
-      expectedRevision: currentWindow.revision,
+      boundary: captureBoundary(conversationId, "before"),
       client: { getMessagesPage: () => newerPage.promise },
     });
 
@@ -2314,8 +2596,6 @@ describe("messenger conversation messages loader", () => {
       messages: [],
       beforePageMarker: "older-cursor",
     });
-    const expectedRevision =
-      useWorkspaceMessageStore.getState().conversationWindowsById[conversationId]!.revision;
     const controller = new AbortController();
     const background =
       createDeferred<Awaited<ReturnType<typeof syncMessengerOwnerOwnMessageReactions>>>();
@@ -2331,9 +2611,7 @@ describe("messenger conversation messages loader", () => {
       loadMessengerMessageWindowPage({
         runtimeContext,
         conversationId,
-        direction: "before",
-        pageMarker: "older-cursor",
-        expectedRevision,
+        boundary: captureBoundary(conversationId, "before"),
         signal: controller.signal,
         client: {
           getMessagesPage: () => Promise.resolve(createMessagesPage([createMessageDto()])),
@@ -2365,17 +2643,13 @@ describe("messenger conversation messages loader", () => {
       messages: [],
       beforePageMarker: "stale-page",
     });
-    const expectedRevision =
-      useWorkspaceMessageStore.getState().conversationWindowsById[conversationId]!.revision;
     const page = createDeferred<MessengerCollectionPage<WorkspaceMessengerMessageDto>>();
     const controller = new AbortController();
     const pageRequest = loadMessengerMessageWindowPage({
       runtimeContext,
       getRuntimeContext: () => runtimeContext,
       conversationId,
-      direction: "before",
-      pageMarker: "stale-page",
-      expectedRevision,
+      boundary: captureBoundary(conversationId, "before"),
       client: { getMessagesPage: () => page.promise },
       signal: controller.signal,
     });
@@ -2572,7 +2846,7 @@ describe("messenger conversation messages loader", () => {
       getRuntimeContext: () => runtimeContext,
       conversationId,
       pageLimit: 25,
-      pageMarker: "cursor-a",
+      boundary: captureBoundary(conversationId, "before"),
       client: { getMessagesPage },
     });
 
@@ -3023,7 +3297,7 @@ describe("messenger conversation messages loader", () => {
       runtimeContext,
       getRuntimeContext: () => runtimeContext,
       conversationId: `topic:${STREAM_A}:${TOPIC_A}`,
-      pageMarker: "next-page",
+      boundary: captureBoundary(`topic:${STREAM_A}:${TOPIC_A}`, "before"),
       client: { getMessagesPage },
       cache,
     });
@@ -3106,7 +3380,7 @@ describe("messenger conversation messages loader", () => {
       runtimeContext,
       getRuntimeContext: () => runtimeContext,
       conversationId: `topic:${STREAM_A}:${TOPIC_A}`,
-      pageMarker: "next-page",
+      boundary: captureBoundary(`topic:${STREAM_A}:${TOPIC_A}`, "before"),
       client: { getMessagesPage },
       cache,
     });

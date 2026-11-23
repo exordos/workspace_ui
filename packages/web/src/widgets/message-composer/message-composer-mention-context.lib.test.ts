@@ -146,6 +146,7 @@ describe("buildWorkspaceMentionContext", () => {
       messages: messageState({
         conversationWindowsById: {
           [CONVERSATION_ID]: {
+            generation: Symbol("test window"),
             mode: "tail",
             anchorMessageUuid: null,
             messageUuids: ["m1", "m2", "m3"],

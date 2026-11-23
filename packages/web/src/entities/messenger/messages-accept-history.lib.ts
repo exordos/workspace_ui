@@ -1,5 +1,6 @@
 import type {
   WorkspaceConversationWindow,
+  WorkspaceConversationWindowBoundary,
   WorkspaceMessageStoreState,
 } from "~/entities/message/message.model";
 import {
@@ -29,21 +30,21 @@ type HistoryStoreState = Pick<
   | "mergeConversationWindowPage"
 >;
 
-// Открытие может удержать видимое окно, а страница требует совпадения верхнего маркера.
+// Открытие проверяет всю ревизию, а догрузка проверяет выбранную сторону.
 type HistoryTarget =
   | {
       kind: "opening";
+      expectedRevision: number | null; // Ревизия окна на момент запроса либо отсутствие окна.
       shouldRetainWindow: () => boolean; // Текущее намерение читателя к моменту записи.
       serverTail: readonly MessengerMessage[]; // Исходный хвост для проверки продолжения снизу.
     }
-  | { kind: "before"; expectedPageMarker: string }; // Запрошенная верхняя граница.
+  | { kind: "before"; boundary: WorkspaceConversationWindowBoundary }; // Запрошенная верхняя граница.
 
 // Контекст запроса и выбранный результат для синхронного приёма истории.
 interface AcceptConversationHistoryInput {
   resolved: ResolvedConversationHistoryWindow; // Выбранный серверный результат.
   store: { getState: () => HistoryStoreState }; // Хранилище окна для текущего запроса.
   conversationId: MessengerConversationId; // Разговор, для которого запрашивали историю.
-  expectedRevision: number | null; // Ревизия окна на момент запроса либо отсутствие окна.
   capturedMutationRevision: number; // Ревизия тел сообщений на момент запроса.
   ownerKey: string; // Владелец окна, границ прочтения и исходящих операций.
   isCurrent: () => boolean; // Проверка токена, поколения сессии и отмены.
@@ -53,13 +54,13 @@ interface AcceptConversationHistoryInput {
 // Результат приёма, по которому загрузчик продолжает эффекты или решает, нужен ли повтор.
 type AcceptConversationHistoryResult =
   | (AppliedServerMessages & {
-      appliedRevision: number; // Ревизия окна для проверки отложенной записи в кеш.
+      appliedWindow: WorkspaceConversationWindow; // Установленное окно для проверки записи в кеш.
       messages: MessengerMessage[]; // Сообщения для синхронизации реакций.
       nextPageMarker: string | null; // Следующая верхняя граница.
       hasMore: boolean; // Сервер сообщил о продолжении сверху.
     })
   | { status: "stale-owner" } // Запрос или сессия потеряли актуальность.
-  | { status: "stale-window" } // Окно или маркер не совпали с ожидаемыми.
+  | { status: "stale-window" } // Окно или граница не совпали с ожидаемыми.
   | { status: "changed-boundary" }; // Выбранная граница непрочитанного изменилась.
 
 // Удерживает видимый участок и открывает догрузку вниз, если серверный хвост ушёл вперёд.
@@ -98,7 +99,6 @@ export function applyConversationHistory({
   resolved,
   store,
   conversationId,
-  expectedRevision,
   capturedMutationRevision,
   ownerKey,
   isCurrent,
@@ -133,11 +133,11 @@ export function applyConversationHistory({
   ) {
     return { status: "changed-boundary" };
   }
-  const appliedRevision =
+  const appliedWindow =
     target.kind === "opening"
       ? currentState.replaceConversationWindow({
           conversationId,
-          expectedRevision,
+          expectedRevision: target.expectedRevision,
           capturedMutationRevision,
           mode,
           anchorMessageUuid,
@@ -146,21 +146,20 @@ export function applyConversationHistory({
         })
       : currentState.mergeConversationWindowPage({
           conversationId,
-          expectedRevision: expectedRevision ?? 0,
-          expectedPageMarker: target.expectedPageMarker,
+          boundary: target.boundary,
           capturedMutationRevision,
-          direction: "before",
           messages,
           pageMarker: nextPageMarker,
         });
-  if (appliedRevision == null) return { status: "stale-window" };
+  if (appliedWindow == null) return { status: "stale-window" };
   const appliedState = store.getState();
-  const appliedWindow = appliedState.conversationWindowsById[conversationId];
   if (
     unreadMessage != null &&
     !retainWindow &&
     (appliedState.messagesById[unreadMessage.uuid]?.read !== false ||
-      !appliedWindow?.messageUuids.includes(unreadMessage.uuid))
+      !appliedState.conversationWindowsById[conversationId]?.messageUuids.includes(
+        unreadMessage.uuid,
+      ))
   ) {
     return { status: "changed-boundary" };
   }
@@ -168,7 +167,7 @@ export function applyConversationHistory({
   return {
     status: "applied",
     evidence: messages,
-    appliedRevision,
+    appliedWindow,
     messages,
     nextPageMarker,
     hasMore: nextPageMarker != null,

@@ -1,4 +1,8 @@
 import { useWorkspaceMessageStore } from "~/entities/message/message.model";
+import type {
+  WorkspaceConversationWindow,
+  WorkspaceConversationWindowBoundary,
+} from "~/entities/message/message.model";
 import {
   captureWorkspaceRuntimeRequestContext,
   isWorkspaceRuntimeRequestInvalidated,
@@ -24,6 +28,8 @@ import {
   readMessengerConversationWindowCache as defaultReadMessengerConversationWindowCache,
   readMessengerCachedReadBoundaries as defaultReadMessengerCachedReadBoundaries,
   deleteMessengerCachedReadBoundary as defaultDeleteMessengerCachedReadBoundary,
+  withoutOptimisticMessageReactionCounts,
+  withoutRuntimeReactionState,
   writeMessengerConversationWindowCache as defaultWriteMessengerConversationWindowCache,
   type MessengerConversationCacheWindow,
 } from "./messenger-cache.lib";
@@ -242,7 +248,7 @@ export interface LoadMessengerConversationMessagesOptions {
   runtimeContext: WorkspaceRuntimeContext;
   conversationId: MessengerConversationId;
   pageLimit?: number;
-  pageMarker?: string | number;
+  boundary?: WorkspaceConversationWindowBoundary; // Верхняя страница хвоста, если это догрузка.
   resolveUnreadBoundary?: boolean;
   openingAnchorUuid?: MessengerUuid;
   retainCurrentWindow?: () => boolean;
@@ -295,9 +301,7 @@ export interface ApplyMessengerMessageWindowOptions {
 export interface LoadMessengerMessageWindowPageOptions {
   runtimeContext: WorkspaceRuntimeContext;
   conversationId: MessengerConversationId;
-  direction: MessengerMessageWindowPageDirection;
-  pageMarker: string;
-  expectedRevision: number;
+  boundary: WorkspaceConversationWindowBoundary; // Снимок выбранной стороны до запроса.
   pageLimit?: number;
   getRuntimeContext?: WorkspaceRuntimeContextGetter;
   client?: MessengerMessagesClientDeps;
@@ -650,7 +654,7 @@ async function restoreCachedConversationMessages({
 
   if (!hasLoadedWindow) {
     const cachedStore = store.getState();
-    const appliedRevision = cachedStore.replaceConversationWindow({
+    const cachedAppliedWindow = cachedStore.replaceConversationWindow({
       conversationId,
       expectedRevision,
       capturedMutationRevision,
@@ -662,7 +666,7 @@ async function restoreCachedConversationMessages({
         afterPageMarker: null,
       },
     });
-    if (appliedRevision != null) {
+    if (cachedAppliedWindow != null) {
       settleMessengerOutgoingMessages(ownerKey, effectiveMessages);
     }
   }
@@ -745,32 +749,40 @@ async function synchronizeLoadedConversationMessages({
   });
 }
 
+// Для хвостовой догрузки собирает актуальное окно, пока применённая верхняя граница на месте.
 function writeLoadedConversationMessagesCache({
   ownerKey,
   conversationId,
-  nextPageMarker,
-  hasMore,
-  appliedRevision,
+  appliedWindow,
+  isOlderPage,
   cache,
   store,
   isRequestStale,
 }: {
   ownerKey: string;
   conversationId: MessengerConversationId;
-  nextPageMarker: string | null;
-  hasMore: boolean;
-  appliedRevision: number;
+  appliedWindow: WorkspaceConversationWindow;
+  isOlderPage: boolean;
   cache: MessengerMessagesCacheDeps;
   store: MessengerMessagesStoreApi;
   isRequestStale: () => boolean;
 }): void {
   const cacheStoreState = store.getState();
   const cacheWindow = cacheStoreState.conversationWindowsById[conversationId];
-  if (cacheWindow?.revision !== appliedRevision) return;
+  if (cacheWindow?.mode !== "tail" || cacheWindow.generation !== appliedWindow.generation) return;
+  if (
+    isOlderPage
+      ? cacheWindow.beforePageMarker !== appliedWindow.beforePageMarker ||
+        cacheWindow.messageUuids[0] !== appliedWindow.messageUuids[0]
+      : cacheWindow.revision !== appliedWindow.revision
+  ) {
+    return;
+  }
 
   const effectiveMessages = cacheWindow.messageUuids
     .map((messageUuid) => cacheStoreState.messagesById[messageUuid])
-    .filter((message): message is MessengerMessage => message != null);
+    .filter((message): message is MessengerMessage => message != null)
+    .map((message) => withoutRuntimeReactionState(withoutOptimisticMessageReactionCounts(message)));
   const cacheMutationRevision = cacheStoreState.messageMutationRevision;
   writeMessagesCacheBestEffort(() =>
     (cache.writeConversationMessagePage ?? defaultWriteMessengerConversationWindowCache)(
@@ -778,15 +790,17 @@ function writeLoadedConversationMessagesCache({
       conversationId,
       {
         messages: effectiveMessages,
-        nextPageMarker,
-        hasMore,
+        nextPageMarker: cacheWindow.beforePageMarker,
+        hasMore: cacheWindow.beforePageMarker != null,
       },
       () => {
         const currentState = store.getState();
+        const currentWindow = currentState.conversationWindowsById[conversationId];
         return (
           !isRequestStale() &&
           currentState.messageMutationRevision === cacheMutationRevision &&
-          currentState.conversationWindowsById[conversationId]?.revision === appliedRevision
+          currentWindow?.revision === cacheWindow.revision &&
+          currentWindow.generation === cacheWindow.generation
         );
       },
     ),
@@ -921,7 +935,7 @@ async function loadConversationMessagesFromServer({
   runtimeContext,
   conversationId,
   pageLimit,
-  pageMarker,
+  boundary,
   parsedConversationId,
   ownerKey,
   requestToken,
@@ -942,7 +956,7 @@ async function loadConversationMessagesFromServer({
   runtimeContext: WorkspaceRuntimeContext;
   conversationId: MessengerConversationId;
   pageLimit: number;
-  pageMarker: string | number | undefined;
+  boundary: WorkspaceConversationWindowBoundary | undefined;
   parsedConversationId: NonNullable<ReturnType<typeof parseMessengerConversationId>>;
   ownerKey: string;
   requestToken: symbol;
@@ -960,6 +974,7 @@ async function loadConversationMessagesFromServer({
   retainCurrentWindow: (() => boolean) | undefined;
   onServerWindowApplied: (() => void) | undefined;
 }): Promise<MessengerConversationMessagesResult> {
+  const pageMarker = boundary?.pageMarker;
   const requestOptions = buildMessengerRequestOptions(runtimeContext, clientOptions, signal);
   const query = buildMessengerMessagesPageQuery({
     conversation: parsedConversationId,
@@ -1069,14 +1084,18 @@ async function loadConversationMessagesFromServer({
         resolved,
         store,
         conversationId,
-        expectedRevision: expectedWindowRevision,
         capturedMutationRevision,
         ownerKey,
         isCurrent: () => !isRequestStale(),
         target:
-          pageMarker == null
-            ? { kind: "opening", shouldRetainWindow, serverTail }
-            : { kind: "before", expectedPageMarker: String(pageMarker) },
+          boundary == null
+            ? {
+                kind: "opening",
+                expectedRevision: expectedWindowRevision,
+                shouldRetainWindow,
+                serverTail,
+              }
+            : { kind: "before", boundary },
       });
       if (applied.status === "stale-owner") {
         return { status: "skipped", ownerKey, reason: "stale-owner" };
@@ -1093,7 +1112,7 @@ async function loadConversationMessagesFromServer({
         finishMessageLoadingRequest(store, conversationId, requestToken, undefined);
         return { status: "skipped", ownerKey, reason: "stale-window" };
       }
-      const { messages, nextPageMarker, hasMore, appliedRevision } = applied;
+      const { messages, nextPageMarker, hasMore, appliedWindow } = applied;
       onServerWindowApplied?.();
 
       await synchronizeLoadedConversationMessages({
@@ -1109,19 +1128,17 @@ async function loadConversationMessagesFromServer({
         return { status: "skipped", ownerKey, reason: "stale-owner" };
       }
 
-      if (store.getState().conversationWindowsById[conversationId]?.mode === "tail")
-        writeLoadedConversationMessagesCache({
-          ownerKey,
-          conversationId,
-          nextPageMarker,
-          hasMore,
-          appliedRevision,
-          cache,
-          store,
-          // A completed request releases its loading token before IndexedDB commits.
-          isRequestStale: () =>
-            isWorkspaceRuntimeRequestInvalidated(runtimeContext, getRuntimeContext, signal),
-        });
+      writeLoadedConversationMessagesCache({
+        ownerKey,
+        conversationId,
+        appliedWindow,
+        isOlderPage: boundary != null,
+        cache,
+        store,
+        // A completed request releases its loading token before IndexedDB commits.
+        isRequestStale: () =>
+          isWorkspaceRuntimeRequestInvalidated(runtimeContext, getRuntimeContext, signal),
+      });
       finishMessageLoadingRequest(store, conversationId, requestToken, null);
       return {
         status: "applied",
@@ -1155,7 +1172,7 @@ export async function loadMessengerConversationMessages({
   runtimeContext,
   conversationId,
   pageLimit = DEFAULT_MESSAGES_PAGE_LIMIT,
-  pageMarker,
+  boundary,
   resolveUnreadBoundary = false,
   openingAnchorUuid,
   retainCurrentWindow,
@@ -1186,6 +1203,11 @@ export async function loadMessengerConversationMessages({
     return { status: "skipped", ownerKey, reason: "stale-owner" };
   }
 
+  // Обычный загрузчик запрашивает страницы сверху. Нижняя граница принадлежит явному окну.
+  if (boundary?.direction === "after") {
+    return { status: "skipped", ownerKey, reason: "stale-window" };
+  }
+
   const requestToken = Symbol("conversation-messages-request");
   claimMessageLoadingRequest(store, conversationId, requestToken);
   store.getState().setMessagesLoading(conversationId, true);
@@ -1210,7 +1232,7 @@ export async function loadMessengerConversationMessages({
   }
 
   const cachedWindow =
-    pageMarker == null
+    boundary == null
       ? await restoreCachedConversationMessages({
           ownerKey,
           conversationId,
@@ -1234,7 +1256,7 @@ export async function loadMessengerConversationMessages({
     runtimeContext,
     conversationId,
     pageLimit,
-    pageMarker,
+    boundary,
     parsedConversationId,
     ownerKey,
     requestToken,
@@ -1488,7 +1510,7 @@ export async function applyMessengerMessageWindow({
   }
 
   try {
-    const appliedRevision = store.getState().replaceConversationWindow({
+    const appliedWindow = store.getState().replaceConversationWindow({
       conversationId: window.conversationId,
       expectedRevision: window.expectedWindowRevision,
       capturedMutationRevision: window.capturedMutationRevision,
@@ -1500,7 +1522,7 @@ export async function applyMessengerMessageWindow({
         afterPageMarker: window.afterPageMarker,
       },
     });
-    if (appliedRevision == null) {
+    if (appliedWindow == null) {
       releaseMessageLoadingRequest(store, window.conversationId, requestToken);
       return { status: "skipped", ownerKey, reason: "stale-window" };
     }
@@ -1572,9 +1594,7 @@ export function conversationContainsAnchor(
 async function applyLoadedMessengerMessageWindowPage({
   runtimeContext,
   conversationId,
-  direction,
-  pageMarker,
-  expectedRevision,
+  boundary,
   page,
   boundariesReady,
   isRequestInvalidated,
@@ -1589,9 +1609,7 @@ async function applyLoadedMessengerMessageWindowPage({
 }: {
   runtimeContext: WorkspaceRuntimeContext;
   conversationId: MessengerConversationId;
-  direction: MessengerMessageWindowPageDirection;
-  pageMarker: string;
-  expectedRevision: number;
+  boundary: WorkspaceConversationWindowBoundary;
   page: MessengerCollectionPage<WorkspaceMessengerMessageDto>;
   boundariesReady: Promise<boolean>;
   isRequestInvalidated: () => boolean;
@@ -1614,19 +1632,18 @@ async function applyLoadedMessengerMessageWindowPage({
   };
   if (!(await boundariesReady) || !isPageCurrent()) return skipStalePage();
 
+  const { direction } = boundary;
   const pageItems = direction === "before" ? [...page.items].reverse() : page.items;
   const messages = applyMessengerReadBoundaries(pageItems.map(adaptMessengerMessage), ownerKey);
   const nextPageMarker = page.nextPageMarker;
-  const appliedRevision = store.getState().mergeConversationWindowPage({
+  const appliedWindow = store.getState().mergeConversationWindowPage({
     conversationId,
-    expectedRevision,
-    expectedPageMarker: pageMarker,
+    boundary,
     capturedMutationRevision,
-    direction,
     messages,
     pageMarker: nextPageMarker,
   });
-  if (appliedRevision == null) {
+  if (appliedWindow == null) {
     finishMessageLoadingRequest(store, conversationId, requestToken, undefined);
     return { status: "skipped", ownerKey, reason: "stale-window" };
   }
@@ -1671,9 +1688,7 @@ async function applyLoadedMessengerMessageWindowPage({
 export async function loadMessengerMessageWindowPage({
   runtimeContext,
   conversationId,
-  direction,
-  pageMarker,
-  expectedRevision,
+  boundary,
   pageLimit = DEFAULT_MESSAGES_PAGE_LIMIT,
   getRuntimeContext = () => runtimeContext,
   client = {},
@@ -1711,6 +1726,7 @@ export async function loadMessengerMessageWindowPage({
   store.getState().setMessagesError(conversationId, null);
   const capturedMutationRevision = store.getState().messageMutationRevision;
 
+  const { direction, pageMarker } = boundary;
   const requestOptions = buildMessengerRequestOptions(runtimeContext, clientOptions, signal);
   const query = buildMessengerMessagesPageQuery({
     conversation: parsedConversationId,
@@ -1724,9 +1740,7 @@ export async function loadMessengerMessageWindowPage({
     return await applyLoadedMessengerMessageWindowPage({
       runtimeContext,
       conversationId,
-      direction,
-      pageMarker,
-      expectedRevision,
+      boundary,
       page,
       boundariesReady,
       isRequestInvalidated: () =>

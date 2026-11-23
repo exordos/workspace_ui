@@ -3225,7 +3225,12 @@ describe("ChatPage Workspace route", () => {
     expect(captured.loadWorkspaceMessages).toHaveBeenLastCalledWith(
       expect.objectContaining({
         conversationId,
-        pageMarker: "older-page",
+        boundary: expect.objectContaining({
+          direction: "before",
+          pageMarker: "older-page",
+          generation:
+            useWorkspaceMessageStore.getState().conversationWindowsById[conversationId]?.generation,
+        }),
         signal: expect.any(AbortSignal),
       }),
     );
@@ -3274,10 +3279,12 @@ describe("ChatPage Workspace route", () => {
     expect(captured.loadWorkspaceMessageWindowPage).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({
         conversationId,
-        direction: "before",
-        pageMarker: "current-boundary",
-        expectedRevision:
-          useWorkspaceMessageStore.getState().conversationWindowsById[conversationId]?.revision,
+        boundary: expect.objectContaining({
+          direction: "before",
+          pageMarker: "current-boundary",
+          generation:
+            useWorkspaceMessageStore.getState().conversationWindowsById[conversationId]?.generation,
+        }),
       }),
     );
     expect(captured.messageListProps?.isLoadingOlder).toBe(true);
@@ -4925,9 +4932,6 @@ describe("ChatPage Workspace route", () => {
 
     await waitFor(() => expect(captured.messageListProps?.hasOlderMessages).toBe(true));
     expect(captured.messageListProps?.hasNewerMessages).toBe(false);
-    const expectedRevision =
-      useWorkspaceMessageStore.getState().conversationWindowsById[conversationId]?.revision;
-    expect(expectedRevision).toEqual(expect.any(Number));
 
     act(() => {
       captured.messageListProps?.onLoadOlder();
@@ -4937,9 +4941,12 @@ describe("ChatPage Workspace route", () => {
     expect(captured.loadWorkspaceMessageWindowPage).toHaveBeenCalledWith(
       expect.objectContaining({
         conversationId,
-        direction: "before",
-        pageMarker: "older-window-cursor",
-        expectedRevision,
+        boundary: expect.objectContaining({
+          direction: "before",
+          pageMarker: "older-window-cursor",
+          generation:
+            useWorkspaceMessageStore.getState().conversationWindowsById[conversationId]?.generation,
+        }),
         runtimeContext: expect.objectContaining({ projectId: "project-a" }),
         getRuntimeContext: expect.any(Function),
         signal: expect.any(AbortSignal),
@@ -4971,9 +4978,6 @@ describe("ChatPage Workspace route", () => {
 
     await waitFor(() => expect(captured.messageListProps?.hasNewerMessages).toBe(true));
     expect(captured.messageListProps?.hasOlderMessages).toBe(false);
-    const expectedRevision =
-      useWorkspaceMessageStore.getState().conversationWindowsById[conversationId]?.revision;
-    expect(expectedRevision).toEqual(expect.any(Number));
 
     act(() => {
       captured.messageListProps?.onLoadNewer();
@@ -4983,9 +4987,12 @@ describe("ChatPage Workspace route", () => {
     expect(captured.loadWorkspaceMessageWindowPage).toHaveBeenCalledWith(
       expect.objectContaining({
         conversationId,
-        direction: "after",
-        pageMarker: "newer-window-cursor",
-        expectedRevision,
+        boundary: expect.objectContaining({
+          direction: "after",
+          pageMarker: "newer-window-cursor",
+          generation:
+            useWorkspaceMessageStore.getState().conversationWindowsById[conversationId]?.generation,
+        }),
         runtimeContext: expect.objectContaining({ projectId: "project-a" }),
         getRuntimeContext: expect.any(Function),
         signal: expect.any(AbortSignal),

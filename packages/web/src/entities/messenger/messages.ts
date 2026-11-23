@@ -1,4 +1,5 @@
 import {
+  captureWorkspaceConversationWindowBoundary,
   selectWorkspaceConversationWindow,
   selectWorkspaceMessagesForConversation,
   selectWorkspaceMessageStatusForConversation,
@@ -369,9 +370,8 @@ export function createMessages({
 
       const state = useWorkspaceMessageStore.getState();
       const window = selectWorkspaceConversationWindow(state, conversationId);
-      const pageMarker =
-        direction === "before" ? window?.beforePageMarker : window?.afterPageMarker;
-      if (window == null || pageMarker == null) return { status: "skipped", reason: "no-boundary" };
+      const boundary = captureWorkspaceConversationWindowBoundary(window, direction);
+      if (window == null || boundary == null) return { status: "skipped", reason: "no-boundary" };
       if (selectWorkspaceMessageStatusForConversation(state, conversationId).loading)
         return { status: "skipped", reason: "busy" };
 
@@ -379,17 +379,13 @@ export function createMessages({
         runtimeContext,
         getRuntimeContext: getOwnedRuntimeContext,
         conversationId,
-        pageMarker,
+        boundary,
         signal,
       };
-      // Загрузчику окна вокруг сообщения передаём его ревизию для проверки ответа.
+      // Оба загрузчика получают снимок одной стороны до запуска асинхронных действий.
       const request =
         window.mode === "around-anchor" || direction === "after" || view === "message-anchor"
-          ? loadMessengerMessageWindowPage({
-              ...options,
-              direction,
-              expectedRevision: window.revision,
-            })
+          ? loadMessengerMessageWindowPage(options)
           : loadMessengerConversationMessages(options);
       return toOperationResult(request, signal);
     },

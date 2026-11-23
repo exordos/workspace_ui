@@ -63,7 +63,8 @@ export interface WorkspaceConversationWindow {
   messageUuids: MessengerUuid[];
   beforePageMarker: string | null;
   afterPageMarker: string | null;
-  revision: number;
+  revision: number; // Ревизия полного набора строк и маркеров.
+  generation: symbol; // Новая идентичность для каждой полной установки окна.
 }
 
 export interface WorkspaceConversationWindowReplaceInput {
@@ -78,14 +79,21 @@ export interface WorkspaceConversationWindowReplaceInput {
 
 export type WorkspaceConversationWindowPageDirection = "before" | "after";
 
+// Снимок выбранной границы. Изменения противоположного края не влияют на него.
+export interface WorkspaceConversationWindowBoundary {
+  generation: symbol; // Идентичность установленного окна.
+  direction: WorkspaceConversationWindowPageDirection; // Сторона запрошенной страницы.
+  pageMarker: string; // Серверный маркер на момент запроса.
+  edgeMessageUuid: MessengerUuid | null; // Крайняя строка с этой стороны.
+}
+
+// Страница дополняет окно только при актуальном снимке границы.
 export interface WorkspaceConversationWindowPageMergeInput {
-  conversationId: MessengerConversationId;
-  expectedRevision: number;
-  expectedPageMarker: string | null;
-  capturedMutationRevision: number;
-  direction: WorkspaceConversationWindowPageDirection;
-  messages: readonly MessengerMessage[];
-  pageMarker: string | null;
+  conversationId: MessengerConversationId; // Разговор, чьё окно расширяется.
+  boundary: WorkspaceConversationWindowBoundary; // Граница на момент начала запроса.
+  capturedMutationRevision: number; // Ревизия тел перед запросом.
+  messages: readonly MessengerMessage[]; // Полученные строки.
+  pageMarker: string | null; // Следующий серверный маркер с той же стороны.
 }
 
 export interface WorkspaceConversationMessagesStatus {
@@ -97,8 +105,13 @@ export interface WorkspaceConversationMessagesStatus {
 
 export interface WorkspaceMessageStoreState extends WorkspaceMessageStoreData {
   setOwner: (ownerKey: string | null, preserveExisting: boolean) => void;
-  replaceConversationWindow: (input: WorkspaceConversationWindowReplaceInput) => number | null;
-  mergeConversationWindowPage: (input: WorkspaceConversationWindowPageMergeInput) => number | null;
+  // Возвращают установленное окно, в том числе если подписчик сразу заменил его.
+  replaceConversationWindow: (
+    input: WorkspaceConversationWindowReplaceInput,
+  ) => WorkspaceConversationWindow | null;
+  mergeConversationWindowPage: (
+    input: WorkspaceConversationWindowPageMergeInput,
+  ) => WorkspaceConversationWindow | null;
   applyLiveCreatedMessage: (message: MessengerMessage) => void;
   applyLiveCreatedMessages: (messages: readonly MessengerMessage[]) => void;
   // Returns the merged body, null for a recorded unknown UUID, or false if rejected.

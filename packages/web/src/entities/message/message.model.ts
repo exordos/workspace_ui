@@ -23,6 +23,8 @@ import {
 } from "./message-workspace-order.lib";
 import type {
   WorkspaceConversationWindow,
+  WorkspaceConversationWindowBoundary,
+  WorkspaceConversationWindowPageDirection,
   WorkspaceConversationMessagesStatus,
   WorkspaceMessageReadBoundaryAnchor,
   WorkspaceMessageStoreData,
@@ -33,6 +35,7 @@ import type {
 
 export type {
   WorkspaceConversationWindow,
+  WorkspaceConversationWindowBoundary,
   WorkspaceConversationWindowMode,
   WorkspaceConversationWindowPageDirection,
   WorkspaceConversationWindowPageMergeInput,
@@ -349,6 +352,24 @@ function nextWindowRevision(window: WorkspaceConversationWindow | undefined): nu
   return (window?.revision ?? 0) + 1;
 }
 
+// Снимает рядом идентичность окна, маркер и UUID края выбранной стороны.
+export function captureWorkspaceConversationWindowBoundary(
+  window: WorkspaceConversationWindow | null | undefined,
+  direction: WorkspaceConversationWindowPageDirection,
+): WorkspaceConversationWindowBoundary | null {
+  if (window == null) return null;
+  const before = direction === "before";
+  const pageMarker = before ? window.beforePageMarker : window.afterPageMarker;
+  if (pageMarker == null) return null;
+  const edgeMessageUuid = before ? window.messageUuids[0] : window.messageUuids.at(-1);
+  return {
+    generation: window.generation,
+    direction,
+    pageMarker,
+    edgeMessageUuid: edgeMessageUuid ?? null,
+  };
+}
+
 /**
  * Flip every loaded unread message of the anchor's topic up to and including the
  * anchor. Returns the previous and projected rows so the caller can roll back.
@@ -455,7 +476,7 @@ export const useWorkspaceMessageStore = create<WorkspaceMessageStoreState>((set,
       conversationId: input.conversationId,
       messages: input.messages.length,
     });
-    let appliedRevision: number | null = null;
+    let appliedWindow: WorkspaceConversationWindow | null = null;
     set((state) => {
       const previousWindow = state.conversationWindowsById[input.conversationId];
       const currentRevision = previousWindow?.revision ?? 0;
@@ -474,6 +495,7 @@ export const useWorkspaceMessageStore = create<WorkspaceMessageStoreState>((set,
       );
       const revision = nextWindowRevision(previousWindow);
       const serverWindow: WorkspaceConversationWindow = {
+        generation: Symbol("conversation window"),
         mode: input.mode,
         anchorMessageUuid: input.anchorMessageUuid,
         messageUuids: mergeSortedWorkspaceMessageIds(
@@ -492,7 +514,7 @@ export const useWorkspaceMessageStore = create<WorkspaceMessageStoreState>((set,
         serverWindow,
         input.capturedMutationRevision,
       );
-      const window: WorkspaceConversationWindow = {
+      appliedWindow = {
         ...serverWindow,
         messageUuids: mergeSortedWorkspaceMessageIds(
           serverWindow.messageUuids,
@@ -500,12 +522,11 @@ export const useWorkspaceMessageStore = create<WorkspaceMessageStoreState>((set,
           messagesById,
         ),
       };
-      appliedRevision = revision;
       return {
         messagesById,
         conversationWindowsById: {
           ...state.conversationWindowsById,
-          [input.conversationId]: window,
+          [input.conversationId]: appliedWindow,
         },
         messagesLoadingByConversationId: {
           ...state.messagesLoadingByConversationId,
@@ -517,22 +538,25 @@ export const useWorkspaceMessageStore = create<WorkspaceMessageStoreState>((set,
         },
       };
     });
-    return appliedRevision;
+    return appliedWindow;
   },
 
   mergeConversationWindowPage(input) {
+    const { direction, generation, pageMarker, edgeMessageUuid } = input.boundary;
     logStoreAction("workspaceMessage", "mergeConversationWindowPage", {
       conversationId: input.conversationId,
-      direction: input.direction,
+      direction,
       messages: input.messages.length,
     });
-    let appliedRevision: number | null = null;
+    let appliedWindow: WorkspaceConversationWindow | null = null;
     set((state) => {
       const previousWindow = state.conversationWindowsById[input.conversationId];
+      const currentBoundary = captureWorkspaceConversationWindowBoundary(previousWindow, direction);
       if (
-        previousWindow?.revision !== input.expectedRevision ||
-        previousWindow[input.direction === "before" ? "beforePageMarker" : "afterPageMarker"] !==
-          input.expectedPageMarker ||
+        previousWindow == null ||
+        currentBoundary?.generation !== generation ||
+        currentBoundary.pageMarker !== pageMarker ||
+        currentBoundary.edgeMessageUuid !== edgeMessageUuid ||
         isRemovedStreamConversation(input.conversationId)
       ) {
         return state;
@@ -553,9 +577,8 @@ export const useWorkspaceMessageStore = create<WorkspaceMessageStoreState>((set,
           messagesById,
         ),
         beforePageMarker:
-          input.direction === "before" ? input.pageMarker : previousWindow.beforePageMarker,
-        afterPageMarker:
-          input.direction === "after" ? input.pageMarker : previousWindow.afterPageMarker,
+          direction === "before" ? input.pageMarker : previousWindow.beforePageMarker,
+        afterPageMarker: direction === "after" ? input.pageMarker : previousWindow.afterPageMarker,
         revision,
       };
       // Recheck live bodies against the expanded bounds, including a newly reached tail.
@@ -566,23 +589,23 @@ export const useWorkspaceMessageStore = create<WorkspaceMessageStoreState>((set,
         mergedWindow,
         input.capturedMutationRevision,
       );
-      appliedRevision = revision;
+      appliedWindow = {
+        ...mergedWindow,
+        messageUuids: mergeSortedWorkspaceMessageIds(
+          mergedWindow.messageUuids,
+          retainedLiveMessages,
+          messagesById,
+        ),
+      };
       return {
         messagesById,
         conversationWindowsById: {
           ...state.conversationWindowsById,
-          [input.conversationId]: {
-            ...mergedWindow,
-            messageUuids: mergeSortedWorkspaceMessageIds(
-              mergedWindow.messageUuids,
-              retainedLiveMessages,
-              messagesById,
-            ),
-          },
+          [input.conversationId]: appliedWindow,
         },
       };
     });
-    return appliedRevision;
+    return appliedWindow;
   },
 
   applyLiveCreatedMessage(message) {

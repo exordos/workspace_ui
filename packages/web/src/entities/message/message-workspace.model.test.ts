@@ -10,6 +10,7 @@ import type {
   MessengerUuid,
 } from "~/entities/messenger/messenger.types";
 import {
+  captureWorkspaceConversationWindowBoundary,
   selectWorkspaceConversationWindow,
   selectWorkspaceMessageById,
   selectWorkspaceMessagesForConversation,
@@ -84,18 +85,20 @@ function replaceWindow(
 ): number | null {
   const state = useWorkspaceMessageStore.getState();
   const window = selectWorkspaceConversationWindow(state, conversationId);
-  return state.replaceConversationWindow({
-    conversationId,
-    expectedRevision: options?.expectedRevision ?? window?.revision ?? null,
-    capturedMutationRevision: options?.capturedMutationRevision ?? state.messageMutationRevision,
-    mode: options?.mode ?? "tail",
-    anchorMessageUuid: options?.anchorMessageUuid ?? null,
-    messages,
-    markers: {
-      beforePageMarker: options?.beforePageMarker ?? null,
-      afterPageMarker: options?.afterPageMarker ?? null,
-    },
-  });
+  return (
+    state.replaceConversationWindow({
+      conversationId,
+      expectedRevision: options?.expectedRevision ?? window?.revision ?? null,
+      capturedMutationRevision: options?.capturedMutationRevision ?? state.messageMutationRevision,
+      mode: options?.mode ?? "tail",
+      anchorMessageUuid: options?.anchorMessageUuid ?? null,
+      messages,
+      markers: {
+        beforePageMarker: options?.beforePageMarker ?? null,
+        afterPageMarker: options?.afterPageMarker ?? null,
+      },
+    })?.revision ?? null
+  );
 }
 
 describe("workspace message store", () => {
@@ -216,7 +219,7 @@ describe("workspace message store", () => {
           createMessage({ uuid: MESSAGE_C, createdAt: DATE_LATER }),
         ],
         markers: { beforePageMarker: "older", afterPageMarker: "newer" },
-      }),
+      })?.revision,
     ).toBe(3);
 
     expect(selectMessages(TOPIC_CONVERSATION_ID).map((message) => message.uuid)).toEqual([
@@ -305,24 +308,23 @@ describe("workspace message store", () => {
     ).not.toBeNull();
   });
 
-  it("merges a page only when both revision and page marker still match", () => {
+  it("merges a page only while its boundary remains current", () => {
     replaceWindow(TOPIC_CONVERSATION_ID, [createMessage({ uuid: MESSAGE_B })], {
       beforePageMarker: "older-1",
     });
     const state = useWorkspaceMessageStore.getState();
-    const window = selectWorkspaceConversationWindow(state, TOPIC_CONVERSATION_ID)!;
+    const window = selectWorkspaceConversationWindow(state, TOPIC_CONVERSATION_ID);
+    const boundary = captureWorkspaceConversationWindowBoundary(window, "before")!;
 
     const merged = state.mergeConversationWindowPage({
       conversationId: TOPIC_CONVERSATION_ID,
-      expectedRevision: window.revision,
-      expectedPageMarker: "older-1",
+      boundary,
       capturedMutationRevision: state.messageMutationRevision,
-      direction: "before",
       messages: [createMessage({ uuid: MESSAGE_A, createdAt: DATE_EARLIER })],
       pageMarker: "older-2",
     });
 
-    expect(merged).toBe(2);
+    expect(merged?.revision).toBe(2);
     expect(selectMessages(TOPIC_CONVERSATION_ID).map((message) => message.uuid)).toEqual([
       MESSAGE_A,
       MESSAGE_B,
@@ -331,16 +333,58 @@ describe("workspace message store", () => {
     expect(
       afterMerge.mergeConversationWindowPage({
         conversationId: TOPIC_CONVERSATION_ID,
-        expectedRevision: window.revision,
-        expectedPageMarker: "older-1",
+        boundary,
         capturedMutationRevision: afterMerge.messageMutationRevision,
-        direction: "before",
         messages: [createMessage({ uuid: MESSAGE_C })],
         pageMarker: null,
       }),
     ).toBeNull();
     expect(useWorkspaceMessageStore.getState()).toBe(afterMerge);
   });
+
+  it.each(["replacement", "clear and recreate", "same-side edge change"] as const)(
+    "rejects a page after %s with the same marker",
+    (change) => {
+      const oldest = createMessage({ uuid: MESSAGE_B, createdAt: DATE });
+      const newest = createMessage({ uuid: MESSAGE_C, createdAt: DATE_LATER });
+      replaceWindow(TOPIC_CONVERSATION_ID, [oldest, newest], { beforePageMarker: "older" });
+      const initialState = useWorkspaceMessageStore.getState();
+      const initialWindow = initialState.conversationWindowsById[TOPIC_CONVERSATION_ID];
+      const boundary = captureWorkspaceConversationWindowBoundary(initialWindow, "before")!;
+
+      if (change === "same-side edge change") {
+        initialState.removeMessage(oldest.uuid);
+      } else {
+        if (change === "clear and recreate") initialState.clear();
+        replaceWindow(TOPIC_CONVERSATION_ID, [oldest, newest], { beforePageMarker: "older" });
+      }
+
+      const currentState = useWorkspaceMessageStore.getState();
+      const currentWindow = currentState.conversationWindowsById[TOPIC_CONVERSATION_ID];
+      const currentBoundary = captureWorkspaceConversationWindowBoundary(currentWindow, "before");
+      expect(currentBoundary?.pageMarker).toBe(boundary.pageMarker);
+      if (change === "same-side edge change") {
+        expect(currentBoundary?.generation).toBe(boundary.generation);
+        expect(currentBoundary?.edgeMessageUuid).toBe(newest.uuid);
+      } else {
+        expect(currentBoundary?.generation).not.toBe(boundary.generation);
+        expect(currentBoundary?.edgeMessageUuid).toBe(boundary.edgeMessageUuid);
+        if (change === "clear and recreate")
+          expect(currentWindow?.revision).toBe(initialWindow?.revision);
+      }
+
+      const applied = currentState.mergeConversationWindowPage({
+        conversationId: TOPIC_CONVERSATION_ID,
+        boundary,
+        capturedMutationRevision: initialState.messageMutationRevision,
+        messages: [createMessage({ uuid: MESSAGE_A, createdAt: DATE_EARLIER })],
+        pageMarker: null,
+      });
+      expect(applied).toBeNull();
+      expect(useWorkspaceMessageStore.getState()).toBe(currentState);
+      expect(currentState.messagesById[MESSAGE_A]).toBeUndefined();
+    },
+  );
 
   it.each([
     {
@@ -371,7 +415,8 @@ describe("workspace message store", () => {
       { mode: "around-anchor", afterPageMarker: "newer-1" },
     );
     const beforeRequest = useWorkspaceMessageStore.getState();
-    const window = selectWorkspaceConversationWindow(beforeRequest, TOPIC_CONVERSATION_ID)!;
+    const window = selectWorkspaceConversationWindow(beforeRequest, TOPIC_CONVERSATION_ID);
+    const boundary = captureWorkspaceConversationWindowBoundary(window, "after")!;
     beforeRequest.applyLiveCreatedMessage(
       createMessage({ uuid: MESSAGE_C, createdAt: liveCreatedAt }),
     );
@@ -379,17 +424,15 @@ describe("workspace message store", () => {
       MESSAGE_A,
     ]);
 
-    const revision = useWorkspaceMessageStore.getState().mergeConversationWindowPage({
+    const appliedWindow = useWorkspaceMessageStore.getState().mergeConversationWindowPage({
       conversationId: TOPIC_CONVERSATION_ID,
-      expectedRevision: window.revision,
-      expectedPageMarker: "newer-1",
+      boundary,
       capturedMutationRevision: beforeRequest.messageMutationRevision,
-      direction: "after",
       messages: [createMessage({ uuid: MESSAGE_B, createdAt: pageCreatedAt })],
       pageMarker,
     });
 
-    expect(revision).toBe(2);
+    expect(appliedWindow?.revision).toBe(2);
     expect(selectMessages(TOPIC_CONVERSATION_ID).map((message) => message.uuid)).toEqual(
       expectedIds,
     );
@@ -735,7 +778,7 @@ describe("workspace message store", () => {
       .getState()
       .applyLiveKnownBodyMutation(createMessage({ uuid: MESSAGE_A, markdown: "live" }));
 
-    const replacementRevision = useWorkspaceMessageStore.getState().replaceConversationWindow({
+    const appliedWindow = useWorkspaceMessageStore.getState().replaceConversationWindow({
       conversationId: TOPIC_CONVERSATION_ID,
       expectedRevision: 1,
       capturedMutationRevision: beforeLiveUpdate.messageMutationRevision,
@@ -745,7 +788,7 @@ describe("workspace message store", () => {
       markers: { beforePageMarker: "older", afterPageMarker: "newer" },
     });
 
-    expect(replacementRevision).toBe(2);
+    expect(appliedWindow?.revision).toBe(2);
     expect(selectMessages(TOPIC_CONVERSATION_ID)).toEqual([
       expect.objectContaining({ uuid: MESSAGE_A, payload: { kind: "markdown", content: "live" } }),
     ]);
@@ -858,12 +901,21 @@ describe("workspace message store", () => {
     const actual = useWorkspaceMessageStore.getState();
     for (const key of [
       "messagesById",
-      "conversationWindowsById",
       "messageMutationRevision",
       "messageMutationRevisionById",
       "deletedMessageRevisionById",
     ] as const)
       expect(actual[key]).toEqual(expected[key]);
+    expect(actual.conversationWindowsById).toEqual({
+      [TOPIC_CONVERSATION_ID]: {
+        ...expected.conversationWindowsById[TOPIC_CONVERSATION_ID],
+        generation: original.conversationWindowsById[TOPIC_CONVERSATION_ID]?.generation,
+      },
+      [STREAM_CONVERSATION_ID]: {
+        ...expected.conversationWindowsById[STREAM_CONVERSATION_ID],
+        generation: original.conversationWindowsById[STREAM_CONVERSATION_ID]?.generation,
+      },
+    });
     expect(snapshots).toHaveLength(1);
     expect(original.messagesById).toEqual({ [MESSAGE_A]: seed });
   });
