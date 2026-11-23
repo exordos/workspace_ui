@@ -29,13 +29,17 @@ import {
   resolveMessengerMessageAnchor,
   type MessengerFetchedMessageWindow,
 } from "./messenger-messages-loader.lib";
-import { useMessengerOutboxStore } from "./messenger-outbox.model";
+import {
+  isMessengerOutgoingMessageReceipt,
+  useMessengerOutboxStore,
+} from "./messenger-outbox.model";
 import {
   advanceMessengerReadBoundary,
   clearMessengerReadBoundariesForOwner,
   readMessengerReadBoundary,
   type MessengerReadBoundary,
 } from "./messenger-read-boundary.lib";
+import { createMessengerRealtimeActiveApplier } from "./messenger-realtime-applier.lib";
 import { useMessengerStore } from "./messenger.model";
 import type { MessengerMessagePayload } from "./messenger.types";
 
@@ -197,6 +201,42 @@ function replaceConversationWindow({
     anchorMessageUuid,
     messages,
     markers: { beforePageMarker, afterPageMarker },
+  });
+}
+
+// Создаёт исходящее и серверный снимок, который подтверждает его placement.
+function enqueueHistoryReceipt(
+  ownerKey: string,
+  conversationId: MessengerFetchedMessageWindow["conversationId"],
+  keyUuid?: string,
+): WorkspaceMessengerMessageDto {
+  const outbox = useMessengerOutboxStore.getState();
+  const outgoing = outbox.enqueueOutgoingMessage({
+    ownerKey,
+    conversationId,
+    projectId: PROJECT_A,
+    streamUuid: STREAM_A,
+    topicUuid: TOPIC_A,
+    authorUuid: USER_A,
+    markdown: "Confirmed from history",
+    status: "sending",
+    includeStreamConversation: false,
+    encryption: keyUuid == null ? undefined : { keyUuid, deviceId: "test-device" },
+  });
+  if (keyUuid != null) {
+    outbox.retainEncryptedPayload(outgoing.placementUuid, {
+      kind: "e2ee",
+      keyUuid,
+      content: { bytes: new Uint8Array([1, 2, 3]) },
+    });
+    return createMessageDto({
+      uuid: outgoing.placementUuid,
+      payload: { kind: "e2ee", key_uuid: keyUuid, content: "AQID" },
+    });
+  }
+  return createMessageDto({
+    uuid: outgoing.placementUuid,
+    payload: { kind: "markdown", content: outgoing.markdown },
   });
 }
 
@@ -843,48 +883,180 @@ describe("messenger conversation messages loader", () => {
     expect(writeConversationMessagePage).not.toHaveBeenCalled();
   });
 
-  it("settles an outgoing message when a history page confirms its placement", async () => {
+  it.each([undefined, "older"])(
+    "accepts a history receipt while preserving the realtime edit during HTTP (marker %s)",
+    async (pageMarker) => {
+      const runtimeContext = createRuntimeContext();
+      const ownerKey = prepareStoreOwner(runtimeContext);
+      const conversationId = `topic:${STREAM_A}:${TOPIC_A}` as const;
+      const keyUuid = "3d422317-12f3-4840-9c31-a9ba3a652acb";
+      const receipt = enqueueHistoryReceipt(ownerKey, conversationId, keyUuid);
+      replaceConversationWindow({
+        conversationId,
+        messages: [
+          adaptMessengerMessage({
+            ...receipt,
+            payload: { kind: "e2ee", key_uuid: keyUuid, content: "BwgJ" },
+          }),
+        ],
+        beforePageMarker: pageMarker,
+      });
+      const page = createDeferred<MessengerCollectionPage<WorkspaceMessengerMessageDto>>();
+      const getMessagesPage = vi.fn(() => page.promise);
+      const writeConversationMessagePage = vi.fn();
+      const onServerWindowApplied = vi.fn(() => {
+        expect(
+          useMessengerOutboxStore.getState().outgoingMessagesByPlacementUuid[receipt.uuid],
+        ).toBeUndefined();
+      });
+      const loading = loadMessengerConversationMessages({
+        runtimeContext,
+        conversationId,
+        pageMarker,
+        cache: { writeConversationMessagePage },
+        client: { getMessagesPage },
+        onServerWindowApplied,
+      });
+      await vi.waitFor(() => expect(getMessagesPage).toHaveBeenCalledOnce());
+
+      const edit = createMessageDto({
+        ...receipt,
+        updated_at: DATE_LATER,
+        payload: { kind: "e2ee", key_uuid: keyUuid, content: "BAUG" },
+      });
+      await createMessengerRealtimeActiveApplier({ cache: {} }).applyEvent(
+        {
+          epoch_version: 2,
+          type: "message",
+          kind: "message.updated",
+          message: edit,
+        },
+        { owner: runtimeContext, ownerKey, surface: "active", source: "websocket" },
+      );
+      const { payload } = adaptMessengerMessage(edit);
+      const realtimeMessage = useWorkspaceMessageStore.getState().messagesById[receipt.uuid];
+      const outgoing =
+        useMessengerOutboxStore.getState().outgoingMessagesByPlacementUuid[receipt.uuid];
+      expect(realtimeMessage?.payload).toEqual(payload);
+      expect(
+        outgoing && realtimeMessage && isMessengerOutgoingMessageReceipt(outgoing, realtimeMessage),
+      ).toBe(false);
+      page.resolve(createMessagesPage([receipt]));
+
+      await expect(loading).resolves.toMatchObject({
+        status: "applied",
+        nextPageMarker: "next-page",
+      });
+      const expectedMessages = [expect.objectContaining({ uuid: receipt.uuid, payload })];
+      expect(
+        selectWorkspaceMessagesForConversation(useWorkspaceMessageStore.getState(), conversationId),
+      ).toEqual(expectedMessages);
+      expect(writeConversationMessagePage).toHaveBeenCalledWith(
+        ownerKey,
+        conversationId,
+        { messages: expectedMessages, nextPageMarker: "next-page", hasMore: true },
+        expect.any(Function),
+      );
+      expect(onServerWindowApplied).toHaveBeenCalledOnce();
+    },
+  );
+
+  it.each([
+    { scenario: "opening is cancelled", pageMarker: undefined, reason: "stale-owner" },
+    { scenario: "older request is cancelled", pageMarker: "older", reason: "stale-owner" },
+    { scenario: "older boundary changes", pageMarker: "older", reason: "stale-window" },
+  ])("skips a history receipt when $scenario during HTTP", async ({ pageMarker, reason }) => {
     const runtimeContext = createRuntimeContext();
     const ownerKey = prepareStoreOwner(runtimeContext);
     const conversationId = `topic:${STREAM_A}:${TOPIC_A}` as const;
-    const outgoing = useMessengerOutboxStore.getState().enqueueOutgoingMessage({
-      ownerKey,
-      conversationId,
-      projectId: PROJECT_A,
-      streamUuid: STREAM_A,
-      topicUuid: TOPIC_A,
-      authorUuid: USER_A,
-      markdown: "Confirmed from history",
-      status: "sending",
-      includeStreamConversation: false,
-    });
-
-    const result = await loadMessengerConversationMessages({
+    const receipt = enqueueHistoryReceipt(ownerKey, conversationId);
+    if (pageMarker != null)
+      replaceConversationWindow({ conversationId, messages: [], beforePageMarker: pageMarker });
+    const controller = new AbortController();
+    const page = createDeferred<MessengerCollectionPage<WorkspaceMessengerMessageDto>>();
+    const getMessagesPage = vi.fn(() => page.promise);
+    const writeConversationMessagePage = vi.fn();
+    const onServerWindowApplied = vi.fn();
+    const loading = loadMessengerConversationMessages({
       runtimeContext,
       conversationId,
-      cache: {
-        readConversationMessageWindow: () =>
-          Promise.resolve({ messages: [], nextPageMarker: null, hasMore: false }),
-        writeConversationMessagePage: vi.fn(),
-      },
-      client: {
-        getMessagesPage: () =>
-          Promise.resolve(
-            createMessagesPage([
-              createMessageDto({
-                uuid: outgoing.placementUuid,
-                payload: { kind: "markdown", content: outgoing.markdown },
-              }),
-            ]),
-          ),
-      },
+      pageMarker,
+      signal: controller.signal,
+      cache: { writeConversationMessagePage },
+      client: { getMessagesPage },
+      onServerWindowApplied,
     });
+    await vi.waitFor(() => expect(getMessagesPage).toHaveBeenCalledOnce());
+    if (reason === "stale-window") {
+      replaceConversationWindow({ conversationId, messages: [], beforePageMarker: "new-marker" });
+    } else {
+      controller.abort();
+    }
+    const window = useWorkspaceMessageStore.getState().conversationWindowsById[conversationId];
+    page.resolve(createMessagesPage([receipt]));
 
-    expect(result.status).toBe("applied");
+    await expect(loading).resolves.toEqual({ status: "skipped", ownerKey, reason });
+    const state = useWorkspaceMessageStore.getState();
+    expect(state.conversationWindowsById[conversationId]).toBe(window);
+    expect(state.messagesById[receipt.uuid]).toBeUndefined();
+    expect(state.messagesLoadingByConversationId[conversationId]).toBe(false);
     expect(
-      useMessengerOutboxStore.getState().outgoingMessagesByPlacementUuid[outgoing.placementUuid],
-    ).toBeUndefined();
+      useMessengerOutboxStore.getState().outgoingMessagesByPlacementUuid[receipt.uuid],
+    ).toBeDefined();
+    expect(onServerWindowApplied).not.toHaveBeenCalled();
+    expect(writeConversationMessagePage).not.toHaveBeenCalled();
   });
+
+  it.each(["window", "receipt"] as const)(
+    "stops history side effects after a synchronous %s subscriber aborts the request",
+    async (abortOn) => {
+      const runtimeContext = createRuntimeContext();
+      const ownerKey = prepareStoreOwner(runtimeContext);
+      const conversationId = `topic:${STREAM_A}:${TOPIC_A}` as const;
+      const firstReceipt = enqueueHistoryReceipt(ownerKey, conversationId);
+      const secondReceipt = enqueueHistoryReceipt(ownerKey, conversationId);
+      const controller = new AbortController();
+      const page = createDeferred<MessengerCollectionPage<WorkspaceMessengerMessageDto>>();
+      const getMessagesPage = vi.fn(() => page.promise);
+      const writeConversationMessagePage = vi.fn();
+      const onServerWindowApplied = vi.fn();
+      const loading = loadMessengerConversationMessages({
+        runtimeContext,
+        conversationId,
+        signal: controller.signal,
+        cache: { writeConversationMessagePage },
+        client: { getMessagesPage },
+        onServerWindowApplied,
+      });
+      await vi.waitFor(() => expect(getMessagesPage).toHaveBeenCalledOnce());
+      const unsubscribe =
+        abortOn === "window"
+          ? useWorkspaceMessageStore.subscribe((state) => {
+              if (state.messagesById[firstReceipt.uuid] != null) controller.abort();
+            })
+          : useMessengerOutboxStore.subscribe((state) => {
+              if (state.outgoingMessagesByPlacementUuid[firstReceipt.uuid] == null)
+                controller.abort();
+            });
+      try {
+        page.resolve(createMessagesPage([firstReceipt, secondReceipt]));
+        await expect(loading).resolves.toEqual({
+          status: "skipped",
+          ownerKey,
+          reason: "stale-owner",
+        });
+        const { outgoingMessagesByPlacementUuid } = useMessengerOutboxStore.getState();
+        expect(outgoingMessagesByPlacementUuid[secondReceipt.uuid]).toBeDefined();
+        expect(outgoingMessagesByPlacementUuid[firstReceipt.uuid] == null).toBe(
+          abortOn === "receipt",
+        );
+        expect(onServerWindowApplied).not.toHaveBeenCalled();
+        expect(writeConversationMessagePage).not.toHaveBeenCalled();
+      } finally {
+        unsubscribe();
+      }
+    },
+  );
 
   it.each([403, 404])(
     "returns unavailable without backend response details for HTTP %s",
