@@ -9,6 +9,7 @@ import {
   E2E_PROJECT_ID,
   E2E_USER_UUID,
   messageSuccess,
+  topicsSuccess,
 } from "./mocks/workspace-default-responses";
 import type { Page, Route, WebSocketRoute } from "@playwright/test";
 
@@ -641,6 +642,91 @@ test.describe("Message anchor navigation @mock", () => {
         return `${url.pathname}${url.hash}`;
       })
       .toBe(topicRoute());
+  });
+
+  test("replaces a warm stale topic anchor URL without focusing its cached row", async ({
+    authenticated,
+  }) => {
+    const oldTopicUuid = "88888888-8888-4888-8888-888888888888";
+    const [currentTopic] = topicsSuccess();
+    if (currentTopic == null) throw new Error("Missing current topic fixture");
+    const oldTopic = {
+      ...currentTopic,
+      uuid: oldTopicUuid,
+      name: "Previous topic",
+      is_default: false,
+      last_message_uuid: null,
+    };
+    await authenticated.route(/\/messenger\/stream_topics(?:\/|$)/, async (route) => {
+      if (route.request().method() !== "GET") return route.fallback();
+      const lastSegment = new URL(route.request().url()).pathname.split("/").filter(Boolean).at(-1);
+      if (lastSegment === "stream_topics") {
+        return fulfillJson(route, 200, [currentTopic, oldTopic]);
+      }
+      if (lastSegment === oldTopicUuid) return fulfillJson(route, 200, oldTopic);
+      return route.fallback();
+    });
+
+    const moved = messageDto(FIRST_ANCHOR_UUID, "moved anchor", "2026-07-16T10:00:00.000Z");
+    const requestedTopics = new Set<string | null>();
+    await installMessageRoute(authenticated, {
+      messages: new Map([[moved.uuid, moved]]),
+      onWindowRequest: ({ url }) => {
+        requestedTopics.add(url.searchParams.get("topic_uuid"));
+        return Promise.resolve();
+      },
+    });
+
+    const warmMessage = { ...moved, topic_uuid: oldTopicUuid, read: true };
+    const exactRequestGate = deferred<void>();
+    await authenticated.route(MESSAGE_ROUTE, async (route) => {
+      const request = route.request();
+      if (request.method() !== "GET") return route.fallback();
+      const url = new URL(request.url());
+      if (url.pathname.endsWith(`/messages/${moved.uuid}`)) {
+        await exactRequestGate.promise;
+        return fulfillJson(route, 200, moved);
+      }
+      if (
+        url.searchParams.get("topic_uuid") === oldTopicUuid &&
+        !url.searchParams.has("page_marker")
+      ) {
+        return fulfillJson(
+          route,
+          200,
+          url.searchParams.get("read") === "false" ? [] : [warmMessage],
+        );
+      }
+      return route.fallback();
+    });
+
+    const oldRoute = `${e2eOrgBasePath()}/stream/${E2E_STREAM_UUID}/topic/${oldTopicUuid}`;
+    await authenticated.goto(oldRoute);
+    const cachedRow = authenticated.locator(`[data-message-uuid="${moved.uuid}"]`);
+    await expect(cachedRow).toBeVisible();
+
+    const checkingExact = authenticated.waitForRequest((request) =>
+      new URL(request.url()).pathname.endsWith(`/messages/${moved.uuid}`),
+    );
+    try {
+      await authenticated.evaluate((route) => {
+        window.history.pushState(null, "", route);
+        window.dispatchEvent(new PopStateEvent("popstate"));
+      }, `${oldRoute}#message-${moved.uuid}`);
+      await checkingExact;
+      await expect(cachedRow).not.toHaveAttribute(
+        "data-workspace-message-anchor-highlight",
+        "true",
+      );
+      expect([...requestedTopics]).toEqual([]);
+    } finally {
+      exactRequestGate.resolve();
+    }
+    await authenticated.waitForURL(topicAnchorRoute(moved.uuid));
+    await expectFocusedAnchor(authenticated, moved.uuid);
+    expect([...requestedTopics]).toEqual([E2E_TOPIC_UUID]);
+    await authenticated.goBack();
+    await expect(authenticated).toHaveURL(new RegExp(`/topic/${oldTopicUuid}$`));
   });
 
   test("current 404 keeps an explicit retryable error instead of falling back to tail", async ({

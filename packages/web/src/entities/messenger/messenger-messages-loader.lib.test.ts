@@ -2043,6 +2043,76 @@ describe("messenger conversation messages loader", () => {
     ).toBe("newer-next");
   });
 
+  it.each(["before", "after"] as const)(
+    "stops %s page side effects if publishing the window aborts it",
+    async (direction) => {
+      const runtimeContext = createRuntimeContext();
+      const ownerKey = prepareStoreOwner(runtimeContext);
+      const conversationId = `topic:${STREAM_A}:${TOPIC_A}` as const;
+      const pageMarker = "anchor-page";
+      replaceConversationWindow({
+        conversationId,
+        messages: [],
+        mode: "around-anchor",
+        beforePageMarker: direction === "before" ? pageMarker : null,
+        afterPageMarker: direction === "after" ? pageMarker : null,
+      });
+      const expectedRevision =
+        useWorkspaceMessageStore.getState().conversationWindowsById[conversationId]!.revision;
+      const outgoing = useMessengerOutboxStore.getState().enqueueOutgoingMessage({
+        ownerKey,
+        conversationId,
+        projectId: PROJECT_A,
+        streamUuid: STREAM_A,
+        topicUuid: TOPIC_A,
+        authorUuid: USER_A,
+        markdown: "own page receipt",
+        status: "sending",
+        includeStreamConversation: false,
+      });
+      const controller = new AbortController();
+      const stopListening = useWorkspaceMessageStore.subscribe((state) => {
+        if (state.messagesById[outgoing.placementUuid] != null) controller.abort();
+      });
+      const hydrateFromCache = vi.fn();
+      const syncOwner = vi.fn();
+      try {
+        await expect(
+          loadMessengerMessageWindowPage({
+            runtimeContext,
+            conversationId,
+            direction,
+            pageMarker,
+            expectedRevision,
+            signal: controller.signal,
+            client: {
+              getMessagesPage: () =>
+                Promise.resolve(
+                  createMessagesPage([createMessageDto({ uuid: outgoing.placementUuid })]),
+                ),
+            },
+            ownReactionSync: { hydrateFromCache, syncOwner },
+          }),
+        ).resolves.toMatchObject({ status: "skipped", reason: "stale-owner" });
+        expect(
+          useMessengerOutboxStore.getState().outgoingMessagesByPlacementUuid[
+            outgoing.placementUuid
+          ],
+        ).toBeDefined();
+        expect(hydrateFromCache).not.toHaveBeenCalled();
+        expect(syncOwner).not.toHaveBeenCalled();
+        expect(
+          selectWorkspaceMessageStatusForConversation(
+            useWorkspaceMessageStore.getState(),
+            conversationId,
+          ).loading,
+        ).toBe(false);
+      } finally {
+        stopListening();
+      }
+    },
+  );
+
   it("includes realtime received while the final newer page is pending", async () => {
     const runtimeContext = createRuntimeContext();
     const ownerKey = prepareStoreOwner(runtimeContext);
@@ -2167,6 +2237,9 @@ describe("messenger conversation messages loader", () => {
       messageUuids: string[];
       reactions: number;
     }>();
+    const oldSyncOwner = vi.fn(() => {
+      throw new Error("old reaction sync failed");
+    });
     const oldRequest = loadMessengerMessageWindowPage({
       runtimeContext,
       conversationId,
@@ -2178,9 +2251,7 @@ describe("messenger conversation messages loader", () => {
       },
       ownReactionSync: {
         hydrateFromCache: () => oldHydration.promise,
-        syncOwner: () => {
-          throw new Error("old reaction sync failed");
-        },
+        syncOwner: oldSyncOwner,
       },
     });
     await vi.waitFor(() =>
@@ -2212,6 +2283,7 @@ describe("messenger conversation messages loader", () => {
       status: "skipped",
       reason: "stale-owner",
     });
+    expect(oldSyncOwner).not.toHaveBeenCalled();
     expect(
       selectWorkspaceMessageStatusForConversation(
         useWorkspaceMessageStore.getState(),
@@ -2231,6 +2303,57 @@ describe("messenger conversation messages loader", () => {
         conversationId,
       ),
     ).toMatchObject({ loading: false, error: null });
+  });
+
+  it("keeps background page reaction sync current without holding its loading state", async () => {
+    const runtimeContext = createRuntimeContext();
+    const ownerKey = prepareStoreOwner(runtimeContext);
+    const conversationId = `topic:${STREAM_A}:${TOPIC_A}` as const;
+    replaceConversationWindow({
+      conversationId,
+      messages: [],
+      beforePageMarker: "older-cursor",
+    });
+    const expectedRevision =
+      useWorkspaceMessageStore.getState().conversationWindowsById[conversationId]!.revision;
+    const controller = new AbortController();
+    const background =
+      createDeferred<Awaited<ReturnType<typeof syncMessengerOwnerOwnMessageReactions>>>();
+    const syncOwner = vi.fn<typeof syncMessengerOwnerOwnMessageReactions>(() => background.promise);
+    const reactionResult = {
+      status: "applied" as const,
+      ownerKey,
+      messageUuids: [MESSAGE_A],
+      reactions: 0,
+    };
+
+    await expect(
+      loadMessengerMessageWindowPage({
+        runtimeContext,
+        conversationId,
+        direction: "before",
+        pageMarker: "older-cursor",
+        expectedRevision,
+        signal: controller.signal,
+        client: {
+          getMessagesPage: () => Promise.resolve(createMessagesPage([createMessageDto()])),
+        },
+        ownReactionSync: {
+          hydrateFromCache: () => Promise.resolve(reactionResult),
+          syncOwner,
+        },
+      }),
+    ).resolves.toMatchObject({ status: "applied" });
+
+    expect(
+      useWorkspaceMessageStore.getState().messagesLoadingByConversationId[conversationId],
+    ).toBe(false);
+    const isRequestCurrent = syncOwner.mock.calls[0]?.[0].isRequestCurrent;
+    expect(isRequestCurrent?.()).toBe(true);
+    controller.abort();
+    expect(isRequestCurrent?.()).toBe(false);
+    background.resolve(reactionResult);
+    await background.promise;
   });
 
   it("does not apply a late page after a newer anchor window owns the conversation", async () => {

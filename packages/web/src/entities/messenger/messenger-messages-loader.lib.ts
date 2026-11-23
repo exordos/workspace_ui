@@ -37,7 +37,10 @@ import {
   hydrateMessengerOwnMessageReactionsFromCache as defaultHydrateMessengerOwnMessageReactionsFromCache,
   syncMessengerOwnerOwnMessageReactions as defaultSyncMessengerOwnerOwnMessageReactions,
 } from "./messenger-message-reactions-actions.lib";
-import { settleMessengerOutgoingMessages } from "./messenger-outbox.model";
+import {
+  settleMessengerOutgoingMessage,
+  settleMessengerOutgoingMessages,
+} from "./messenger-outbox.model";
 import {
   applyMessengerReadBoundaries,
   compareMessengerMessageOrder,
@@ -120,6 +123,7 @@ export interface MessengerMessagesStoreApi {
     | "mergeConversationWindowPage"
     | "conversationWindowsById"
     | "messageMutationRevision"
+    | "deletedMessageRevisionById"
     | "messagesById"
   >;
 }
@@ -1465,6 +1469,17 @@ export async function applyMessengerMessageWindow({
     return { status: "skipped", ownerKey, reason: "stale-owner" };
   }
 
+  const currentState = store.getState();
+  const currentAnchor = currentState.messagesById[window.anchorUuid];
+  // Смена темы или удаление якоря во время чтения кеша требует нового окна.
+  if (
+    (currentState.deletedMessageRevisionById[window.anchorUuid] ?? 0) >
+      window.capturedMutationRevision ||
+    (currentAnchor != null && !conversationContainsAnchor(window.conversationId, currentAnchor))
+  ) {
+    return { status: "skipped", ownerKey, reason: "stale-window" };
+  }
+
   const messages = applyMessengerReadBoundaries(window.messages, ownerKey);
   claimMessageLoadingRequest(store, window.conversationId, requestToken);
   if (isStale() || !ownsMessageLoadingRequest(store, window.conversationId, requestToken)) {
@@ -1488,6 +1503,10 @@ export async function applyMessengerMessageWindow({
     if (appliedRevision == null) {
       releaseMessageLoadingRequest(store, window.conversationId, requestToken);
       return { status: "skipped", ownerKey, reason: "stale-window" };
+    }
+    if (isStale() || !ownsMessageLoadingRequest(store, window.conversationId, requestToken)) {
+      releaseMessageLoadingRequest(store, window.conversationId, requestToken);
+      return { status: "skipped", ownerKey, reason: "stale-owner" };
     }
     settleMessengerOutgoingMessages(ownerKey, messages);
     const isReactionRequestCurrent = (): boolean =>
@@ -1538,6 +1557,18 @@ export async function applyMessengerMessageWindow({
   }
 }
 
+// Сохраняет представление стрима из ссылки, если сообщение по-прежнему ему принадлежит.
+export function conversationContainsAnchor(
+  conversationId: MessengerConversationId | null,
+  anchor: MessengerMessage,
+): boolean {
+  const hint = conversationId == null ? null : parseMessengerConversationId(conversationId);
+  return (
+    hint?.streamUuid === anchor.streamUuid &&
+    (hint.kind === "stream" || hint.topicUuid === anchor.topicUuid)
+  );
+}
+
 async function applyLoadedMessengerMessageWindowPage({
   runtimeContext,
   conversationId,
@@ -1573,13 +1604,15 @@ async function applyLoadedMessengerMessageWindowPage({
   signal: AbortSignal | undefined;
   store: MessengerMessagesStoreApi;
 }): Promise<MessengerMessageWindowPageResult> {
-  if (!(await boundariesReady) || isRequestInvalidated()) {
+  const isPageCurrent = () =>
+    !isRequestInvalidated() &&
+    store.getState().ownerKey === ownerKey &&
+    ownsMessageLoadingRequest(store, conversationId, requestToken);
+  const skipStalePage = (): MessengerMessageWindowPageResult => {
     finishMessageLoadingRequest(store, conversationId, requestToken, undefined);
     return { status: "skipped", ownerKey, reason: "stale-owner" };
-  }
-  if (!ownsMessageLoadingRequest(store, conversationId, requestToken)) {
-    return { status: "skipped", ownerKey, reason: "stale-owner" };
-  }
+  };
+  if (!(await boundariesReady) || !isPageCurrent()) return skipStalePage();
 
   const pageItems = direction === "before" ? [...page.items].reverse() : page.items;
   const messages = applyMessengerReadBoundaries(pageItems.map(adaptMessengerMessage), ownerKey);
@@ -1597,20 +1630,34 @@ async function applyLoadedMessengerMessageWindowPage({
     finishMessageLoadingRequest(store, conversationId, requestToken, undefined);
     return { status: "skipped", ownerKey, reason: "stale-window" };
   }
-  settleMessengerOutgoingMessages(ownerKey, messages);
+  // Публикация окна и каждой квитанции синхронно уведомляет подписчиков.
+  if (!isPageCurrent()) return skipStalePage();
+  for (const message of messages) {
+    if (settleMessengerOutgoingMessage(ownerKey, message) && !isPageCurrent())
+      return skipStalePage();
+  }
 
-  await syncVisibleOwnReactionsFromCacheThenServer({
+  const reactionRequest = {
     runtimeContext,
     getRuntimeContext,
     clientOptions,
     signal,
     ownReactionSync,
-    messages,
-  });
-  if (!ownsMessageLoadingRequest(store, conversationId, requestToken)) {
-    return { status: "skipped", ownerKey, reason: "stale-owner" };
+    isRequestCurrent: isPageCurrent,
+  };
+  const messageUuids = await hydrateVisibleOwnReactionsFromCache({ ...reactionRequest, messages });
+  if (!isPageCurrent()) return skipStalePage();
+
+  if (messageUuids.length === 0) {
+    finishMessageLoadingRequest(store, conversationId, requestToken, null);
+  } else {
+    // Лента готова после чтения кеша. Фоновая сверка держит токен до своего завершения.
+    void scheduleVisibleOwnReactionSync({ ...reactionRequest, messageUuids }).finally(() =>
+      releaseMessageLoadingRequest(store, conversationId, requestToken),
+    );
+    if (!isPageCurrent()) return skipStalePage();
+    store.getState().setMessagesLoading(conversationId, false);
   }
-  finishMessageLoadingRequest(store, conversationId, requestToken, null);
   return {
     status: "applied",
     ownerKey,

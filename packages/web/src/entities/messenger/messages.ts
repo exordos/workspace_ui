@@ -12,6 +12,10 @@ import type { WorkspaceRuntimeContextGetter } from "~/entities/workspace-runtime
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import type { MessengerPollAction } from "~/shared/api/messenger-messages.api";
 import {
+  openMessengerMessageWindow,
+  type MessengerMessageWindowOpenResult,
+} from "./messages-window-opening.lib";
+import {
   loadMessengerConversationMessages,
   loadMessengerMessageWindowPage,
 } from "./messenger-messages-loader.lib";
@@ -53,11 +57,34 @@ interface OpenWindowOptions {
   onServerWindowApplied?: () => void; // Окно с сервера применено, можно догружать.
 }
 
+// Явное открытие по UUID с промежуточным результатом для предварительного показа.
+interface OpenAroundMessageOptions {
+  messageUuid: MessengerUuid; // Сообщение, указанное в ссылке.
+  conversationHint: MessengerConversationId | null; // Разговор из URL или текущей строки.
+  signal: AbortSignal; // Отмена намерения просмотра.
+  isRequestCurrent: () => boolean; // Актуальность UI-намерения при применении.
+  allowLoadedWindow?: boolean; // Сохранить готовое окно после подтверждения ссылки.
+  onResolved?: (
+    conversationId: MessengerConversationId,
+    message: MessengerMessage,
+    usesLoadedWindow: boolean,
+  ) => void; // Готово доступное тело.
+}
+
+// Установка хвоста вокруг выбранного последнего сообщения.
+interface OpenTailOptions {
+  conversationId: MessengerConversationId; // Разговор, в конец которого переходят.
+  messageUuid: MessengerUuid; // Последнее известное сообщение этого разговора.
+  signal: AbortSignal; // Отмена перехода.
+  isRequestCurrent: () => boolean; // Актуальность цели перехода при применении.
+}
+
 // Параметры добавления страницы к текущему окну.
 interface LoadMoreOptions {
   conversationId: MessengerConversationId; // Разговор, из окна которого берём маркер.
-  direction: "before"; // Догрузка сверху, к более старым сообщениям.
+  direction: "before" | "after"; // Сторона догрузки.
   signal: AbortSignal; // Отмена при уходе из текущего окна.
+  view?: "message-anchor"; // Явный якорь может использовать уже готовый хвост без замены окна.
 }
 
 type UnavailableReason = "cancelled" | "stale-owner"; // Причина потери актуальности запроса.
@@ -73,7 +100,7 @@ export type MessagesOperationResult =
       // invalid-conversation — загрузчик отклонил ID разговора.
       // stale-window — страница больше не подходит к текущему окну.
       // busy — идёт открытие или другая загрузка.
-      // no-boundary — у окна сейчас нет границы сверху.
+      // no-boundary — у окна сейчас нет границы с выбранной стороны.
       reason: UnavailableReason | "invalid-conversation" | "stale-window" | "busy" | "no-boundary";
     };
 
@@ -99,10 +126,13 @@ interface MessagesPolls {
 // Публичный доступ к сообщениям для одной сессии.
 export interface Messages {
   polls: MessagesPolls; // Команды опроса и чтение страницы голосовавших.
+  getMessage(messageUuid: MessengerUuid): MessengerMessage | null; // Уже индексированное тело этой сессии.
   getWindow(conversationId: MessengerConversationId): MessageWindowSnapshot; // Стабильный снимок окна.
   // Вызывает обработчик при смене снимка и возвращает функцию отписки.
   subscribeWindow(conversationId: MessengerConversationId, listener: () => void): () => void;
   openWindow(options: OpenWindowOptions): Promise<MessagesOperationResult>; // Кеш и обновление с сервера.
+  openAroundMessage(options: OpenAroundMessageOptions): Promise<MessengerMessageWindowOpenResult>; // Ссылка на сообщение.
+  openTail(options: OpenTailOptions): Promise<MessengerMessageWindowOpenResult>; // Явный переход в конец.
   loadMore(options: LoadMoreOptions): Promise<MessagesOperationResult>; // Догрузка по границе окна.
 }
 
@@ -186,6 +216,35 @@ export function createMessages({
     return null;
   }
 
+  // Прямой URL может появиться до того, как shell установит владельца message store.
+  function waitForMessageStore(
+    signal: AbortSignal,
+    isRequestCurrent: () => boolean,
+  ): Promise<boolean> {
+    return new Promise((resolve) => {
+      const finish = (ready: boolean): void => {
+        unsubscribe();
+        signal.removeEventListener("abort", onAbort);
+        resolve(ready);
+      };
+      const onAbort = () => finish(false);
+      const checkStore = (): void => {
+        if (
+          signal.aborted ||
+          !isRequestCurrent() ||
+          !isWorkspaceRuntimeRequestContextCurrent(runtimeContext, getRuntimeContext)
+        ) {
+          finish(false);
+        } else if (useWorkspaceMessageStore.getState().ownerKey === ownerKey) {
+          finish(true);
+        }
+      };
+      const unsubscribe = useWorkspaceMessageStore.subscribe(checkStore);
+      signal.addEventListener("abort", onAbort, { once: true });
+      checkStore();
+    });
+  }
+
   // Повторно проверяет сессию после ожидания и возвращает итог для вызывающего кода.
   async function toOperationResult(
     request: Promise<MessengerConversationMessagesResult | MessengerMessageWindowPageResult>,
@@ -207,6 +266,11 @@ export function createMessages({
       mutate: (options) => mutateMessengerPoll({ ...options, runtimeContext, getRuntimeContext }),
       getVoters: (options) =>
         getMessengerPollVoters({ ...options, runtimeContext, getRuntimeContext }),
+    },
+    getMessage(messageUuid) {
+      return isWorkspaceRuntimeRequestContextCurrent(runtimeContext, getOwnedRuntimeContext)
+        ? (useWorkspaceMessageStore.getState().messagesById[messageUuid] ?? null)
+        : null;
     },
     getWindow,
     subscribeWindow(conversationId, listener) {
@@ -258,7 +322,40 @@ export function createMessages({
         clearOpening();
       }
     },
-    async loadMore({ conversationId, direction, signal }) {
+    async openAroundMessage({
+      messageUuid,
+      conversationHint,
+      signal,
+      isRequestCurrent,
+      allowLoadedWindow,
+      onResolved,
+    }) {
+      if (
+        useWorkspaceMessageStore.getState().ownerKey !== ownerKey &&
+        !(await waitForMessageStore(signal, isRequestCurrent))
+      ) {
+        return { status: "skipped", ownerKey, reason: "stale-owner" };
+      }
+      return openMessengerMessageWindow({
+        runtimeContext,
+        getRuntimeContext: getOwnedRuntimeContext,
+        messageUuid,
+        signal,
+        isRequestCurrent,
+        target: { mode: "around-anchor", conversationHint, allowLoadedWindow, onResolved },
+      });
+    },
+    openTail({ conversationId, messageUuid, signal, isRequestCurrent }) {
+      return openMessengerMessageWindow({
+        runtimeContext,
+        getRuntimeContext: getOwnedRuntimeContext,
+        messageUuid,
+        signal,
+        isRequestCurrent,
+        target: { mode: "tail", conversationId },
+      });
+    },
+    async loadMore({ conversationId, direction, signal, view }) {
       const unavailable = unavailableReason(signal);
       if (unavailable != null) return { status: "skipped", reason: unavailable };
 
@@ -272,7 +369,9 @@ export function createMessages({
 
       const state = useWorkspaceMessageStore.getState();
       const window = selectWorkspaceConversationWindow(state, conversationId);
-      if (window?.beforePageMarker == null) return { status: "skipped", reason: "no-boundary" };
+      const pageMarker =
+        direction === "before" ? window?.beforePageMarker : window?.afterPageMarker;
+      if (window == null || pageMarker == null) return { status: "skipped", reason: "no-boundary" };
       if (selectWorkspaceMessageStatusForConversation(state, conversationId).loading)
         return { status: "skipped", reason: "busy" };
 
@@ -280,12 +379,12 @@ export function createMessages({
         runtimeContext,
         getRuntimeContext: getOwnedRuntimeContext,
         conversationId,
-        pageMarker: window.beforePageMarker,
+        pageMarker,
         signal,
       };
       // Загрузчику окна вокруг сообщения передаём его ревизию для проверки ответа.
       const request =
-        window.mode === "around-anchor"
+        window.mode === "around-anchor" || direction === "after" || view === "message-anchor"
           ? loadMessengerMessageWindowPage({
               ...options,
               direction,

@@ -1,8 +1,4 @@
-import type {
-  applyMessengerMessageWindow,
-  fetchMessengerMessageWindow,
-  resolveMessengerMessageAnchor,
-} from "~/entities/messenger/messenger-messages-loader.lib";
+import type { Messages } from "~/entities/messenger/messages";
 import type {
   MessengerConversationId,
   MessengerMessage,
@@ -76,12 +72,6 @@ export interface WorkspaceMessageAnchorRouteRequest {
   scope: WorkspaceMessageAnchorRouteScope;
 }
 
-export interface WorkspaceMessageAnchorNavigationLoaderDeps {
-  resolveAnchor?: typeof resolveMessengerMessageAnchor;
-  fetchWindow?: typeof fetchMessengerMessageWindow;
-  applyWindow?: typeof applyMessengerMessageWindow;
-}
-
 export interface WorkspaceMessageAnchorNavigationOptions {
   runtimeContext: WorkspaceRuntimeContext | null;
   routeRequest: WorkspaceMessageAnchorRouteRequest | null;
@@ -97,7 +87,7 @@ export interface WorkspaceMessageAnchorNavigationOptions {
     conversationId: MessengerConversationId,
     messageUuid: MessengerUuid,
   ) => boolean;
-  loader?: WorkspaceMessageAnchorNavigationLoaderDeps;
+  openAroundMessage: Messages["openAroundMessage"] | null; // Данные для текущего намерения открытия.
   navigate: (path: string, options?: { replace?: boolean }) => void;
   buildDirectRoute: (messageUuid: MessengerUuid) => string;
   buildConversationRoute: (

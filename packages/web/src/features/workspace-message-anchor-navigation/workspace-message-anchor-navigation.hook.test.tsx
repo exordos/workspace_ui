@@ -1,6 +1,10 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useWorkspaceMessageStore } from "~/entities/message/message.model";
+import {
+  openMessengerMessageWindow,
+  type MessengerMessageWindowOpenLoaders,
+} from "~/entities/messenger/messages-window-opening.lib";
 import { adaptMessengerMessage } from "~/entities/messenger/messenger-adapters.lib";
 import type {
   MessengerMessageAnchorResolveResult,
@@ -59,6 +63,7 @@ type TestLoadWindow = (input: {
 
 type TestOptions = Partial<WorkspaceMessageAnchorNavigationOptions> & {
   loadWindow?: TestLoadWindow;
+  loader?: Partial<MessengerMessageWindowOpenLoaders>;
 };
 
 function applied(messageUuid: string = MESSAGE_A): TestWindowResult {
@@ -110,55 +115,63 @@ function createFetchedWindowForAnchor(
   };
 }
 
-function createOptions(overrides: TestOptions = {}): WorkspaceMessageAnchorNavigationOptions {
-  const { loadWindow, ...options } = overrides;
+function createOptions(
+  overrides: TestOptions = {},
+): WorkspaceMessageAnchorNavigationOptions & { loader: MessengerMessageWindowOpenLoaders } {
+  const {
+    loadWindow,
+    loader: loaderOverrides,
+    getRuntimeContext = () => runtimeContext,
+    ...options
+  } = overrides;
+  const loader: MessengerMessageWindowOpenLoaders = {
+    resolveAnchor: async ({ messageUuid, signal }) => {
+      const result = await (loadWindow ?? ((input) => Promise.resolve(applied(input.messageUuid))))(
+        {
+          messageUuid,
+          signal: signal ?? new AbortController().signal,
+        },
+      );
+      if (result.status === "failed") {
+        return {
+          status: "failed",
+          ownerKey: workspaceRuntimeOwnerKey(runtimeContext),
+          conversationId: null,
+          error: result.error,
+        };
+      }
+      if (result.status === "skipped") {
+        return {
+          status: "skipped",
+          ownerKey: workspaceRuntimeOwnerKey(runtimeContext),
+          reason: "stale-owner",
+        };
+      }
+      return resolved(result.anchorUuid);
+    },
+    fetchWindow: ({ anchor, targetConversationId }) =>
+      Promise.resolve({
+        status: "fetched",
+        window: createFetchedWindowForAnchor(anchor, targetConversationId),
+      }),
+    applyWindow: ({ window }) =>
+      Promise.resolve({
+        status: "applied",
+        ownerKey: window.ownerKey,
+        conversationId: window.conversationId,
+        anchorUuid: window.anchorUuid,
+      }),
+    ...loaderOverrides,
+  };
   return {
     runtimeContext,
     routeRequest: null,
     routePath: "/org/organization-a/project/project-a/messenger",
     windowBusy: false,
-    getRuntimeContext: () => runtimeContext,
+    getRuntimeContext,
     resolveKnownConversationId: () => null,
     isMessageInWindow: () => false,
     isMessageWindowReady: () => false,
-    loader: {
-      resolveAnchor: async ({ messageUuid, signal }) => {
-        const result = await (
-          loadWindow ?? ((input) => Promise.resolve(applied(input.messageUuid)))
-        )({
-          messageUuid,
-          signal: signal ?? new AbortController().signal,
-        });
-        if (result.status === "failed") {
-          return {
-            status: "failed",
-            ownerKey: workspaceRuntimeOwnerKey(runtimeContext),
-            conversationId: null,
-            error: result.error,
-          };
-        }
-        if (result.status === "skipped") {
-          return {
-            status: "skipped",
-            ownerKey: workspaceRuntimeOwnerKey(runtimeContext),
-            reason: "stale-owner",
-          };
-        }
-        return resolved(result.anchorUuid);
-      },
-      fetchWindow: ({ anchor, targetConversationId }) =>
-        Promise.resolve({
-          status: "fetched",
-          window: createFetchedWindowForAnchor(anchor, targetConversationId),
-        }),
-      applyWindow: ({ window }) =>
-        Promise.resolve({
-          status: "applied",
-          ownerKey: window.ownerKey,
-          conversationId: window.conversationId,
-          anchorUuid: window.anchorUuid,
-        }),
-    },
     navigate: vi.fn(),
     buildDirectRoute: (messageUuid) => `/message/${messageUuid}`,
     buildConversationRoute: (_conversationId, messageUuid) => `/chat#message-${messageUuid}`,
@@ -166,6 +179,15 @@ function createOptions(overrides: TestOptions = {}): WorkspaceMessageAnchorNavig
     unavailableError: "Message navigation unavailable",
     domMissingError: "Message anchor missing",
     ...options,
+    loader,
+    openAroundMessage: ({ conversationHint, allowLoadedWindow, onResolved, ...request }) =>
+      openMessengerMessageWindow({
+        ...request,
+        runtimeContext: getRuntimeContext() ?? runtimeContext,
+        getRuntimeContext,
+        target: { mode: "around-anchor", conversationHint, allowLoadedWindow, onResolved },
+        loaders: loader,
+      }),
   };
 }
 
@@ -277,7 +299,7 @@ describe("useWorkspaceMessageAnchorNavigation", () => {
     const resolvedAnchor = createDeferred<MessengerMessageAnchorResolveResult>();
     const fetchedWindow = createDeferred<MessengerMessageWindowFetchResult>();
     const base = createOptions();
-    const options: WorkspaceMessageAnchorNavigationOptions = {
+    const options = createOptions({
       ...base,
       loader: {
         ...base.loader,
@@ -294,7 +316,7 @@ describe("useWorkspaceMessageAnchorNavigation", () => {
         },
         fetchWindow: () => fetchedWindow.promise,
       },
-    };
+    });
     const { result } = renderHook(() => useWorkspaceMessageAnchorNavigation(options));
 
     act(() => {
@@ -349,6 +371,12 @@ describe("useWorkspaceMessageAnchorNavigation", () => {
       expected: "stream:33333333-3333-4333-8333-333333333333" as const,
     },
     { name: "direct route", conversationId: null, expected: CONVERSATION_A },
+    {
+      name: "old topic route after a move",
+      conversationId:
+        "topic:33333333-3333-4333-8333-333333333333:66666666-6666-4666-8666-666666666666" as const,
+      expected: CONVERSATION_A,
+    },
   ])("passes the $name conversation scope into fetch", async ({ conversationId, expected }) => {
     const base = createOptions();
     const fetchWindow = vi.fn(({ anchor, targetConversationId }) =>
@@ -357,7 +385,7 @@ describe("useWorkspaceMessageAnchorNavigation", () => {
         window: createFetchedWindowForAnchor(anchor, targetConversationId),
       }),
     );
-    const options: WorkspaceMessageAnchorNavigationOptions = {
+    const options = createOptions({
       ...base,
       routeRequest: {
         messageUuid: MESSAGE_A,
@@ -366,15 +394,83 @@ describe("useWorkspaceMessageAnchorNavigation", () => {
         source: "direct-route",
         scope: routeScope,
       },
+      routePath: `/old-conversation#message-${MESSAGE_A}`,
+      buildConversationRoute: (id, uuid) => `/${id}#message-${uuid}`,
       loader: { ...base.loader, fetchWindow },
-    };
+    });
 
-    renderHook(() => useWorkspaceMessageAnchorNavigation(options));
+    const { result } = renderHook(() => useWorkspaceMessageAnchorNavigation(options));
 
     await waitFor(() => expect(fetchWindow).toHaveBeenCalledTimes(1));
     expect(fetchWindow).toHaveBeenCalledWith(
       expect.objectContaining({ targetConversationId: expected }),
     );
+    await waitFor(() => {
+      expect(options.navigate).toHaveBeenCalledWith(`/${expected}#message-${MESSAGE_A}`, {
+        replace: true,
+      });
+      expect(result.current.focusTarget?.messageUuid).toBe(MESSAGE_A);
+    });
+  });
+
+  it("retries the resolved anchor in its new topic when the old scope fails during a move", async () => {
+    const ownerKey = workspaceRuntimeOwnerKey(runtimeContext);
+    const anchor = resolved(MESSAGE_A).message;
+    const topicUuid = "66666666-6666-4666-8666-666666666666";
+    const canonicalConversationId = `topic:${anchor.streamUuid}:${topicUuid}` as const;
+    useWorkspaceMessageStore.getState().setOwner(ownerKey, false);
+    seedWorkspaceMessageBody(anchor);
+    const pending = createDeferred<MessengerMessageWindowFetchResult>();
+    const fetchWindow = vi
+      .fn<MessengerMessageWindowOpenLoaders["fetchWindow"]>()
+      .mockReturnValueOnce(pending.promise)
+      .mockImplementation(({ anchor, targetConversationId }) =>
+        Promise.resolve({
+          status: "fetched",
+          window: createFetchedWindowForAnchor(anchor, targetConversationId),
+        }),
+      );
+    const options = createOptions({
+      routeRequest: {
+        messageUuid: MESSAGE_A,
+        conversationId: CONVERSATION_A,
+        routeKey: "topic-before-move",
+        source: "hash",
+        scope: routeScope,
+      },
+      routePath: `/${CONVERSATION_A}#message-${MESSAGE_A}`,
+      buildConversationRoute: (id, uuid) => `/${id}#message-${uuid}`,
+      loader: { fetchWindow },
+    });
+    const { result } = renderHook(() => useWorkspaceMessageAnchorNavigation(options));
+
+    await waitFor(() => expect(fetchWindow).toHaveBeenCalledOnce());
+    await act(async () => {
+      useWorkspaceMessageStore.getState().applyLiveKnownBodyMutation({
+        ...anchor,
+        topicUuid,
+        conversationId: canonicalConversationId,
+      });
+      pending.resolve({
+        status: "failed",
+        reason: "not-found",
+        ownerKey,
+        conversationId: CONVERSATION_A,
+        error: "Old topic no longer contains marker",
+      });
+      await pending.promise;
+    });
+
+    expect(fetchWindow).toHaveBeenCalledTimes(2);
+    expect(fetchWindow).toHaveBeenLastCalledWith(
+      expect.objectContaining({ targetConversationId: canonicalConversationId }),
+    );
+    expect(options.navigate).toHaveBeenCalledOnce();
+    expect(options.navigate).toHaveBeenCalledWith(
+      `/${canonicalConversationId}#message-${MESSAGE_A}`,
+      { replace: true },
+    );
+    expect(result.current.focusTarget?.messageUuid).toBe(MESSAGE_A);
   });
 
   it("keeps M2 when M1 resolves last and aborts the old request", async () => {
@@ -718,10 +814,10 @@ describe("useWorkspaceMessageAnchorNavigation", () => {
     const resolveAnchor = vi.fn(loader.resolveAnchor);
     const fetchWindow = vi.fn(loader.fetchWindow);
     const applyWindow = vi.fn(loader.applyWindow);
-    const options: WorkspaceMessageAnchorNavigationOptions = {
+    const options = createOptions({
       ...base,
       loader: { resolveAnchor, fetchWindow, applyWindow },
-    };
+    });
     useWorkspaceMessageStore.getState().setOwner(ownerKey, false);
     seedWorkspaceMessageBody(message);
     const { result } = renderHook(() => useWorkspaceMessageAnchorNavigation(options));
@@ -922,7 +1018,7 @@ describe("useWorkspaceMessageAnchorNavigation", () => {
         conversationId: CONVERSATION_A,
         anchorUuid: MESSAGE_A,
       });
-    const options: WorkspaceMessageAnchorNavigationOptions = {
+    const options = createOptions({
       ...base,
       routeRequest: {
         messageUuid: MESSAGE_A,
@@ -938,7 +1034,7 @@ describe("useWorkspaceMessageAnchorNavigation", () => {
         fetchWindow,
         applyWindow,
       },
-    };
+    });
     const { result } = renderHook(() => useWorkspaceMessageAnchorNavigation(options));
 
     await waitFor(() => expect(result.current.intent?.phase).toBe("awaiting-dom"));

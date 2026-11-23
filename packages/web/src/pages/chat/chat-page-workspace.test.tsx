@@ -3775,11 +3775,11 @@ describe("ChatPage Workspace route", () => {
     });
 
     await waitFor(() =>
-      expect(captured.loadWorkspaceMessageWindowAroundMessage).toHaveBeenCalledTimes(1),
+      expect(captured.loadWorkspaceMessageWindowAroundMessage).toHaveBeenCalledTimes(2),
     );
   });
 
-  it("focuses an already loaded message from the canonical chat anchor", async () => {
+  it("verifies the canonical URL before focusing an already loaded message", async () => {
     updateTestConversationWindow(`topic:${STREAM_UUID}:${TOPIC_UUID}`);
     renderWorkspaceChatPageWithShellContexts(
       `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}#message-${MESSAGE_UUID}`,
@@ -3790,7 +3790,7 @@ describe("ChatPage Workspace route", () => {
     await waitFor(() =>
       expect(captured.messageListProps?.focusedMessageTarget?.messageUuid).toBe(MESSAGE_UUID),
     );
-    expect(captured.loadWorkspaceMessageWindowAroundMessage).not.toHaveBeenCalled();
+    expect(captured.loadWorkspaceMessageWindowAroundMessage).toHaveBeenCalledOnce();
     expect(captured.loadWorkspaceMessages).not.toHaveBeenCalled();
   });
 
@@ -3852,13 +3852,15 @@ describe("ChatPage Workspace route", () => {
     expect(captured.messageListProps?.scrollToBottomKey).not.toContain(currentLocationKey);
     expect(captured.messageListProps?.anchorNavigationActive).toBe(true);
     expect(document.querySelector("[data-message-anchor-transition='true']")).toBeNull();
-    expect(captured.loadWorkspaceMessageWindowAroundMessage).not.toHaveBeenCalled();
+    expect(captured.loadWorkspaceMessageWindowAroundMessage).toHaveBeenCalledOnce();
   });
 
   it("hides the previous canonical list as soon as an outside-window intent starts", async () => {
     const windowRequest = createDeferred<ReturnType<typeof appliedWindowResult>>();
     seedWorkspaceMessageBody(createSecondMessage());
-    captured.loadWorkspaceMessageWindowAroundMessage.mockReturnValueOnce(windowRequest.promise);
+    captured.loadWorkspaceMessageWindowAroundMessage
+      .mockResolvedValueOnce(appliedWindowResult(MESSAGE_UUID))
+      .mockReturnValueOnce(windowRequest.promise);
     renderWorkspaceChatPageWithShellContexts(
       `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}#message-${MESSAGE_UUID}`,
     );
@@ -3873,7 +3875,7 @@ describe("ChatPage Workspace route", () => {
     expect(document.querySelector("[data-message-anchor-transition='true']")).not.toBeNull();
     expect(screen.queryByTestId("workspace-message-list-section")).not.toBeInTheDocument();
     await waitFor(() =>
-      expect(captured.loadWorkspaceMessageWindowAroundMessage).toHaveBeenCalledTimes(1),
+      expect(captured.loadWorkspaceMessageWindowAroundMessage).toHaveBeenCalledTimes(2),
     );
 
     await act(async () => {
@@ -3911,7 +3913,8 @@ describe("ChatPage Workspace route", () => {
       expect(canonicalNode).not.toBeNull();
       expect(canonicalNode).toHaveAttribute("data-workspace-message-anchor-highlight", "true");
       expect(scrollIntoView).toHaveBeenCalledWith({ block: "center", behavior: "instant" });
-      expect(captured.loadWorkspaceMessageWindowAroundMessage).not.toHaveBeenCalled();
+      expect(captured.loadWorkspaceMessageWindowAroundMessage).toHaveBeenCalledOnce();
+      expect(captured.fetchTargetConversationIds).toEqual([]);
       expect(captured.loadWorkspaceMessages).not.toHaveBeenCalled();
       expect(document.querySelector("[data-message-anchor-transition='true']")).toBeNull();
       expect(document.querySelector("[data-message-anchor-preview-layer='true']")).toBeNull();
@@ -3959,7 +3962,7 @@ describe("ChatPage Workspace route", () => {
     );
     expect(captured.messageListProps?.focusedMessageTarget).toBeNull();
     expect(captured.messageListProps?.anchorNavigationActive).toBe(false);
-    expect(captured.loadWorkspaceMessageWindowAroundMessage).not.toHaveBeenCalled();
+    expect(captured.loadWorkspaceMessageWindowAroundMessage).toHaveBeenCalledOnce();
 
     act(() => {
       void navigateTo?.(-1);
@@ -3970,10 +3973,14 @@ describe("ChatPage Workspace route", () => {
       ),
     );
     await waitFor(() =>
-      expect(captured.messageListProps?.focusedMessageTarget?.intentId).not.toBe(firstIntentId),
+      expect(captured.messageListProps?.focusedMessageTarget).toEqual(
+        expect.objectContaining({ intentId: expect.any(Number), messageUuid: MESSAGE_UUID }),
+      ),
     );
     const restoredTarget = captured.messageListProps?.focusedMessageTarget;
     if (restoredTarget == null) throw new Error("Expected restored anchor target");
+    expect(restoredTarget.intentId).not.toBe(firstIntentId);
+    expect(captured.loadWorkspaceMessageWindowAroundMessage).toHaveBeenCalledTimes(2);
     const restoredLocationKey = screen
       .getByTestId("workspace-location")
       .getAttribute("data-location-key");
@@ -4097,40 +4104,57 @@ describe("ChatPage Workspace route", () => {
     expect(document.querySelector("[data-message-anchor-transition='true']")).toBeNull();
   });
 
-  it("does not use an old owner complete window as the new owner anchor fast path", async () => {
-    const conversationId = `topic:${STREAM_UUID}:${TOPIC_UUID}` as const;
-    updateTestConversationWindow(conversationId);
-    const sessionB: WorkspaceAuthSession = {
-      ...createSession(),
-      accountId: "org-b:project-b:user-b",
-      organizationId: "org-b",
-      projectId: "project-b",
-      userUuid: USER_B_UUID,
-      runtimeGeneration: 2,
-    };
-    useWorkspaceAuthStore.setState({
-      sessions: [sessionB],
-      currentAccountId: sessionB.accountId,
-      runtimeGeneration: sessionB.runtimeGeneration,
-    });
-    const ownerB = workspaceRuntimeOwnerKey(sessionB);
-    useMessengerStore.getState().clear();
-    useMessengerStore.getState().startBootstrap(ownerB);
-    useMessengerStore.getState().replaceBootstrapState(ownerB, createBootstrapPayload());
+  it.each(["ready", "unmounted"] as const)(
+    "holds an anchor request while its store belongs to the old owner, then %s",
+    async (outcome) => {
+      const conversationId = `topic:${STREAM_UUID}:${TOPIC_UUID}` as const;
+      updateTestConversationWindow(conversationId);
+      const sessionB: WorkspaceAuthSession = {
+        ...createSession(),
+        accountId: "org-b:project-b:user-b",
+        organizationId: "org-b",
+        projectId: "project-b",
+        userUuid: USER_B_UUID,
+        runtimeGeneration: 2,
+      };
+      useWorkspaceAuthStore.setState({
+        sessions: [sessionB],
+        currentAccountId: sessionB.accountId,
+        runtimeGeneration: sessionB.runtimeGeneration,
+      });
+      const ownerB = workspaceRuntimeOwnerKey(sessionB);
+      useMessengerStore.getState().clear();
+      useMessengerStore.getState().startBootstrap(ownerB);
+      useMessengerStore.getState().replaceBootstrapState(ownerB, createBootstrapPayload());
 
-    renderWorkspaceChatPageWithShellContexts(
-      `/org/org-b/project/project-b/stream/${STREAM_UUID}/topic/${TOPIC_UUID}#message-${MESSAGE_UUID}`,
-    );
+      const page = renderWorkspaceChatPageWithShellContexts(
+        `/org/org-b/project/project-b/stream/${STREAM_UUID}/topic/${TOPIC_UUID}#message-${MESSAGE_UUID}`,
+      );
 
-    await waitFor(() =>
-      expect(captured.loadWorkspaceMessageWindowAroundMessage).toHaveBeenCalledTimes(1),
-    );
-  });
+      expect(captured.loadWorkspaceMessageWindowAroundMessage).not.toHaveBeenCalled();
+      if (outcome === "unmounted") page.unmount();
+      await act(async () => {
+        useWorkspaceMessageStore.getState().setOwner(ownerB, false);
+        await Promise.resolve();
+      });
+
+      if (outcome === "unmounted") {
+        expect(captured.loadWorkspaceMessageWindowAroundMessage).not.toHaveBeenCalled();
+        return;
+      }
+
+      await waitFor(() =>
+        expect(captured.loadWorkspaceMessageWindowAroundMessage).toHaveBeenCalledTimes(1),
+      );
+    },
+  );
 
   it("reloads a focused anchor missing from the DOM only once", async () => {
     const windowRequest = createDeferred<ReturnType<typeof appliedWindowResult>>();
     updateTestConversationWindow(`topic:${STREAM_UUID}:${TOPIC_UUID}`);
-    captured.loadWorkspaceMessageWindowAroundMessage.mockReturnValueOnce(windowRequest.promise);
+    captured.loadWorkspaceMessageWindowAroundMessage
+      .mockResolvedValueOnce(appliedWindowResult(MESSAGE_UUID))
+      .mockReturnValueOnce(windowRequest.promise);
 
     renderWorkspaceChatPageWithShellContexts(
       `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}#message-${MESSAGE_UUID}`,
@@ -4151,7 +4175,7 @@ describe("ChatPage Workspace route", () => {
       onFocusedMessageMissing(target);
     });
     await waitFor(() =>
-      expect(captured.loadWorkspaceMessageWindowAroundMessage).toHaveBeenCalledTimes(1),
+      expect(captured.loadWorkspaceMessageWindowAroundMessage).toHaveBeenCalledTimes(2),
     );
     expect(captured.loadWorkspaceMessageWindowAroundMessage).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -4175,7 +4199,7 @@ describe("ChatPage Workspace route", () => {
       onFocusedMessageMissing(target);
     });
     await Promise.resolve();
-    expect(captured.loadWorkspaceMessageWindowAroundMessage).toHaveBeenCalledTimes(1);
+    expect(captured.loadWorkspaceMessageWindowAroundMessage).toHaveBeenCalledTimes(2);
   });
 
   it("shows a deterministic DOM error after one recovery window still misses the target", async () => {
@@ -4293,7 +4317,7 @@ describe("ChatPage Workspace route", () => {
       }),
     );
     expect(request?.conversationId).toBe(`topic:${STREAM_UUID}:${TOPIC_UUID}`);
-    expect(screen.getByText("workspace message")).toBeInTheDocument();
+    expect(screen.queryByText("workspace message")).not.toBeInTheDocument();
     expect(document.querySelector("[data-message-anchor-transition='true']")).not.toBeNull();
     expect(screen.queryByTestId("workspace-message-list-section")).not.toBeInTheDocument();
     expect(captured.messageListProps?.messages ?? []).toEqual([]);
@@ -4323,7 +4347,7 @@ describe("ChatPage Workspace route", () => {
   });
 
   it("hands the preview to the same focused list node without hidden side effects", async () => {
-    const windowRequest = createDeferred<ReturnType<typeof appliedWindowResult>>();
+    const windowRequest = createDeferred<void>();
     const scrollIntoView = vi.fn();
     const previousScrollIntoView = Object.getOwnPropertyDescriptor(
       HTMLElement.prototype,
@@ -4358,7 +4382,13 @@ describe("ChatPage Workspace route", () => {
     ]);
     captured.renderRealMessageList = true;
     captured.holdRealListFocusedMessageApplied = true;
-    captured.loadWorkspaceMessageWindowAroundMessage.mockReturnValueOnce(windowRequest.promise);
+    const fetchWindowImpl = messageLoader.fetchMessengerMessageWindow;
+    const fetchWindow = vi
+      .spyOn(messageLoader, "fetchMessengerMessageWindow")
+      .mockImplementation(async (options) => {
+        await windowRequest.promise;
+        return fetchWindowImpl(options);
+      });
 
     try {
       renderWorkspaceChatPageWithShellContexts(
@@ -4372,7 +4402,7 @@ describe("ChatPage Workspace route", () => {
       expect(captured.loadWorkspaceFile).not.toHaveBeenCalled();
 
       await act(async () => {
-        windowRequest.resolve(appliedWindowResult(MESSAGE_UUID));
+        windowRequest.resolve();
         await windowRequest.promise;
       });
       await waitFor(() => expect(captured.realListFocusedMessageApplied).toHaveBeenCalledOnce());
@@ -4423,6 +4453,7 @@ describe("ChatPage Workspace route", () => {
       await waitFor(() => expect(captured.loadMessengerQuoteMessage).toHaveBeenCalled());
       await waitFor(() => expect(captured.loadWorkspaceFile).toHaveBeenCalled());
     } finally {
+      fetchWindow.mockRestore();
       if (previousScrollIntoView == null) {
         Reflect.deleteProperty(HTMLElement.prototype, "scrollIntoView");
       } else {
@@ -4894,6 +4925,9 @@ describe("ChatPage Workspace route", () => {
 
     await waitFor(() => expect(captured.messageListProps?.hasOlderMessages).toBe(true));
     expect(captured.messageListProps?.hasNewerMessages).toBe(false);
+    const expectedRevision =
+      useWorkspaceMessageStore.getState().conversationWindowsById[conversationId]?.revision;
+    expect(expectedRevision).toEqual(expect.any(Number));
 
     act(() => {
       captured.messageListProps?.onLoadOlder();
@@ -4905,6 +4939,7 @@ describe("ChatPage Workspace route", () => {
         conversationId,
         direction: "before",
         pageMarker: "older-window-cursor",
+        expectedRevision,
         runtimeContext: expect.objectContaining({ projectId: "project-a" }),
         getRuntimeContext: expect.any(Function),
         signal: expect.any(AbortSignal),
@@ -4936,6 +4971,9 @@ describe("ChatPage Workspace route", () => {
 
     await waitFor(() => expect(captured.messageListProps?.hasNewerMessages).toBe(true));
     expect(captured.messageListProps?.hasOlderMessages).toBe(false);
+    const expectedRevision =
+      useWorkspaceMessageStore.getState().conversationWindowsById[conversationId]?.revision;
+    expect(expectedRevision).toEqual(expect.any(Number));
 
     act(() => {
       captured.messageListProps?.onLoadNewer();
@@ -4947,6 +4985,7 @@ describe("ChatPage Workspace route", () => {
         conversationId,
         direction: "after",
         pageMarker: "newer-window-cursor",
+        expectedRevision,
         runtimeContext: expect.objectContaining({ projectId: "project-a" }),
         getRuntimeContext: expect.any(Function),
         signal: expect.any(AbortSignal),

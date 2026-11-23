@@ -1,16 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useWorkspaceMessageStore } from "~/entities/message/message.model";
-import {
-  applyMessengerMessageWindow,
-  fetchMessengerMessageWindow,
-  resolveMessengerMessageAnchor,
-} from "~/entities/messenger/messenger-messages-loader.lib";
-import type {
-  MessengerMessageAnchorResolveResult,
-  MessengerMessageWindowApplyResult,
-  MessengerMessageWindowFetchResult,
-} from "~/entities/messenger/messenger-messages-loader.lib";
-import type { MessengerConversationId } from "~/entities/messenger/messenger.types";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import {
@@ -51,21 +40,6 @@ interface ExpectedRouteEvent {
   runtimeGeneration: number;
 }
 
-interface FetchAndApplyWindowRequest {
-  runtimeContext: WorkspaceRuntimeContext;
-  anchor: Extract<MessengerMessageAnchorResolveResult, { status: "resolved" }>;
-  targetConversationId: MessengerConversationId;
-  signal: AbortSignal;
-  getRuntimeContext: () => WorkspaceRuntimeContext | null;
-  fetchWindow: typeof fetchMessengerMessageWindow;
-  applyWindow: typeof applyMessengerMessageWindow;
-  isCurrentAttempt: () => boolean;
-}
-
-type FetchAndApplyWindowResult =
-  | MessengerMessageWindowApplyResult
-  | Exclude<MessengerMessageWindowFetchResult, { status: "fetched" }>;
-
 function runtimeMatchesRouteScope(
   context: WorkspaceRuntimeContext | null,
   request: WorkspaceMessageAnchorRouteRequest,
@@ -86,47 +60,9 @@ function runtimeSnapshotsMatch(
   );
 }
 
-async function fetchAndApplyWindowOnce({
-  runtimeContext,
-  anchor,
-  targetConversationId,
-  signal,
-  getRuntimeContext,
-  fetchWindow,
-  applyWindow,
-  isCurrentAttempt,
-}: FetchAndApplyWindowRequest): Promise<FetchAndApplyWindowResult | null> {
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    const fetched = await fetchWindow({
-      runtimeContext,
-      anchor,
-      targetConversationId,
-      signal,
-      getRuntimeContext,
-    });
-    if (!isCurrentAttempt()) return null;
-    if (fetched.status !== "fetched") {
-      if (fetched.status === "skipped" && fetched.reason === "stale-window" && attempt === 0) {
-        continue;
-      }
-      return fetched;
-    }
-
-    const applied = await applyWindow({
-      runtimeContext,
-      window: fetched.window,
-      signal,
-      getRuntimeContext,
-      isRequestCurrent: isCurrentAttempt,
-    });
-    if (!isCurrentAttempt()) return null;
-    if (applied.status === "skipped" && applied.reason === "stale-window" && attempt === 0) {
-      continue;
-    }
-    return applied;
-  }
-
-  return null;
+// Внешняя ссылка и повтор проверяют доступ и размещение прежде, чем фокусировать строку.
+function requiresLinkVerification(source: WorkspaceMessageAnchorNavigationSource): boolean {
+  return source !== "local-quote" && source !== "urn";
 }
 
 export function useWorkspaceMessageAnchorNavigation({
@@ -138,7 +74,7 @@ export function useWorkspaceMessageAnchorNavigation({
   resolveKnownConversationId,
   isMessageInWindow,
   isMessageWindowReady,
-  loader,
+  openAroundMessage,
   navigate,
   buildDirectRoute,
   buildConversationRoute,
@@ -160,10 +96,6 @@ export function useWorkspaceMessageAnchorNavigation({
       ? null
       : `${workspaceRuntimeOwnerKey(runtimeContext)}:${runtimeContext.runtimeGeneration}`;
   const previousRuntimeScopeKeyRef = useRef(runtimeScopeKey);
-  const resolveAnchor = loader?.resolveAnchor ?? resolveMessengerMessageAnchor;
-  const fetchWindow = loader?.fetchWindow ?? fetchMessengerMessageWindow;
-  const applyWindow = loader?.applyWindow ?? applyMessengerMessageWindow;
-
   const publishIntent = useCallback((next: WorkspaceMessageAnchorNavigationIntent | null): void => {
     intentRef.current = next;
     setIntent(next);
@@ -213,7 +145,12 @@ export function useWorkspaceMessageAnchorNavigation({
     ): void => {
       const active = intentRef.current;
       if (active?.id !== candidate.id) return;
-      const failed = { ...active, phase: "failed" as const, pendingDomRecovery: false };
+      const failed = {
+        ...active,
+        phase: "failed" as const,
+        pendingDomRecovery: false,
+        transitionRequired: true,
+      };
       publishIntent(failed);
       setNavigationError({
         intentId: failed.id,
@@ -229,14 +166,17 @@ export function useWorkspaceMessageAnchorNavigation({
   const runWindowRequest = useCallback(
     (candidate: WorkspaceMessageAnchorNavigationIntent): void => {
       const requestRuntimeContext = intentRuntimeContextRef.current;
-      if (requestRuntimeContext?.intentId !== candidate.id) return;
+      if (requestRuntimeContext?.intentId !== candidate.id || openAroundMessage == null) return;
       activeRequestRef.current?.controller.abort();
       const controller = new AbortController();
       activeRequestRef.current = { controller, intentId: candidate.id };
       const resolvingIntent = {
         ...candidate,
         phase: "resolving" as const,
-        transitionRequired: true,
+        transitionRequired:
+          candidate.transitionRequired ||
+          candidate.recoveryAttempt > 0 ||
+          candidate.source === "retry",
       };
       publishIntent(resolvingIntent);
 
@@ -250,46 +190,24 @@ export function useWorkspaceMessageAnchorNavigation({
       };
 
       void (async () => {
-        const resolved = await resolveAnchor({
-          runtimeContext: requestRuntimeContext.context,
+        const windowResult = await openAroundMessage({
           messageUuid: resolvingIntent.messageUuid,
+          conversationHint: resolvingIntent.conversationId,
           signal: controller.signal,
-          getRuntimeContext,
+          isRequestCurrent: isCurrentAttempt,
+          allowLoadedWindow: !resolvingIntent.transitionRequired,
+          onResolved: (conversationId, _message, usesLoadedWindow) => {
+            const active = intentRef.current;
+            if (!isCurrentAttempt() || active?.id !== resolvingIntent.id) return;
+            publishIntent({
+              ...active,
+              conversationId,
+              phase: "loading-window",
+              transitionRequired: !usesLoadedWindow,
+            });
+          },
         });
         if (!isCurrentAttempt()) return;
-        if (resolved.status === "skipped") {
-          failIntent(resolvingIntent, "invalid-context", unavailableError);
-          return;
-        }
-        if (resolved.status === "failed") {
-          failIntent(
-            resolvingIntent,
-            resolved.reason ?? "network",
-            resolved.reason ? unavailableError : resolved.error,
-          );
-          return;
-        }
-
-        const current = intentRef.current;
-        if (current?.id !== resolvingIntent.id) return;
-        const targetConversationId = current.conversationId ?? resolved.conversationId;
-        publishIntent({
-          ...current,
-          conversationId: targetConversationId,
-          phase: "loading-window",
-        });
-
-        const windowResult = await fetchAndApplyWindowOnce({
-          runtimeContext: requestRuntimeContext.context,
-          anchor: resolved,
-          targetConversationId,
-          signal: controller.signal,
-          getRuntimeContext,
-          fetchWindow,
-          applyWindow,
-          isCurrentAttempt,
-        });
-        if (!isCurrentAttempt() || windowResult == null) return;
         if (windowResult.status === "skipped") {
           failIntent(resolvingIntent, "invalid-context", unavailableError);
           return;
@@ -355,14 +273,11 @@ export function useWorkspaceMessageAnchorNavigation({
     },
     [
       buildConversationRoute,
-      applyWindow,
       failIntent,
-      fetchWindow,
-      getRuntimeContext,
       isCurrent,
       navigate,
       publishIntent,
-      resolveAnchor,
+      openAroundMessage,
       routePath,
       unavailableError,
     ],
@@ -397,9 +312,7 @@ export function useWorkspaceMessageAnchorNavigation({
 
       const id = ++nextIntentIdRef.current;
       const resolvedConversationId = resolveKnownConversationId(messageUuid);
-      const requiresAccessCheck =
-        source === "retry" ||
-        ((source === "direct-route" || source === "browser-history") && conversationId == null);
+      const requiresAccessCheck = requiresLinkVerification(source);
       const mayUseKnownConversation =
         useKnownConversation ||
         (resolvedConversationId != null && isMessageInWindow(resolvedConversationId, messageUuid));
@@ -407,7 +320,6 @@ export function useWorkspaceMessageAnchorNavigation({
         conversationId ??
         (!requiresAccessCheck && mayUseKnownConversation ? resolvedConversationId : null);
       const currentWindowReady =
-        !requiresAccessCheck &&
         knownConversationId != null &&
         resolvedConversationId === knownConversationId &&
         isMessageInWindow(knownConversationId, messageUuid) &&
@@ -446,7 +358,7 @@ export function useWorkspaceMessageAnchorNavigation({
         navigate(targetRoute, { replace: routePath === targetRoute });
       }
 
-      if (currentWindowReady) {
+      if (currentWindowReady && !requiresAccessCheck) {
         publishIntent({ ...requested, phase: "awaiting-dom" });
         return id;
       }
@@ -775,9 +687,8 @@ export function useWorkspaceMessageAnchorNavigation({
       state.ownerKey !== previewOwnerKey ||
       visibleNavigationError?.kind === "access-denied" ||
       visibleNavigationError?.kind === "not-found" ||
-      ((visibleIntent?.source === "direct-route" ||
-        visibleIntent?.source === "retry" ||
-        (visibleIntent?.source === "browser-history" && routeRequest?.conversationId == null)) &&
+      (visibleIntent != null &&
+        requiresLinkVerification(visibleIntent.source) &&
         (visibleIntent?.phase === "requested" ||
           visibleIntent?.phase === "resolving" ||
           visibleIntent?.phase === "failed"))
