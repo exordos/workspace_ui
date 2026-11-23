@@ -435,8 +435,9 @@ export function useLayoutWorkspaceNotifications(options: {
   enabled: boolean;
   navigate: NavigateFunction;
   pathname: string;
+  conversationVisible?: boolean;
 }): void {
-  const { enabled, navigate, pathname } = options;
+  const { enabled, navigate, pathname, conversationVisible = true } = options;
   const sessions = useWorkspaceAuthStore((state) => state.sessions);
   const projectionsByOwnerKey = useMessengerBackgroundProjectionStore(
     (state) => state.projectionsByOwnerKey,
@@ -504,7 +505,7 @@ export function useLayoutWorkspaceNotifications(options: {
 
     let cancelled = false;
     let metadataRetryTimer: ReturnType<typeof setTimeout> | null = null;
-    const openConversationId = readOpenConversationId(pathname);
+    const openConversationId = conversationVisible ? readOpenConversationId(pathname) : null;
 
     const scheduleMetadataRetry = (observedAt: number): void => {
       if (cancelled || !Number.isFinite(observedAt) || metadataRetryTimer != null) return;
@@ -655,5 +656,5 @@ export function useLayoutWorkspaceNotifications(options: {
       cancelled = true;
       if (metadataRetryTimer != null) clearTimeout(metadataRetryTimer);
     };
-  }, [enabled, navigate, pathname, routeProjections]);
+  }, [conversationVisible, enabled, navigate, pathname, routeProjections]);
 }

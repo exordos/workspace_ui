@@ -141,7 +141,12 @@ describe("LoginPage", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
-    useWorkspaceAuthStore.setState({ sessions: [], currentAccountId: null, runtimeGeneration: 0 });
+    useWorkspaceAuthStore.setState({
+      sessions: [],
+      reauthRequiredAccounts: [],
+      currentAccountId: null,
+      runtimeGeneration: 0,
+    });
     localStorage.removeItem("workspace-auth-sessions");
     localStorage.removeItem("workspace-auth-current-account");
     localStorage.removeItem("workspace-organization-history-v1");
@@ -157,6 +162,19 @@ describe("LoginPage", () => {
     expect(screen.getByPlaceholderText("https://chat.example.com")).toBeInTheDocument();
     expect(screen.queryByPlaceholderText("email@example.com or login")).not.toBeInTheDocument();
     expect(screen.queryByPlaceholderText("••••••••")).not.toBeInTheDocument();
+  });
+
+  it("allows going back to the saved account when adding a server from its expired session", () => {
+    useWorkspaceAuthStore.setState({
+      sessions: [COMPLETED_SESSION],
+      currentAccountId: COMPLETED_SESSION.accountId,
+    });
+    useWorkspaceAuthStore.getState().requireReauthorization(COMPLETED_SESSION.accountId);
+    renderWithProviders(<LoginPage />, { route: "/login" });
+
+    expect(screen.getByRole("heading", { name: /add server/i })).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: /^back$/i }));
+    expect(navigateSpy).toHaveBeenCalledWith("/", { replace: true });
   });
 
   it("suggests persisted organizations after a login page remount", () => {

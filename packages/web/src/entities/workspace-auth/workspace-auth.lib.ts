@@ -1,5 +1,6 @@
 import { useWorkspaceComposerDraftStore } from "~/entities/composer-draft/composer-draft.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
+import type { WorkspaceRuntimeOwner } from "~/entities/workspace-runtime/workspace-runtime.types";
 import { getServerSettings } from "~/shared/api/messenger-client";
 import type { WorkspaceMessengerServerSettingsDto } from "~/shared/api/messenger.types";
 import {
@@ -25,26 +26,32 @@ import { workspaceOrgOriginFromLoginServerUrlInput } from "~/shared/lib/workspac
 import { deleteWorkspaceUserOwnerCache } from "~/shared/lib/workspace-user-cache-db";
 import { useWorkspaceAuthStore } from "./workspace-auth.model";
 import { recordSuccessfulWorkspaceOrganization } from "./workspace-organization-history.lib";
-import type { WorkspaceAuthProfile, WorkspaceAuthSession } from "./workspace-auth.model";
+import type {
+  WorkspaceAuthProfile,
+  WorkspaceAuthSession,
+  WorkspaceReauthRequiredAccount,
+} from "./workspace-auth.model";
 
 const TOKEN_REFRESH_SKEW_MS = 60_000;
 const TERMINAL_REFRESH_FAILURE_WINDOW_MS = 60_000;
-const TERMINAL_REFRESH_FAILURE_REMOVAL_THRESHOLD = 3;
+const TERMINAL_REFRESH_FAILURE_THRESHOLD = 3;
 const authLogger = createLogger("auth:workspace");
-const pendingWorkspaceSessionRefreshes = new Map<string, Promise<WorkspaceAuthSession>>();
+const pendingWorkspaceSessionRefreshes = new Map<
+  string,
+  { session: WorkspaceAuthSession; promise: Promise<WorkspaceAuthSession> }
+>();
+const pendingWorkspaceSessionRemovals = new Map<string, Promise<void>>();
+const pendingWorkspaceReauthorizations = new Map<string, object>();
 const terminalRefreshFailureAttemptsByAccountId = new Map<
   string,
   { count: number; firstFailureAtMs: number }
 >();
 let instanceIdFallbackCounter = 0;
 
-type WorkspaceSessionRemovalReason =
-  | "explicit-logout"
-  | "owner-mismatch"
-  | "terminal-refresh-failure";
+type WorkspaceSessionRemovalReason = "explicit-logout" | "owner-mismatch";
 
-interface WorkspaceSessionRemovalDecision {
-  remove: boolean;
+interface WorkspaceRefreshRecoveryDecision {
+  requireReauthorization: boolean;
   terminalAttemptCount?: number;
   terminalAttemptThreshold?: number;
   terminalAttemptWindowMs?: number;
@@ -97,12 +104,22 @@ export interface CompleteWorkspaceProjectLoginParams {
   signal?: AbortSignal;
 }
 
+export interface ReauthorizeWorkspaceAccountParams {
+  accountId: string;
+  login: string;
+  password: string;
+  otpCode?: string;
+  fetchImpl?: typeof fetch;
+  signal?: AbortSignal;
+}
+
 export class WorkspaceAuthFlowError extends Error {
   readonly code:
     | "missing-project"
     | "missing-refresh-token"
     | "missing-claims"
     | "project-mismatch"
+    | "project-login-failed"
     | "profile-load-failed"
     | "owner-mismatch"
     | "refresh-unavailable";
@@ -273,10 +290,10 @@ function resetTerminalRefreshFailureAttempts(accountId: string): void {
   terminalRefreshFailureAttemptsByAccountId.delete(accountId);
 }
 
-function shouldRemoveAfterTerminalRefreshFailure(
+function shouldReauthorizeAfterTerminalRefreshFailure(
   accountId: string,
   nowMs = Date.now(),
-): WorkspaceSessionRemovalDecision {
+): WorkspaceRefreshRecoveryDecision {
   const current = terminalRefreshFailureAttemptsByAccountId.get(accountId);
   const isWithinWindow =
     current != null && nowMs - current.firstFailureAtMs <= TERMINAL_REFRESH_FAILURE_WINDOW_MS;
@@ -285,38 +302,34 @@ function shouldRemoveAfterTerminalRefreshFailure(
     firstFailureAtMs: isWithinWindow ? current.firstFailureAtMs : nowMs,
   };
 
-  if (nextAttempt.count >= TERMINAL_REFRESH_FAILURE_REMOVAL_THRESHOLD) {
+  if (nextAttempt.count >= TERMINAL_REFRESH_FAILURE_THRESHOLD) {
     resetTerminalRefreshFailureAttempts(accountId);
     return {
-      remove: true,
+      requireReauthorization: true,
       terminalAttemptCount: nextAttempt.count,
-      terminalAttemptThreshold: TERMINAL_REFRESH_FAILURE_REMOVAL_THRESHOLD,
+      terminalAttemptThreshold: TERMINAL_REFRESH_FAILURE_THRESHOLD,
       terminalAttemptWindowMs: TERMINAL_REFRESH_FAILURE_WINDOW_MS,
     };
   }
 
   terminalRefreshFailureAttemptsByAccountId.set(accountId, nextAttempt);
   return {
-    remove: false,
+    requireReauthorization: false,
     terminalAttemptCount: nextAttempt.count,
-    terminalAttemptThreshold: TERMINAL_REFRESH_FAILURE_REMOVAL_THRESHOLD,
+    terminalAttemptThreshold: TERMINAL_REFRESH_FAILURE_THRESHOLD,
     terminalAttemptWindowMs: TERMINAL_REFRESH_FAILURE_WINDOW_MS,
   };
 }
 
-function sessionRemovalDecisionAfterRefreshFailure(
+function recoveryDecisionAfterRefreshFailure(
   accountId: string,
   failure: WorkspaceAuthRefreshFailure,
-): WorkspaceSessionRemovalDecision {
-  if (failure.reason === "owner-mismatch") {
-    resetTerminalRefreshFailureAttempts(accountId);
-    return { remove: true };
-  }
+): WorkspaceRefreshRecoveryDecision {
   if (failure.reason === "refresh-expired") {
-    return shouldRemoveAfterTerminalRefreshFailure(accountId);
+    return shouldReauthorizeAfterTerminalRefreshFailure(accountId);
   }
   resetTerminalRefreshFailureAttempts(accountId);
-  return { remove: false };
+  return { requireReauthorization: false };
 }
 
 function abortSignalError(): Error {
@@ -378,10 +391,32 @@ function findWorkspaceSession(accountId: string): WorkspaceAuthSession | undefin
     .sessions.find((session) => session.accountId === accountId);
 }
 
-async function cleanupWorkspaceMessengerOwnerCache(
-  session: WorkspaceAuthSession | undefined,
-): Promise<void> {
-  if (session == null) return;
+function findWorkspaceReauthAccount(accountId: string): WorkspaceReauthRequiredAccount | undefined {
+  return useWorkspaceAuthStore
+    .getState()
+    .reauthRequiredAccounts.find((account) => account.accountId === accountId);
+}
+
+function hasSameWorkspaceCredentials(
+  session: WorkspaceAuthSession,
+  current: WorkspaceAuthSession | undefined,
+): boolean {
+  return (
+    current?.instanceId === session.instanceId &&
+    session.credentialsRevision === current.credentialsRevision &&
+    session.accessToken === current.accessToken &&
+    session.refreshToken === current.refreshToken
+  );
+}
+
+function isWorkspaceRefreshCurrent(session: WorkspaceAuthSession): boolean {
+  return (
+    !pendingWorkspaceSessionRemovals.has(session.accountId) &&
+    hasSameWorkspaceCredentials(session, findWorkspaceSession(session.accountId))
+  );
+}
+
+async function cleanupWorkspaceMessengerOwnerCache(session: WorkspaceRuntimeOwner): Promise<void> {
   const ownerKey = workspaceRuntimeOwnerKey(session);
   try {
     await useWorkspaceComposerDraftStore.getState().disposeOwner(ownerKey);
@@ -401,10 +436,7 @@ async function cleanupWorkspaceMessengerOwnerCache(
   }
 }
 
-async function cleanupWorkspaceUserOwnerCache(
-  session: WorkspaceAuthSession | undefined,
-): Promise<void> {
-  if (session == null) return;
+async function cleanupWorkspaceUserOwnerCache(session: WorkspaceRuntimeOwner): Promise<void> {
   const ownerKey = workspaceRuntimeOwnerKey(session);
   try {
     await deleteWorkspaceUserOwnerCache(ownerKey);
@@ -417,9 +449,8 @@ async function cleanupWorkspaceUserOwnerCache(
 }
 
 async function cleanupWorkspaceExternalAccountOwnerCache(
-  session: WorkspaceAuthSession | undefined,
+  session: WorkspaceRuntimeOwner,
 ): Promise<void> {
-  if (session == null) return;
   const ownerKey = workspaceRuntimeOwnerKey(session);
   try {
     await deleteWorkspaceExternalAccountOwnerCache(ownerKey);
@@ -431,9 +462,7 @@ async function cleanupWorkspaceExternalAccountOwnerCache(
   }
 }
 
-async function cleanupWorkspaceOwnerCaches(
-  session: WorkspaceAuthSession | undefined,
-): Promise<void> {
+async function cleanupWorkspaceOwnerCaches(session: WorkspaceRuntimeOwner): Promise<void> {
   await Promise.all([
     cleanupWorkspaceMessengerOwnerCache(session),
     cleanupWorkspaceUserOwnerCache(session),
@@ -441,27 +470,37 @@ async function cleanupWorkspaceOwnerCaches(
   ]);
 }
 
-async function removeWorkspaceSessionAfterCacheCleanup(
+function removeWorkspaceSessionAfterCacheCleanup(
   accountId: string,
-  session: WorkspaceAuthSession | undefined = findWorkspaceSession(accountId),
-  reason: WorkspaceSessionRemovalReason = "explicit-logout",
+  reason: WorkspaceSessionRemovalReason,
 ): Promise<void> {
-  authLogger.warn("Workspace session removal requested", {
-    accountId,
-    reason,
-    sessionPresent: session != null,
-    organizationId: session?.organizationId,
-    projectId: session?.projectId,
-    userUuid: session?.userUuid,
-  });
+  const pending = pendingWorkspaceSessionRemovals.get(accountId);
+  if (pending != null) return pending;
+
+  const session = findWorkspaceSession(accountId);
+  const reauthAccount = findWorkspaceReauthAccount(accountId);
+  const owner = session ?? reauthAccount;
+  if (owner == null) return Promise.resolve();
+
   resetTerminalRefreshFailureAttempts(accountId);
-  await cleanupWorkspaceOwnerCaches(session);
-  useWorkspaceAuthStore.getState().removeSession(accountId);
-  authLogger.warn("Workspace session removed", {
-    accountId,
-    reason,
-    sessionPresentBeforeRemoval: session != null,
-  });
+  const removal = cleanupWorkspaceOwnerCaches(owner)
+    .then(() => {
+      const isRemovalCurrent =
+        session != null
+          ? hasSameWorkspaceCredentials(session, findWorkspaceSession(accountId))
+          : reauthAccount === findWorkspaceReauthAccount(accountId);
+      if (!isRemovalCurrent) return;
+
+      useWorkspaceAuthStore.getState().removeSession(accountId);
+      authLogger.info("Workspace session removed", { accountId, reason });
+    })
+    .finally(() => {
+      if (pendingWorkspaceSessionRemovals.get(accountId) === removal) {
+        pendingWorkspaceSessionRemovals.delete(accountId);
+      }
+    });
+  pendingWorkspaceSessionRemovals.set(accountId, removal);
+  return removal;
 }
 
 async function loadWorkspaceProfileOrFallback(params: {
@@ -599,6 +638,8 @@ async function refreshWorkspaceAuthSessionOnce(
     { refreshToken: session.refreshToken },
     { tokenUrl: iamTokenUrlForOrganizationOrigin(session.organizationOrigin), signal },
   );
+  if (!isWorkspaceRefreshCurrent(session)) throw abortSignalError();
+
   const claims = decodeWorkspaceIamClaims(token.accessToken);
   const ownerMismatchClaim = resolveWorkspaceRefreshOwnerMismatch(session, claims);
   if (ownerMismatchClaim != null) {
@@ -661,8 +702,10 @@ async function refreshWorkspaceAuthSessionForAccount(
     });
     return refreshedSession;
   } catch (error) {
+    if (!isWorkspaceRefreshCurrent(session)) throw abortSignalError();
+
     const failure = classifyWorkspaceAuthRefreshError(error);
-    const removalDecision = sessionRemovalDecisionAfterRefreshFailure(session.accountId, failure);
+    const recovery = recoveryDecisionAfterRefreshFailure(session.accountId, failure);
     authLogger.warn("Workspace auth refresh failed", {
       accountId: session.accountId,
       organizationId: session.organizationId,
@@ -672,17 +715,16 @@ async function refreshWorkspaceAuthSessionForAccount(
       status: "status" in failure ? failure.status : undefined,
       errorName: error instanceof Error ? error.name : typeof error,
       errorMessage: error instanceof Error ? error.message : undefined,
-      willRemoveSession: removalDecision.remove,
-      terminalAttemptCount: removalDecision.terminalAttemptCount,
-      terminalAttemptThreshold: removalDecision.terminalAttemptThreshold,
-      terminalAttemptWindowMs: removalDecision.terminalAttemptWindowMs,
+      willRemoveSession: failure.reason === "owner-mismatch",
+      willRequireReauthorization: recovery.requireReauthorization,
+      terminalAttemptCount: recovery.terminalAttemptCount,
+      terminalAttemptThreshold: recovery.terminalAttemptThreshold,
+      terminalAttemptWindowMs: recovery.terminalAttemptWindowMs,
     });
-    if (removalDecision.remove) {
-      await removeWorkspaceSessionAfterCacheCleanup(
-        session.accountId,
-        session,
-        failure.reason === "owner-mismatch" ? "owner-mismatch" : "terminal-refresh-failure",
-      );
+    if (failure.reason === "owner-mismatch") {
+      await removeWorkspaceSessionAfterCacheCleanup(session.accountId, "owner-mismatch");
+    } else if (recovery.requireReauthorization) {
+      useWorkspaceAuthStore.getState().requireReauthorization(session.accountId);
     }
     throw error;
   }
@@ -698,23 +740,23 @@ export function ensureFreshWorkspaceSession(
       new WorkspaceAuthFlowError("refresh-unavailable", "Workspace session is missing"),
     );
   }
+  if (options.signal?.aborted === true || pendingWorkspaceSessionRemovals.has(accountId)) {
+    return Promise.reject(abortSignalError());
+  }
   if (options.force !== true && !shouldRefreshWorkspaceSession(session)) {
     return Promise.resolve(session);
   }
-  if (options.signal?.aborted === true) {
-    return Promise.reject(abortSignalError());
-  }
 
   const pending = pendingWorkspaceSessionRefreshes.get(accountId);
-  if (pending != null) {
-    return raceWithAbortSignal(pending, options.signal);
+  if (pending != null && hasSameWorkspaceCredentials(session, pending.session)) {
+    return raceWithAbortSignal(pending.promise, options.signal);
   }
 
   const refreshPromise = refreshWorkspaceAuthSessionForAccount(session);
-  pendingWorkspaceSessionRefreshes.set(accountId, refreshPromise);
+  pendingWorkspaceSessionRefreshes.set(accountId, { session, promise: refreshPromise });
   void refreshPromise
     .finally(() => {
-      if (pendingWorkspaceSessionRefreshes.get(accountId) === refreshPromise) {
+      if (pendingWorkspaceSessionRefreshes.get(accountId)?.promise === refreshPromise) {
         pendingWorkspaceSessionRefreshes.delete(accountId);
       }
     })
@@ -722,14 +764,14 @@ export function ensureFreshWorkspaceSession(
   return raceWithAbortSignal(refreshPromise, options.signal);
 }
 
-export async function prepareWorkspaceProjectLogin({
+async function requestWorkspaceLoginCredentials({
   organizationUrl,
   login,
   password,
   otpCode,
   fetchImpl,
   signal,
-}: PrepareWorkspaceProjectLoginParams): Promise<PreparedWorkspaceProjectLogin> {
+}: PrepareWorkspaceProjectLoginParams): Promise<Omit<PreparedWorkspaceProjectLogin, "projects">> {
   const organizationOrigin = workspaceOrgOriginFromLoginServerUrlInput(organizationUrl);
   const safeOrigin = guard.nonEmpty(organizationOrigin, "workspaceAuth.organizationOrigin");
   const token = await requestWorkspaceIamLoginPasswordToken(
@@ -750,14 +792,6 @@ export async function prepareWorkspaceProjectLogin({
     throw new WorkspaceAuthFlowError("missing-claims", "Workspace IAM token has no owner claims");
   }
 
-  const iamProjects = await getWorkspaceIamProjects({
-    accessToken: token.accessToken,
-    baseUrl: safeOrigin,
-    fetchImpl,
-    signal,
-  });
-  const projects = iamProjects.map(workspaceProjectFromIamDto);
-
   return {
     organizationUrl,
     organizationOrigin: safeOrigin,
@@ -765,22 +799,46 @@ export async function prepareWorkspaceProjectLogin({
     userUuid,
     accessToken: token.accessToken,
     refreshToken,
-    projects,
   };
 }
 
-export async function completeWorkspaceProjectLogin({
+async function loadWorkspaceLoginProjects(
+  credentials: Omit<PreparedWorkspaceProjectLogin, "projects">,
+  options: { fetchImpl?: typeof fetch; signal?: AbortSignal },
+): Promise<WorkspaceAuthProject[]> {
+  const projects = await getWorkspaceIamProjects({
+    accessToken: credentials.accessToken,
+    baseUrl: credentials.organizationOrigin,
+    ...options,
+  });
+  return projects.map(workspaceProjectFromIamDto);
+}
+
+export async function prepareWorkspaceProjectLogin(
+  params: PrepareWorkspaceProjectLoginParams,
+): Promise<PreparedWorkspaceProjectLogin> {
+  const credentials = await requestWorkspaceLoginCredentials(params);
+  const projects = await loadWorkspaceLoginProjects(credentials, {
+    fetchImpl: params.fetchImpl,
+    signal: params.signal,
+  });
+
+  return { ...credentials, projects };
+}
+
+async function resolveWorkspaceProjectLogin({
   preparedLogin,
   projectId,
   fetchImpl,
   signal,
-}: CompleteWorkspaceProjectLoginParams): Promise<LoginWorkspaceWithPasswordResult> {
-  const initialState = useWorkspaceAuthStore.getState();
-  const initialSession = initialState.getCurrentSession();
-  const initialSelectionGeneration = initialState.sessionSelectionGeneration;
-  assertWorkspaceLoginCurrent(signal, initialSession, initialSelectionGeneration);
+  requireProjectClaim = false,
+}: CompleteWorkspaceProjectLoginParams & { requireProjectClaim?: boolean }): Promise<{
+  session: Omit<WorkspaceAuthSession, "runtimeGeneration" | "instanceId">;
+  serverSettings: WorkspaceMessengerServerSettingsDto;
+}> {
   const trimmedProjectId = projectId.trim();
-  if (!preparedLogin.projects.some((project) => project.id === trimmedProjectId)) {
+  const project = preparedLogin.projects.find((item) => item.id === trimmedProjectId);
+  if (project == null) {
     throw new WorkspaceAuthFlowError(
       "missing-project",
       "Selected Workspace project is unavailable",
@@ -806,7 +864,10 @@ export async function completeWorkspaceProjectLogin({
   if (userUuid !== preparedLogin.userUuid) {
     throw new WorkspaceAuthFlowError("owner-mismatch", "Workspace IAM token user mismatch");
   }
-  if (claims?.projectId != null && claims.projectId !== trimmedProjectId) {
+  if (
+    (requireProjectClaim || claims?.projectId != null) &&
+    claims?.projectId !== trimmedProjectId
+  ) {
     throw new WorkspaceAuthFlowError("project-mismatch", "Workspace IAM token project mismatch");
   }
 
@@ -831,30 +892,147 @@ export async function completeWorkspaceProjectLogin({
     projectId: trimmedProjectId,
     userUuid,
   });
-  const existing = useWorkspaceAuthStore
-    .getState()
-    .sessions.find((session) => session.accountId === accountId);
-  const session: WorkspaceAuthSession = {
-    accountId,
-    instanceId: existing?.instanceId ?? generateInstanceId(),
-    organizationId,
-    organizationOrigin: preparedLogin.organizationOrigin,
-    projectId: trimmedProjectId,
-    userUuid,
-    login: preparedLogin.login,
-    accessToken: token.accessToken,
-    refreshToken: token.refreshToken ?? preparedLogin.refreshToken,
-    expiresAtMs: expiresAtMsFromToken(token.expiresIn, claims?.expiresAtSeconds),
-    profile,
-    runtimeGeneration: existing?.runtimeGeneration ?? 0,
+  return {
+    session: {
+      accountId,
+      organizationId,
+      organizationOrigin: preparedLogin.organizationOrigin,
+      projectId: trimmedProjectId,
+      projectName: project.name,
+      userUuid,
+      login: preparedLogin.login,
+      accessToken: token.accessToken,
+      refreshToken: token.refreshToken ?? preparedLogin.refreshToken,
+      expiresAtMs: expiresAtMsFromToken(token.expiresIn, claims?.expiresAtSeconds),
+      profile,
+    },
+    serverSettings,
+  };
+}
+
+export async function completeWorkspaceProjectLogin(
+  params: CompleteWorkspaceProjectLoginParams,
+): Promise<LoginWorkspaceWithPasswordResult> {
+  const initialState = useWorkspaceAuthStore.getState();
+  const initialSession = initialState.getCurrentSession();
+  const initialSelectionGeneration = initialState.sessionSelectionGeneration;
+  assertWorkspaceLoginCurrent(params.signal, initialSession, initialSelectionGeneration);
+  const { session, serverSettings } = await resolveWorkspaceProjectLogin(params);
+  assertWorkspaceLoginCurrent(params.signal, initialSession, initialSelectionGeneration);
+  return storeWorkspaceLogin(session, serverSettings);
+}
+
+export async function reauthorizeWorkspaceAccount({
+  accountId,
+  login,
+  password,
+  otpCode,
+  fetchImpl,
+  signal,
+}: ReauthorizeWorkspaceAccountParams): Promise<WorkspaceAuthSession> {
+  const account = findWorkspaceReauthAccount(accountId);
+  if (account == null || signal?.aborted || pendingWorkspaceSessionRemovals.has(accountId)) {
+    throw new DOMException("Workspace reauthorization is no longer current", "AbortError");
+  }
+
+  const attempt = {};
+  pendingWorkspaceReauthorizations.set(accountId, attempt);
+  const assertCurrent = () => {
+    if (
+      signal?.aborted ||
+      pendingWorkspaceReauthorizations.get(accountId) !== attempt ||
+      pendingWorkspaceSessionRemovals.has(accountId) ||
+      findWorkspaceReauthAccount(accountId) !== account
+    ) {
+      throw new DOMException("Workspace reauthorization is no longer current", "AbortError");
+    }
   };
 
-  assertWorkspaceLoginCurrent(signal, initialSession, initialSelectionGeneration);
+  try {
+    const credentials = await requestWorkspaceLoginCredentials({
+      organizationUrl: account.organizationOrigin,
+      login,
+      password,
+      otpCode,
+      fetchImpl,
+      signal,
+    });
+    assertCurrent();
+
+    if (
+      credentials.userUuid !== account.userUuid ||
+      credentials.organizationOrigin !== account.organizationOrigin
+    ) {
+      throw new WorkspaceAuthFlowError(
+        "owner-mismatch",
+        "Workspace reauthorization account mismatch",
+      );
+    }
+
+    try {
+      const projects = await loadWorkspaceLoginProjects(credentials, { fetchImpl, signal });
+      assertCurrent();
+      const { session } = await resolveWorkspaceProjectLogin({
+        preparedLogin: { ...credentials, projects },
+        projectId: account.projectId,
+        fetchImpl,
+        signal,
+        requireProjectClaim: true,
+      });
+      assertCurrent();
+
+      if (session.accountId !== account.accountId) {
+        throw new WorkspaceAuthFlowError(
+          "owner-mismatch",
+          "Workspace reauthorization account mismatch",
+        );
+      }
+      const restored = useWorkspaceAuthStore
+        .getState()
+        .restoreReauthorizedSession(account, { ...session, instanceId: account.instanceId });
+      const restoredSession = restored ? findWorkspaceSession(accountId) : undefined;
+      if (restoredSession == null) {
+        throw new DOMException("Workspace reauthorization is no longer current", "AbortError");
+      }
+      resetTerminalRefreshFailureAttempts(accountId);
+      recordSuccessfulWorkspaceOrganization(account.organizationOrigin);
+      return restoredSession;
+    } catch (error) {
+      // Only a rejection of the password grant can prompt the user for a code.
+      if (error instanceof WorkspaceIamAuthError && error.status === 401) {
+        throw new WorkspaceAuthFlowError("project-login-failed", "Workspace project login failed");
+      }
+      throw error;
+    }
+  } catch (error) {
+    assertCurrent();
+    throw error;
+  } finally {
+    if (pendingWorkspaceReauthorizations.get(accountId) === attempt) {
+      pendingWorkspaceReauthorizations.delete(accountId);
+    }
+  }
+}
+
+function storeWorkspaceLogin(
+  session: Omit<WorkspaceAuthSession, "runtimeGeneration" | "instanceId">,
+  serverSettings: WorkspaceMessengerServerSettingsDto,
+): LoginWorkspaceWithPasswordResult {
+  const { accountId } = session;
+  if (pendingWorkspaceSessionRemovals.has(accountId)) {
+    throw new DOMException("Workspace login is no longer current", "AbortError");
+  }
+  const store = useWorkspaceAuthStore.getState();
+  const instanceId =
+    findWorkspaceSession(accountId)?.instanceId ??
+    findWorkspaceReauthAccount(accountId)?.instanceId ??
+    generateInstanceId();
   resetTerminalRefreshFailureAttempts(accountId);
-  useWorkspaceAuthStore.getState().setSession(session);
+  store.setSession({ ...session, instanceId });
   recordSuccessfulWorkspaceOrganization(session.organizationOrigin);
+
   return {
-    session: useWorkspaceAuthStore.getState().getCurrentSession() ?? session,
+    session: findWorkspaceSession(accountId) ?? { ...session, instanceId, runtimeGeneration: 0 },
     serverSettings,
   };
 }
@@ -920,34 +1098,24 @@ export async function loginWorkspaceWithPassword({
     projectId: trimmedProjectId,
     userUuid,
   });
-  const existing = useWorkspaceAuthStore
-    .getState()
-    .sessions.find((session) => session.accountId === accountId);
-  const session: WorkspaceAuthSession = {
-    accountId,
-    instanceId: existing?.instanceId ?? generateInstanceId(),
-    organizationId,
-    organizationOrigin: safeOrigin,
-    projectId: trimmedProjectId,
-    userUuid,
-    login: login.trim(),
-    accessToken: token.accessToken,
-    refreshToken: token.refreshToken,
-    expiresAtMs: expiresAtMsFromToken(token.expiresIn, claims?.expiresAtSeconds),
-    profile,
-    runtimeGeneration: existing?.runtimeGeneration ?? 0,
-  };
-
   assertWorkspaceLoginCurrent(signal, initialSession, initialSelectionGeneration);
-  resetTerminalRefreshFailureAttempts(accountId);
-  useWorkspaceAuthStore.getState().setSession(session);
-  recordSuccessfulWorkspaceOrganization(session.organizationOrigin);
-  return {
-    session: useWorkspaceAuthStore.getState().getCurrentSession() ?? session,
+  return storeWorkspaceLogin(
+    {
+      accountId,
+      organizationId,
+      organizationOrigin: safeOrigin,
+      projectId: trimmedProjectId,
+      userUuid,
+      login: login.trim(),
+      accessToken: token.accessToken,
+      refreshToken: token.refreshToken,
+      expiresAtMs: expiresAtMsFromToken(token.expiresIn, claims?.expiresAtSeconds),
+      profile,
+    },
     serverSettings,
-  };
+  );
 }
 
 export async function removeWorkspaceSession(accountId: string): Promise<void> {
-  await removeWorkspaceSessionAfterCacheCleanup(accountId, undefined, "explicit-logout");
+  await removeWorkspaceSessionAfterCacheCleanup(accountId, "explicit-logout");
 }

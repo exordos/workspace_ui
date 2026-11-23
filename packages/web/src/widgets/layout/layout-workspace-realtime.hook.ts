@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, type RefObject } from "react";
+import { useShallow } from "zustand/react/shallow";
 import { createActivityRealtimeApplier } from "~/entities/activity/activity-realtime-applier.lib";
 import { useActivityStore } from "~/entities/activity/activity.model";
 import {
@@ -27,7 +28,10 @@ import { selectUserDisplayName } from "~/entities/user/user-selectors.lib";
 import { startWorkspacePresenceReporter } from "~/entities/user/user-workspace-presence-reporter.lib";
 import { useUsersStore } from "~/entities/user/user.model";
 import { ensureFreshWorkspaceSession } from "~/entities/workspace-auth/workspace-auth.lib";
-import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
+import {
+  selectCurrentWorkspaceRuntimeContext,
+  useWorkspaceAuthStore,
+} from "~/entities/workspace-auth/workspace-auth.model";
 import type { WorkspaceAuthSession } from "~/entities/workspace-auth/workspace-auth.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
@@ -196,16 +200,30 @@ export function isLayoutWorkspaceRealtimeOwnerCurrent(
 function shouldStartWorkspaceRealtimeForRoute(
   enabled: boolean,
   pathname: string,
-  activeRuntimeContext: WorkspaceRuntimeContext | null,
-): activeRuntimeContext is WorkspaceRuntimeContext {
+  activeRuntimeContext: Pick<WorkspaceRuntimeContext, "organizationId" | "projectId"> | null,
+): boolean {
   if (!enabled || activeRuntimeContext == null) return false;
   const routeMatch = parseWorkspaceMessengerRoute(pathname);
   if (routeMatch == null) return false;
-  return routeMatch.projectId === activeRuntimeContext.projectId;
+  return (
+    routeMatch.orgId === activeRuntimeContext.organizationId &&
+    routeMatch.projectId === activeRuntimeContext.projectId
+  );
 }
 
 function isAbortSignalAborted(signal: AbortSignal | undefined): boolean {
   return signal?.aborted === true;
+}
+
+function isWorkspaceRealtimeAccountAuthorized(candidate: WorkspaceRealtimeRuntimeOwner): boolean {
+  return useWorkspaceAuthStore
+    .getState()
+    .sessions.some(
+      (session) =>
+        session.accountId === candidate.accountId &&
+        session.instanceId === candidate.instanceId &&
+        session.runtimeGeneration === candidate.runtimeGeneration,
+    );
 }
 
 const repairDeletedMessagePointersFromRealtime: NonNullable<
@@ -226,6 +244,18 @@ const repairDeletedMessagePointersFromRealtime: NonNullable<
     cache: messengerRealtimeActiveCache,
     signal: eventContext.signal,
   });
+};
+
+const revalidateOwnReactionsFromRealtime: NonNullable<
+  MessengerRealtimeActiveApplierOptions["onMessageReactionAggregateUpdated"]
+> = (ownerKey, message) => {
+  const { getCurrentRuntimeContext } = useWorkspaceAuthStore.getState();
+  const runtimeContext = getCurrentRuntimeContext();
+  if (runtimeContext == null) return;
+  createMessengerReactionAggregateRevalidateHandler({
+    runtimeContext,
+    getRuntimeContext: getCurrentRuntimeContext,
+  })(ownerKey, message);
 };
 
 async function defaultWorkspaceRealtimeRefreshSession(
@@ -353,23 +383,32 @@ export function useLayoutWorkspaceRealtime(options: UseLayoutWorkspaceRealtimeOp
   } = options;
   const sessions = useWorkspaceAuthStore((state) => state.sessions);
   const currentAccountId = useWorkspaceAuthStore((state) => state.currentAccountId);
-  const activeRuntimeContext = useMemo(() => {
-    const activeSession =
-      sessions.find((session) => session.accountId === currentAccountId) ?? null;
-    return activeSession == null ? null : toWorkspaceRuntimeContext(activeSession);
-  }, [sessions, currentAccountId]);
+  const reauthAccount = useWorkspaceAuthStore((state) =>
+    state.reauthRequiredAccounts.find((account) => account.accountId === state.currentAccountId),
+  );
+  const activeRuntimeContext = useWorkspaceAuthStore(
+    useShallow(selectCurrentWorkspaceRuntimeContext),
+  );
   const bootstrapReady =
     bootstrapBoundary === undefined ||
     (bootstrapBoundary != null &&
       activeRuntimeContext != null &&
       isBootstrapBoundaryForRuntime(bootstrapBoundary, activeRuntimeContext));
+  const activeOnRoute =
+    activeRuntimeContext != null &&
+    shouldStartWorkspaceRealtimeForRoute(enabled, pathname, activeRuntimeContext);
+  const reauthOnRoute = shouldStartWorkspaceRealtimeForRoute(
+    enabled,
+    pathname,
+    reauthAccount ?? null,
+  );
   const bootstrapBoundaryRef = useRef(bootstrapBoundary);
   const consumedBootstrapBoundaryRef = useRef<LayoutWorkspaceBootstrapBoundary | null>(null);
   const managerContexts = useMemo(
     () => sessions.map((session) => toLayoutRealtimeManagerContext(session)),
     [sessions],
   );
-  const managerContextsRef = useRef(managerContexts);
+  const managerContextsRef = useRef<LayoutWorkspaceRealtimeManagerContext[]>([]);
   const managerRef =
     useRef<WorkspaceRealtimeRuntimeManager<LayoutWorkspaceRealtimeManagerContext> | null>(null);
 
@@ -395,11 +434,6 @@ export function useLayoutWorkspaceRealtime(options: UseLayoutWorkspaceRealtimeOp
       });
     };
   }, [applier, cursorStorageFactory, runtimeFactory]);
-
-  useEffect(() => {
-    managerContextsRef.current = bootstrapReady ? managerContexts : [];
-    bootstrapBoundaryRef.current = bootstrapBoundary;
-  }, [bootstrapBoundary, bootstrapReady, managerContexts]);
 
   useEffect(() => {
     function ensureManager(): WorkspaceRealtimeRuntimeManager<LayoutWorkspaceRealtimeManagerContext> | null {
@@ -468,14 +502,7 @@ export function useLayoutWorkspaceRealtime(options: UseLayoutWorkspaceRealtimeOp
               },
               // Active realtime sees only aggregate counters. Own reaction rows are
               // revalidated by the action layer so realtime stays transport-focused.
-              onMessageReactionAggregateUpdated:
-                activeRuntimeContext == null
-                  ? undefined
-                  : createMessengerReactionAggregateRevalidateHandler({
-                      runtimeContext: activeRuntimeContext,
-                      getRuntimeContext: () =>
-                        useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
-                    }),
+              onMessageReactionAggregateUpdated: revalidateOwnReactionsFromRealtime,
             }),
             createUserRealtimeApplier({ isOwnerCurrent }),
           ]),
@@ -492,12 +519,15 @@ export function useLayoutWorkspaceRealtime(options: UseLayoutWorkspaceRealtimeOp
             createMessengerRealtimeBackgroundApplier({ isOwnerCurrent }),
             createUserRealtimeApplier({ isOwnerCurrent }),
           ]),
-        isOwnerCurrent: (candidate) =>
-          managerContextsRef.current.some(
+        isOwnerCurrent: (candidate) => {
+          if (!isWorkspaceRealtimeAccountAuthorized(candidate)) return false;
+          const ownerKey = workspaceRuntimeOwnerKey(candidate);
+          return managerContextsRef.current.some(
             (context) =>
-              context.ownerKey === workspaceRuntimeOwnerKey(candidate) &&
+              context.ownerKey === ownerKey &&
               context.owner.runtimeGeneration === candidate.runtimeGeneration,
-          ),
+          );
+        },
         onDiagnostic: (diagnostic) => {
           reportUnexpectedError(
             "workspace-realtime:manager",
@@ -509,11 +539,10 @@ export function useLayoutWorkspaceRealtime(options: UseLayoutWorkspaceRealtimeOp
       return manager;
     }
 
-    if (
-      !bootstrapReady ||
-      !shouldStartWorkspaceRealtimeForRoute(enabled, pathname, activeRuntimeContext)
-    ) {
-      // Outside the workspace messenger route, do not keep realtime alive: this is the current route host, not a global daemon.
+    bootstrapBoundaryRef.current = bootstrapBoundary;
+    const activeOwnerKey =
+      activeOnRoute && bootstrapReady ? workspaceRuntimeOwnerKey(activeRuntimeContext) : null;
+    if (activeOwnerKey == null) {
       const messengerState = useMessengerStore.getState();
       if (
         messengerState.realtimeReadyOwnerKey != null &&
@@ -525,41 +554,53 @@ export function useLayoutWorkspaceRealtime(options: UseLayoutWorkspaceRealtimeOp
           false,
         );
       }
+    }
+
+    if (!activeOnRoute && !reauthOnRoute) {
+      managerContextsRef.current = [];
       void managerRef.current?.stopAll("layout_inactive").catch((error) => {
         reportUnexpectedError("workspace-realtime:stop", error);
       });
       return;
     }
 
+    // Keep established background runners while the selected account bootstraps.
+    // A selected account waiting for reauthorization has no active runtime at all.
+    const contextList =
+      activeOwnerKey != null || reauthOnRoute
+        ? managerContexts
+        : managerContexts.filter(
+            (context) =>
+              context.owner.accountId !== currentAccountId &&
+              managerContextsRef.current.some((previous) => previous.ownerKey === context.ownerKey),
+          );
+    managerContextsRef.current = contextList;
+    if (contextList.length === 0 && managerRef.current == null) return;
     const manager = ensureManager();
     if (manager == null) return;
 
-    const activeOwnerKey = workspaceRuntimeOwnerKey(activeRuntimeContext);
-
-    void manager.update(managerContexts, activeOwnerKey).catch((error) => {
+    void manager.update(contextList, activeOwnerKey).catch((error) => {
       reportUnexpectedError("workspace-realtime:start", error);
     });
   }, [
     activeRuntimeContext,
+    activeOnRoute,
     applier,
     bootstrapReady,
     bootstrapBoundary,
     cursorStorageFactory,
-    enabled,
+    currentAccountId,
     managerContexts,
-    pathname,
+    reauthOnRoute,
     refreshSession,
     runtimeFactory,
   ]);
 
   useEffect(() => {
-    if (
-      !bootstrapReady ||
-      !shouldStartWorkspaceRealtimeForRoute(enabled, pathname, activeRuntimeContext)
-    ) {
+    if (!bootstrapReady || !activeOnRoute) {
       return undefined;
     }
 
     return presenceReporterFactory(activeRuntimeContext);
-  }, [activeRuntimeContext, bootstrapReady, enabled, pathname, presenceReporterFactory]);
+  }, [activeRuntimeContext, activeOnRoute, bootstrapReady, presenceReporterFactory]);
 }

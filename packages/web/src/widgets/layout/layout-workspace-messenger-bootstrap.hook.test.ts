@@ -164,6 +164,7 @@ describe("useLayoutWorkspaceMessengerBootstrap", () => {
       useWorkspaceJitsiSettingsStore.getState().clear();
       useWorkspaceAuthStore.setState({
         sessions: [],
+        reauthRequiredAccounts: [],
         currentAccountId: null,
         runtimeGeneration: 0,
       });
@@ -180,12 +181,46 @@ describe("useLayoutWorkspaceMessengerBootstrap", () => {
       useWorkspaceJitsiSettingsStore.getState().clear();
       useWorkspaceAuthStore.setState({
         sessions: [],
+        reauthRequiredAccounts: [],
         currentAccountId: null,
         runtimeGeneration: 0,
       });
     });
     localStorage.removeItem(WORKSPACE_AUTH_STORAGE_KEY);
     localStorage.removeItem(WORKSPACE_AUTH_CURRENT_ACCOUNT_KEY);
+  });
+
+  it("does not invalidate the active bootstrap when a background account reauthorizes", async () => {
+    const active = createSession();
+    const background = {
+      ...createSession(),
+      accountId: "background",
+      instanceId: "background-instance",
+      projectId: "background-project",
+    };
+    setWorkspaceSession(active);
+    useWorkspaceAuthStore.setState({ sessions: [active, background] });
+    useWorkspaceAuthStore.getState().requireReauthorization(background.accountId);
+    const lockedAccount = useWorkspaceAuthStore.getState().reauthRequiredAccounts[0]!;
+    bootstrapSnapshotMock.mockResolvedValue({
+      status: "applied",
+      ownerKey: workspaceRuntimeOwnerKey(active),
+    });
+    const { result } = renderHook(() => useLayoutWorkspaceMessengerBootstrap({ enabled: true }));
+    await waitFor(() => expect(result.current).not.toBeNull());
+    const activeBoundary = result.current;
+
+    await act(() => {
+      useWorkspaceAuthStore.getState().restoreReauthorizedSession(lockedAccount, {
+        ...background,
+        accessToken: "new-background-token",
+      });
+      return Promise.resolve();
+    });
+
+    expect(result.current).toBe(activeBoundary);
+    expect(activeBoundary?.signal.aborted).toBe(false);
+    expect(ensureFreshWorkspaceSessionMock).toHaveBeenCalledTimes(1);
   });
 
   it("runs both hooks through epoch, bootstrap, catch-up and websocket with the real transport", async () => {

@@ -1461,59 +1461,63 @@ describe("useLayoutWorkspaceNotifications suppression", () => {
 
   // The hook's job here is to state the viewport truthfully; the decision itself is
   // the policy's, and is covered in notifications-policy.test.ts.
-  it("tells the policy which conversation is on screen", async () => {
-    const session = createSession("onscreen");
-    const ownerKey = workspaceRuntimeOwnerKey(session);
-    const onScreenUuid = "onscreen-message";
-    const offScreenUuid = "offscreen-message";
+  it.each([true, false])(
+    "tells the policy which conversation is on screen when conversationVisible is %s",
+    async (conversationVisible) => {
+      const session = createSession("onscreen");
+      const ownerKey = workspaceRuntimeOwnerKey(session);
+      const onScreenUuid = "onscreen-message";
+      const offScreenUuid = "offscreen-message";
 
-    useWorkspaceAuthStore.setState({
-      sessions: [session],
-      currentAccountId: session.accountId,
-      runtimeGeneration: 1,
-    });
-    useMessengerBackgroundProjectionStore.setState({
-      projectionsByOwnerKey: {
-        [ownerKey]: createProjection(ownerKey, {
-          notificationCandidates: [
-            createCandidate(ownerKey, onScreenUuid, {
-              observedAt: 1,
-              topicConversationId: conversationIdForTopic(STREAM_UUID, TOPIC_UUID),
-            }),
-            createCandidate(ownerKey, offScreenUuid, { observedAt: 2 }),
-          ],
-          messageIdSnapshotsById: {
-            [onScreenUuid]: createMessageSnapshot(ownerKey, onScreenUuid),
-            [offScreenUuid]: createMessageSnapshot(ownerKey, offScreenUuid),
-          },
+      useWorkspaceAuthStore.setState({
+        sessions: [session],
+        currentAccountId: session.accountId,
+        runtimeGeneration: 1,
+      });
+      useMessengerBackgroundProjectionStore.setState({
+        projectionsByOwnerKey: {
+          [ownerKey]: createProjection(ownerKey, {
+            notificationCandidates: [
+              createCandidate(ownerKey, onScreenUuid, {
+                observedAt: 1,
+                topicConversationId: conversationIdForTopic(STREAM_UUID, TOPIC_UUID),
+              }),
+              createCandidate(ownerKey, offScreenUuid, { observedAt: 2 }),
+            ],
+            messageIdSnapshotsById: {
+              [onScreenUuid]: createMessageSnapshot(ownerKey, onScreenUuid),
+              [offScreenUuid]: createMessageSnapshot(ownerKey, offScreenUuid),
+            },
+          }),
+        },
+      });
+
+      renderHook(() =>
+        useLayoutWorkspaceNotifications({
+          enabled: true,
+          navigate: vi.fn(),
+          pathname: openTopicPathname(session),
+          conversationVisible,
         }),
-      },
-    });
+      );
 
-    renderHook(() =>
-      useLayoutWorkspaceNotifications({
-        enabled: true,
-        navigate: vi.fn(),
-        pathname: openTopicPathname(session),
-      }),
-    );
-
-    await waitFor(() => {
-      expect(shouldWorkspaceDesktopNotifyMock).toHaveBeenCalledTimes(2);
-    });
-    expect(shouldWorkspaceDesktopNotifyMock).toHaveBeenNthCalledWith(
-      1,
-      expect.objectContaining({
-        viewport: { windowFocused: true, isConversationOnScreen: true },
-      }),
-    );
-    expect(shouldWorkspaceDesktopNotifyMock).toHaveBeenNthCalledWith(
-      2,
-      expect.objectContaining({
-        viewport: { windowFocused: true, isConversationOnScreen: false },
-      }),
-    );
-  });
+      await waitFor(() => {
+        expect(shouldWorkspaceDesktopNotifyMock).toHaveBeenCalledTimes(2);
+      });
+      expect(shouldWorkspaceDesktopNotifyMock).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({
+          viewport: { windowFocused: true, isConversationOnScreen: conversationVisible },
+        }),
+      );
+      expect(shouldWorkspaceDesktopNotifyMock).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({
+          viewport: { windowFocused: true, isConversationOnScreen: false },
+        }),
+      );
+    },
+  );
 });
 
 describe("generic notification fallback", () => {

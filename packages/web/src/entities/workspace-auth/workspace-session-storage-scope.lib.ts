@@ -1,5 +1,4 @@
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
-import type { WorkspaceRuntimeOwner } from "~/entities/workspace-runtime/workspace-runtime.types";
 import {
   selectCurrentWorkspaceRuntimeContext,
   useWorkspaceAuthStore,
@@ -12,24 +11,18 @@ export interface WorkspaceSessionStorageScope {
 }
 
 export function getWorkspaceSessionStorageScopeFromAuthState(
-  state: Pick<WorkspaceAuthState, "sessions" | "currentAccountId">,
+  state: Pick<WorkspaceAuthState, "sessions" | "currentAccountId"> &
+    Partial<Pick<WorkspaceAuthState, "reauthRequiredAccounts">>,
 ): WorkspaceSessionStorageScope {
-  const runtimeContext = selectCurrentWorkspaceRuntimeContext(state);
-  if (runtimeContext == null) {
+  const account =
+    selectCurrentWorkspaceRuntimeContext(state) ??
+    state.reauthRequiredAccounts?.find((item) => item.accountId === state.currentAccountId);
+  if (account == null) {
     return { ownerKey: null, legacyInstanceId: null };
   }
-
-  const owner: WorkspaceRuntimeOwner = {
-    accountId: runtimeContext.accountId,
-    instanceId: runtimeContext.instanceId,
-    organizationId: runtimeContext.organizationId,
-    projectId: runtimeContext.projectId,
-    userUuid: runtimeContext.userUuid,
-  };
-
   return {
-    ownerKey: workspaceRuntimeOwnerKey(owner),
-    legacyInstanceId: runtimeContext.instanceId,
+    ownerKey: workspaceRuntimeOwnerKey(account),
+    legacyInstanceId: account.instanceId,
   };
 }
 

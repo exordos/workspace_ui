@@ -1,6 +1,9 @@
 import { create } from "zustand";
 import { isWorkspaceRuntimeRequestContextCurrent } from "~/entities/workspace-runtime/workspace-runtime.lib";
-import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
+import type {
+  WorkspaceRuntimeContext,
+  WorkspaceRuntimeOwner,
+} from "~/entities/workspace-runtime/workspace-runtime.types";
 import { logStoreAction } from "~/shared/lib/logger";
 import {
   WORKSPACE_AUTH_CURRENT_ACCOUNT_KEY,
@@ -16,26 +19,37 @@ export interface WorkspaceAuthProfile {
   status?: "active" | "idle" | "offline" | "do_not_disturb";
 }
 
-export interface WorkspaceAuthSession extends WorkspaceRuntimeContext {
+export interface WorkspaceReauthRequiredAccount extends WorkspaceRuntimeOwner {
   organizationOrigin: string;
+  projectName?: string;
   login: string;
   profile: WorkspaceAuthProfile;
+}
+
+export interface WorkspaceAuthSession
+  extends WorkspaceReauthRequiredAccount, WorkspaceRuntimeContext {
   expiresAtMs?: number;
+  authorizedAtMs?: number;
+  // Account selection changes the runtime without replacing its credentials.
+  credentialsRevision?: symbol;
 }
 
 interface StoredWorkspaceAuthState {
   sessions: WorkspaceAuthSession[];
+  reauthRequiredAccounts: WorkspaceReauthRequiredAccount[];
   currentAccountId: string | null;
 }
 
-// The auth store keeps all accounts, but exposes only one active runtime.
-export interface WorkspaceAuthState {
-  sessions: WorkspaceAuthSession[];
-  currentAccountId: string | null;
+export interface WorkspaceAuthState extends StoredWorkspaceAuthState {
   runtimeGeneration: number;
   // Unlike runtimeGeneration, this does not change during token refresh.
   sessionSelectionGeneration: number;
   setSession: (session: Omit<WorkspaceAuthSession, "runtimeGeneration">) => void;
+  requireReauthorization: (accountId: string) => void;
+  restoreReauthorizedSession: (
+    account: WorkspaceReauthRequiredAccount,
+    session: Omit<WorkspaceAuthSession, "runtimeGeneration">,
+  ) => boolean;
   updateProfileForRuntime: (
     runtime: WorkspaceRuntimeContext,
     profile: WorkspaceAuthProfile,
@@ -92,73 +106,116 @@ function normalizeProfile(value: unknown): WorkspaceAuthProfile | null {
   };
 }
 
-function normalizeStoredSessions(value: unknown): WorkspaceAuthSession[] {
-  if (!Array.isArray(value)) return [];
-  const sessions: WorkspaceAuthSession[] = [];
-  for (const item of value) {
-    if (!isRecord(item)) continue;
-    const accountId = stringField(item, "accountId");
-    const instanceId = stringField(item, "instanceId");
-    const organizationId = stringField(item, "organizationId");
-    const organizationOrigin = stringField(item, "organizationOrigin");
-    const projectId = stringField(item, "projectId");
-    const userUuid = stringField(item, "userUuid");
-    const login = stringField(item, "login");
-    const accessToken = stringField(item, "accessToken");
-    const profile = normalizeProfile(item.profile);
-    if (
-      accountId == null ||
-      instanceId == null ||
-      organizationId == null ||
-      organizationOrigin == null ||
-      projectId == null ||
-      userUuid == null ||
-      login == null ||
-      accessToken == null ||
-      profile == null
-    ) {
-      continue;
-    }
-    sessions.push({
-      accountId,
-      instanceId,
-      organizationId,
-      organizationOrigin,
-      projectId,
-      userUuid,
-      login,
-      accessToken,
-      profile,
-      refreshToken: stringField(item, "refreshToken"),
-      expiresAtMs: numberField(item, "expiresAtMs"),
-      runtimeGeneration: numberField(item, "runtimeGeneration") ?? 0,
-    });
+function normalizeStoredAccount(
+  item: Record<string, unknown>,
+): WorkspaceReauthRequiredAccount | null {
+  const accountId = stringField(item, "accountId");
+  const instanceId = stringField(item, "instanceId");
+  const organizationId = stringField(item, "organizationId");
+  const organizationOrigin = stringField(item, "organizationOrigin");
+  const projectId = stringField(item, "projectId");
+  const projectName = stringField(item, "projectName");
+  const userUuid = stringField(item, "userUuid");
+  const login = stringField(item, "login");
+  const profile = normalizeProfile(item.profile);
+  if (
+    !accountId ||
+    !instanceId ||
+    !organizationId ||
+    !organizationOrigin ||
+    !projectId ||
+    !userUuid ||
+    !login ||
+    profile == null
+  ) {
+    return null;
   }
-  return sessions;
+  return {
+    accountId,
+    instanceId,
+    organizationId,
+    organizationOrigin,
+    projectId,
+    projectName,
+    userUuid,
+    login,
+    profile,
+  };
+}
+
+function normalizeStoredAccounts(
+  value: unknown,
+): Pick<StoredWorkspaceAuthState, "sessions" | "reauthRequiredAccounts"> {
+  const sessions: WorkspaceAuthSession[] = [];
+  const reauthRequiredAccounts: WorkspaceReauthRequiredAccount[] = [];
+  const accountedIds = new Set<string>();
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      if (!isRecord(item)) continue;
+      const account = normalizeStoredAccount(item);
+      if (account == null || accountedIds.has(account.accountId)) continue;
+      if (item.reauthRequired === true) {
+        reauthRequiredAccounts.push(account);
+        accountedIds.add(account.accountId);
+        continue;
+      }
+      const accessToken = stringField(item, "accessToken");
+      if (accessToken == null) continue;
+      sessions.push({
+        ...account,
+        accessToken,
+        refreshToken: stringField(item, "refreshToken"),
+        expiresAtMs: numberField(item, "expiresAtMs"),
+        authorizedAtMs: numberField(item, "authorizedAtMs"),
+        runtimeGeneration: numberField(item, "runtimeGeneration") ?? 0,
+      });
+      accountedIds.add(account.accountId);
+    }
+  }
+  return { sessions, reauthRequiredAccounts };
+}
+
+function hasSavedAccount(
+  state: Pick<StoredWorkspaceAuthState, "sessions" | "reauthRequiredAccounts">,
+  accountId: string,
+): boolean {
+  return (
+    state.sessions.some((session) => session.accountId === accountId) ||
+    state.reauthRequiredAccounts.some((account) => account.accountId === accountId)
+  );
 }
 
 function loadFromStorage(): StoredWorkspaceAuthState {
-  if (typeof window === "undefined") {
-    return { sessions: [], currentAccountId: null };
-  }
+  const empty = { sessions: [], reauthRequiredAccounts: [], currentAccountId: null };
+  if (typeof window === "undefined") return empty;
   try {
     const raw = window.localStorage.getItem(WORKSPACE_AUTH_STORAGE_KEY);
-    const sessions = normalizeStoredSessions(raw ? (JSON.parse(raw) as unknown) : []);
+    const accounts = normalizeStoredAccounts(raw ? (JSON.parse(raw) as unknown) : []);
     const currentRaw = window.localStorage.getItem(WORKSPACE_AUTH_CURRENT_ACCOUNT_KEY);
     const currentAccountId =
-      currentRaw != null && sessions.some((session) => session.accountId === currentRaw)
+      currentRaw != null && hasSavedAccount(accounts, currentRaw)
         ? currentRaw
-        : (sessions[0]?.accountId ?? null);
-    return { sessions, currentAccountId };
+        : (accounts.sessions[0]?.accountId ??
+          accounts.reauthRequiredAccounts[0]?.accountId ??
+          null);
+    return { ...accounts, currentAccountId };
   } catch {
-    return { sessions: [], currentAccountId: null };
+    return empty;
   }
 }
 
-function persist(sessions: WorkspaceAuthSession[], currentAccountId: string | null): void {
+function persist({
+  sessions,
+  reauthRequiredAccounts,
+  currentAccountId,
+}: StoredWorkspaceAuthState): void {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(WORKSPACE_AUTH_STORAGE_KEY, JSON.stringify(sessions));
+    const storedAccounts = [
+      ...sessions,
+      ...reauthRequiredAccounts.map((account) => ({ ...account, reauthRequired: true })),
+    ];
+    window.localStorage.setItem(WORKSPACE_AUTH_STORAGE_KEY, JSON.stringify(storedAccounts));
     if (currentAccountId != null) {
       window.localStorage.setItem(WORKSPACE_AUTH_CURRENT_ACCOUNT_KEY, currentAccountId);
     } else {
@@ -173,13 +230,8 @@ function nextGeneration(current: number): number {
   return current + 1;
 }
 
-// Generation changes make old async messenger requests harmless.
-function withGeneration(
-  session: Omit<WorkspaceAuthSession, "runtimeGeneration">,
-  runtimeGeneration: number,
-): WorkspaceAuthSession {
-  return { ...session, runtimeGeneration };
-}
+// A restored background runtime advances independently of the selected account.
+const retiredRuntimeGenerations = new WeakMap<WorkspaceReauthRequiredAccount, number>();
 
 export const useWorkspaceAuthStore = create<WorkspaceAuthState>((set, get) => ({
   ...loadFromStorage(),
@@ -188,19 +240,35 @@ export const useWorkspaceAuthStore = create<WorkspaceAuthState>((set, get) => ({
 
   setSession: (session) => {
     set((state) => {
-      const runtimeGeneration = nextGeneration(state.runtimeGeneration);
       const existing = state.sessions.find((item) => item.accountId === session.accountId);
-      const nextSession = withGeneration(session, runtimeGeneration);
-      const sessions = state.sessions.some((item) => item.accountId === session.accountId)
-        ? state.sessions.map((item) =>
-            item.accountId === session.accountId
-              ? {
-                  ...nextSession,
-                  instanceId: existing?.instanceId ?? nextSession.instanceId,
-                }
-              : item,
-          )
-        : [...state.sessions, nextSession];
+      const reauthRequired = state.reauthRequiredAccounts.find(
+        (account) => account.accountId === session.accountId,
+      );
+      const previousGeneration =
+        reauthRequired == null
+          ? existing?.runtimeGeneration
+          : retiredRuntimeGenerations.get(reauthRequired);
+      const runtimeGeneration = nextGeneration(
+        Math.max(state.runtimeGeneration, previousGeneration ?? 0),
+      );
+      const nextSession: WorkspaceAuthSession = {
+        ...session,
+        instanceId: existing?.instanceId ?? reauthRequired?.instanceId ?? session.instanceId,
+        projectName: session.projectName ?? existing?.projectName ?? reauthRequired?.projectName,
+        runtimeGeneration,
+        credentialsRevision: Symbol(),
+        authorizedAtMs: Date.now(),
+      };
+      const sessions =
+        existing == null
+          ? [...state.sessions, nextSession]
+          : state.sessions.map((item) =>
+              item.accountId === session.accountId ? nextSession : item,
+            );
+      const reauthRequiredAccounts =
+        reauthRequired == null
+          ? state.reauthRequiredAccounts
+          : state.reauthRequiredAccounts.filter((item) => item !== reauthRequired);
       const currentAccountId = session.accountId;
 
       logStoreAction("workspaceAuth", "setSession", {
@@ -210,9 +278,10 @@ export const useWorkspaceAuthStore = create<WorkspaceAuthState>((set, get) => ({
         userUuid: session.userUuid,
       });
 
-      persist(sessions, currentAccountId);
+      persist({ sessions, reauthRequiredAccounts, currentAccountId });
       return {
         sessions,
+        reauthRequiredAccounts,
         currentAccountId,
         runtimeGeneration,
         sessionSelectionGeneration: nextGeneration(state.sessionSelectionGeneration),
@@ -220,21 +289,94 @@ export const useWorkspaceAuthStore = create<WorkspaceAuthState>((set, get) => ({
     });
   },
 
+  requireReauthorization: (accountId) => {
+    set((state) => {
+      const session = state.sessions.find((item) => item.accountId === accountId);
+      if (session == null) return state;
+
+      const account: WorkspaceReauthRequiredAccount = {
+        accountId,
+        instanceId: session.instanceId,
+        organizationId: session.organizationId,
+        organizationOrigin: session.organizationOrigin,
+        projectId: session.projectId,
+        projectName: session.projectName,
+        userUuid: session.userUuid,
+        login: session.login,
+        profile: session.profile,
+      };
+      retiredRuntimeGenerations.set(account, session.runtimeGeneration);
+      const sessions = state.sessions.filter((item) => item.accountId !== accountId);
+      const reauthRequiredAccounts = [...state.reauthRequiredAccounts, account];
+      const isSelected = state.currentAccountId === accountId;
+
+      persist({ ...state, sessions, reauthRequiredAccounts });
+      return {
+        sessions,
+        reauthRequiredAccounts,
+        runtimeGeneration: isSelected
+          ? nextGeneration(state.runtimeGeneration)
+          : state.runtimeGeneration,
+        sessionSelectionGeneration: isSelected
+          ? nextGeneration(state.sessionSelectionGeneration)
+          : state.sessionSelectionGeneration,
+      };
+    });
+  },
+
+  restoreReauthorizedSession: (account, session) => {
+    let restored = false;
+    set((state) => {
+      if (!state.reauthRequiredAccounts.includes(account)) return state;
+
+      const runtimeGeneration = nextGeneration(
+        Math.max(state.runtimeGeneration, retiredRuntimeGenerations.get(account) ?? 0),
+      );
+      const sessions = [
+        ...state.sessions,
+        {
+          ...session,
+          runtimeGeneration,
+          credentialsRevision: Symbol(),
+          authorizedAtMs: Date.now(),
+        },
+      ];
+      const reauthRequiredAccounts = state.reauthRequiredAccounts.filter(
+        (item) => item !== account,
+      );
+      const isSelected = state.currentAccountId === account.accountId;
+      persist({ ...state, sessions, reauthRequiredAccounts });
+      restored = true;
+      return {
+        sessions,
+        reauthRequiredAccounts,
+        runtimeGeneration: isSelected ? runtimeGeneration : state.runtimeGeneration,
+        sessionSelectionGeneration: isSelected
+          ? nextGeneration(state.sessionSelectionGeneration)
+          : state.sessionSelectionGeneration,
+      };
+    });
+    return restored;
+  },
+
   setCurrentAccountId: (accountId) => {
     set((state) => {
       if (state.currentAccountId === accountId) return state;
-      if (accountId != null && !state.sessions.some((session) => session.accountId === accountId)) {
+      if (accountId != null && !hasSavedAccount(state, accountId)) {
         return state;
       }
 
-      const runtimeGeneration = nextGeneration(state.runtimeGeneration);
+      const selectedSession = state.sessions.find((session) => session.accountId === accountId);
+      const runtimeGeneration = nextGeneration(
+        Math.max(state.runtimeGeneration, selectedSession?.runtimeGeneration ?? 0),
+      );
       const sessions = state.sessions.map((session) =>
-        session.accountId === accountId ? { ...session, runtimeGeneration } : session,
+        session === selectedSession ? { ...session, runtimeGeneration } : session,
       );
 
       logStoreAction("workspaceAuth", "setCurrentAccountId", { accountId });
 
-      persist(sessions, accountId);
+      persist({ ...state, sessions, currentAccountId: accountId });
       return {
         currentAccountId: accountId,
         runtimeGeneration,
@@ -264,7 +406,7 @@ export const useWorkspaceAuthStore = create<WorkspaceAuthState>((set, get) => ({
             }
           : session,
       );
-      persist(sessions, state.currentAccountId);
+      persist({ ...state, sessions });
       applied = true;
       // Identity edits do not replace tokens or restart the messenger runtime.
       return { sessions };
@@ -287,6 +429,7 @@ export const useWorkspaceAuthStore = create<WorkspaceAuthState>((set, get) => ({
               accessToken: tokens.accessToken,
               refreshToken: tokens.refreshToken ?? session.refreshToken,
               expiresAtMs: tokens.expiresAtMs ?? session.expiresAtMs,
+              credentialsRevision: Symbol(),
               runtimeGeneration:
                 state.currentAccountId === accountId
                   ? runtimeGeneration
@@ -297,49 +440,62 @@ export const useWorkspaceAuthStore = create<WorkspaceAuthState>((set, get) => ({
 
       logStoreAction("workspaceAuth", "updateTokens", { accountId });
 
-      persist(sessions, state.currentAccountId);
+      persist({ ...state, sessions });
       return { sessions, runtimeGeneration };
     });
   },
 
   removeSession: (accountId) => {
     set((state) => {
-      if (!state.sessions.some((session) => session.accountId === accountId)) return state;
+      if (!hasSavedAccount(state, accountId)) return state;
 
-      const sessions = state.sessions.filter((session) => session.accountId !== accountId);
-      const currentAccountId =
-        state.currentAccountId === accountId
-          ? (sessions[0]?.accountId ?? null)
-          : state.currentAccountId;
-      const runtimeGeneration = nextGeneration(state.runtimeGeneration);
-      const nextSessions = sessions.map((session) =>
-        session.accountId === currentAccountId ? { ...session, runtimeGeneration } : session,
+      const authorized = state.sessions.filter((session) => session.accountId !== accountId);
+      const reauthRequiredAccounts = state.reauthRequiredAccounts.filter(
+        (account) => account.accountId !== accountId,
       );
+      const removedSelected = state.currentAccountId === accountId;
+      const currentAccountId = removedSelected
+        ? (authorized[0]?.accountId ?? reauthRequiredAccounts[0]?.accountId ?? null)
+        : state.currentAccountId;
+      const nextSession = authorized.find((session) => session.accountId === currentAccountId);
+      const runtimeGeneration = removedSelected
+        ? nextGeneration(Math.max(state.runtimeGeneration, nextSession?.runtimeGeneration ?? 0))
+        : state.runtimeGeneration;
+      const sessions = removedSelected
+        ? authorized.map((session) =>
+            session.accountId === currentAccountId ? { ...session, runtimeGeneration } : session,
+          )
+        : authorized;
 
       logStoreAction("workspaceAuth", "removeSession", { accountId });
 
-      persist(nextSessions, currentAccountId);
+      persist({ sessions, reauthRequiredAccounts, currentAccountId });
       return {
-        sessions: nextSessions,
+        sessions,
+        reauthRequiredAccounts,
         currentAccountId,
         runtimeGeneration,
-        sessionSelectionGeneration:
-          state.currentAccountId === accountId
-            ? nextGeneration(state.sessionSelectionGeneration)
-            : state.sessionSelectionGeneration,
+        sessionSelectionGeneration: removedSelected
+          ? nextGeneration(state.sessionSelectionGeneration)
+          : state.sessionSelectionGeneration,
       };
     });
   },
 
   clear: () => {
     set((state) => {
-      if (state.sessions.length === 0 && state.currentAccountId == null) return state;
+      if (
+        state.sessions.length === 0 &&
+        state.reauthRequiredAccounts.length === 0 &&
+        state.currentAccountId == null
+      )
+        return state;
       const runtimeGeneration = nextGeneration(state.runtimeGeneration);
       logStoreAction("workspaceAuth", "clear", {});
-      persist([], null);
+      const empty = { sessions: [], reauthRequiredAccounts: [], currentAccountId: null };
+      persist(empty);
       return {
-        sessions: [],
-        currentAccountId: null,
+        ...empty,
         runtimeGeneration,
         sessionSelectionGeneration: nextGeneration(state.sessionSelectionGeneration),
       };

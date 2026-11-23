@@ -45,11 +45,9 @@ export function writeMessageOpenPreference(
   }
 }
 
-export function resolveMessageEntrySession(
-  sessions: WorkspaceAuthSession[],
-  pathname: string,
-  currentAccountId: string | null = null,
-): WorkspaceAuthSession | null {
+export function resolveMessageEntrySession<
+  T extends Pick<WorkspaceAuthSession, "accountId" | "organizationId" | "projectId">,
+>(sessions: T[], pathname: string, currentAccountId: string | null = null): T | null {
   const route = parseWorkspaceMessengerRoute(pathname);
   if (route?.kind !== "message") return null;
   const candidates = sessions.filter(

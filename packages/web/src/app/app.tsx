@@ -38,6 +38,7 @@ import {
 } from "~/shared/lib/workspace-messenger-route.lib";
 import { parseWorkspaceProfileShareHash } from "~/shared/lib/workspace-profile-link.lib";
 import { ErrorBoundary, PageErrorFallback, PageLoader } from "~/shared/ui/error-boundary";
+import { useLayoutAuthGuard } from "~/widgets/layout/layout-auth-guard.hook";
 import { configureWorkspaceI18nStorageScope } from "~/widgets/layout/layout-i18n-scope.lib";
 import { resolveElectronTrayNavigation } from "./app-electron-navigation.lib";
 import { resolveMessageEntrySession } from "./app-message-entry.lib";
@@ -52,6 +53,7 @@ configureWorkspaceI18nStorageScope();
 const AppContent: React.FC = () => {
   const location = useLocation();
   const sessions = useWorkspaceAuthStore((s) => s.sessions);
+  const reauthRequiredAccounts = useWorkspaceAuthStore((s) => s.reauthRequiredAccounts);
   const currentAccountId = useWorkspaceAuthStore((s) => s.currentAccountId);
   const setCurrentAccountId = useWorkspaceAuthStore((s) => s.setCurrentAccountId);
   const navigate = useNavigate();
@@ -59,17 +61,22 @@ const AppContent: React.FC = () => {
   const rootRef = useRef<HTMLDivElement>(null);
   const [shortcutsHelpOpen, setShortcutsHelpOpen] = useState(false);
   const hasSessions = sessions.length > 0;
-  const currentSession = useMemo(
-    () => sessions.find((session) => session.accountId === currentAccountId) ?? null,
-    [sessions, currentAccountId],
+  const savedAccounts = useMemo(
+    () => [...sessions, ...reauthRequiredAccounts],
+    [sessions, reauthRequiredAccounts],
   );
-  const currentOrgRouteId = currentSession?.organizationId ?? null;
+  const currentAccount = savedAccounts.find((account) => account.accountId === currentAccountId);
+  const currentAccountNeedsReauth = reauthRequiredAccounts.some(
+    (account) => account.accountId === currentAccountId,
+  );
+  const canNavigateSections = hasSessions && !currentAccountNeedsReauth;
+  const currentOrgRouteId = currentAccount?.organizationId ?? null;
   const defaultMessengerRoute = useMemo(
     () =>
-      currentSession != null
-        ? workspaceMessengerRootRoute(currentSession.organizationId, currentSession.projectId)
+      currentAccount != null
+        ? workspaceMessengerRootRoute(currentAccount.organizationId, currentAccount.projectId)
         : "/",
-    [currentSession],
+    [currentAccount],
   );
   useTranslation();
   const { overrides } = useHotkeySettings();
@@ -128,11 +135,11 @@ const AppContent: React.FC = () => {
   usePageView();
   useAppHotkey("navigation.back", goBack, { enabled: hasSessions && canGoBack });
   useAppHotkey("navigation.forward", goForward, { enabled: hasSessions && canGoForward });
-  useAppHotkey("navigation.messenger", navigateToMessenger, { enabled: hasSessions });
-  useAppHotkey("navigation.calendar", navigateToCalendar, { enabled: hasSessions });
-  useAppHotkey("navigation.mail", navigateToMail, { enabled: hasSessions });
-  useAppHotkey("navigation.calls", navigateToCalls, { enabled: hasSessions });
-  useAppHotkey("navigation.activity", navigateToActivity, { enabled: hasSessions });
+  useAppHotkey("navigation.messenger", navigateToMessenger, { enabled: canNavigateSections });
+  useAppHotkey("navigation.calendar", navigateToCalendar, { enabled: canNavigateSections });
+  useAppHotkey("navigation.mail", navigateToMail, { enabled: canNavigateSections });
+  useAppHotkey("navigation.calls", navigateToCalls, { enabled: canNavigateSections });
+  useAppHotkey("navigation.activity", navigateToActivity, { enabled: canNavigateSections });
   useAppHotkey("interface.theme", toggleThemeShortcut, { enabled: hasSessions });
   useAppHotkey("interface.help", toggleShortcutsHelp, { enabled: hasSessions });
 
@@ -147,7 +154,7 @@ const AppContent: React.FC = () => {
     const messageEntry = parseWorkspaceMessengerRoute(location.pathname);
     if (messageEntry?.kind === "message") {
       const targetSession = resolveMessageEntrySession(
-        sessions,
+        savedAccounts,
         location.pathname,
         currentAccountId,
       );
@@ -156,7 +163,7 @@ const AppContent: React.FC = () => {
       }
       return;
     }
-    if (!hasSessions || currentOrgRouteId == null) return;
+    if (currentOrgRouteId == null) return;
     // The public share entry selects a session for its server before adding an org prefix.
     if (location.pathname === "/" && parseWorkspaceProfileShareHash(location.hash) != null) return;
 
@@ -174,18 +181,18 @@ const AppContent: React.FC = () => {
 
     const workspaceRoute = parseWorkspaceMessengerRoute(location.pathname);
     const currentSessionMatchesRoute =
-      currentSession?.organizationId === orgId &&
-      (workspaceRoute == null || currentSession.projectId === workspaceRoute.projectId);
+      currentAccount?.organizationId === orgId &&
+      (workspaceRoute == null || currentAccount.projectId === workspaceRoute.projectId);
     if (currentSessionMatchesRoute) {
       return;
     }
 
     const matchedSession =
-      sessions.find(
+      savedAccounts.find(
         (session) =>
           session.organizationId === orgId &&
           (workspaceRoute == null || session.projectId === workspaceRoute.projectId),
-      ) ?? sessions.find((session) => session.organizationId === orgId);
+      ) ?? savedAccounts.find((session) => session.organizationId === orgId);
     if (matchedSession == null) {
       const fallbackPath = replaceOrgRouteInPath(fullPath, currentOrgRouteId);
       if (fallbackPath !== fullPath) {
@@ -204,14 +211,13 @@ const AppContent: React.FC = () => {
       );
     }
   }, [
-    hasSessions,
     currentOrgRouteId,
     location.pathname,
     location.search,
     location.hash,
     navigate,
-    sessions,
-    currentSession,
+    savedAccounts,
+    currentAccount,
     currentAccountId,
     setCurrentAccountId,
   ]);
@@ -247,13 +253,16 @@ const AppContent: React.FC = () => {
   const messageRoute = parseWorkspaceMessengerRoute(location.pathname);
   const targetMessageSession =
     messageRoute?.kind === "message"
-      ? resolveMessageEntrySession(sessions, location.pathname, currentAccountId)
+      ? resolveMessageEntrySession(savedAccounts, location.pathname, currentAccountId)
       : null;
   // Do not mount the shell or issue message requests under the previous runtime owner.
   if (targetMessageSession != null && targetMessageSession.accountId !== currentAccountId) {
     return <PageLoader />;
   }
-  if (sessions.length === 0 || (messageRoute?.kind === "message" && targetMessageSession == null)) {
+  if (
+    savedAccounts.length === 0 ||
+    (messageRoute?.kind === "message" && targetMessageSession == null)
+  ) {
     return (
       <div ref={rootRef} className="h-full">
         <ErrorBoundary fallback={(api) => <PageErrorFallback onRetry={api.resetErrorBoundary} />}>
@@ -282,7 +291,10 @@ const AppContent: React.FC = () => {
       )}
       <ErrorBoundary fallback={(api) => <PageErrorFallback onRetry={api.resetErrorBoundary} />}>
         <Suspense fallback={<PageLoader />}>
-          <AuthenticatedAppRoutes defaultMessengerRoute={defaultMessengerRoute} />
+          <AuthenticatedAppRoutes
+            defaultMessengerRoute={defaultMessengerRoute}
+            currentAccountNeedsReauth={currentAccountNeedsReauth}
+          />
         </Suspense>
       </ErrorBoundary>
     </div>
@@ -290,6 +302,7 @@ const AppContent: React.FC = () => {
 };
 
 const App: React.FC = () => {
+  useLayoutAuthGuard();
   const ownerKey = useWorkspaceAuthStore(
     (state) => getWorkspaceSessionStorageScopeFromAuthState(state).ownerKey,
   );

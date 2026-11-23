@@ -28,7 +28,7 @@ import {
 } from "./top-bar.lib";
 import type { TopBarSection } from "./top-bar.types";
 
-export const TopBar: React.FC = () => {
+export const TopBar: React.FC<{ reauthRequired?: boolean }> = ({ reauthRequired = false }) => {
   const macElectronChrome = isElectronDarwin();
   const location = useLocation();
   const navigate = useNavigate();
@@ -85,12 +85,14 @@ export const TopBar: React.FC = () => {
 
   return (
     <>
-      <SearchModal
-        open={searchOpen}
-        onOpenChange={setSearchOpen}
-        onSelectUserUuid={handleSearchSelectUserUuid}
-        mode={searchModalMode}
-      />
+      {reauthRequired ? null : (
+        <SearchModal
+          open={searchOpen}
+          onOpenChange={setSearchOpen}
+          onSelectUserUuid={handleSearchSelectUserUuid}
+          mode={searchModalMode}
+        />
+      )}
       <header
         // Match left/right sidebars + chat header (Surface / bg-elevated)
         className="mb-1 flex w-full flex-col rounded-b-lg border-b border-border-subtle bg-bg-elevated"
@@ -129,26 +131,33 @@ export const TopBar: React.FC = () => {
             still shifts the nav left because the profile min-content is wider than the switcher.
             pointer-events-none keeps org/profile clicks working through empty overlay space.
           */}
-          <div
-            data-testid="topbar-sections-center"
-            className="pointer-events-none absolute inset-0 z-base flex items-center justify-center"
-          >
-            <TopBarSectionNav
-              sections={sections}
-              activeSection={activeSection}
-              onSectionChange={handleSectionChange}
-              className={["pointer-events-auto", macElectronChrome ? "electron-no-drag" : undefined]
-                .filter(Boolean)
-                .join(" ")}
-            />
-          </div>
+          {reauthRequired ? null : (
+            <div
+              data-testid="topbar-sections-center"
+              className="pointer-events-none absolute inset-0 z-base flex items-center justify-center"
+            >
+              <TopBarSectionNav
+                sections={sections}
+                activeSection={activeSection}
+                onSectionChange={handleSectionChange}
+                className={[
+                  "pointer-events-auto",
+                  macElectronChrome ? "electron-no-drag" : undefined,
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
+              />
+            </div>
+          )}
 
-          <div className="electron-no-drag relative z-sticky flex min-w-0 items-center gap-3">
-            <TopBarSearchButton onOpenSearch={openSearchModal} />
-            <TopBarDownloadCenter />
-            <TopBarAppUpdateIndicator />
-            <TopBarProfileTrigger />
-          </div>
+          {reauthRequired ? null : (
+            <div className="electron-no-drag relative z-sticky flex min-w-0 items-center gap-3">
+              <TopBarSearchButton onOpenSearch={openSearchModal} />
+              <TopBarDownloadCenter />
+              <TopBarAppUpdateIndicator />
+              <TopBarProfileTrigger />
+            </div>
+          )}
         </div>
       </header>
     </>

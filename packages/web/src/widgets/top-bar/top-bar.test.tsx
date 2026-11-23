@@ -63,7 +63,12 @@ function resetTopBarRelatedStores(): void {
   useMessengerStore.getState().clear();
   useUsersStore.getState().clear();
   useDownloadStore.setState({ entries: [], duplicateRequestTick: 0 });
-  useWorkspaceAuthStore.setState({ sessions: [], currentAccountId: null, runtimeGeneration: 0 });
+  useWorkspaceAuthStore.setState({
+    sessions: [],
+    reauthRequiredAccounts: [],
+    currentAccountId: null,
+    runtimeGeneration: 0,
+  });
   setCurrentOrgRouteIdResolver(null);
   useSearchModalStore.getState().closeModal();
   useRightDrawerStore.getState().clearAll();
@@ -614,6 +619,79 @@ describe("TopBar", () => {
       );
       expect(useWorkspaceAuthStore.getState().currentAccountId).toBe(secondSession.accountId);
     });
+  });
+
+  it("reauthorizes a background account without replacing the open chat", async () => {
+    const current = createWorkspaceSession();
+    const background = createWorkspaceSession({
+      accountId: "account-b",
+      instanceId: "instance-b",
+      projectId: "project-b",
+      login: "bob@example.com",
+    });
+    useWorkspaceAuthStore.setState({
+      sessions: [current, background],
+      currentAccountId: current.accountId,
+    });
+    useWorkspaceAuthStore.getState().requireReauthorization(background.accountId);
+    const lockedAccount = useWorkspaceAuthStore.getState().reauthRequiredAccounts[0]!;
+    const route = "/org/workspace.example.com/project/project-a/stream/current-stream";
+    renderWithProviders(
+      <>
+        <LocationProbe />
+        <TopBar />
+      </>,
+      { route },
+    );
+
+    const trigger = screen.getByTestId("instance-quick-account-b");
+    expect(trigger.getAttribute("aria-label")).toContain(t("auth.reauthRequired"));
+    act(() => trigger.focus());
+    fireEvent.click(trigger);
+    const dialog = await screen.findByRole("dialog", { name: t("auth.reauthTitle") });
+    expect(within(dialog).getByLabelText(t("auth.emailOrLogin"))).toHaveValue(background.login);
+    expect(within(dialog).getByLabelText(t("auth.password"))).toHaveValue("");
+    expect(useWorkspaceAuthStore.getState().currentAccountId).toBe(current.accountId);
+
+    fireEvent.click(within(dialog).getByRole("button", { name: t("common.cancel") }));
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog", { name: t("auth.reauthTitle") })).not.toBeInTheDocument();
+      expect(trigger).toHaveFocus();
+    });
+    fireEvent.click(trigger);
+    await screen.findByRole("dialog", { name: t("auth.reauthTitle") });
+    act(() => {
+      useWorkspaceAuthStore.getState().restoreReauthorizedSession(lockedAccount, {
+        ...background,
+        accessToken: "new-background-token",
+      });
+    });
+
+    expect(screen.queryByRole("dialog", { name: t("auth.reauthTitle") })).not.toBeInTheDocument();
+    expect(trigger.getAttribute("aria-label")).not.toContain(t("auth.reauthRequired"));
+    expect(useWorkspaceAuthStore.getState().currentAccountId).toBe(current.accountId);
+    expect(screen.getByTestId("location-path")).toHaveTextContent(route);
+  });
+
+  it("announces reauthorization on the overflow trigger when the account is outside the quick slots", async () => {
+    const sessions = ["a", "b", "c", "d"].map((id) =>
+      createWorkspaceSession({
+        accountId: `account-${id}`,
+        instanceId: `instance-${id}`,
+        login: `${id}@example.com`,
+      }),
+    );
+    useWorkspaceAuthStore.setState({ sessions, currentAccountId: "account-a" });
+    useWorkspaceAuthStore.getState().requireReauthorization("account-d");
+    renderWithProviders(<TopBar />);
+
+    expect(screen.queryByTestId("instance-quick-account-d")).not.toBeInTheDocument();
+    const menuTrigger = screen.getByRole("button", {
+      name: `${t("auth.selectServer")} · ${t("auth.reauthRequired")}`,
+    });
+    fireEvent.pointerDown(menuTrigger, { button: 0, ctrlKey: false });
+    const status = await screen.findByText(t("auth.reauthRequired"));
+    expect(status.closest('[role="menuitem"]')).toHaveTextContent("d@example.com");
   });
 
   it("shows short profile status without a hover title", () => {

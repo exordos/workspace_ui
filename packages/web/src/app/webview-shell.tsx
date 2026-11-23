@@ -13,6 +13,7 @@ import type { WorkspaceAuthSession } from "~/entities/workspace-auth/workspace-a
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { useSettingsStore } from "~/features/settings/settings.model";
 import { selectMode, selectPalette } from "~/features/theme-picker/theme-picker.model";
+import { WorkspaceLoginForm } from "~/features/workspace-login/workspace-login-form.ui";
 import { setLocale } from "~/i18n/i18n";
 import { IS_CONNECTION_DIAGNOSTICS_ENABLED } from "~/shared/config/constants";
 import { wipeCredentials } from "~/shared/lib/auth-guard";
@@ -103,6 +104,9 @@ const WebviewWorkspaceMessengerDefaultRedirect: React.FC = () => {
 export const WebViewShell: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const reauthAccount = useWorkspaceAuthStore((state) =>
+    state.reauthRequiredAccounts.find((account) => account.accountId === state.currentAccountId),
+  );
   const diagnosticsRouteElement = IS_CONNECTION_DIAGNOSTICS_ENABLED ? (
     <LogsPage />
   ) : (
@@ -158,59 +162,63 @@ export const WebViewShell: React.FC = () => {
     <div className="safe-area-all flex h-screen flex-col bg-bg text-text-primary">
       <ErrorBoundary fallback={(api) => <PageErrorFallback onRetry={api.resetErrorBoundary} />}>
         <Suspense fallback={<PageLoader />}>
-          <main className="touch-scroll flex-1 overflow-auto">
-            <Routes>
-              <Route path="/login" element={<LoginPage />} />
-              <Route path="/" element={<WebviewWorkspaceMessengerRootRedirect />} />
-              <Route path="/org/:orgId" element={<WebviewWorkspaceMessengerRootRedirect />} />
-              <Route path="/calendar" element={<CalendarPage />} />
-              <Route path="/mail" element={<MailPage />} />
-              <Route path="/call" element={<CallsPage />} />
-              <Route path="/calls" element={<CallsPage />} />
-              <Route path="/settings/logs" element={diagnosticsRouteElement} />
-              <Route path="/settings/*" element={<WebviewWorkspaceMessengerRootRedirect />} />
-              <Route path="/logs" element={diagnosticsRouteElement} />
-              <Route path="/services" element={<ServicesPage />} />
-              <Route path="/all-services" element={<ServicesPage />} />
-              <Route path="/licenses" element={<LicensesPage />} />
-              <Route
-                path="/org/:orgId/project/:projectId/messenger"
-                element={<WebviewWorkspaceMessengerDefaultRedirect />}
-              />
-              <Route path="/org/:orgId/project/:projectId/inbox" element={<InboxPage />} />
-              <Route
-                path="/org/:orgId/project/:projectId/activity/:filter"
-                element={<ActivityPage key={location.pathname} />}
-              />
-              <Route path="/org/:orgId/project/:projectId/feed" element={<FeedPage />} />
-              <Route
-                path="/org/:orgId/project/:projectId/stream/:streamUuid"
-                element={<ChatPage key={location.pathname} />}
-              />
-              <Route
-                path="/org/:orgId/project/:projectId/stream/:streamUuid/topic/:topicUuid"
-                element={<ChatPage key={location.pathname} />}
-              />
-              <Route
-                path="/org/:orgId/project/:projectId/message/:messageUuid"
-                element={<ChatPage key={location.pathname} />}
-              />
-              <Route path="/org/:orgId/calendar" element={<CalendarPage />} />
-              <Route path="/org/:orgId/mail" element={<MailPage />} />
-              <Route path="/org/:orgId/call" element={<CallsPage />} />
-              <Route path="/org/:orgId/calls" element={<CallsPage />} />
-              <Route path="/org/:orgId/settings/logs" element={diagnosticsRouteElement} />
-              <Route
-                path="/org/:orgId/settings/*"
-                element={<WebviewWorkspaceMessengerRootRedirect />}
-              />
-              <Route path="/org/:orgId/logs" element={diagnosticsRouteElement} />
-              <Route path="/org/:orgId/services" element={<ServicesPage />} />
-              <Route path="/org/:orgId/all-services" element={<ServicesPage />} />
-              <Route path="/org/:orgId/licenses" element={<LicensesPage />} />
-              <Route path="/org/:orgId/*" element={<WebviewWorkspaceMessengerRootRedirect />} />
-              <Route path="*" element={<WebviewWorkspaceMessengerRootRedirect />} />
-            </Routes>
+          <main className="touch-scroll flex min-h-0 flex-1 flex-col overflow-auto">
+            {reauthAccount != null && location.pathname !== "/login" ? (
+              <WorkspaceLoginForm key={reauthAccount.accountId} reauthAccount={reauthAccount} />
+            ) : (
+              <Routes>
+                <Route path="/login" element={<LoginPage />} />
+                <Route path="/" element={<WebviewWorkspaceMessengerRootRedirect />} />
+                <Route path="/org/:orgId" element={<WebviewWorkspaceMessengerRootRedirect />} />
+                <Route path="/calendar" element={<CalendarPage />} />
+                <Route path="/mail" element={<MailPage />} />
+                <Route path="/call" element={<CallsPage />} />
+                <Route path="/calls" element={<CallsPage />} />
+                <Route path="/settings/logs" element={diagnosticsRouteElement} />
+                <Route path="/settings/*" element={<WebviewWorkspaceMessengerRootRedirect />} />
+                <Route path="/logs" element={diagnosticsRouteElement} />
+                <Route path="/services" element={<ServicesPage />} />
+                <Route path="/all-services" element={<ServicesPage />} />
+                <Route path="/licenses" element={<LicensesPage />} />
+                <Route
+                  path="/org/:orgId/project/:projectId/messenger"
+                  element={<WebviewWorkspaceMessengerDefaultRedirect />}
+                />
+                <Route path="/org/:orgId/project/:projectId/inbox" element={<InboxPage />} />
+                <Route
+                  path="/org/:orgId/project/:projectId/activity/:filter"
+                  element={<ActivityPage key={location.pathname} />}
+                />
+                <Route path="/org/:orgId/project/:projectId/feed" element={<FeedPage />} />
+                <Route
+                  path="/org/:orgId/project/:projectId/stream/:streamUuid"
+                  element={<ChatPage key={location.pathname} />}
+                />
+                <Route
+                  path="/org/:orgId/project/:projectId/stream/:streamUuid/topic/:topicUuid"
+                  element={<ChatPage key={location.pathname} />}
+                />
+                <Route
+                  path="/org/:orgId/project/:projectId/message/:messageUuid"
+                  element={<ChatPage key={location.pathname} />}
+                />
+                <Route path="/org/:orgId/calendar" element={<CalendarPage />} />
+                <Route path="/org/:orgId/mail" element={<MailPage />} />
+                <Route path="/org/:orgId/call" element={<CallsPage />} />
+                <Route path="/org/:orgId/calls" element={<CallsPage />} />
+                <Route path="/org/:orgId/settings/logs" element={diagnosticsRouteElement} />
+                <Route
+                  path="/org/:orgId/settings/*"
+                  element={<WebviewWorkspaceMessengerRootRedirect />}
+                />
+                <Route path="/org/:orgId/logs" element={diagnosticsRouteElement} />
+                <Route path="/org/:orgId/services" element={<ServicesPage />} />
+                <Route path="/org/:orgId/all-services" element={<ServicesPage />} />
+                <Route path="/org/:orgId/licenses" element={<LicensesPage />} />
+                <Route path="/org/:orgId/*" element={<WebviewWorkspaceMessengerRootRedirect />} />
+                <Route path="*" element={<WebviewWorkspaceMessengerRootRedirect />} />
+              </Routes>
+            )}
           </main>
         </Suspense>
       </ErrorBoundary>

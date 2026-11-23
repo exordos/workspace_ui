@@ -1,6 +1,7 @@
 // Root app layout: shell, store orchestration, background syncs for the active instance.
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
+import { useShallow } from "zustand/react/shallow";
 import { useActivityStore } from "~/entities/activity/activity.model";
 import { selectMessengerSidebarActivityCounts } from "~/entities/messenger/messenger-sidebar.lib";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
@@ -129,15 +130,11 @@ export const Layout: React.FC = () => {
     [location.pathname],
   );
   const workspaceMessengerActive = workspaceMessengerRoute != null;
-  const workspaceSessions = useWorkspaceAuthStore((state) => state.sessions);
-  const currentWorkspaceAccountId = useWorkspaceAuthStore((state) => state.currentAccountId);
-  const currentWorkspaceRuntimeContext = useMemo(
-    () =>
-      selectCurrentWorkspaceRuntimeContext({
-        sessions: workspaceSessions,
-        currentAccountId: currentWorkspaceAccountId,
-      }),
-    [currentWorkspaceAccountId, workspaceSessions],
+  const currentReauthAccount = useWorkspaceAuthStore((state) =>
+    state.reauthRequiredAccounts.find((account) => account.accountId === state.currentAccountId),
+  );
+  const currentWorkspaceRuntimeContext = useWorkspaceAuthStore(
+    useShallow(selectCurrentWorkspaceRuntimeContext),
   );
   const workspaceRouteReady =
     workspaceMessengerRoute != null &&
@@ -164,7 +161,7 @@ export const Layout: React.FC = () => {
   });
 
   useLayoutWindowBranding({
-    unreadCount: unreadCountForCurrentInstance,
+    unreadCount: currentReauthAccount == null ? unreadCountForCurrentInstance : 0,
     activeChatWindowTitle: "",
   });
 
@@ -197,7 +194,12 @@ export const Layout: React.FC = () => {
   const showConnectionBlocked = false;
 
   useLayoutWorkspaceNotifications({
-    enabled: workspaceRouteReady,
+    enabled:
+      workspaceRouteReady ||
+      (workspaceMessengerRoute != null &&
+        workspaceMessengerRoute.orgId === currentReauthAccount?.organizationId &&
+        workspaceMessengerRoute.projectId === currentReauthAccount.projectId),
+    conversationVisible: currentReauthAccount == null,
     navigate,
     pathname: location.pathname,
   });
@@ -219,7 +221,8 @@ export const Layout: React.FC = () => {
   useLayoutLastMessengerRoutePersistence(workspaceInstanceId);
 
   const activeSection = getSectionFromPathname(location.pathname);
-  const shouldShowChatShell = shouldRenderChatShell(location.pathname, activeSection);
+  const shouldShowChatShell =
+    currentReauthAccount == null && shouldRenderChatShell(location.pathname, activeSection);
   useLayoutShortcuts({
     enabled: shouldShowChatShell,
     activeSection,
@@ -348,6 +351,7 @@ export const Layout: React.FC = () => {
           showConnectionBlocked={showConnectionBlocked}
         >
           <LayoutAppShell
+            reauthAccount={currentReauthAccount}
             openSearch={openSearch}
             rightDrawerOpen={rightDrawerOpen}
             rightDrawerChatInfoOpen={rightDrawerOpen && rightDrawerActiveLayerKind === "chat-info"}
@@ -380,7 +384,7 @@ export const Layout: React.FC = () => {
           />
         </LayoutLoadingGate>
       </div>
-      <WorkspaceForwardMessageDialog />
+      {currentReauthAccount == null && <WorkspaceForwardMessageDialog />}
     </div>
   );
 };

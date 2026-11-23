@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type * as LoggerModule from "~/shared/lib/logger";
 import { useWorkspaceAuthStore } from "./workspace-auth.model";
+import { getWorkspaceSessionStorageScopeFromAuthState } from "./workspace-session-storage-scope.lib";
 import type { WorkspaceAuthSession } from "./workspace-auth.model";
 
 // Auth tests protect account switching and runtime generation changes.
@@ -14,6 +15,7 @@ function resetStore(): void {
   localStorage.removeItem("workspace-auth-current-account");
   useWorkspaceAuthStore.setState({
     sessions: [],
+    reauthRequiredAccounts: [],
     currentAccountId: null,
     runtimeGeneration: 0,
     sessionSelectionGeneration: 0,
@@ -196,5 +198,26 @@ describe("workspace-auth store", () => {
       accountId: "account-a",
       userUuid: "user-a",
     });
+  });
+
+  it("hydrates a selected locked account with its preference scope and no runtime", async () => {
+    useWorkspaceAuthStore.getState().setSession(createSession({ projectName: "Support" }));
+    const scope = getWorkspaceSessionStorageScopeFromAuthState(useWorkspaceAuthStore.getState());
+    useWorkspaceAuthStore.getState().requireReauthorization("account-a");
+    expect(getWorkspaceSessionStorageScopeFromAuthState(useWorkspaceAuthStore.getState())).toEqual(
+      scope,
+    );
+
+    vi.resetModules();
+    const { useWorkspaceAuthStore: freshStore } = await import("./workspace-auth.model");
+    expect(freshStore.getState()).toMatchObject({
+      sessions: [],
+      currentAccountId: "account-a",
+      reauthRequiredAccounts: [
+        { accountId: "account-a", instanceId: "instance-a", projectName: "Support" },
+      ],
+    });
+    expect(freshStore.getState().getCurrentRuntimeContext()).toBeNull();
+    expect(getWorkspaceSessionStorageScopeFromAuthState(freshStore.getState())).toEqual(scope);
   });
 });

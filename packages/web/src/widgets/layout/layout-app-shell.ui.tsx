@@ -1,7 +1,9 @@
 import React from "react";
+import type { WorkspaceReauthRequiredAccount } from "~/entities/workspace-auth/workspace-auth.model";
 import type { EncryptedChatInfoScreen } from "~/features/encrypted-chat-info/encrypted-chat-info.types";
 import { JitsiIncomingInviteHost } from "~/features/jitsi-call/jitsi-call-shell.ui";
 import { MediaViewerOverlay } from "~/features/media-viewer/media-viewer-overlay.ui";
+import { WorkspaceLoginForm } from "~/features/workspace-login/workspace-login-form.ui";
 import { OpenSearchContext } from "~/shared/contexts/open-search";
 import { RightDrawerContext } from "~/shared/contexts/right-drawer";
 import { brand } from "~/shared/lib/brand";
@@ -16,6 +18,7 @@ import { TopBar } from "~/widgets/top-bar/top-bar.ui";
 import { LayoutMainWorkspace } from "./layout-main-workspace.ui";
 
 export interface LayoutAppShellProps {
+  reauthAccount?: WorkspaceReauthRequiredAccount | null;
   openSearch: () => void;
   rightDrawerOpen: boolean;
   rightDrawerChatInfoOpen: boolean;
@@ -50,6 +53,7 @@ export interface LayoutAppShellProps {
 }
 
 export const LayoutAppShell = React.memo<LayoutAppShellProps>(function LayoutAppShell({
+  reauthAccount,
   openSearch,
   rightDrawerOpen,
   rightDrawerChatInfoOpen,
@@ -99,32 +103,42 @@ export const LayoutAppShell = React.memo<LayoutAppShellProps>(function LayoutApp
           role="application"
           aria-label={brand.appName}
         >
-          <MediaViewerOverlay />
-          <JitsiIncomingInviteHost />
-          <TopBar />
-          <LayoutMainWorkspace
-            shouldShowChatShell={shouldShowChatShell}
-            pathname={pathname}
-            sidebarOpen={sidebarOpen}
-            sidebarSearchRef={sidebarSearchRef}
-            rightDrawerOpen={rightDrawerOpen}
-            rightDrawerMode={rightDrawerMode}
-            rightDrawerAccountScreen={rightDrawerAccountScreen}
-            rightDrawerChatScreen={rightDrawerChatScreen}
-            onChatScreenChange={onChatScreenChange}
-            rightDrawerCanGoBack={rightDrawerCanGoBack}
-            onCloseRightDrawer={onCloseRightDrawer}
-            onBackRightDrawer={onBackRightDrawer}
-            rightDrawerTitle={rightDrawerTitle}
-            rightPanelTitle={rightPanelTitle}
-            participantsCount={participantsCount}
-            onlineCount={onlineCount}
-            workspaceRightPanelInfo={workspaceRightPanelInfo}
-            onOpenSettingsDrawer={onOpenSettingsDrawer}
-            onOpenAboutDrawer={onOpenAboutDrawer}
-            onOpenPersonalInfoDrawer={onOpenPersonalInfoDrawer}
-            onAccountScreenChange={onAccountScreenChange}
-          />
+          {reauthAccount == null && <MediaViewerOverlay />}
+          {reauthAccount == null && <JitsiIncomingInviteHost />}
+          <TopBar reauthRequired={reauthAccount != null} />
+          {reauthAccount != null ? (
+            <main
+              id="main-content"
+              tabIndex={-1}
+              className="flex min-h-0 flex-1 flex-col overflow-y-auto"
+            >
+              <WorkspaceLoginForm key={reauthAccount.accountId} reauthAccount={reauthAccount} />
+            </main>
+          ) : (
+            <LayoutMainWorkspace
+              shouldShowChatShell={shouldShowChatShell}
+              pathname={pathname}
+              sidebarOpen={sidebarOpen}
+              sidebarSearchRef={sidebarSearchRef}
+              rightDrawerOpen={rightDrawerOpen}
+              rightDrawerMode={rightDrawerMode}
+              rightDrawerAccountScreen={rightDrawerAccountScreen}
+              rightDrawerChatScreen={rightDrawerChatScreen}
+              onChatScreenChange={onChatScreenChange}
+              rightDrawerCanGoBack={rightDrawerCanGoBack}
+              onCloseRightDrawer={onCloseRightDrawer}
+              onBackRightDrawer={onBackRightDrawer}
+              rightDrawerTitle={rightDrawerTitle}
+              rightPanelTitle={rightPanelTitle}
+              participantsCount={participantsCount}
+              onlineCount={onlineCount}
+              workspaceRightPanelInfo={workspaceRightPanelInfo}
+              onOpenSettingsDrawer={onOpenSettingsDrawer}
+              onOpenAboutDrawer={onOpenAboutDrawer}
+              onOpenPersonalInfoDrawer={onOpenPersonalInfoDrawer}
+              onAccountScreenChange={onAccountScreenChange}
+            />
+          )}
         </div>
       </RightDrawerContext.Provider>
     </OpenSearchContext.Provider>
