@@ -28,6 +28,7 @@ import type {
 } from "~/shared/api/messenger.types";
 import { hasWorkspaceSecretDraft } from "~/shared/lib/workspace-secret-draft.lib";
 import { decodeChatE2eePayload, encodeChatE2eePayload } from "./chat-e2ee-payload-adapters.lib";
+import { acceptServerMessages } from "./messages-accept-server.lib";
 import { adaptMessengerMessage } from "./messenger-adapters.lib";
 import {
   messengerMessageActionCache,
@@ -42,7 +43,6 @@ import {
   createMessengerPlacementUuid,
   normalizeMessengerMessageUuid,
 } from "./messenger-message-identity.lib";
-import { settleMessengerOutgoingMessage } from "./messenger-outbox.model";
 import { supportsMessengerPolls } from "./messenger-poll-actions.lib";
 import {
   beginWorkspaceTopicReadCounters,
@@ -58,6 +58,7 @@ import {
 } from "./messenger-request-options.lib";
 import { useMessengerStore } from "./messenger.model";
 import type { ChatE2eePayload, ChatEncryptedPayload } from "./chat-e2ee.types";
+import type { SentMessageCacheWriter } from "./messages-accept-sent.lib";
 import type {
   MessengerConversationId,
   MessengerMessage,
@@ -96,10 +97,7 @@ export interface MessengerMessageActionClientDeps {
   ) => Promise<WorkspaceMessengerMessageDto>;
 }
 
-export interface MessengerMessageActionCacheConversationPage {
-  messages: readonly MessengerMessage[];
-  source: "message-action";
-}
+export type { MessengerMessageActionCacheConversationPage } from "./messages-accept-sent.lib";
 
 export interface MessengerMessageActionCacheWriter {
   advanceReadBoundary?: (boundary: MessengerReadBoundary) => Promise<void> | void;
@@ -118,12 +116,7 @@ export interface MessengerMessageActionCacheWriter {
     messageUuid: MessengerUuid,
     conversationIds: readonly MessengerConversationId[],
   ) => Promise<void> | void;
-  writeConversationMessagePage?: (
-    ownerKey: string,
-    conversationId: MessengerConversationId,
-    page: MessengerMessageActionCacheConversationPage,
-    isWriteCurrent?: () => boolean,
-  ) => Promise<void> | void;
+  writeConversationMessagePage?: SentMessageCacheWriter;
 }
 
 export interface MessengerMessageActionStoreApi {
@@ -134,6 +127,7 @@ export interface MessengerMessageActionStoreApi {
     | "markMessagesReadUpTo"
     | "removeMessage"
     | "messageMutationRevision"
+    | "messageMutationRevisionById"
     | "deletedMessageRevisionById"
     | "ownerKey"
     | "messagesById"
@@ -216,18 +210,6 @@ function captureMessageAction(
   };
 }
 
-function conversationIdsForMessageAction(
-  message: MessengerMessage,
-  includeStreamConversation: boolean,
-): MessengerConversationId[] {
-  const conversationIds = [message.conversationId];
-  const streamConversationId = conversationIdForStream(message.streamUuid);
-  if (includeStreamConversation && streamConversationId !== message.conversationId) {
-    conversationIds.push(streamConversationId);
-  }
-  return conversationIds;
-}
-
 function conversationIdsForDeletedMessage(
   streamUuid: MessengerUuid,
   topicUuid: MessengerUuid,
@@ -243,37 +225,7 @@ async function writeActionCacheBestEffort(write: () => Promise<void> | void): Pr
   }
 }
 
-async function writeMessagePageCacheBestEffort(
-  cache: MessengerMessageActionCacheWriter | undefined,
-  ownerKey: string,
-  conversationIds: readonly MessengerConversationId[],
-  message: MessengerMessage,
-  isCurrent: () => boolean = () => true,
-): Promise<void> {
-  const writeConversationMessagePage = cache?.writeConversationMessagePage;
-  if (writeConversationMessagePage == null) return;
-
-  await writeActionCacheBestEffort(async () => {
-    await Promise.all(
-      conversationIds.map((conversationId) =>
-        !isCurrent()
-          ? Promise.resolve()
-          : Promise.resolve(
-              writeConversationMessagePage(
-                ownerKey,
-                conversationId,
-                {
-                  messages: [message],
-                  source: "message-action",
-                },
-                isCurrent,
-              ),
-            ),
-      ),
-    );
-  });
-}
-
+// Валидирует и отправляет обычное сообщение или опрос через Workspace API.
 export async function sendMessengerMessage({
   runtimeContext,
   getRuntimeContext = () => runtimeContext,
@@ -327,6 +279,7 @@ export async function sendMessengerMessage({
     kind: "markdown",
     content: markdown ?? "",
   };
+  const capturedMutationRevision = store.getState().messageMutationRevision;
   const dto = await (client.createMessage ?? defaultCreateMessage)(requestOptions, {
     uuid: normalizeMessengerMessageUuid(canonicalMessageUuid),
     stream_uuid: streamUuid,
@@ -349,29 +302,18 @@ export async function sendMessengerMessage({
   )
     throw new Error("invalid-message");
   const message = adaptMessengerMessage(dto);
-  store.getState().applyLiveCreatedMessage(message);
-  const createdRevision = store.getState().messageMutationRevision;
-  settleMessengerOutgoingMessage(action.ownerKey, message);
-  useMessengerStore
-    .getState()
-    .applyMessagePointer(action.ownerKey, message, store.getState().messagesById);
-  // Cache persistence must not delay the successful send transition in the UI.
-  void writeMessagePageCacheBestEffort(
-    cache,
-    action.ownerKey,
-    conversationIdsForMessageAction(message, includeStreamConversation),
+  const accepted = acceptServerMessages({
+    source: "send-response",
+    ownerKey: action.ownerKey,
+    isCurrent: () => !action.isStale(),
     message,
-    () => {
-      const current = store.getState().messagesById[message.uuid];
-      const state = store.getState();
-      return (
-        !action.isStale() &&
-        (state.deletedMessageRevisionById[message.uuid] ?? 0) <= createdRevision &&
-        (current == null ||
-          (current.streamUuid === message.streamUuid && current.topicUuid === message.topicUuid))
-      );
-    },
-  );
+    capturedMutationRevision,
+    store,
+    includeStreamConversation,
+    writePage: cache.writeConversationMessagePage,
+  });
+  if (accepted.status === "stale-owner")
+    return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
   return { status: "applied", ownerKey: action.ownerKey, message };
 }
 
@@ -475,6 +417,7 @@ export async function sendMessengerE2eePayload({
   if (!current()) return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
   // Realtime may report this exact own announcement before its POST response arrives.
   dispatched = true;
+  const capturedMutationRevision = store.getState().messageMutationRevision;
   const dto = await (client.createMessage ?? defaultCreateMessage)(requestOptions, {
     uuid: normalizeMessengerMessageUuid(canonicalMessageUuid),
     stream_uuid: streamUuid,
@@ -500,20 +443,19 @@ export async function sendMessengerE2eePayload({
   )
     throw new Error("invalid-message");
   const message = adaptMessengerMessage(dto);
-  if (!current()) return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
-  store.getState().applyLiveCreatedMessage(message);
-  if (!current()) return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
-  messengerStore
-    .getState()
-    .applyMessagePointer(action.ownerKey, message, store.getState().messagesById);
-  if (!current()) return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
-  void writeMessagePageCacheBestEffort(
-    cache,
-    action.ownerKey,
-    conversationIdsForMessageAction(message, includeStreamConversation),
+  const accepted = acceptServerMessages({
+    source: "send-response",
+    ownerKey: action.ownerKey,
+    isCurrent: current,
     message,
-    current,
-  );
+    capturedMutationRevision,
+    store,
+    messengerStore,
+    includeStreamConversation,
+    writePage: cache.writeConversationMessagePage,
+  });
+  if (accepted.status === "stale-owner")
+    return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
   return { status: "applied", ownerKey: action.ownerKey, message };
 }
 

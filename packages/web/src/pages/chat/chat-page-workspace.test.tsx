@@ -16,13 +16,13 @@ import {
   decryptRealChatEnvelopeResult,
   decryptRealChatMessage,
 } from "~/entities/messenger/chat-crypto-runtime.lib";
+import { acceptServerMessages } from "~/entities/messenger/messages-accept-server.lib";
 import * as topicResolution from "~/entities/messenger/messenger-conversation-metadata.lib";
 import { createMessengerPlacementUuid } from "~/entities/messenger/messenger-message-identity.lib";
 import * as messageLoader from "~/entities/messenger/messenger-messages-loader.lib";
-import {
-  settleMessengerOutgoingMessage,
-  useMessengerOutboxStore,
-} from "~/entities/messenger/messenger-outbox.model";
+import { deliverMessengerOutgoingMessage } from "~/entities/messenger/messenger-outbox-delivery.lib";
+import { useMessengerOutboxStore } from "~/entities/messenger/messenger-outbox.model";
+import { createMessengerRealtimeActiveApplier } from "~/entities/messenger/messenger-realtime-applier.lib";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import type {
   MessengerBootstrapPayload,
@@ -661,10 +661,84 @@ function createSentMessage(request: TestSendMessengerMessageRequest): MessengerM
   };
 }
 
+// Projects a Markdown fixture into the Workspace API response shape.
+function toMarkdownMessageDto(message: MessengerMessage) {
+  if (message.payload.kind !== "markdown") throw new Error("Expected Markdown test fixture");
+  return {
+    uuid: message.uuid,
+    project_id: message.projectId,
+    stream_uuid: message.streamUuid,
+    topic_uuid: message.topicUuid,
+    author_uuid: message.authorUuid,
+    user_uuid: message.userUuid,
+    payload: message.payload,
+    read: message.read,
+    pinned: message.pinned,
+    starred: message.starred,
+    is_own: message.isOwn,
+    reactions: {},
+    reaction_users: {},
+    created_at: message.createdAt,
+    updated_at: message.updatedAt,
+  };
+}
+
+// Feeds the mocked HTTP response through the actual message model.
+function receiveMockSendReceipt(ownerKey: string, message: MessengerMessage): MessengerMessage {
+  acceptServerMessages({
+    source: "send-response",
+    ownerKey,
+    message,
+    capturedMutationRevision: useWorkspaceMessageStore.getState().messageMutationRevision,
+    store: useWorkspaceMessageStore,
+    includeStreamConversation: false,
+    isCurrent: () => true,
+  });
+  return message;
+}
+
+// Models the crypto transport's prepared envelope and later matching server receipt.
+function prepareEncryptedSendReceipt(
+  ownerKey: string,
+  input: Parameters<RealChatSession["send"]>[0],
+) {
+  const prepared = input.preparedPayload ?? {
+    kind: "e2ee" as const,
+    keyUuid: input.expectedKeyUuid ?? "mock-key",
+    content: { bytes: new Uint8Array([1, 2, 3]) },
+  };
+  input.onEncryptedPayload?.(prepared);
+  const message: MessengerMessage = {
+    ...createSentMessage({ ...input, streamUuid: STREAM_UUID, markdown: "" }),
+    payload: {
+      kind: "e2ee",
+      keyUuid: prepared.keyUuid,
+      content: btoa(String.fromCharCode(...prepared.content.bytes)),
+    },
+  };
+  const generation = useWorkspaceAuthStore.getState().getCurrentRuntimeContext()?.runtimeGeneration;
+  return () => {
+    const current = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
+    if (
+      current == null ||
+      current.runtimeGeneration !== generation ||
+      workspaceRuntimeOwnerKey(current) !== ownerKey
+    ) {
+      return { status: "skipped" as const, ownerKey, reason: "stale-owner" as const };
+    }
+    return {
+      status: "applied" as const,
+      ownerKey,
+      message: receiveMockSendReceipt(ownerKey, message),
+    };
+  };
+}
+
 function applySentMessage(request: TestSendMessengerMessageRequest): MessengerMessage {
   const message = createSentMessage(request);
-  useWorkspaceMessageStore.getState().applyLiveCreatedMessage(message);
-  return message;
+  const ownerKey = useWorkspaceMessageStore.getState().ownerKey;
+  if (ownerKey == null) throw new Error("Expected the active message owner");
+  return receiveMockSendReceipt(ownerKey, message);
 }
 
 function applyLastRequestedSentMessage(): MessengerMessage {
@@ -1865,7 +1939,7 @@ describe("ChatPage Workspace route", () => {
       });
       const reissueKey = vi.fn();
       const uncertainDelivery = createDeferred<{ status: "skipped" }>();
-      const retryDelivery = createDeferred<{ status: "applied" }>();
+      const retryDelivery = createDeferred<void>();
       let attempt = 0;
       const send = vi
         .fn()
@@ -1886,7 +1960,16 @@ describe("ChatPage Workspace route", () => {
           expect(markdown).not.toContain("private-two");
           attempt += 1;
           if (attempt === 1) return uncertainDelivery.promise;
-          return retryDelivery.promise;
+          if (markdown == null) throw new Error("Missing prepared fragment receipt");
+          await retryDelivery.promise;
+          return {
+            status: "applied",
+            ownerKey: owner,
+            message: receiveMockSendReceipt(
+              owner,
+              createSentMessage({ ...input, streamUuid: STREAM_UUID, markdown }),
+            ),
+          };
         });
       captured.openRealChatSession.mockResolvedValue({
         device: { deviceId: "mock-device", deviceName: "Test" },
@@ -1955,7 +2038,7 @@ describe("ChatPage Workspace route", () => {
       act(() => captured.messageListProps?.onRetryOutgoingMessage?.(firstOutgoing.placementUuid));
       await waitFor(() => expect(send).toHaveBeenCalledTimes(3));
       await act(() => {
-        retryDelivery.resolve({ status: "applied" });
+        retryDelivery.resolve();
         return retryDelivery.promise;
       });
       await waitFor(() => expect(captured.messageListProps?.outgoingMessages).toEqual([]));
@@ -2035,8 +2118,11 @@ describe("ChatPage Workspace route", () => {
         },
       })),
     });
-    const firstDelivery = createDeferred<{ status: "applied" }>();
-    const send = vi.fn().mockReturnValueOnce(firstDelivery.promise);
+    const firstDelivery = createDeferred<void>();
+    const send = vi.fn().mockImplementationOnce((input: Parameters<RealChatSession["send"]>[0]) => {
+      const receipt = prepareEncryptedSendReceipt(owner, input);
+      return firstDelivery.promise.then(receipt);
+    });
     captured.openRealChatSession.mockResolvedValue({
       device: { deviceId: "mock-device", deviceName: "Test" },
       load: vi.fn().mockResolvedValue(undefined),
@@ -2090,7 +2176,7 @@ describe("ChatPage Workspace route", () => {
     expect(textbox).toHaveValue("");
     expect(captured.sendMessengerMessage).not.toHaveBeenCalled();
     await act(async () => {
-      firstDelivery.resolve({ status: "applied" });
+      firstDelivery.resolve();
       await firstDelivery.promise;
     });
     await waitFor(() => expect(captured.messageListProps?.outgoingMessages).toHaveLength(1));
@@ -2124,7 +2210,9 @@ describe("ChatPage Workspace route", () => {
       const send = vi
         .fn()
         .mockResolvedValueOnce({ status: "stale" })
-        .mockResolvedValue({ status: "applied" });
+        .mockImplementation((input: Parameters<RealChatSession["send"]>[0]) =>
+          Promise.resolve(prepareEncryptedSendReceipt(owner, input)()),
+        );
       captured.openRealChatSession.mockResolvedValue({
         device: { deviceId: "mock-device", deviceName: "Test" },
         load: vi.fn().mockResolvedValue(undefined),
@@ -2230,8 +2318,11 @@ describe("ChatPage Workspace route", () => {
           currentEncryptionKey: { keyUuid: "mock-key" },
         })),
       });
-      const pendingSend = createDeferred<{ status: "applied" }>();
-      const send = vi.fn().mockReturnValue(pendingSend.promise);
+      const pendingSend = createDeferred<void>();
+      const send = vi.fn().mockImplementation((input: Parameters<RealChatSession["send"]>[0]) => {
+        const receipt = prepareEncryptedSendReceipt(workspaceRuntimeOwnerKey(runtime), input);
+        return pendingSend.promise.then(receipt);
+      });
       captured.openRealChatSession.mockResolvedValue({
         device: { deviceId: "mock-device", deviceName: "Test" },
         load: vi.fn().mockResolvedValue(undefined),
@@ -2271,7 +2362,7 @@ describe("ChatPage Workspace route", () => {
         );
       }
       await act(async () => {
-        if (outcome !== "failed") pendingSend.resolve({ status: "applied" });
+        if (outcome !== "failed") pendingSend.resolve();
         else pendingSend.reject(new Error("delivery failed after navigation"));
         await pendingSend.promise.catch(() => undefined);
       });
@@ -4705,27 +4796,7 @@ describe("ChatPage Workspace route", () => {
 
         await act(async () => {
           response.resolve({
-            items: [cachedMessage, createSecondMessage()].map((message) => {
-              if (message.payload.kind !== "markdown")
-                throw new Error("Expected Markdown test fixture");
-              return {
-                uuid: message.uuid,
-                project_id: message.projectId,
-                stream_uuid: message.streamUuid,
-                topic_uuid: message.topicUuid,
-                author_uuid: message.authorUuid,
-                user_uuid: USER_UUID,
-                payload: message.payload,
-                read: message.read,
-                pinned: false,
-                starred: false,
-                is_own: false,
-                reactions: {},
-                reaction_users: {},
-                created_at: message.createdAt,
-                updated_at: message.updatedAt,
-              };
-            }),
+            items: [cachedMessage, createSecondMessage()].map(toMarkdownMessageDto),
             nextPageMarker: null,
             pageLimit: 50,
           });
@@ -5825,7 +5896,7 @@ describe("ChatPage Workspace route", () => {
     expect(serverMessage.uuid).toBe(outgoing.placementUuid);
 
     await act(async () => {
-      useWorkspaceMessageStore.getState().applyLiveCreatedMessage(serverMessage);
+      receiveMockSendReceipt(outgoing.ownerKey, serverMessage);
       sendRequest.resolve({
         status: "applied",
         ownerKey: useWorkspaceMessageStore.getState().ownerKey ?? "",
@@ -6255,55 +6326,166 @@ describe("ChatPage Workspace route", () => {
     expect(screen.queryByText("late reaction failure")).not.toBeInTheDocument();
   });
 
-  it("settles from realtime before HTTP and treats the lost response as delivered", async () => {
-    const sendRequest = createDeferred<never>();
-    let capturedRequest: TestSendMessengerMessageRequest | null = null;
-    captured.sendMessengerMessage.mockImplementationOnce(
-      (request: TestSendMessengerMessageRequest) => {
-        capturedRequest = request;
-        return sendRequest.promise;
+  it.each(["realtime", "history", "realtime then deletion", "dismissal"] as const)(
+    "reconciles a lost POST response after %s",
+    async (source) => {
+      const sendRequest = createDeferred<never>();
+      let capturedRequest: TestSendMessengerMessageRequest | null = null;
+      captured.sendMessengerMessage.mockImplementationOnce(
+        (request: TestSendMessengerMessageRequest) => {
+          capturedRequest = request;
+          return sendRequest.promise;
+        },
+      );
+
+      renderWorkspaceChatPageWithShellContexts(
+        `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+      );
+
+      await waitFor(() => expect(captured.composerProps?.onSend).toEqual(expect.any(Function)));
+      const onSend = captured.composerProps?.onSend;
+      if (onSend == null) throw new Error("Workspace composer send handler is missing");
+      let sendPromise: Promise<unknown> = Promise.resolve();
+      act(() => {
+        sendPromise = Promise.resolve(onSend("confirmed by the server", ""));
+      });
+
+      await waitFor(() => expect(capturedRequest).not.toBeNull());
+      const request = capturedRequest;
+      if (request == null) throw new Error("Expected a send request");
+      const outgoing = captured.messageListProps?.outgoingMessages?.[0];
+      if (outgoing == null) throw new Error("Expected an outgoing message");
+
+      const message = toMarkdownMessageDto(createSentMessage(request));
+      const owner = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
+      if (owner == null) throw new Error("Expected the active runtime");
+      const context = {
+        owner,
+        ownerKey: outgoing.ownerKey,
+        surface: "active",
+        source: "websocket",
+      } as const;
+      const applier = createMessengerRealtimeActiveApplier({ cache: {} });
+      await act(async () => {
+        if (source === "dismissal") {
+          useMessengerOutboxStore.getState().removeOutgoingMessage(outgoing.placementUuid);
+        } else if (source === "history") {
+          const { loadMessengerConversationMessages } = await vi.importActual<typeof messageLoader>(
+            "~/entities/messenger/messenger-messages-loader.lib",
+          );
+          const emptyReactionSync = () =>
+            Promise.resolve({
+              status: "applied" as const,
+              ownerKey: outgoing.ownerKey,
+              reactions: 0,
+              messageUuids: [],
+            });
+          await expect(
+            loadMessengerConversationMessages({
+              runtimeContext: owner,
+              conversationId: outgoing.conversationId,
+              client: {
+                getMessagesPage: () =>
+                  Promise.resolve({ items: [message], nextPageMarker: null, pageLimit: 50 }),
+              },
+              cache: {
+                readReadBoundaries: () => Promise.resolve([]),
+                readConversationMessageWindow: () =>
+                  Promise.resolve({ messages: [], nextPageMarker: null, hasMore: false }),
+                writeConversationMessagePage: vi.fn(),
+              },
+              ownReactionSync: {
+                hydrateFromCache: emptyReactionSync,
+                syncOwner: emptyReactionSync,
+              },
+            }),
+          ).resolves.toMatchObject({ status: "applied" });
+        } else {
+          await applier.applyEvent(
+            { type: "message", kind: "message.created", epoch_version: 1, message },
+            context,
+          );
+        }
+      });
+
+      await waitFor(() => expect(captured.messageListProps?.outgoingMessages).toEqual([]));
+      expect(
+        captured.messageListProps?.messages.filter(
+          (message) => message.uuid === outgoing.placementUuid,
+        ),
+      ).toHaveLength(source === "dismissal" ? 0 : 1);
+      if (source === "realtime then deletion") {
+        await act(async () => {
+          await applier.applyEvent(
+            {
+              type: "message",
+              kind: "message.deleted",
+              epoch_version: 2,
+              message: { uuid: message.uuid, stream_uuid: STREAM_UUID, topic_uuid: TOPIC_UUID },
+            },
+            context,
+          );
+        });
+        expect(useWorkspaceMessageStore.getState().messagesById[message.uuid]).toBeUndefined();
+      }
+
+      await act(async () => {
+        const result =
+          source === "dismissal"
+            ? expect(sendPromise).rejects.toThrow()
+            : expect(sendPromise).resolves.toBeUndefined();
+        sendRequest.reject(new TypeError("network response lost"));
+        await result;
+      });
+      expect(
+        useMessengerOutboxStore.getState().outgoingMessagesByPlacementUuid[outgoing.placementUuid],
+      ).toBeUndefined();
+    },
+  );
+
+  it("does not resend after realtime confirms the operation while the crypto session opens", async () => {
+    const owner = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
+    if (owner == null) throw new Error("Expected the active runtime");
+    const ownerKey = workspaceRuntimeOwnerKey(owner);
+    const keyUuid = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaab";
+    const outgoing = useMessengerOutboxStore.getState().enqueueOutgoingMessage({
+      ownerKey,
+      conversationId: `topic:${STREAM_UUID}:${TOPIC_UUID}`,
+      projectId: owner.projectId,
+      streamUuid: STREAM_UUID,
+      topicUuid: TOPIC_UUID,
+      authorUuid: owner.userUuid,
+      markdown: "Ready to retry",
+      status: "sending",
+      includeStreamConversation: false,
+      encryption: {
+        keyUuid,
+        deviceId: "mock-device",
+        payload: { kind: "e2ee", keyUuid, content: { bytes: new Uint8Array([1, 2, 3]) } },
       },
-    );
-
-    renderWorkspaceChatPageWithShellContexts(
-      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
-    );
-
-    await waitFor(() => expect(captured.composerProps?.onSend).toEqual(expect.any(Function)));
-    const onSend = captured.composerProps?.onSend;
-    if (onSend == null) throw new Error("Workspace composer send handler is missing");
-    let sendPromise: Promise<unknown> = Promise.resolve();
-    act(() => {
-      sendPromise = Promise.resolve(onSend("realtime wins", ""));
     });
-
-    await waitFor(() => expect(capturedRequest).not.toBeNull());
-    const request = capturedRequest;
-    if (request == null) throw new Error("Expected a send request");
-    const outgoing = captured.messageListProps?.outgoingMessages?.[0];
-    if (outgoing == null) throw new Error("Expected an outgoing message");
-
-    act(() => {
-      const message = createSentMessage(request);
-      useWorkspaceMessageStore.getState().applyLiveCreatedMessage(message);
-      settleMessengerOutgoingMessage(outgoing.ownerKey, message);
-    });
-
-    await waitFor(() => expect(captured.messageListProps?.outgoingMessages).toEqual([]));
-    expect(
-      captured.messageListProps?.messages.some(
-        (message) => message.uuid === outgoing.placementUuid,
-      ),
-    ).toBe(true);
-
-    await act(async () => {
-      sendRequest.reject(new TypeError("network response lost"));
-      await sendPromise;
-    });
-    await expect(sendPromise).resolves.toBeUndefined();
-    expect(
-      useMessengerOutboxStore.getState().outgoingMessagesByPlacementUuid[outgoing.placementUuid],
-    ).toBeUndefined();
+    useMessengerOutboxStore.getState().markOutgoingMessageFailed(outgoing.placementUuid, "retry");
+    const session = { load: vi.fn(), ingest: vi.fn(), send: vi.fn(), dispose: vi.fn() };
+    const opening = createDeferred<typeof session>();
+    captured.openRealChatSession.mockReturnValueOnce(opening.promise);
+    const delivery = deliverMessengerOutgoingMessage(owner, outgoing.placementUuid);
+    try {
+      await waitFor(() => expect(captured.openRealChatSession).toHaveBeenCalledOnce());
+      const message = toMarkdownMessageDto(createSentMessage(outgoing));
+      await createMessengerRealtimeActiveApplier({ cache: {} }).applyEvent(
+        {
+          type: "message",
+          kind: "message.created",
+          epoch_version: 1,
+          message: { ...message, payload: { kind: "e2ee", key_uuid: keyUuid, content: "AQID" } },
+        },
+        { owner, ownerKey, surface: "active", source: "websocket" },
+      );
+    } finally {
+      opening.resolve(session);
+    }
+    await expect(delivery).resolves.toBe(true);
+    expect(session.send).not.toHaveBeenCalled();
   });
 
   it("does not settle an old-owner outgoing message from the active owner store", async () => {

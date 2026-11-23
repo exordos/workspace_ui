@@ -11,6 +11,32 @@ import type { MessengerConversationId, MessengerMessage, MessengerUuid } from ".
 
 const EMPTY_OUTGOING_MESSAGES: readonly MessengerOutgoingMessage[] = [];
 const EMPTY_PLACEMENT_UUIDS: readonly MessengerUuid[] = [];
+// Transient evidence for attempts awaiting their transport response.
+const receiptObservers = new Map<string, Set<{ confirmed: boolean }>>();
+
+// Receipts are scoped to the same outgoing operation across transport attempts.
+function outgoingReceiptKey(ownerKey: string, placementUuid: MessengerUuid): string {
+  return `${ownerKey}\u0000${placementUuid}`;
+}
+
+// Watches for a verified receipt until the delivery attempt finishes.
+export function trackMessengerOutgoingReceipt(ownerKey: string, placementUuid: MessengerUuid) {
+  const key = outgoingReceiptKey(ownerKey, placementUuid);
+  const observers = receiptObservers.get(key) ?? new Set<{ confirmed: boolean }>();
+  const receiver = { confirmed: false };
+  observers.add(receiver);
+  receiptObservers.set(key, observers);
+  return {
+    get confirmed() {
+      return receiver.confirmed;
+    },
+    release() {
+      observers.delete(receiver);
+      if (observers.size === 0 && receiptObservers.get(key) === observers)
+        receiptObservers.delete(key);
+    },
+  };
+}
 
 export interface MessengerOutboxStoreState {
   outgoingMessagesByPlacementUuid: Record<string, MessengerOutgoingMessage>;
@@ -330,6 +356,11 @@ export function settleMessengerOutgoingMessage(
   )
     return false;
 
+  // Only an authoritative receipt proves delivery, even if the body is later edited or deleted.
+  const observers = receiptObservers.get(outgoingReceiptKey(ownerKey, message.uuid));
+  if (observers != null) {
+    for (const receiver of observers) receiver.confirmed = true;
+  }
   state.removeOutgoingMessage(message.uuid);
   return true;
 }

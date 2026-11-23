@@ -335,6 +335,7 @@ async function setup({
 beforeEach(() => {
   vi.stubGlobal("crypto", webcrypto);
   vi.clearAllMocks();
+  useWorkspaceMessageStore.getState().setOwner(null, false);
   deviceCatalogs.clear();
 });
 afterEach(() => {

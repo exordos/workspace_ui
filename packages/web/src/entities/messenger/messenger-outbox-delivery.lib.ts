@@ -12,11 +12,14 @@ import { sendMessengerMessage } from "./messenger-message-actions.lib";
 import {
   isMessengerOutgoingMessageReceipt,
   settleMessengerOutgoingMessage,
+  trackMessengerOutgoingReceipt,
   useMessengerOutboxStore,
 } from "./messenger-outbox.model";
 import { runMessengerRuntimeMutation } from "./messenger-runtime-mutation.lib";
 import { buildMessengerSecretMarkdown } from "./messenger-secret-message.lib";
 import type { ChatEncryptedPayload } from "./chat-e2ee.types";
+import type { MessengerMessageActionResult } from "./messenger-message-actions.lib";
+import type { MessengerMessage } from "./messenger.types";
 
 const deliveries = new Map<string, Promise<boolean>>();
 const getRuntimeContext = () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
@@ -30,12 +33,15 @@ export function deliverMessengerOutgoingMessage(
     useMessengerOutboxStore.getState().outgoingMessagesByPlacementUuid[placementUuid];
   if (outgoing == null) return Promise.resolve(false);
   let encryption = outgoing.encryption;
+  // The validated POST may outlive a dismissed local row or be followed by an edit.
+  const matchesReceipt = (message: MessengerMessage | null) =>
+    message != null && isMessengerOutgoingMessageReceipt({ ...outgoing, encryption }, message);
+  // Realtime or history may have confirmed delivery before the HTTP response was lost.
   const settleIfIndexed = () => {
     const state = useWorkspaceMessageStore.getState();
-    const message = state.ownerKey === outgoing.ownerKey ? state.messagesById[placementUuid] : null;
-    if (message == null || !isMessengerOutgoingMessageReceipt({ ...outgoing, encryption }, message))
+    const message = state.messagesById[placementUuid];
+    if (state.ownerKey !== outgoing.ownerKey || message == null || !matchesReceipt(message))
       return false;
-    // Realtime can already have removed the row before the HTTP response is lost.
     settleMessengerOutgoingMessage(outgoing.ownerKey, message);
     return true;
   };
@@ -46,11 +52,15 @@ export function deliverMessengerOutgoingMessage(
       .markOutgoingMessageFailed(placementUuid, t("workspaceMessenger.runtimeUnavailable"));
     return Promise.resolve(false);
   }
-  const deliveryKey = `${outgoing.ownerKey}:${runtimeContext.runtimeGeneration}:${placementUuid}`;
+  const deliveryKeyFor = (generation: number) =>
+    `${outgoing.ownerKey}:${generation}:${placementUuid}`;
+  const deliveryKey = deliveryKeyFor(runtimeContext.runtimeGeneration);
   const pending = deliveries.get(deliveryKey);
   if (pending != null) return pending;
+  const receipt = trackMessengerOutgoingReceipt(outgoing.ownerKey, placementUuid);
   useMessengerOutboxStore.getState().markOutgoingMessageSending(placementUuid);
   const delivery = runMessengerRuntimeMutation(runtimeContext, async (signal) => {
+    if (receipt.confirmed || settleIfIndexed()) return true;
     if (outgoing.markdown.trim().length === 0) throw new Error(t("message.sendFailed"));
     const routing = {
       topicUuid: outgoing.topicUuid,
@@ -58,6 +68,7 @@ export function deliverMessengerOutgoingMessage(
       canonicalMessageUuid: outgoing.canonicalMessageUuid,
     };
     const outgoingEncryption = outgoing.encryption;
+    let result: MessengerMessageActionResult;
     if (outgoingEncryption != null) {
       const lease = acquireChatCryptoSession(runtimeContext, outgoing.streamUuid);
       signal.addEventListener("abort", lease.release, { once: true });
@@ -65,7 +76,8 @@ export function deliverMessengerOutgoingMessage(
         const session = await lease.promise;
         if (isWorkspaceRuntimeRequestInvalidated(runtimeContext, getRuntimeContext, signal))
           throw new Error("stale");
-        const result = await session.send({
+        if (receipt.confirmed) return true;
+        result = await session.send({
           ...routing,
           text: outgoingEncryption.mode === "fragments" ? "" : outgoing.markdown,
           ...(outgoingEncryption.mode === "fragments"
@@ -104,13 +116,12 @@ export function deliverMessengerOutgoingMessage(
             };
           },
         });
-        if (result.status !== "applied") throw new Error(t("message.sendFailed"));
       } finally {
         signal.removeEventListener("abort", lease.release);
         lease.release();
       }
     } else {
-      const result = await sendMessengerMessage({
+      result = await sendMessengerMessage({
         ...routing,
         runtimeContext,
         getRuntimeContext,
@@ -118,18 +129,29 @@ export function deliverMessengerOutgoingMessage(
         streamUuid: outgoing.streamUuid,
         markdown: outgoing.markdown,
       });
-      if (result.status !== "applied") throw new Error(t("message.sendFailed"));
     }
     if (isWorkspaceRuntimeRequestInvalidated(runtimeContext, getRuntimeContext, signal))
       throw new Error("stale");
-    useMessengerOutboxStore.getState().removeOutgoingMessage(placementUuid);
+    if (
+      result.status !== "applied" ||
+      result.ownerKey !== outgoing.ownerKey ||
+      (!receipt.confirmed && !matchesReceipt(result.message))
+    )
+      throw new Error(t("message.sendFailed"));
     return true;
   })
     .catch((error: unknown) => {
-      if (settleIfIndexed()) return true;
-      useMessengerOutboxStore
-        .getState()
-        .markOutgoingMessageFailed(
+      if (receipt.confirmed) return true;
+      const current = getRuntimeContext();
+      if (!isWorkspaceRuntimeRequestInvalidated(runtimeContext, () => current) && settleIfIndexed())
+        return true;
+      const currentDelivery =
+        current == null ? undefined : deliveries.get(deliveryKeyFor(current.runtimeGeneration));
+      // Runtime replacement may already have handed this row to a newer attempt.
+      if (currentDelivery != null && currentDelivery !== delivery) return false;
+      const outbox = useMessengerOutboxStore.getState();
+      if (outbox.outgoingMessagesByPlacementUuid[placementUuid]?.ownerKey === outgoing.ownerKey) {
+        outbox.markOutgoingMessageFailed(
           placementUuid,
           outgoing.encryption == null &&
             error instanceof Error &&
@@ -138,9 +160,11 @@ export function deliverMessengerOutgoingMessage(
             ? error.message
             : t("message.sendFailed"),
         );
+      }
       return false;
     })
     .finally(() => {
+      receipt.release();
       if (deliveries.get(deliveryKey) === delivery) deliveries.delete(deliveryKey);
     });
   deliveries.set(deliveryKey, delivery);

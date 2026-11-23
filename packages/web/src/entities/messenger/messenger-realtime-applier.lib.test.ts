@@ -349,6 +349,263 @@ describe("messenger realtime active applier", () => {
     ).toBeUndefined();
   });
 
+  it.each(["single", "batch"] as const)(
+    "keeps catalog, outbox and cache order for an active %s create",
+    async (mode) => {
+      const batch = mode === "batch";
+      const context = createContext(createOwner(), {
+        source: batch ? "catch_up" : "websocket",
+        notificationsEnabled: !batch,
+      });
+      useMessengerStore.getState().startBootstrap(context.ownerKey);
+      useWorkspaceMessageStore.getState().setOwner(context.ownerKey, false);
+      let releaseMessages: (() => void) | undefined;
+      const messagesWritten = new Promise<void>((resolve) => {
+        releaseMessages = resolve;
+      });
+      const writeCreatedMessages = vi.fn(() => messagesWritten);
+      const writeRealtimeCursor = vi.fn();
+      const applier = createMessengerRealtimeActiveApplier({
+        cache: { writeCreatedMessages, writeRealtimeCursor },
+      });
+      await applyStreamAndTopicSnapshot(applier, context);
+      writeRealtimeCursor.mockClear();
+      const previousEpoch = useMessengerStore.getState().lastEpochVersion;
+      const readProjection = () =>
+        useMessengerBackgroundProjectionStore.getState().projectionsByOwnerKey[context.ownerKey];
+      const previousProjection = readProjection();
+      const outgoing = useMessengerOutboxStore.getState().enqueueOutgoingMessage({
+        ownerKey: context.ownerKey,
+        conversationId: `topic:${STREAM_A}:${TOPIC_A}`,
+        projectId: PROJECT_A,
+        streamUuid: STREAM_A,
+        topicUuid: TOPIC_A,
+        authorUuid: USER_A,
+        markdown: "Pending delivery",
+        status: "sending",
+        includeStreamConversation: false,
+      });
+      const readOutgoing = () =>
+        useMessengerOutboxStore.getState().outgoingMessagesByPlacementUuid[outgoing.placementUuid];
+      const pointerPublished = vi.fn();
+      const unsubscribe = useMessengerStore.subscribe((state, previous) => {
+        if (
+          state.topicsById[TOPIC_A]?.lastMessageUuid === outgoing.placementUuid &&
+          previous.topicsById[TOPIC_A]?.lastMessageUuid !== outgoing.placementUuid
+        ) {
+          pointerPublished({
+            body: useWorkspaceMessageStore.getState().messagesById[outgoing.placementUuid],
+            outgoing: readOutgoing(),
+          });
+        }
+      });
+      const event = {
+        epoch_version: 12,
+        type: "message",
+        kind: "message.created",
+        message: createMessageDto({
+          uuid: outgoing.placementUuid,
+          payload: { kind: "markdown", content: outgoing.markdown },
+          created_at: DATE_LATER,
+        }),
+      } satisfies WorkspaceRealtimeEvent;
+      const olderEvent = {
+        ...event,
+        epoch_version: 13,
+        message: createMessageDto({ uuid: MESSAGE_B, created_at: DATE_MIDDLE }),
+      };
+      const lastEpoch = batch ? olderEvent.epoch_version : event.epoch_version;
+      const completed = vi.fn();
+      const application = Promise.resolve(
+        batch
+          ? applier.applyEvents?.([event, olderEvent], context)
+          : applier.applyEvent(event, context),
+      ).then(completed);
+
+      try {
+        await vi.waitFor(() => expect(writeCreatedMessages).toHaveBeenCalledOnce());
+        expect(pointerPublished).toHaveBeenCalledExactlyOnceWith({
+          body: expect.objectContaining({ uuid: outgoing.placementUuid }),
+          outgoing: batch ? outgoing : undefined,
+        });
+        expect(readOutgoing()).toBeUndefined();
+        expect(writeCreatedMessages).toHaveBeenCalledWith(
+          context.ownerKey,
+          batch
+            ? [
+                expect.objectContaining({ uuid: outgoing.placementUuid }),
+                expect.objectContaining({ uuid: MESSAGE_B }),
+              ]
+            : [expect.objectContaining({ uuid: outgoing.placementUuid })],
+          batch ? lastEpoch : undefined,
+          expect.any(Function),
+        );
+        expect(writeRealtimeCursor).not.toHaveBeenCalled();
+        expect(useMessengerStore.getState().lastEpochVersion).toBe(previousEpoch);
+        expect(readProjection()).toBe(previousProjection);
+        expect(completed).not.toHaveBeenCalled();
+      } finally {
+        unsubscribe();
+        releaseMessages?.();
+        await application;
+      }
+
+      expect(useMessengerStore.getState().lastEpochVersion).toBe(lastEpoch);
+      expect(readProjection()?.lastEpochVersion).toBe(lastEpoch);
+      if (batch) expect(writeRealtimeCursor).not.toHaveBeenCalled();
+      else expect(writeRealtimeCursor).toHaveBeenCalledExactlyOnceWith(context.ownerKey, lastEpoch);
+    },
+  );
+
+  it.each(["moved", "deleted"] as const)(
+    "accepts the original receipt for a %s message without projecting its stale create",
+    async (change) => {
+      const batch = change === "deleted";
+      const context = createContext(createOwner(), {
+        source: batch ? "catch_up" : "websocket",
+        notificationsEnabled: !batch,
+      });
+      useMessengerStore.getState().startBootstrap(context.ownerKey);
+      useWorkspaceMessageStore.getState().setOwner(context.ownerKey, false);
+      const writeCreatedMessages = vi.fn();
+      const writeRealtimeCursor = vi.fn();
+      const onMessageCreated = vi.fn();
+      const applier = createMessengerRealtimeActiveApplier({
+        cache: { writeCreatedMessages, writeRealtimeCursor },
+        onMessageCreated,
+      });
+      await applyStreamAndTopicSnapshot(applier, context);
+      writeRealtimeCursor.mockClear();
+      const readProjection = () =>
+        useMessengerBackgroundProjectionStore.getState().projectionsByOwnerKey[context.ownerKey];
+      const previousProjection = readProjection();
+      const keyUuid = MESSAGE_C;
+      const outgoing = useMessengerOutboxStore.getState().enqueueOutgoingMessage({
+        ownerKey: context.ownerKey,
+        conversationId: `topic:${STREAM_A}:${TOPIC_A}`,
+        projectId: PROJECT_A,
+        streamUuid: STREAM_A,
+        topicUuid: TOPIC_A,
+        authorUuid: USER_A,
+        markdown: "Pending delivery",
+        status: "sending",
+        includeStreamConversation: false,
+        encryption: {
+          keyUuid,
+          deviceId: "device-a",
+          payload: { kind: "e2ee", keyUuid, content: { bytes: new Uint8Array([1, 2, 3]) } },
+        },
+      });
+      const receipt = createMessageDto({
+        uuid: outgoing.placementUuid,
+        payload: { kind: "e2ee", key_uuid: keyUuid, content: "AQID" },
+      });
+      if (change === "moved") {
+        useWorkspaceMessageStore.getState().applyLiveCreatedMessage(
+          adaptMessengerMessage({
+            ...receipt,
+            topic_uuid: TOPIC_B,
+            payload: { kind: "e2ee", key_uuid: keyUuid, content: "BAUG" },
+          }),
+        );
+      } else {
+        useWorkspaceMessageStore.getState().removeMessage(receipt.uuid);
+      }
+      const canonical = useWorkspaceMessageStore.getState().messagesById[receipt.uuid];
+      const event = {
+        type: "message",
+        kind: "message.created",
+        epoch_version: 12,
+        message: receipt,
+      } as const;
+      if (batch) {
+        await applier.applyEvents?.([event], context);
+        expect(writeCreatedMessages).toHaveBeenCalledExactlyOnceWith(
+          context.ownerKey,
+          [],
+          event.epoch_version,
+          expect.any(Function),
+        );
+        expect(writeRealtimeCursor).not.toHaveBeenCalled();
+      } else {
+        await applier.applyEvent(event, context);
+        expect(writeCreatedMessages).not.toHaveBeenCalled();
+        expect(writeRealtimeCursor).toHaveBeenCalledExactlyOnceWith(
+          context.ownerKey,
+          event.epoch_version,
+        );
+      }
+      expect(useWorkspaceMessageStore.getState().messagesById[receipt.uuid]).toBe(canonical);
+      expect(
+        useMessengerOutboxStore.getState().outgoingMessagesByPlacementUuid[receipt.uuid],
+      ).toBeUndefined();
+      expect(readProjection()).toBe(previousProjection);
+      expect(onMessageCreated).not.toHaveBeenCalled();
+      expect(useMessengerStore.getState().lastEpochVersion).toBe(event.epoch_version);
+    },
+  );
+
+  it("retries a catch-up cache transaction with the fresh neighbors of an edited create", async () => {
+    const context = createContext(createOwner(), {
+      source: "catch_up",
+      notificationsEnabled: false,
+    });
+    useMessengerStore.getState().startBootstrap(context.ownerKey);
+    useWorkspaceMessageStore.getState().setOwner(context.ownerKey, false);
+    let resume: (() => void) | undefined;
+    const paused = new Promise<void>((resolve) => {
+      resume = resolve;
+    });
+    const cacheCommit = vi.fn();
+    const writeCreatedMessages = vi.fn(
+      async (
+        _owner: string,
+        _messages: readonly MessengerMessage[],
+        _epoch: number | undefined,
+        isCurrent: () => boolean,
+      ) => {
+        if (writeCreatedMessages.mock.calls.length === 1) await paused;
+        cacheCommit(isCurrent());
+      },
+    );
+    const applier = createMessengerRealtimeActiveApplier({ cache: { writeCreatedMessages } });
+    const old = createMessageDto();
+    const fresh = createMessageDto({ uuid: MESSAGE_B, created_at: DATE_LATER });
+    const application = applier.applyEvents?.(
+      [
+        { type: "message", kind: "message.created", epoch_version: 10, message: old },
+        { type: "message", kind: "message.created", epoch_version: 11, message: fresh },
+      ],
+      context,
+    );
+    try {
+      await vi.waitFor(() => expect(writeCreatedMessages).toHaveBeenCalledOnce());
+      expect(useMessengerStore.getState().lastEpochVersion).toBeNull();
+      const edited = adaptMessengerMessage({
+        ...old,
+        updated_at: DATE_LATER,
+        payload: { kind: "markdown", content: "Edited during the IndexedDB transaction" },
+      });
+      useWorkspaceMessageStore.getState().applyLiveKnownBodyMutation(edited);
+    } finally {
+      resume?.();
+      await application;
+    }
+    expect(cacheCommit.mock.calls).toEqual([[false], [true]]);
+    expect(writeCreatedMessages).toHaveBeenNthCalledWith(
+      2,
+      context.ownerKey,
+      [expect.objectContaining({ uuid: fresh.uuid })],
+      11,
+      expect.any(Function),
+    );
+    expect(useMessengerStore.getState().lastEpochVersion).toBe(11);
+    const projection =
+      useMessengerBackgroundProjectionStore.getState().projectionsByOwnerKey[context.ownerKey];
+    expect(projection?.messageIdSnapshotsById[old.uuid]).toBeUndefined();
+    expect(projection?.messageIdSnapshotsById[fresh.uuid]).toBeDefined();
+  });
+
   it("advances a read boundary and marks the loaded topic prefix", () => {
     const context = createContext();
     const cache = {

@@ -58,6 +58,46 @@ async function processEvent(event: CursorEvent, connection: Connection) {
 
 Сейчас фоновый аккаунт использует собственный курсор и обработчик, обновляет часть кеша и ведёт данные для уведомлений. Целевой runtime каждой сессии также поддерживает в памяти тёплый стор первого экрана. Обработчик применяет события к данным своего владельца независимо от того, на какой стор подписан UI. [Жизненный цикл runtime](../workspace-runtime.md#runtime-и-тёплый-стор-на-каждую-сессию) · [Асинхронное владение](../../../ORG_SCOPED_ASYNC_SAFETY.md)
 
+## Второй перенос messages
+
+После `a2847aeb` лента читает историю через `messages`. Во втором переносе одиночное и пакетное активные события `message.created` получили общий обработчик с прежним порядком каждого пути. Приём истории и HTTP-ответа отправки подключается к этому сценарию в четвёртом переносе. Правки, удаления и время жизни store относятся к отдельным этапам. [Первый перенос](load-messages.md#первый-перенос-messages) · [Общий приём](send-message.md#четвёртый-перенос-messages)
+
+### Входы и порядок до переноса
+
+Сокет вызывает композицию `applyEvent`. REST catch-up использует `applyEvents` при наличии пакетного входа. Композиция ждёт все домены перед сменой типа или операции события. В `createMessengerRealtimeActiveApplier` пачка собирается только для catch-up с выключенными уведомлениями и доступной `writeCreatedMessages`. Буфер принимает соседние `message.created` до 100 событий и сбрасывается перед любым другим событием и в конце входа. При остальных условиях `applyEvents` ждёт каждое `applyEvent` по очереди. [Сборка в layout](../../../../packages/web/src/widgets/layout/layout-workspace-realtime.hook.ts#L434) · [Сокет и курсор](../../../../packages/web/src/shared/lib/workspace-realtime/workspace-realtime-runtime.lib.ts#L528) · [REST catch-up](../../../../packages/web/src/shared/lib/workspace-realtime/workspace-realtime-catch-up.lib.ts#L221) · [Композиция](../../../../packages/web/src/shared/lib/workspace-realtime/workspace-realtime-applier.lib.ts#L15) · [Буфер](../../../../packages/web/src/entities/messenger/messenger-realtime-applier.lib.ts#L664)
+
+- Одиночный `applyMessageRealtimeEvent` адаптирует DTO, накладывает границу прочитанного и запоминает контекст стрима. Затем обновляет тела и окна, подтверждает исходящее, обновляет указатель каталога со снимком `messagesById` до записи и запускает `writeCreatedMessages(ownerKey, [message], undefined, isCurrent)`. После старта записи вызывает `onMessageCreated`, если включены уведомления и разрешены живые побочные эффекты. Например, layout использует этот вызов для входящих звонков в DM. Асинхронный результат вызова не задерживает обработку события. После ожидания кеша и проверки владельца обработчик обновляет проекцию для уведомлений, видимый курсор каталога и ждёт отдельную запись отметки в IndexedDB. Путь с `writeConversationMessagePage` вместо `writeCreatedMessages` также ждёт записи для разговора и стрима, если это разные ключи. [Одиночное принятие](../../../../packages/web/src/entities/messenger/messenger-realtime-applier.lib.ts#L419) · [Кеш](../../../../packages/web/src/entities/messenger/messenger-realtime-applier.lib.ts#L275) · [Завершение](../../../../packages/web/src/entities/messenger/messenger-realtime-applier.lib.ts#L717) · [Политика живых эффектов](../../../../packages/web/src/entities/messenger/messenger-live-effects.lib.ts#L19)
+- Пакетный callback в `applyEvents` адаптирует DTO в порядке событий и накладывает границы прочитанного. Он обновляет тела и окна одним действием store, обновляет указатели каталога со снимком `messagesById` после записи, затем подтверждает исходящие по порядку. Он ждёт `writeCreatedMessages(ownerKey, messages, epochVersion, isCurrent)`. Одна транзакция IndexedDB пишет тела, индекс и состояние окон, указатели кеша и отметку последнего события пачки. После проверки владельца обработчик обновляет проекции событий по порядку и выставляет видимый курсор. Отметка уже входит в запись пачки. [Активная пачка](../../../../packages/web/src/entities/messenger/messenger-realtime-applier.lib.ts#L737) · [Транзакция](../../../../packages/web/src/shared/lib/workspace-messenger-cache-db.ts#L2657)
+
+Активный обработчик проверяет поверхность, сигнал, владельца активного store, если он установлен, и `isOwnerCurrent` с `runtimeGeneration`. Тот же предикат передаётся в `writeCreatedMessages` для проверки перед коммитом и повторно используется после ожидания. Активные ошибки кеша остаются best effort. Транспорт продвигает собственный курсор в памяти и устойчивом хранилище после завершения обработчика и проверки актуальности запуска. Отметка IndexedDB принадлежит кешу и записывается отдельно от курсора транспорта. Фоновый приём идёт через свой кеш и проекцию с подтверждением исходящих после записи, без записи в активные message/catalog store. [Проверка владельца](../../../../packages/web/src/entities/messenger/messenger-realtime-applier.lib.ts#L166) · [Фоновый обработчик](../../../../packages/web/src/entities/messenger/messenger-realtime-applier.lib.ts#L827) · [Асинхронное владение](../../../ORG_SCOPED_ASYNC_SAFETY.md)
+
+### Что перенесено
+
+1. Realtime-вход общего `acceptServerMessages` принимает `ownerKey`, существующий `isCurrent`, режим `single | batch`, нормализованные `MessengerMessage` и синхронный callback обновления указателей. Операция проверяет владельца перед записью и после синхронных действий. Результат сообщает, может ли обработчик продолжить остальные эффекты. В одиночном режиме передаётся одно сообщение, в пакетном — непустой массив из буфера. Тела и окна остаются в текущем `useWorkspaceMessageStore`. Общий приём подтверждает исходящие по входным сообщениям, даже если строка в окне уже есть или была удалена. Store сохраняет свои правила для незагруженного разговора и попадания в границы загруженного окна. [Хранилище](../../../../packages/web/src/entities/message/message.model.ts#L581) · [Общий приём](../../../../packages/web/src/entities/messenger/messages-accept-server.lib.ts)
+2. Ветка создания `applyMessageRealtimeEvent` и активный callback `applyRealtimeEventBatch` вызывают эту операцию для записи и подтверждения. Адаптация DTO и граница прочитанного остаются на входах, каталог передаёт один callback с текущим `applyMessagePointer` или `applyMessagePointers`. В одиночном вызове `messages` передаёт callback снимок до записи и вызывает его после подтверждения. В пачке передаёт снимок после записи и вызывает его перед подтверждением. Так код каталога остаётся в обработчике, а модель отвечает за запись сообщений и согласование очереди. Существующие cache writers, проекции, курсоры и вызов живых эффектов остаются в обработчике с указанным выше порядком. Публичный контракт ленты `createMessages` сохраняется. При устаревании владельца обработчик завершает обработку до запуска записи кеша и остальных эффектов.
+
+```ts
+const applied = acceptServerMessages({
+  source: "realtime",
+  ownerKey: context.ownerKey,
+  isCurrent,
+  mode: "batch",
+  messages,
+  updatePointers: (messages, messagesById) =>
+    useMessengerStore.getState().applyMessagePointers(context.ownerKey, messages, messagesById),
+});
+if (applied.status === "stale-owner") return;
+```
+
+### Проверки второго шага
+
+Параметризованная регрессия в `messenger-realtime-applier.lib.test.ts` проверяет `applyEvent` и `applyEvents` с исходящим сообщением и задержанной записью кеша. В момент публикации указателя тело уже видно в store. Исходящее уже снято в одиночном пути и ещё находится в очереди в пакетном. До разрешения записи обе ветки должны снять исходящее, а проекция и прогресс должны дождаться записи. После разблокировки проверить отдельную отметку одиночного события и отсутствие такой записи для пачки, которая передала последний epoch своему writer. Существующие тесты проверяют повтор UUID, применимость окон, отмену и устаревание, фоновые события, политику живых эффектов, разделение пачек и откат транзакции. [Регрессия порядка](../../../../packages/web/src/entities/messenger/messenger-realtime-applier.lib.test.ts#L352) · [Ожидание кеша](../../../../packages/web/src/entities/messenger/messenger-realtime-applier.lib.test.ts#L533) · [Тест пачки](../../../../packages/web/src/entities/messenger/messenger-realtime-applier.lib.test.ts#L3119) · [Тесты IndexedDB](../../../../packages/web/src/shared/lib/workspace-messenger-cache-db.test.ts#L1374)
+
+```bash
+npm run test --workspace=web -- src/entities/messenger/messenger-realtime-applier.lib.test.ts src/entities/message/message-workspace.model.test.ts src/shared/lib/workspace-messenger-cache-db.test.ts
+npm run typecheck
+```
+
 ## 3. Что происходит после разрыва
 
 ```ts

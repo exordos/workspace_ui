@@ -2,11 +2,11 @@ import type {
   WorkspaceConversationWindow,
   WorkspaceMessageStoreState,
 } from "~/entities/message/message.model";
-import { settleMessengerOutgoingMessage } from "./messenger-outbox.model";
 import {
   applyMessengerReadBoundaries,
   compareMessengerMessageOrder,
 } from "./messenger-read-boundary.lib";
+import type { AppliedServerMessages } from "./messages-server-state.lib";
 import type { MessengerConversationId, MessengerMessage, MessengerUuid } from "./messenger.types";
 
 // Нормализованное окно или страница, выбранные загрузчиком по ответу сервера.
@@ -22,6 +22,7 @@ export interface ResolvedConversationHistoryWindow {
 // Часть текущего состояния, нужная для согласования результата с окном.
 type HistoryStoreState = Pick<
   WorkspaceMessageStoreState,
+  | "ownerKey"
   | "conversationWindowsById"
   | "messagesById"
   | "replaceConversationWindow"
@@ -51,13 +52,12 @@ interface AcceptConversationHistoryInput {
 
 // Результат приёма, по которому загрузчик продолжает эффекты или решает, нужен ли повтор.
 type AcceptConversationHistoryResult =
-  | {
-      status: "applied";
+  | (AppliedServerMessages & {
       appliedRevision: number; // Ревизия окна для проверки отложенной записи в кеш.
       messages: MessengerMessage[]; // Сообщения для синхронизации реакций.
       nextPageMarker: string | null; // Следующая верхняя граница.
       hasMore: boolean; // Сервер сообщил о продолжении сверху.
-    }
+    })
   | { status: "stale-owner" } // Запрос или сессия потеряли актуальность.
   | { status: "stale-window" } // Окно или маркер не совпали с ожидаемыми.
   | { status: "changed-boundary" }; // Выбранная граница непрочитанного изменилась.
@@ -93,8 +93,8 @@ function retainConversationWindow(
   };
 }
 
-// Синхронно принимает историю в окно и подтверждает исходящие по наблюдённым сообщениям.
-export function acceptConversationHistory({
+// Применяет выбранную историю в окно и возвращает сообщения, наблюдённые в истории.
+export function applyConversationHistory({
   resolved,
   store,
   conversationId,
@@ -153,8 +153,6 @@ export function acceptConversationHistory({
           messages,
           pageMarker: nextPageMarker,
         });
-  // Синхронный подписчик окна мог отменить запрос при публикации.
-  if (!isCurrent()) return { status: "stale-owner" };
   if (appliedRevision == null) return { status: "stale-window" };
   const appliedState = store.getState();
   const appliedWindow = appliedState.conversationWindowsById[conversationId];
@@ -167,14 +165,9 @@ export function acceptConversationHistory({
     return { status: "changed-boundary" };
   }
 
-  // Наблюдённое тело может подтвердить отправку даже после более новой правки в store.
-  for (const message of messages) {
-    if (settleMessengerOutgoingMessage(ownerKey, message) && !isCurrent()) {
-      return { status: "stale-owner" };
-    }
-  }
   return {
     status: "applied",
+    evidence: messages,
     appliedRevision,
     messages,
     nextPageMarker,

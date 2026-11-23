@@ -182,7 +182,9 @@ npm run typecheck
 `messages.openWindow` и `messages.loadMore` для `tail` вызывают `loadMessengerConversationMessages`. До переноса загрузчик сам записывал серверное окно или страницу и подтверждал исходящие. Теперь синхронное применение и согласование выполняет внутренняя операция модели `messages`. Обычное открытие может выбрать окно вокруг непрочитанного или сохранённой позиции. Догрузка `around-anchor` и явный переход по ссылке идут через отдельные входы. [Модель](../../../../packages/web/src/entities/messenger/messages-accept-history.lib.ts) · [Загрузчик](../../../../packages/web/src/entities/messenger/messenger-messages-loader.lib.ts) · [Очередь исходящих](../../../../packages/web/src/entities/messenger/messenger-outbox.model.ts)
 
 ```ts
-const outcome = acceptConversationHistory({
+const outcome = acceptServerMessages({
+  source: "history",
+  store,
   ownerKey,
   conversationId,
   isCurrent,

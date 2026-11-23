@@ -18,10 +18,7 @@ import {
 } from "~/shared/api/messenger-messages.api";
 import type { WorkspaceMessengerMessageDto } from "~/shared/api/messenger.types";
 import { createLogger } from "~/shared/lib/logger";
-import {
-  acceptConversationHistory,
-  type ResolvedConversationHistoryWindow,
-} from "./messages-accept-history.lib";
+import { acceptServerMessages } from "./messages-accept-server.lib";
 import { adaptMessengerMessage } from "./messenger-adapters.lib";
 import {
   readMessengerConversationWindowCache as defaultReadMessengerConversationWindowCache,
@@ -53,6 +50,7 @@ import {
   buildMessengerRequestOptions,
   type MessengerRequestOptionsOverrides,
 } from "./messenger-request-options.lib";
+import type { ResolvedConversationHistoryWindow } from "./messages-accept-history.lib";
 import type { MessengerConversationId, MessengerMessage, MessengerUuid } from "./messenger.types";
 
 // The first message page is loaded only after the user opens a conversation.
@@ -1062,7 +1060,8 @@ async function loadConversationMessagesFromServer({
         }
         throw new Error("Unread boundary changed while opening the conversation");
       }
-      const applied = acceptConversationHistory({
+      const applied = acceptServerMessages({
+        source: "history",
         resolved,
         store,
         conversationId,

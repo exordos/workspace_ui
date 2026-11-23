@@ -28,12 +28,15 @@ import {
   markMessengerMessagesReadUpTo,
   sendMessengerE2eePayload,
   sendMessengerMessage,
+  type MessengerMessageActionCacheWriter,
   type MessengerMessageActionClientDeps,
   type MessengerMessageActionResult,
 } from "./messenger-message-actions.lib";
 import { createMessengerPlacementUuid } from "./messenger-message-identity.lib";
+import { loadMessengerConversationMessages } from "./messenger-messages-loader.lib";
 import { useMessengerOutboxStore } from "./messenger-outbox.model";
 import { readMessengerReadBoundary } from "./messenger-read-boundary.lib";
+import { createMessengerRealtimeActiveApplier } from "./messenger-realtime-applier.lib";
 import * as messengerRequestOptions from "./messenger-request-options.lib";
 import { selectMessengerSidebarStreams } from "./messenger-sidebar.lib";
 import { useMessengerStore } from "./messenger.model";
@@ -287,9 +290,11 @@ describe("messenger message actions", () => {
   it("settles the matching outbox row after the HTTP message is indexed", async () => {
     const runtimeContext = createRuntimeContext();
     const ownerKey = prepareStoreOwner(runtimeContext);
+    const conversationId = `topic:${STREAM_A}:${TOPIC_A}` as const;
+    replaceTailWindow(conversationId, []);
     const outgoing = useMessengerOutboxStore.getState().enqueueOutgoingMessage({
       ownerKey,
-      conversationId: `topic:${STREAM_A}:${TOPIC_A}`,
+      conversationId,
       projectId: PROJECT_A,
       streamUuid: STREAM_A,
       topicUuid: TOPIC_A,
@@ -298,6 +303,7 @@ describe("messenger message actions", () => {
       status: "sending",
       includeStreamConversation: false,
     });
+    const receipt = createMessageDto({ uuid: outgoing.placementUuid });
 
     await sendMessengerMessage({
       runtimeContext,
@@ -306,9 +312,7 @@ describe("messenger message actions", () => {
       topicUuid: TOPIC_A,
       markdown: outgoing.markdown,
       canonicalMessageUuid: outgoing.canonicalMessageUuid,
-      client: {
-        createMessage: () => Promise.resolve(createMessageDto({ uuid: outgoing.placementUuid })),
-      },
+      client: { createMessage: () => Promise.resolve(receipt) },
       cache: {},
     });
 
@@ -316,7 +320,204 @@ describe("messenger message actions", () => {
     expect(
       useMessengerOutboxStore.getState().outgoingMessagesByPlacementUuid[outgoing.placementUuid],
     ).toBeUndefined();
+    await createMessengerRealtimeActiveApplier({ cache: {} }).applyEvent(
+      { type: "message", kind: "message.created", epoch_version: 1, message: receipt },
+      { owner: runtimeContext, ownerKey, surface: "active", source: "websocket" },
+    );
+    expect(
+      useWorkspaceMessageStore.getState().conversationWindowsById[conversationId]?.messageUuids,
+    ).toEqual([receipt.uuid]);
   });
+
+  it.each(["single", "batch"] as const)(
+    "preserves the newer server history after POST and a delayed %s create",
+    async (delivery) => {
+      const runtimeContext = createRuntimeContext();
+      const ownerKey = prepareStoreOwner(runtimeContext);
+      useWorkspaceMessageStore.getState().setOwner(ownerKey, false);
+      const conversationId = `topic:${STREAM_A}:${TOPIC_A}` as const;
+      replaceTailWindow(conversationId, []);
+      const outgoing = useMessengerOutboxStore.getState().enqueueOutgoingMessage({
+        ownerKey,
+        conversationId,
+        projectId: PROJECT_A,
+        streamUuid: STREAM_A,
+        topicUuid: TOPIC_A,
+        authorUuid: USER_A,
+        markdown: "Original send",
+        status: "sending",
+        includeStreamConversation: false,
+      });
+      const receipt = createMessageDto({
+        uuid: outgoing.placementUuid,
+        payload: { kind: "markdown", content: outgoing.markdown },
+      });
+      const onSettled = vi.fn();
+      const unsubscribe = useMessengerOutboxStore.subscribe((state, previous) => {
+        if (
+          previous.outgoingMessagesByPlacementUuid[receipt.uuid] != null &&
+          state.outgoingMessagesByPlacementUuid[receipt.uuid] == null
+        )
+          onSettled();
+      });
+      try {
+        await expect(
+          sendMessengerMessage({
+            runtimeContext,
+            streamUuid: STREAM_A,
+            topicUuid: TOPIC_A,
+            markdown: outgoing.markdown,
+            canonicalMessageUuid: outgoing.canonicalMessageUuid,
+            client: { createMessage: () => Promise.resolve(receipt) },
+            cache: {},
+          }),
+        ).resolves.toMatchObject({ status: "applied" });
+        expect(onSettled).toHaveBeenCalledOnce();
+        const newer = createMessageDto({
+          ...receipt,
+          updated_at: DATE.replace("Z", ".000001Z"),
+          payload: { kind: "markdown", content: "Edited server history" },
+        });
+        const writeHistoryPage = vi.fn();
+        await expect(
+          loadMessengerConversationMessages({
+            runtimeContext,
+            conversationId,
+            client: {
+              getMessagesPage: () =>
+                Promise.resolve({ items: [newer], nextPageMarker: null, pageLimit: 50 }),
+            },
+            cache: {
+              readReadBoundaries: () => Promise.resolve([]),
+              readConversationMessageWindow: () =>
+                Promise.resolve({ messages: [], nextPageMarker: null, hasMore: false }),
+              writeConversationMessagePage: writeHistoryPage,
+            },
+          }),
+        ).resolves.toMatchObject({ status: "applied" });
+        expect(writeHistoryPage).toHaveBeenCalledWith(
+          ownerKey,
+          conversationId,
+          expect.objectContaining({
+            messages: [expect.objectContaining({ uuid: receipt.uuid, payload: newer.payload })],
+          }),
+          expect.any(Function),
+        );
+
+        const writeCreatedMessages = vi.fn();
+        const writeRealtimeCursor = vi.fn();
+        const applier = createMessengerRealtimeActiveApplier({
+          cache: { writeCreatedMessages, writeRealtimeCursor },
+        });
+        const stale = {
+          type: "message",
+          kind: "message.created",
+          epoch_version: 2,
+          message: receipt,
+        } as const;
+        const fresh = {
+          ...stale,
+          epoch_version: 1,
+          message: createMessageDto({ uuid: MESSAGE_C }),
+        };
+        if (delivery === "batch") {
+          await applier.applyEvents?.([fresh, stale], {
+            owner: runtimeContext,
+            ownerKey,
+            surface: "active",
+            source: "catch_up",
+          });
+          expect(writeCreatedMessages).toHaveBeenCalledExactlyOnceWith(
+            ownerKey,
+            [expect.objectContaining({ uuid: fresh.message.uuid })],
+            stale.epoch_version,
+            expect.any(Function),
+          );
+        } else {
+          await applier.applyEvent(stale, {
+            owner: runtimeContext,
+            ownerKey,
+            surface: "active",
+            source: "websocket",
+          });
+          expect(writeCreatedMessages).not.toHaveBeenCalled();
+          expect(writeRealtimeCursor).toHaveBeenCalledExactlyOnceWith(
+            ownerKey,
+            stale.epoch_version,
+          );
+        }
+        expect(useMessengerStore.getState().lastEpochVersion).toBe(stale.epoch_version);
+        const state = useWorkspaceMessageStore.getState();
+        expect(state.messagesById[receipt.uuid]?.payload).toEqual(newer.payload);
+        expect(
+          state.conversationWindowsById[conversationId]?.messageUuids.filter(
+            (uuid) => uuid === receipt.uuid,
+          ),
+        ).toEqual([receipt.uuid]);
+        expect(onSettled).toHaveBeenCalledOnce();
+      } finally {
+        unsubscribe();
+      }
+    },
+  );
+
+  it.each(["message store", "outbox"])(
+    "stops projecting a send when its %s publication aborts the request",
+    async (source) => {
+      const runtimeContext = createRuntimeContext();
+      const ownerKey = prepareStoreOwner(runtimeContext);
+      const outgoing = useMessengerOutboxStore.getState().enqueueOutgoingMessage({
+        ownerKey,
+        conversationId: `topic:${STREAM_A}:${TOPIC_A}`,
+        projectId: PROJECT_A,
+        streamUuid: STREAM_A,
+        topicUuid: TOPIC_A,
+        authorUuid: USER_A,
+        markdown: "Hello, workspace",
+        status: "sending",
+        includeStreamConversation: false,
+      });
+      const controller = new AbortController();
+      const writeConversationMessagePage = vi.fn();
+      const unsubscribe =
+        source === "outbox"
+          ? useMessengerOutboxStore.subscribe((state) => {
+              if (state.outgoingMessagesByPlacementUuid[outgoing.placementUuid] == null)
+                controller.abort();
+            })
+          : useWorkspaceMessageStore.subscribe((state) => {
+              if (state.messagesById[outgoing.placementUuid] != null) controller.abort();
+            });
+      try {
+        await expect(
+          sendMessengerMessage({
+            runtimeContext,
+            streamUuid: STREAM_A,
+            topicUuid: TOPIC_A,
+            canonicalMessageUuid: outgoing.canonicalMessageUuid,
+            markdown: outgoing.markdown,
+            signal: controller.signal,
+            client: {
+              createMessage: () =>
+                Promise.resolve(createMessageDto({ uuid: outgoing.placementUuid })),
+            },
+            cache: { writeConversationMessagePage },
+          }),
+        ).resolves.toMatchObject({ status: "skipped", reason: "stale-owner" });
+        expect(useMessengerStore.getState().streamsById[STREAM_A]?.lastMessageUuid).toBeNull();
+        expect(writeConversationMessagePage).not.toHaveBeenCalled();
+        expect(
+          Boolean(
+            useMessengerOutboxStore.getState().outgoingMessagesByPlacementUuid[
+              outgoing.placementUuid
+            ],
+          ),
+        ).toBe(source === "message store");
+      } finally {
+        unsubscribe();
+      }
+    },
+  );
 
   it("does not wait for the cache before reporting a sent message", async () => {
     const runtimeContext = createRuntimeContext();
@@ -373,6 +574,42 @@ describe("messenger message actions", () => {
 
     cacheWrite.resolve();
   });
+
+  it.each(["edit", "deletion"])(
+    "keeps a cache write current through an optimistic reaction until %s",
+    async (mutation) => {
+      const runtimeContext = createRuntimeContext();
+      prepareStoreOwner(runtimeContext);
+      const receipt = createMessageDto();
+      const writeConversationMessagePage =
+        vi.fn<NonNullable<MessengerMessageActionCacheWriter["writeConversationMessagePage"]>>();
+      await expect(
+        sendMessengerMessage({
+          runtimeContext,
+          streamUuid: STREAM_A,
+          topicUuid: TOPIC_A,
+          markdown: "Hello, workspace",
+          client: { createMessage: () => Promise.resolve(receipt) },
+          cache: { writeConversationMessagePage },
+        }),
+      ).resolves.toMatchObject({ status: "applied" });
+      const isWriteCurrent = writeConversationMessagePage.mock.calls[0]?.[3];
+      expect(isWriteCurrent?.()).toBe(true);
+      const state = useWorkspaceMessageStore.getState();
+      state.beginOptimisticOwnMessageReaction(receipt.uuid, "smile", "add", "add-reaction", USER_A);
+      expect(useWorkspaceMessageStore.getState().messagesById[receipt.uuid]).not.toBe(
+        state.messagesById[receipt.uuid],
+      );
+      expect(isWriteCurrent?.()).toBe(true);
+
+      if (mutation === "deletion") state.removeMessage(receipt.uuid);
+      else
+        state.applyLiveKnownBodyMutation(
+          adaptMessengerMessage({ ...receipt, payload: { kind: "markdown", content: "Edited" } }),
+        );
+      expect(isWriteCurrent?.()).toBe(false);
+    },
+  );
 
   it("skips stale edit results after the runtime owner changes", async () => {
     const runtimeA = createRuntimeContext();
@@ -1343,6 +1580,7 @@ describe("encrypted payload local dispatch guards", () => {
     vi.restoreAllMocks();
     useMessengerStore.getState().clear();
     useWorkspaceMessageStore.getState().clear();
+    useMessengerOutboxStore.getState().clear();
   });
 
   function prepareEncryptedSend() {
@@ -1450,6 +1688,119 @@ describe("encrypted payload local dispatch guards", () => {
       ]?.payload.kind,
     ).toBe("e2ee");
     expect(f.cache.writeConversationMessagePage).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    "first receipt",
+    "realtime echo",
+    "realtime edit",
+    "history edit",
+    "deletion",
+    "unknown update",
+  ])("reconciles an encrypted POST receipt after %s", async (observed) => {
+    const f = prepareEncryptedSend();
+    const conversationId = `topic:${STREAM_A}:${TOPIC_A}` as const;
+    const outgoing = useMessengerOutboxStore.getState().enqueueOutgoingMessage({
+      ownerKey: f.ownerKey,
+      conversationId,
+      projectId: PROJECT_A,
+      streamUuid: STREAM_A,
+      topicUuid: TOPIC_A,
+      authorUuid: USER_A,
+      markdown: "local secret",
+      status: "sending",
+      includeStreamConversation: false,
+      encryption: { keyUuid: MESSAGE_A, deviceId: "device-a", payload: f.input.payload },
+    });
+    const receipt = createMessageDto({
+      uuid: outgoing.placementUuid,
+      payload: { kind: "e2ee", key_uuid: MESSAGE_A, content: "AQID" },
+    });
+    const edit = {
+      ...receipt,
+      payload: { kind: "e2ee" as const, key_uuid: MESSAGE_A, content: "BAUG" },
+      updated_at: DATE.replace("Z", ".000001Z"),
+    };
+    const alreadyLoaded = observed === "realtime edit" || observed === "deletion";
+    replaceTailWindow(conversationId, alreadyLoaded ? [adaptMessengerMessage(receipt)] : []);
+    if (observed === "deletion") {
+      useMessengerStore
+        .getState()
+        .applyMessagePointer(
+          f.ownerKey,
+          adaptMessengerMessage(receipt),
+          useWorkspaceMessageStore.getState().messagesById,
+        );
+    }
+
+    const deferred = createDeferred<WorkspaceMessengerMessageDto>();
+    f.createMessage.mockReturnValue(deferred.promise);
+    const sending = sendMessengerE2eePayload({
+      ...f.input,
+      canonicalMessageUuid: outgoing.canonicalMessageUuid,
+    });
+    expect(f.createMessage).toHaveBeenCalledOnce();
+    const applier = createMessengerRealtimeActiveApplier({ cache: {} });
+    const context = {
+      owner: f.runtimeContext,
+      ownerKey: f.ownerKey,
+      surface: "active",
+      source: "websocket",
+    } as const;
+    if (observed === "deletion") {
+      await applier.applyEvent(
+        {
+          type: "message",
+          kind: "message.deleted",
+          epoch_version: 1,
+          message: { uuid: receipt.uuid, stream_uuid: STREAM_A, topic_uuid: TOPIC_A },
+        },
+        context,
+      );
+    } else if (observed === "realtime echo") {
+      await applier.applyEvent(
+        { type: "message", kind: "message.created", epoch_version: 1, message: receipt },
+        context,
+      );
+    } else if (observed === "history edit") {
+      replaceTailWindow(conversationId, [adaptMessengerMessage(edit)]);
+    } else if (observed !== "first receipt") {
+      await applier.applyEvent(
+        { type: "message", kind: "message.updated", epoch_version: 1, message: edit },
+        context,
+      );
+    }
+    if (observed === "unknown update")
+      expect(useWorkspaceMessageStore.getState().messagesById[receipt.uuid]).toBeUndefined();
+    if (observed !== "realtime echo")
+      expect(
+        useMessengerOutboxStore.getState().outgoingMessagesByPlacementUuid[receipt.uuid],
+      ).toBeDefined();
+    deferred.resolve(receipt);
+
+    await expect(sending).resolves.toMatchObject({
+      status: "applied",
+      message: { uuid: receipt.uuid },
+    });
+    expect(
+      useMessengerOutboxStore.getState().outgoingMessagesByPlacementUuid[receipt.uuid],
+    ).toBeUndefined();
+    const state = useWorkspaceMessageStore.getState();
+    if (observed === "deletion") {
+      expect(state.messagesById[receipt.uuid]).toBeUndefined();
+      expect(state.conversationWindowsById[conversationId]?.messageUuids).toEqual([]);
+      expect(useMessengerStore.getState().streamsById[STREAM_A]?.lastMessageUuid).toBeNull();
+    } else {
+      const effective =
+        observed === "realtime edit" || observed === "history edit" ? edit : receipt;
+      expect(state.messagesById[receipt.uuid]?.payload).toEqual(
+        adaptMessengerMessage(effective).payload,
+      );
+      expect(state.conversationWindowsById[conversationId]?.messageUuids).toEqual([receipt.uuid]);
+    }
+    expect(f.cache.writeConversationMessagePage).toHaveBeenCalledTimes(
+      observed === "first receipt" || observed === "unknown update" ? 2 : 0,
+    );
   });
 
   it.each([MESSAGE_B, MESSAGE_C])("rejects an unexpected public message UUID %s", async (uuid) => {
