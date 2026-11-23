@@ -675,6 +675,7 @@ describe("messenger realtime active applier", () => {
     });
     expect(cache.advanceReadBoundary).toHaveBeenCalledWith(
       expect.objectContaining({ messageUuid: MESSAGE_B, epochVersion: 12 }),
+      expect.any(Function),
     );
     expect(onMessageCreated).not.toHaveBeenCalled();
   });
@@ -859,7 +860,45 @@ describe("messenger realtime active applier", () => {
 
     expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.read).toBe(true);
     expect(readMessengerReadBoundary(context.ownerKey, STREAM_A, TOPIC_A)).toBeNull();
-    expect(cache.markCachedMessagesRead).toHaveBeenCalledWith(context.ownerKey, [MESSAGE_A]);
+    expect(cache.markCachedMessagesRead).toHaveBeenCalledWith(
+      context.ownerKey,
+      [MESSAGE_A],
+      [],
+      expect.any(Function),
+    );
+  });
+
+  it("keeps a newer cursor published reentrantly while projecting an older read", () => {
+    const context = createContext();
+    useMessengerStore.getState().startBootstrap(context.ownerKey);
+    const writeRealtimeCursor = vi.fn();
+    const applier = createMessengerRealtimeActiveApplier({ cache: { writeRealtimeCursor } });
+    const unsubscribe = useMessengerBackgroundProjectionStore.subscribe((state) => {
+      if (state.projectionsByOwnerKey[context.ownerKey]?.lastEpochVersion !== 12) return;
+      applier.applyEvent(
+        { type: "messages", kind: "messages.read", epoch_version: 13, messageUuids: [MESSAGE_B] },
+        context,
+      );
+    });
+    try {
+      applier.applyEvent(
+        {
+          type: "message",
+          kind: "message.read",
+          epoch_version: 12,
+          message: createMessageDto({ read: true }),
+        },
+        context,
+      );
+    } finally {
+      unsubscribe();
+    }
+    expect(useMessengerStore.getState().lastEpochVersion).toBe(13);
+    expect(writeRealtimeCursor).toHaveBeenCalledExactlyOnceWith(
+      context.ownerKey,
+      13,
+      expect.any(Function),
+    );
   });
 
   it("persists a background message.read boundary without touching the active message store", async () => {

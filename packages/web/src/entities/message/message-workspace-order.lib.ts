@@ -24,7 +24,10 @@ export function sameWorkspaceMessageIds(
   return left.every((id, index) => id === right[index]);
 }
 
-export function compareWorkspaceMessages(left: MessengerMessage, right: MessengerMessage): number {
+export function compareWorkspaceMessages(
+  left: Pick<MessengerMessage, "createdAt" | "uuid">,
+  right: Pick<MessengerMessage, "createdAt" | "uuid">,
+): number {
   const createdAtOrder = left.createdAt.localeCompare(right.createdAt);
   if (createdAtOrder !== 0) return createdAtOrder;
   return left.uuid.localeCompare(right.uuid);

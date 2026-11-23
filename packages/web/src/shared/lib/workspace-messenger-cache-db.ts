@@ -2867,6 +2867,7 @@ export async function markCachedMessagesRead(
   ownerKey: string,
   messageUuids: readonly string[],
   conversationIds: readonly string[] = [],
+  isWriteCurrent: () => boolean = () => true,
 ): Promise<void> {
   if (!isIndexedDBAvailable() || (messageUuids.length === 0 && conversationIds.length === 0)) {
     return;
@@ -2874,6 +2875,7 @@ export async function markCachedMessagesRead(
 
   try {
     const db = await openWorkspaceMessengerCacheDb();
+    if (!isWriteCurrent()) return;
     const stores = WORKSPACE_MESSENGER_CACHE_STORES;
     const transaction = db.transaction([stores.messages, stores.messageBuckets], "readwrite");
     const messageStore = transaction.objectStore(stores.messages);
@@ -2914,6 +2916,7 @@ export async function markCachedMessagesRead(
       } satisfies WorkspaceMessengerMessageCacheRow);
     }
 
+    if (!isWriteCurrent()) transaction.abort();
     await transactionDone(transaction);
   } catch (error) {
     logCacheWriteFailure("mark-messages-read", error);
@@ -2995,11 +2998,13 @@ export async function deleteMessengerReadBoundaryCache(
 
 export async function advanceMessengerReadBoundaryCache(
   boundary: Omit<WorkspaceMessengerReadBoundaryCacheRow, "id">,
+  isWriteCurrent: () => boolean = () => true,
 ): Promise<void> {
   if (!isIndexedDBAvailable()) return;
 
   try {
     const db = await openWorkspaceMessengerCacheDb();
+    if (!isWriteCurrent()) return;
     const stores = WORKSPACE_MESSENGER_CACHE_STORES;
     const transaction = db.transaction(
       [stores.readBoundaries, stores.messages, stores.messageBuckets],
@@ -3014,6 +3019,7 @@ export async function advanceMessengerReadBoundaryCache(
     boundaryStore.put({ ...effective, materialized: true });
 
     if (previous?.materialized === true && compareReadBoundaryOrder(previous, effective) >= 0) {
+      if (!isWriteCurrent()) transaction.abort();
       await transactionDone(transaction);
       return;
     }
@@ -3052,7 +3058,13 @@ export async function advanceMessengerReadBoundaryCache(
       ),
     );
     for (const row of rows) {
-      if (row?.ownerKey !== effective.ownerKey || row.message.read === true) continue;
+      if (
+        row?.ownerKey !== effective.ownerKey ||
+        row.message.read === true ||
+        row.message.streamUuid !== effective.streamUuid ||
+        row.message.topicUuid !== effective.topicUuid
+      )
+        continue;
       messageStore.put({
         ...row,
         message: { ...row.message, read: true },
@@ -3060,6 +3072,7 @@ export async function advanceMessengerReadBoundaryCache(
       } satisfies WorkspaceMessengerMessageCacheRow);
     }
 
+    if (!isWriteCurrent()) transaction.abort();
     await transactionDone(transaction);
   } catch (error) {
     logCacheWriteFailure("advance-read-boundary", error);
@@ -3119,16 +3132,31 @@ export async function deleteCachedMessage(
   }
 }
 
-export async function writeRealtimeCursor(ownerKey: string, epochVersion: number): Promise<void> {
+export async function writeRealtimeCursor(
+  ownerKey: string,
+  epochVersion: number,
+  isWriteCurrent?: () => boolean,
+): Promise<void> {
   if (!isIndexedDBAvailable()) return;
 
   try {
     const db = await openWorkspaceMessengerCacheDb();
+    if (isWriteCurrent?.() === false) return;
     const transaction = db.transaction(
       WORKSPACE_MESSENGER_CACHE_STORES.realtimeCursor,
       "readwrite",
     );
-    transaction.objectStore(WORKSPACE_MESSENGER_CACHE_STORES.realtimeCursor).put({
+    const store = transaction.objectStore(WORKSPACE_MESSENGER_CACHE_STORES.realtimeCursor);
+    if (isWriteCurrent != null) {
+      const previous = await requestToPromise<WorkspaceMessengerRealtimeCursorRow | undefined>(
+        store.get(ownerKey),
+      );
+      if (!isWriteCurrent() || (previous?.epochVersion ?? 0) > epochVersion) {
+        await transactionDone(transaction);
+        return;
+      }
+    }
+    store.put({
       ownerKey,
       epochVersion,
       updatedAt: Date.now(),

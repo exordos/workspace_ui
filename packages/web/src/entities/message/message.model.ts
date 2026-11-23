@@ -23,6 +23,7 @@ import {
 import type {
   WorkspaceConversationWindow,
   WorkspaceConversationMessagesStatus,
+  WorkspaceMessageReadBoundaryAnchor,
   WorkspaceMessageStoreData,
   WorkspaceMessageStoreState,
   WorkspaceOptimisticMessageReadChange,
@@ -368,6 +369,7 @@ function readMessagesUpTo(
   ) => void,
   messageUuid: MessengerUuid,
   options: WorkspaceScopedMessageMutationOptions | undefined,
+  confirmation?: { anchor: WorkspaceMessageReadBoundaryAnchor; capturedMutationRevision?: number },
 ): { previousMessages: MessengerMessage[]; projectedMessages: MessengerMessage[] } {
   const change: { previousMessages: MessengerMessage[]; projectedMessages: MessengerMessage[] } = {
     previousMessages: [],
@@ -375,7 +377,8 @@ function readMessagesUpTo(
   };
 
   set((state) => {
-    const anchor = state.messagesById[messageUuid];
+    const currentAnchor = state.messagesById[messageUuid];
+    const anchor = confirmation?.anchor ?? currentAnchor;
     if (anchor == null) return state;
 
     const candidateMessageIds = new Set<MessengerUuid>();
@@ -393,21 +396,33 @@ function readMessagesUpTo(
       }
     }
 
+    // The confirmed UUID itself remains read even if its canonical topic has changed.
+    if (confirmation != null) candidateMessageIds.add(messageUuid);
     const previousMessages = [...candidateMessageIds]
       .map((candidateMessageUuid) => state.messagesById[candidateMessageUuid])
       .filter(
         (message): message is MessengerMessage =>
           message != null &&
-          !message.read &&
-          message.streamUuid === anchor.streamUuid &&
-          message.topicUuid === anchor.topicUuid &&
-          compareWorkspaceMessages(message, anchor) <= 0,
+          ((confirmation != null && message.uuid === messageUuid) ||
+            (!message.read &&
+              message.streamUuid === anchor.streamUuid &&
+              message.topicUuid === anchor.topicUuid &&
+              compareWorkspaceMessages(message, anchor) <= 0)),
       );
-    if (previousMessages.length === 0) return state;
+    // A read can precede history for this UUID without supplying an authoritative body.
+    const observesUnknownAnchor =
+      confirmation != null &&
+      currentAnchor == null &&
+      state.deletedMessageRevisionById[messageUuid] == null &&
+      (confirmation.capturedMutationRevision == null ||
+        (state.messageMutationRevisionById[messageUuid] ?? 0) <=
+          confirmation.capturedMutationRevision);
+    if (previousMessages.length === 0 && !observesUnknownAnchor) return state;
 
     const nextMessagesById = { ...state.messagesById };
     const nextMutationRevisionById = { ...state.messageMutationRevisionById };
     const mutationRevision = state.messageMutationRevision + 1;
+    if (observesUnknownAnchor) nextMutationRevisionById[messageUuid] = mutationRevision;
     for (const message of previousMessages) {
       const projectedMessage = { ...message, read: true };
       nextMessagesById[message.uuid] = projectedMessage;
@@ -1072,6 +1087,12 @@ export const useWorkspaceMessageStore = create<WorkspaceMessageStoreState>((set,
   markMessagesReadUpTo(messageUuid, options) {
     logStoreAction("workspaceMessage", "markMessagesReadUpTo", { messageUuid });
     return readMessagesUpTo(set, messageUuid, options).projectedMessages;
+  },
+
+  confirmMessagesReadUpTo(anchor, options, capturedMutationRevision) {
+    if (removedStreamUuids.has(anchor.streamUuid)) return [];
+    return readMessagesUpTo(set, anchor.uuid, options, { anchor, capturedMutationRevision })
+      .projectedMessages;
   },
 
   beginOptimisticMessagesReadUpTo(messageUuid, options) {

@@ -38,7 +38,7 @@ import {
   compareMessengerMessageOrder,
   readMessengerReadBoundary,
 } from "./messenger-read-boundary.lib";
-import type { MessengerFolder } from "./messenger.types";
+import type { MessengerFolder, MessengerMessage } from "./messenger.types";
 
 const MAX_RECENT_EVENTS = 50;
 const MAX_NOTIFICATION_CANDIDATES = 50;
@@ -203,6 +203,7 @@ export interface MessengerBackgroundProjectionStoreState {
     ownerKey: string,
     event: WorkspaceRealtimeEvent,
     context: WorkspaceRealtimeEventContext,
+    activeReadAnchor?: MessengerMessage | null,
   ) => void;
   recordSkippedEvent: (
     ownerKey: string,
@@ -323,6 +324,8 @@ function applyMessageReadBoundaryToSnapshots(
   snapshots: MessengerBackgroundProjection["messageIdSnapshotsById"],
   event: WorkspaceRealtimeMessageSnapshotEvent,
   observedAt: number,
+  preserveActivePlacement = false,
+  skipAnchor = false,
 ): MessengerBackgroundProjection["messageIdSnapshotsById"] {
   const boundary = {
     createdAt: event.message.created_at,
@@ -332,13 +335,16 @@ function applyMessageReadBoundaryToSnapshots(
   return markMessageSnapshotsRead(
     snapshots,
     (snapshot) =>
-      snapshot.streamUuid === event.message.stream_uuid &&
-      snapshot.topicUuid === event.message.topic_uuid &&
-      snapshot.createdAt != null &&
-      compareMessengerMessageOrder(
-        { createdAt: snapshot.createdAt, messageUuid: snapshot.messageUuid },
-        boundary,
-      ) <= 0,
+      (!preserveActivePlacement || snapshot.deletedAt == null) &&
+      (!skipAnchor || snapshot.messageUuid !== event.message.uuid) &&
+      ((preserveActivePlacement && snapshot.messageUuid === event.message.uuid) ||
+        (snapshot.streamUuid === event.message.stream_uuid &&
+          snapshot.topicUuid === event.message.topic_uuid &&
+          snapshot.createdAt != null &&
+          compareMessengerMessageOrder(
+            { createdAt: snapshot.createdAt, messageUuid: snapshot.messageUuid },
+            boundary,
+          ) <= 0)),
     event.epoch_version,
     observedAt,
   );
@@ -440,6 +446,7 @@ function applyEventProjection(
   projection: MessengerBackgroundProjection,
   event: WorkspaceRealtimeEvent,
   context: WorkspaceRealtimeEventContext,
+  activeReadAnchor?: MessengerMessage | null,
 ): MessengerBackgroundProjection {
   const observedAt = Date.now();
   const recentEvent: MessengerBackgroundRecentEvent = {
@@ -463,7 +470,7 @@ function applyEventProjection(
   }
 
   if (event.type === "message") {
-    return applyMessageProjection(baseProjection, event, context, observedAt);
+    return applyMessageProjection(baseProjection, event, context, observedAt, activeReadAnchor);
   }
 
   if (event.type === "messages") {
@@ -558,7 +565,46 @@ function applyMessageProjection(
   event: WorkspaceRealtimeMessageSnapshotEvent,
   context: WorkspaceRealtimeEventContext,
   observedAt: number,
+  activeReadAnchor?: MessengerMessage | null,
 ): MessengerBackgroundProjection {
+  const activeRead = context.surface === "active" && event.kind === "message.read";
+  const previous = baseProjection.messageIdSnapshotsById[event.message.uuid];
+  if (activeRead && (activeReadAnchor !== undefined || previous != null)) {
+    // The event still confirms the original topic. Its payload cannot rewind the live anchor.
+    const snapshots =
+      activeReadAnchor == null || previous?.deletedAt != null
+        ? baseProjection.messageIdSnapshotsById
+        : {
+            ...baseProjection.messageIdSnapshotsById,
+            [event.message.uuid]: {
+              ownerKey: context.ownerKey,
+              messageUuid: activeReadAnchor.uuid,
+              streamUuid: activeReadAnchor.streamUuid,
+              topicUuid: activeReadAnchor.topicUuid,
+              authorUuid: activeReadAnchor.authorUuid,
+              isOwn: activeReadAnchor.isOwn,
+              read: true,
+              epochVersion: advanceEpoch(previous?.epochVersion ?? null, event.epoch_version),
+              createdAt: activeReadAnchor.createdAt,
+              updatedAt: activeReadAnchor.updatedAt,
+              observedAt,
+              deletedAt: null,
+            },
+          };
+    return compactProjection(
+      {
+        ...baseProjection,
+        messageIdSnapshotsById: applyMessageReadBoundaryToSnapshots(
+          snapshots,
+          event,
+          observedAt,
+          true,
+          activeReadAnchor === null,
+        ),
+      },
+      observedAt,
+    );
+  }
   const readBoundary = readMessengerReadBoundary(
     context.ownerKey,
     event.message.stream_uuid,
@@ -600,6 +646,7 @@ function applyMessageProjection(
           nextProjection.messageIdSnapshotsById,
           event,
           observedAt,
+          activeRead,
         ),
       },
       observedAt,
@@ -1310,7 +1357,7 @@ export const useMessengerBackgroundProjectionStore =
   create<MessengerBackgroundProjectionStoreState>((set) => ({
     projectionsByOwnerKey: EMPTY_BACKGROUND_PROJECTIONS,
 
-    recordAppliedEvent(ownerKey, event, context) {
+    recordAppliedEvent(ownerKey, event, context, activeReadAnchor) {
       logStoreAction("messengerBackgroundProjection", "recordAppliedEvent", {
         ownerKey,
         epochVersion: event.epoch_version,
@@ -1321,7 +1368,7 @@ export const useMessengerBackgroundProjectionStore =
         return {
           projectionsByOwnerKey: {
             ...state.projectionsByOwnerKey,
-            [ownerKey]: applyEventProjection(projection, event, context),
+            [ownerKey]: applyEventProjection(projection, event, context, activeReadAnchor),
           },
         };
       });

@@ -32,7 +32,9 @@ import {
   markMessengerCachedMessagesRead,
   deleteMessengerCachedMessage,
   patchMessengerCachedMessage,
+  advanceMessengerCachedReadBoundary,
   readMessengerCatalogPayloadCache,
+  readMessengerCachedReadBoundaries,
   readMessengerConversationWindowCache,
   readMessengerMessageBodyCache,
   repairMessengerCachedMessagePointers,
@@ -765,6 +767,288 @@ describe("messenger message actions", () => {
       ]);
     }
 
+    it.each(["single HTTP", "bulk HTTP", "realtime"] as const)(
+      "persists the same inclusive topic boundary for %s and keeps a later exact batch scoped",
+      async (source) => {
+        const runtimeContext = createRuntimeContext();
+        const ownerKey = prepareStoreOwner(runtimeContext);
+        const otherOwner = workspaceRuntimeOwnerKey(
+          createRuntimeContext({ organizationId: ORGANIZATION_B }),
+        );
+        useWorkspaceMessageStore.getState().setOwner(ownerKey, false);
+        const earlier = createMessageDto({ is_own: false, created_at: "2026-06-22T10:01:00Z" });
+        const anchor = createMessageDto({ uuid: MESSAGE_B, is_own: false });
+        const untouched = createMessageDto({
+          uuid: MESSAGE_C,
+          is_own: false,
+          created_at: "2026-06-22T10:15:00Z",
+        });
+        const exact = createMessageDto({
+          uuid: "85e4d7f0-56c1-4ce8-92ef-04d917ab38b0",
+          is_own: false,
+          created_at: "2026-06-22T10:20:00Z",
+        });
+        const neighbor = createMessageDto({
+          uuid: "fcf1d74e-8b2a-4278-8ded-166af905acaf",
+          topic_uuid: "ed25f944-8106-4386-b2f9-65e9db32d465",
+          is_own: false,
+          created_at: earlier.created_at,
+        });
+        const messages = [earlier, anchor, untouched, exact].map(adaptMessengerMessage);
+        const conversationId = messages[0]!.conversationId;
+        replaceTailWindow(conversationId, messages);
+        await writeMessengerConversationWindowCache(ownerKey, conversationId, {
+          messages,
+          hasMore: false,
+        });
+        await writeMessengerConversationWindowCache(otherOwner, conversationId, {
+          messages,
+          hasMore: false,
+        });
+        await seedMessageWindow(ownerKey, neighbor);
+        const applier = createMessengerRealtimeActiveApplier();
+        const context = {
+          owner: runtimeContext,
+          ownerKey,
+          surface: "active",
+          source: "websocket",
+        } as const;
+        if (source === "realtime") {
+          await applier.applyEvent(
+            {
+              type: "message",
+              kind: "message.read",
+              epoch_version: 1,
+              message: { ...anchor, read: true },
+            },
+            context,
+          );
+        } else {
+          const markRead =
+            source === "single HTTP" ? markMessengerMessageRead : markMessengerMessagesReadUpTo;
+          await expect(
+            markRead({
+              runtimeContext,
+              messageUuid: MESSAGE_B,
+              client: { markMessagesReadUpTo: () => Promise.resolve({ ...anchor, read: true }) },
+            }),
+          ).resolves.toMatchObject({ status: "applied" });
+        }
+
+        await applier.applyEvent(
+          {
+            type: "message",
+            kind: "message.read",
+            epoch_version: 2,
+            message: { ...earlier, read: true },
+          },
+          context,
+        );
+        await applier.applyEvent(
+          { type: "messages", kind: "messages.read", epoch_version: 3, messageUuids: [exact.uuid] },
+          context,
+        );
+        const expected = new Map([
+          [earlier.uuid, true],
+          [anchor.uuid, true],
+          [untouched.uuid, false],
+          [exact.uuid, true],
+          [neighbor.uuid, false],
+        ]);
+        const state = useWorkspaceMessageStore.getState();
+        const ids = [...expected.keys()];
+        const rows = await readMessengerMessageBodyCache(ownerKey, ids);
+        expect(new Map(rows.map(({ uuid, read }) => [uuid, read]))).toEqual(expected);
+        expect(new Map(ids.map((uuid) => [uuid, state.messagesById[uuid]?.read]))).toEqual(
+          expected,
+        );
+        const otherRows = await readMessengerMessageBodyCache(otherOwner, ids);
+        expect(otherRows).toHaveLength(4);
+        expect(otherRows.every(({ read }) => !read)).toBe(true);
+        expect(readMessengerReadBoundary(ownerKey, STREAM_A, TOPIC_A)?.messageUuid).toBe(
+          anchor.uuid,
+        );
+        await expect(readMessengerCachedReadBoundaries(ownerKey)).resolves.toEqual([
+          expect.objectContaining({ topicUuid: TOPIC_A, messageUuid: anchor.uuid }),
+        ]);
+      },
+    );
+
+    it.each(["http", "realtime"] as const)(
+      "preserves a moved body and only marks the reported topic prefix for late %s read evidence",
+      async (source) => {
+        const runtimeContext = createRuntimeContext();
+        const ownerKey = prepareStoreOwner(runtimeContext);
+        useWorkspaceMessageStore.getState().setOwner(ownerKey, false);
+        const original = createMessageDto({ is_own: false });
+        const earlier = createMessageDto({
+          uuid: MESSAGE_B,
+          is_own: false,
+          created_at: "2026-06-22T10:01:00Z",
+        });
+        const originalWindow = [adaptMessengerMessage(earlier), adaptMessengerMessage(original)];
+        const originalId = originalWindow[0]!.conversationId;
+        replaceTailWindow(originalId, originalWindow);
+        await writeMessengerConversationWindowCache(ownerKey, originalId, {
+          messages: originalWindow,
+          hasMore: false,
+        });
+        const moved = createMessageDto({
+          topic_uuid: "ed25f944-8106-4386-b2f9-65e9db32d465",
+          is_own: false,
+          payload: { kind: "markdown", content: "Moved and revised" },
+          reactions: { eyes: 2 },
+          updated_at: "2026-06-22T10:21:00Z",
+        });
+        const neighbor = createMessageDto({
+          uuid: MESSAGE_C,
+          topic_uuid: moved.topic_uuid,
+          is_own: false,
+          created_at: earlier.created_at,
+        });
+        const movedId = await seedMessageWindow(ownerKey, neighbor);
+        const response = createDeferred<WorkspaceMessengerMessageDto>();
+        const read =
+          source === "http"
+            ? markMessengerMessagesReadUpTo({
+                runtimeContext,
+                messageUuid: MESSAGE_A,
+                client: { markMessagesReadUpTo: () => response.promise },
+              })
+            : undefined;
+        const context = {
+          owner: runtimeContext,
+          ownerKey,
+          surface: "active",
+          source: "websocket",
+        } as const;
+        const applier = createMessengerRealtimeActiveApplier();
+        await applier.applyEvent(
+          { type: "message", kind: "message.updated", epoch_version: 1, message: moved },
+          context,
+        );
+        const serverRead = { ...original, read: true };
+        if (read != null) {
+          response.resolve(serverRead);
+          await expect(read).resolves.toMatchObject({ status: "applied" });
+        } else {
+          await applier.applyEvent(
+            { type: "message", kind: "message.read", epoch_version: 2, message: serverRead },
+            context,
+          );
+          expect(
+            useMessengerBackgroundProjectionStore.getState().projectionsByOwnerKey[ownerKey]
+              ?.messageIdSnapshotsById[MESSAGE_A],
+          ).toMatchObject({ topicUuid: moved.topic_uuid, updatedAt: moved.updated_at, read: true });
+        }
+        const state = useWorkspaceMessageStore.getState();
+        expect(state.messagesById[MESSAGE_A]).toMatchObject({
+          topicUuid: moved.topic_uuid,
+          payload: moved.payload,
+          reactions: { eyes: 2 },
+          read: true,
+        });
+        expect(state.messagesById[MESSAGE_B]?.read).toBe(true);
+        expect(state.messagesById[MESSAGE_C]?.read).toBe(false);
+        const cachedOriginal = await readMessengerConversationWindowCache(ownerKey, originalId);
+        const cachedMoved = await readMessengerConversationWindowCache(ownerKey, movedId);
+        expect(cachedOriginal.messages).toEqual([
+          expect.objectContaining({ uuid: MESSAGE_B, read: true }),
+        ]);
+        expect(cachedMoved.messages).toEqual([
+          expect.objectContaining({ uuid: MESSAGE_C, read: false }),
+          expect.objectContaining({
+            uuid: MESSAGE_A,
+            topicUuid: moved.topic_uuid,
+            payload: moved.payload,
+            reactions: { eyes: 2 },
+            read: true,
+          }),
+        ]);
+        await expect(readMessengerCachedReadBoundaries(ownerKey)).resolves.toEqual([
+          expect.objectContaining({ topicUuid: TOPIC_A, messageUuid: MESSAGE_A }),
+        ]);
+      },
+    );
+
+    it.each(["boundary abort", "exact owner round trip"] as const)(
+      "aborts confirmed read cache writes and withholds the cursor after %s at commit",
+      async (invalidation) => {
+        const runtimeContext = createRuntimeContext();
+        const ownerKey = prepareStoreOwner(runtimeContext);
+        useWorkspaceMessageStore.getState().setOwner(ownerKey, false);
+        const original = createMessageDto({ is_own: false });
+        await seedMessageWindow(ownerKey, original);
+        const signal = new AbortController();
+        let currentGeneration = runtimeContext.runtimeGeneration;
+        const invalidate = vi.fn(() => {
+          if (invalidation === "boundary abort") signal.abort();
+          else {
+            const store = useWorkspaceMessageStore.getState();
+            store.setOwner("other-owner", false);
+            currentGeneration += 2;
+            store.setOwner(ownerKey, false);
+          }
+        });
+        const invalidateBeforeCommit = (canWrite?: () => boolean) => {
+          let checks = 0;
+          return () => {
+            checks += 1;
+            if (checks === 2) invalidate();
+            return canWrite?.() ?? false;
+          };
+        };
+        const writeRealtimeCursor = vi.fn();
+        const applier = createMessengerRealtimeActiveApplier({
+          isOwnerCurrent: (owner) => owner.runtimeGeneration === currentGeneration,
+          cache: {
+            advanceReadBoundary: (boundary, canWrite) =>
+              advanceMessengerCachedReadBoundary(boundary, invalidateBeforeCommit(canWrite)),
+            markCachedMessagesRead: (owner, uuids, conversationIds, canWrite) =>
+              markMessengerCachedMessagesRead(
+                owner,
+                uuids,
+                conversationIds,
+                invalidateBeforeCommit(canWrite),
+              ),
+            writeRealtimeCursor,
+          },
+        });
+        const application = applier.applyEvent(
+          invalidation === "boundary abort"
+            ? {
+                type: "message",
+                kind: "message.read",
+                epoch_version: 1,
+                message: { ...original, read: true },
+              }
+            : {
+                type: "messages",
+                kind: "messages.read",
+                epoch_version: 1,
+                messageUuids: [MESSAGE_A],
+              },
+          {
+            owner: runtimeContext,
+            ownerKey,
+            surface: "active",
+            source: "websocket",
+            signal: signal.signal,
+          },
+        );
+        expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.read).toBe(true);
+        expect(useMessengerStore.getState().lastEpochVersion).toBeNull();
+        await application;
+        expect(invalidate).toHaveBeenCalledOnce();
+        expect(useMessengerStore.getState().lastEpochVersion).toBeNull();
+        expect(writeRealtimeCursor).not.toHaveBeenCalled();
+        await expect(readMessengerCachedReadBoundaries(ownerKey)).resolves.toEqual([]);
+        await expect(readMessengerMessageBodyCache(ownerKey, [MESSAGE_A])).resolves.toEqual([
+          expect.objectContaining({ uuid: MESSAGE_A, read: false }),
+        ]);
+      },
+    );
+
     it.each(["http", "realtime"] as const)(
       "keeps a moved UUID deleted through late history when %s acknowledges first",
       async (first) => {
@@ -1357,8 +1641,7 @@ describe("messenger message actions", () => {
     replaceTailWindow(initial.conversationId, [initial]);
     const readRequest = createDeferred<WorkspaceMessengerMessageDto>();
     const cache = {
-      patchCachedMessage: vi.fn(() => Promise.resolve()),
-      markCachedMessagesRead: vi.fn(() => Promise.resolve()),
+      patchCachedMessage: vi.fn<typeof patchMessengerCachedMessage>(() => Promise.resolve()),
     };
     const action = markMessengerMessagesReadUpTo({
       runtimeContext,
@@ -1387,7 +1670,13 @@ describe("messenger message actions", () => {
         payload: { kind: "markdown", content: "New realtime body" },
         read: true,
       }),
+      expect.any(Function),
     );
+    const canWrite = cache.patchCachedMessage.mock.calls[0]?.[2];
+    useWorkspaceMessageStore
+      .getState()
+      .beginOptimisticOwnMessageReaction(MESSAGE_A, "eyes", "add", "local-reaction", USER_A);
+    expect(canWrite?.()).toBe(true);
   });
 
   it("does not cache a late read body after realtime delete", async () => {
@@ -1517,6 +1806,7 @@ describe("messenger message actions", () => {
     expect(cache.patchCachedMessage).toHaveBeenCalledWith(
       ownerKey,
       expect.objectContaining({ uuid: MESSAGE_A, read: true }),
+      expect.any(Function),
     );
     expect(useActivityStore.getState()).toMatchObject({
       staleVersion: 1,
@@ -1664,11 +1954,13 @@ describe("messenger message actions", () => {
     expect(markMessagesReadUpTo).toHaveBeenCalledTimes(1);
     expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.read).toBe(true);
     expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_B]?.read).toBe(true);
-    expect(cache.patchCachedMessage).toHaveBeenCalledWith(
+    expect(cache.patchCachedMessage).not.toHaveBeenCalled();
+    expect(cache.markCachedMessagesRead).toHaveBeenCalledWith(
       ownerKey,
-      expect.objectContaining({ uuid: MESSAGE_B, read: true }),
+      [MESSAGE_B, MESSAGE_A],
+      [],
+      expect.any(Function),
     );
-    expect(cache.markCachedMessagesRead).toHaveBeenCalledWith(ownerKey, [MESSAGE_A]);
     expect(cache.advanceReadBoundary).toHaveBeenCalledWith(
       expect.objectContaining({
         ownerKey,
@@ -1676,6 +1968,7 @@ describe("messenger message actions", () => {
         topicUuid: TOPIC_A,
         messageUuid: MESSAGE_B,
       }),
+      expect.any(Function),
     );
   });
 
@@ -2046,7 +2339,12 @@ describe("messenger message actions", () => {
       cache,
     });
 
-    expect(cache.markCachedMessagesRead).toHaveBeenCalledWith(ownerKey, [MESSAGE_B, MESSAGE_A]);
+    expect(cache.markCachedMessagesRead).toHaveBeenCalledWith(
+      ownerKey,
+      [MESSAGE_B, MESSAGE_A],
+      [],
+      expect.any(Function),
+    );
   });
 
   it("confirms an evicted anchor using the server response", async () => {
@@ -2067,6 +2365,7 @@ describe("messenger message actions", () => {
     expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_B]).toBeUndefined();
     expect(cache.advanceReadBoundary).toHaveBeenCalledWith(
       expect.objectContaining({ ownerKey, messageUuid: MESSAGE_B }),
+      expect.any(Function),
     );
   });
 

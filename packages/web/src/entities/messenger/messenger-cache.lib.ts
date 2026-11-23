@@ -740,8 +740,9 @@ export async function markMessengerCachedMessagesRead(
   ownerKey: string,
   messageUuids: readonly MessengerUuid[],
   conversationIds: readonly MessengerConversationId[] = [],
+  isWriteCurrent?: () => boolean,
 ): Promise<void> {
-  await markCachedMessagesRead(ownerKey, messageUuids, conversationIds);
+  await markCachedMessagesRead(ownerKey, messageUuids, conversationIds, isWriteCurrent);
 }
 
 export async function readMessengerCachedReadBoundaries(
@@ -760,8 +761,9 @@ export async function readMessengerCachedReadBoundaries(
 
 export async function advanceMessengerCachedReadBoundary(
   boundary: MessengerReadBoundary,
+  isWriteCurrent?: () => boolean,
 ): Promise<void> {
-  await advanceMessengerReadBoundaryCache(boundary);
+  await advanceMessengerReadBoundaryCache(boundary, isWriteCurrent);
 }
 
 export async function deleteMessengerCachedReadBoundary(
@@ -886,8 +888,9 @@ export async function deleteMessengerOwnMessageReactionsForMessagesCache(
 export async function writeMessengerRealtimeCursorCache(
   ownerKey: string,
   epochVersion: number,
+  isWriteCurrent?: () => boolean,
 ): Promise<void> {
-  await writeRealtimeCursor(ownerKey, epochVersion);
+  await writeRealtimeCursor(ownerKey, epochVersion, isWriteCurrent);
 }
 
 export const messengerMessageActionCache = {

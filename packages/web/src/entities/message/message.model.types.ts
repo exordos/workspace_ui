@@ -28,6 +28,12 @@ export interface WorkspaceScopedMessageMutationOptions {
   conversationIds?: readonly MessengerConversationId[];
 }
 
+// The server supplies the topic and message order even when the anchor has since moved.
+export type WorkspaceMessageReadBoundaryAnchor = Pick<
+  MessengerMessage,
+  "uuid" | "streamUuid" | "topicUuid" | "createdAt"
+>;
+
 export interface WorkspaceMessageReadScope {
   streamUuid: MessengerUuid;
   topicUuid?: MessengerUuid;
@@ -151,6 +157,11 @@ export interface WorkspaceMessageStoreState extends WorkspaceMessageStoreData {
   markMessagesReadUpTo: (
     messageUuid: MessengerUuid,
     options?: WorkspaceScopedMessageMutationOptions,
+  ) => MessengerMessage[];
+  confirmMessagesReadUpTo: (
+    anchor: WorkspaceMessageReadBoundaryAnchor,
+    options: WorkspaceScopedMessageMutationOptions,
+    capturedMutationRevision?: number,
   ) => MessengerMessage[];
   beginOptimisticMessagesRead: (
     scope: WorkspaceMessageReadScope,
