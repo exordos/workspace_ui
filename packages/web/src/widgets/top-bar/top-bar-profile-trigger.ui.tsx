@@ -4,8 +4,8 @@ import {
   selectUserDisplayName,
   selectUserStatusLabel,
 } from "~/entities/user/user-selectors.lib";
-import { useUsersStore } from "~/entities/user/user.model";
 import type { User } from "~/entities/user/user.types";
+import { useUserById } from "~/entities/user/users";
 import {
   useWorkspaceAuthStore,
   type WorkspaceAuthProfile,
@@ -90,12 +90,7 @@ export const TopBarProfileTrigger = React.memo(function TopBarProfileTrigger() {
       : undefined;
   });
   const workspaceProfile = workspaceSession?.profile;
-  const currentUser = useUsersStore((s) => {
-    if (workspaceSession?.userUuid != null) {
-      return s.usersById[workspaceSession.userUuid];
-    }
-    return undefined;
-  });
+  const currentUser = useUserById(workspaceSession?.userUuid);
 
   const workspaceDisplayName = resolveWorkspaceDisplayName(workspaceProfile);
   const displayName = resolveDisplayName(currentUser, workspaceDisplayName);

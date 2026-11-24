@@ -3,7 +3,7 @@ import { useLocation } from "react-router-dom";
 import { useChatsCatalog } from "~/applications/messenger/model/chats/chats";
 import { useMessageIndex } from "~/applications/messenger/model/messages/messages-consumers";
 import { useThemeStore } from "~/entities/theme/theme.model";
-import { useUsersStore } from "~/entities/user/user.model";
+import { useUserCount } from "~/entities/user/users";
 import {
   selectCurrentWorkspaceRuntimeContext,
   useWorkspaceAuthStore,
@@ -83,7 +83,7 @@ export const LogsPage: React.FC = () => {
   const streamsCount = useChatsCatalog((s) => s.streamIds.length);
   const conversationsCount = useChatsCatalog((s) => s.conversationIds.length);
   const foldersCount = useChatsCatalog((s) => s.folderIds.length);
-  const usersCount = useUsersStore((s) => s.userIds.length);
+  const usersCount = useUserCount();
   const currentChatMessagesCount = useMessageIndex((s) => Object.keys(s.messagesById).length);
   const themeMode = useThemeStore((s) => s.mode);
   const themePalette = useThemeStore((s) => s.paletteId);

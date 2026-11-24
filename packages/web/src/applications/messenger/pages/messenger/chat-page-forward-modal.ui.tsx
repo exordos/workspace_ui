@@ -4,7 +4,7 @@ import {
   selectSelectableWorkspaceUsers,
   selectUserDisplayName,
 } from "~/entities/user/user-selectors.lib";
-import { useUsersStore } from "~/entities/user/user.model";
+import { useUserIds, useUsersById } from "~/entities/user/users";
 import { t } from "~/i18n/i18n";
 import { resolveTopicDisplayInfo } from "~/shared/lib/topic-display.lib";
 import { DialogPrimaryButton } from "~/shared/ui/app-dialog";
@@ -26,8 +26,8 @@ export const ForwardMessageModalBody = React.memo<ForwardMessageModalBodyProps>(
     const [selectedTopic, setSelectedTopic] = useState<string>("");
     const [selectedUserUuid, setSelectedUserUuid] = useState<string>("");
     const [dmSearch, setDmSearch] = useState("");
-    const usersById = useUsersStore((state) => state.usersById);
-    const userIds = useUsersStore((state) => state.userIds);
+    const usersById = useUsersById();
+    const userIds = useUserIds();
     const topics = useMemo(
       () => topicOptions.filter((topicOption) => topicOption.streamUuid === selectedStream),
       [selectedStream, topicOptions],

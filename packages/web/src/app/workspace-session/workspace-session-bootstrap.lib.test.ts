@@ -9,7 +9,7 @@ import { loadExternalAccounts } from "~/entities/external-account/external-accou
 import {
   refreshWorkspaceSessionUsers,
   restoreWorkspaceSessionUsers,
-} from "~/entities/user/user-sync.lib";
+} from "~/entities/user/users-runtime";
 import type * as WorkspaceAuthModule from "~/entities/workspace-auth/workspace-auth.lib";
 import { ensureFreshWorkspaceSession } from "~/entities/workspace-auth/workspace-auth.lib";
 import {
@@ -31,7 +31,7 @@ vi.mock("~/applications/messenger/runtime/sync/messenger-session-snapshot.lib", 
 vi.mock("~/entities/external-account/external-account-loader.lib", () => ({
   loadExternalAccounts: vi.fn(),
 }));
-vi.mock("~/entities/user/user-sync.lib", () => ({
+vi.mock("~/entities/user/users-runtime", () => ({
   refreshWorkspaceSessionUsers: vi.fn(),
   restoreWorkspaceSessionUsers: vi.fn(),
 }));

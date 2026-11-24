@@ -12,7 +12,7 @@ import type {
   MessengerUuid,
 } from "~/applications/messenger/model/messenger.types";
 import { selectUserDisplayName } from "~/entities/user/user-selectors.lib";
-import { useUsersStore } from "~/entities/user/user.model";
+import { readActiveUser } from "~/entities/user/users";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import {
   captureWorkspaceRuntimeRequestContext,
@@ -76,7 +76,7 @@ function defaultDependencies(): WorkspaceReplyEditRestoreDependencies {
     getMessage: (messageUuid) => selectKnownMessage(readActiveMessageIndex(), messageUuid) ?? null,
     loadMessage: loadMessengerQuoteMessage,
     resolveAuthor: (message) => {
-      const author = useUsersStore.getState().usersById[message.authorUuid];
+      const author = readActiveUser(message.authorUuid);
       if (author == null) return null;
       const senderName = selectUserDisplayName(author, "").trim();
       return senderName.length === 0

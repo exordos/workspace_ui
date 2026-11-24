@@ -7,7 +7,7 @@ import { useChatsCatalog } from "~/applications/messenger/model/chats/chats";
 import { fetchFeedMessages, hydrateFeedMessagesFromCache } from "~/entities/feed/feed.api";
 import { useFeedStore } from "~/entities/feed/feed.model";
 import { selectUserDisplayName } from "~/entities/user/user-selectors.lib";
-import { useUsersStore } from "~/entities/user/user.model";
+import { useUserById } from "~/entities/user/users";
 import {
   selectCurrentWorkspaceRuntimeContext,
   useWorkspaceAuthStore,
@@ -35,7 +35,7 @@ import { computeFeedScrollTopAfterPrepend, shouldRequestOlderFeedPage } from "./
 const log = createLogger("feed-page");
 
 function FeedSenderName({ authorUuid, fallback }: { authorUuid: string; fallback: string }) {
-  const user = useUsersStore((s) => s.usersById[authorUuid]);
+  const user = useUserById(authorUuid);
   return <>{selectUserDisplayName(user, fallback)}</>;
 }
 

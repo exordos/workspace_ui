@@ -10,7 +10,7 @@ import { invalidateExternalChatsForOwner } from "~/entities/external-chat/extern
 import {
   refreshWorkspaceSessionUsers,
   restoreWorkspaceSessionUsers,
-} from "~/entities/user/user-sync.lib";
+} from "~/entities/user/users-runtime";
 import {
   buildWorkspaceRequestOptions,
   ensureFreshWorkspaceSession,

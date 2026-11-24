@@ -11,7 +11,7 @@ import type {
   MessengerBackgroundProjection,
   MessengerBackgroundNotificationCandidate,
 } from "~/applications/messenger/runtime/sync/messenger-background-projection.model";
-import { resolveCachedWorkspaceUser } from "~/entities/user/user-sync.lib";
+import { resolveCachedWorkspaceUser } from "~/entities/user/users-runtime";
 import { getDockBounceEnabledForOwner, useSettingsStore } from "~/features/settings/settings.model";
 import { t } from "~/i18n/i18n";
 import { isElectronDarwin } from "~/shared/lib/electron";

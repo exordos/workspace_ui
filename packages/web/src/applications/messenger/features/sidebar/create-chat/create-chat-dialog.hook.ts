@@ -8,8 +8,8 @@ import {
   selectSelectableWorkspaceUsers,
   selectUserDisplayName,
 } from "~/entities/user/user-selectors.lib";
-import { useUsersStore } from "~/entities/user/user.model";
 import type { User } from "~/entities/user/user.types";
+import { useUserIds, useUsersById, useUsersOwnerKey } from "~/entities/user/users";
 import {
   selectCurrentWorkspaceRuntimeContext,
   useWorkspaceAuthStore,
@@ -245,9 +245,9 @@ export function useCreateChatDialog(options: {
   const archiveScopeRef = useRef<object | null>(null);
   const unarchiveRequestsRef = useRef(new Map<string, object>());
 
-  const usersOwnerKey = useUsersStore((s) => s.ownerKey);
-  const usersById = useUsersStore((s) => s.usersById);
-  const userIds = useUsersStore((s) => s.userIds);
+  const usersOwnerKey = useUsersOwnerKey();
+  const usersById = useUsersById();
+  const userIds = useUserIds();
   const workspaceSessions = useWorkspaceAuthStore((state) => state.sessions);
   const workspaceCurrentAccountId = useWorkspaceAuthStore((state) => state.currentAccountId);
   const workspaceRuntimeContext = useMemo(

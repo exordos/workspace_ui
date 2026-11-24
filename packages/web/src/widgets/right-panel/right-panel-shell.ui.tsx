@@ -1,6 +1,6 @@
 import React, { useCallback, useMemo } from "react";
 import { createWorkspaceRightPanelUserProfileView } from "~/applications/messenger/features/chat-details/messenger-right-panel.lib";
-import { useUsersStore } from "~/entities/user/user.model";
+import { useUsersById } from "~/entities/user/users";
 import {
   selectCurrentWorkspaceRuntimeContext,
   useWorkspaceAuthStore,
@@ -26,7 +26,7 @@ export const RightPanelShell: React.FC<RightPanelProps> = ({
 }) => {
   const sessions = useWorkspaceAuthStore((state) => state.sessions);
   const currentAccountId = useWorkspaceAuthStore((state) => state.currentAccountId);
-  const usersById = useUsersStore((state) => state.usersById);
+  const usersById = useUsersById();
   const runtimeContext = useMemo(
     () => selectCurrentWorkspaceRuntimeContext({ sessions, currentAccountId }),
     [currentAccountId, sessions],

@@ -22,7 +22,7 @@
 import { selectMessengerSidebarActivityCounts } from "~/applications/messenger/features/sidebar/messenger-sidebar.lib";
 import { readActiveChats } from "~/applications/messenger/model/chats/chats";
 import { useThemeStore } from "~/entities/theme/theme.model";
-import { useUsersStore } from "~/entities/user/user.model";
+import { readActiveUser } from "~/entities/user/users";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { getLocale } from "~/i18n/i18n";
 import { createLogger } from "~/shared/lib/logger";
@@ -85,7 +85,7 @@ function getCurrentChat(): AiChatContext {
 function getCurrentUser(): AiUserContext {
   const session = useWorkspaceAuthStore.getState().getCurrentSession();
   const userUuid = session?.userUuid;
-  const user = userUuid != null ? useUsersStore.getState().getUser(userUuid) : undefined;
+  const user = userUuid != null ? readActiveUser(userUuid) : undefined;
   const sessionFullName = [session?.profile.firstName, session?.profile.lastName]
     .filter(Boolean)
     .join(" ")

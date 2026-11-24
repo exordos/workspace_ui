@@ -9,7 +9,7 @@ import {
   useWorkspaceDraftList,
 } from "~/applications/messenger/model/drafts/composer-draft-actions.lib";
 import type { WorkspaceComposerDraft } from "~/applications/messenger/model/drafts/composer-draft.types";
-import { useUsersStore } from "~/entities/user/user.model";
+import { useUserById } from "~/entities/user/users";
 import {
   selectCurrentWorkspaceRuntimeContext,
   useWorkspaceAuthStore,
@@ -72,9 +72,7 @@ function DraftCard({
   const stream = useChatsCatalog((state) => state.streamsById[draft.streamUuid]);
   const topic = useChatsCatalog((state) => state.topicsById[draft.topicUuid]);
   const directUserUuid = stream?.directUserUuid ?? null;
-  const directUser = useUsersStore((state) =>
-    directUserUuid == null ? null : (state.usersById[directUserUuid] ?? null),
-  );
+  const directUser = useUserById(directUserUuid) ?? null;
   const streamName = stream?.name.trim() || draft.streamUuid;
   const topicName = topic?.name.trim() || draft.topicUuid;
   const isDirect = directUserUuid != null;

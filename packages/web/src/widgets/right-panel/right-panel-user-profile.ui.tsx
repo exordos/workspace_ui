@@ -7,7 +7,7 @@ import {
   resolveUserPresenceVisual,
   selectUserStatusLabel,
 } from "~/entities/user/user-selectors.lib";
-import { useUsersStore } from "~/entities/user/user.model";
+import { useUserById } from "~/entities/user/users";
 import {
   selectCurrentWorkspaceRuntimeContext,
   useWorkspaceAuthStore,
@@ -166,7 +166,7 @@ export const RightPanelUserProfile: React.FC<RightPanelUserProfileProps> = ({
   );
   const profileBusy = avatarBusy || editor.saving;
   // Custom status (emoji + text) — same signal as top-bar / chat header, live from users store.
-  const profileUser = useUsersStore((state) => state.usersById[profile.userUuid]);
+  const profileUser = useUserById(profile.userUuid);
   const customStatusLabel = useMemo(() => selectUserStatusLabel(profileUser), [profileUser]);
   const resolvedAvatarUrl = profileUser?.avatarUrl ?? profile.avatarUrl;
   const resetAvatarUrn = useMemo(

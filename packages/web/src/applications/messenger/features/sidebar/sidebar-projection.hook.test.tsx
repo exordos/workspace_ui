@@ -8,6 +8,7 @@ import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import { initVisibilityTracking } from "~/shared/lib/visibility";
+import { createUser } from "~/test/factories";
 import { useSidebarProjectionSnapshot } from "./sidebar-projection.hook";
 
 const RUNTIME: WorkspaceRuntimeContext = {
@@ -139,6 +140,21 @@ describe("sidebar projection publication", () => {
       await Promise.resolve();
     });
     expect(view.result.current.messenger.streamIds).toEqual([id("user-action")]);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("batches profile updates and clears the directory immediately when its owner changes", () => {
+    useUsersStore.getState().startOwnerSync(OWNER);
+    const view = renderHook(() => useSidebarProjectionSnapshot(RUNTIME));
+    const user = createUser({ uuid: id("known-user") });
+
+    act(() => useUsersStore.getState().upsertUser(user));
+    expect(view.result.current.usersById[user.uuid]).toBeUndefined();
+    act(() => vi.advanceTimersByTime(100));
+    expect(view.result.current.usersById[user.uuid]).toBe(user);
+
+    act(() => useUsersStore.getState().startOwnerSync("other-owner"));
+    expect(view.result.current.usersById).toEqual({});
     expect(vi.getTimerCount()).toBe(0);
   });
 

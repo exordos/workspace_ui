@@ -7,8 +7,8 @@ import {
   selectUserStatusLabel,
   selectUsersByIds,
 } from "~/entities/user/user-selectors.lib";
-import { useUsersStore } from "~/entities/user/user.model";
 import type { User } from "~/entities/user/user.types";
+import { useUserIds, useUsersById } from "~/entities/user/users";
 import { t } from "~/i18n/i18n";
 import { AppDialogShell, APP_DIALOG_CONTENT_BASE_CLASS } from "~/shared/ui/app-dialog";
 import { ScrollArea } from "~/shared/ui/scroll-area";
@@ -48,8 +48,8 @@ export const SearchModal: React.FC<SearchModalProps> = ({
   const query = useSearchModalStore((s) => s.query);
   const setQuery = useSearchModalStore((s) => s.setQuery);
   const resetStore = useSearchModalStore((s) => s.reset);
-  const usersById = useUsersStore((s) => s.usersById);
-  const userIds = useUsersStore((s) => s.userIds);
+  const usersById = useUsersById();
+  const userIds = useUserIds();
   const inputRef = useRef<HTMLInputElement>(null);
   const workspaceMode = mode === "workspace";
   const allUsers = useMemo(

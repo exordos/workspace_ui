@@ -18,8 +18,8 @@ import {
   resolveUserPresenceVisual,
   selectUserDisplayName,
 } from "~/entities/user/user-selectors.lib";
-import { useUsersStore } from "~/entities/user/user.model";
 import type { UsersById } from "~/entities/user/user.types";
+import { useUsersById } from "~/entities/user/users";
 import { WorkspaceAvatar } from "~/features/workspace-avatar/workspace-avatar.ui";
 import { t, useTranslation } from "~/i18n/i18n";
 import { formatCount, UNREAD_COUNT_DISPLAY_LIMIT } from "~/shared/lib/count-format.lib";
@@ -930,7 +930,7 @@ const WorkspaceMessageListContent: React.FC<
     });
   }, [anchorHandoffPending, firstUnreadUuid, initialPositionReady]);
 
-  const usersById = useUsersStore((state) => state.usersById);
+  const usersById = useUsersById();
   const effectiveResolveAuthorLabel = useCallback(
     (authorUuid: MessengerUuid) =>
       resolveWorkspaceAuthorLabel(authorUuid, resolveAuthorLabel, usersById),

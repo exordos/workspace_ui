@@ -3,7 +3,7 @@ import {
   reconcileMessengerSessionModels,
   releaseMessengerSessionProjections,
 } from "~/applications/messenger/runtime/sync/messenger-session-snapshot.lib";
-import { reconcileUsersStores, useUsersStore } from "~/entities/user/user.model";
+import { reconcileUsersSessions, useHasUserForOwner } from "~/entities/user/users-runtime";
 import { fetchWorkspaceServerSettingsForOrganization } from "~/entities/workspace-auth/workspace-auth.lib";
 import {
   useWorkspaceAuthStore,
@@ -35,12 +35,7 @@ export function useWorkspaceSessionRuntime(
   > | null>(null);
   const previousSessions = useRef(new Map<string, WorkspaceAuthSession>());
   const activeOwnerKey = activeSession == null ? null : workspaceRuntimeOwnerKey(activeSession);
-  const canReportPresence = useUsersStore(
-    (state) =>
-      activeSession != null &&
-      state.ownerKey === activeOwnerKey &&
-      state.usersById[activeSession.userUuid] != null,
-  );
+  const canReportPresence = useHasUserForOwner(activeSession?.userUuid, activeOwnerKey);
 
   useLayoutEffect(() => {
     if (!enabled) return;
@@ -60,7 +55,7 @@ export function useWorkspaceSessionRuntime(
     }
     previousSessions.current = currentSessions;
     reconcileMessengerSessionModels(sessions);
-    reconcileUsersStores(sessions);
+    reconcileUsersSessions(sessions);
   }, [enabled, sessions]);
 
   useEffect(() => {

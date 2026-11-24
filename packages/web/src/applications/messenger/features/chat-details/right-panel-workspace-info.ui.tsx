@@ -18,8 +18,8 @@ import {
   resolveUserPresenceVisual,
   selectUserDisplayName,
 } from "~/entities/user/user-selectors.lib";
-import { useUsersStore } from "~/entities/user/user.model";
 import type { User, UsersById } from "~/entities/user/user.types";
+import { useUsersById } from "~/entities/user/users";
 import {
   selectCurrentWorkspaceRuntimeContext,
   useWorkspaceAuthStore,
@@ -346,7 +346,7 @@ const RightPanelWorkspaceChannelInfo: React.FC<{
   const summaryTopic = useChatsCatalog((state) =>
     info.topicSummary == null ? null : (state.topicsById[info.topicSummary.topicUuid] ?? null),
   );
-  const workspaceUsersById = useUsersStore((state) => state.usersById);
+  const workspaceUsersById = useUsersById();
   const sessions = useWorkspaceAuthStore((state) => state.sessions);
   const currentAccountId = useWorkspaceAuthStore((state) => state.currentAccountId);
   const runtimeContext = useMemo(

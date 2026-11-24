@@ -46,7 +46,7 @@ Import according to the boundary:
 
 ```ts
 import { useKnownMessage } from "~/applications/messenger/model/messages/messages-consumers";
-import { useUsersStore } from "~/entities/user/user.model";
+import { useUserById } from "~/entities/user/users";
 import { writeText } from "~/shared/lib/clipboard";
 ```
 

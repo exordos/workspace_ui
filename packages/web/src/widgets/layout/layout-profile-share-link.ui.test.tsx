@@ -18,9 +18,13 @@ import { useLayoutResetRightDrawerOnOwnerChange } from "./layout-reset-right-dra
 const getUser = vi.hoisted(() => vi.fn());
 vi.mock("~/shared/api/workspace-client", () => ({ getUser }));
 const readUserCacheProfile = vi.hoisted(() => vi.fn());
+const upsertWorkspaceUserCache = vi.hoisted(() =>
+  vi.fn<typeof WorkspaceUserCacheModule.upsertWorkspaceUserCache>(),
+);
 vi.mock("~/shared/lib/workspace-user-cache-db", async (importOriginal) => ({
   ...(await importOriginal<typeof WorkspaceUserCacheModule>()),
   readWorkspaceUserCacheProfile: readUserCacheProfile,
+  upsertWorkspaceUserCache,
 }));
 const USER = "33333333-3333-4333-8333-333333333333";
 const SESSION: WorkspaceAuthSession = {
@@ -97,6 +101,7 @@ describe("LayoutProfileShareLink", () => {
   beforeEach(() => {
     getUser.mockReset().mockResolvedValue(DTO);
     readUserCacheProfile.mockReset().mockResolvedValue(null);
+    upsertWorkspaceUserCache.mockReset().mockResolvedValue(undefined);
     useWorkspaceAuthStore.setState({ sessions: [SESSION], currentAccountId: SESSION.accountId });
     useUsersStore.getState().clear();
     useUsersStore.getState().startOwnerSync(workspaceRuntimeOwnerKey(SESSION));
@@ -111,10 +116,25 @@ describe("LayoutProfileShareLink", () => {
     expect(getUser).toHaveBeenCalledWith(expect.objectContaining({ projectId: "project-a" }), USER);
     expect(useUsersStore.getState().usersById[USER]?.displayName).toBe("Alice Smith");
     expect(screen.getByTestId("hash")).toBeEmptyDOMElement();
+    expect(upsertWorkspaceUserCache).toHaveBeenCalledExactlyOnceWith(
+      workspaceRuntimeOwnerKey(SESSION),
+      [expect.objectContaining({ uuid: USER })],
+      expect.any(Function),
+    );
     act(() => useRightDrawerStore.getState().close());
     act(() => useUsersStore.getState().setLoadStatus("ready"));
     expect(useRightDrawerStore.getState().open).toBe(false);
     expect(getUser).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps a queued refresh write valid after consuming the link until the session ends", async () => {
+    mount();
+    await waitFor(() => expect(screen.getByTestId("hash")).toBeEmptyDOMElement());
+    const isWriteCurrent = upsertWorkspaceUserCache.mock.calls[0]?.[2];
+    expect(isWriteCurrent?.()).toBe(true);
+
+    act(() => useWorkspaceAuthStore.setState({ sessions: [], currentAccountId: null }));
+    expect(isWriteCurrent?.()).toBe(false);
   });
 
   it.each(["#user/not-a-uuid", "#message-123", ""])(
@@ -152,6 +172,7 @@ describe("LayoutProfileShareLink", () => {
     });
     expect(useRightDrawerStore.getState().open).toBe(false);
     expect(useUsersStore.getState().usersById[USER]).toBeUndefined();
+    expect(upsertWorkspaceUserCache).not.toHaveBeenCalled();
   });
 
   it("does not start a request from props that no longer match the live account", () => {

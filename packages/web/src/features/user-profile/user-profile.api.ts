@@ -5,9 +5,7 @@
  * uuid-based user store cutover.
  */
 
-import { adaptWorkspaceMessengerUserDto } from "~/entities/user/user-adapters.lib";
-import { writeUsersToCacheForOwner } from "~/entities/user/user-sync.lib";
-import { useUsersStore } from "~/entities/user/user.model";
+import { applyOwnUserProjection } from "~/entities/user/users-profile";
 import { buildWorkspaceRequestOptions } from "~/entities/workspace-auth/workspace-auth.lib";
 import {
   selectCurrentWorkspaceRuntimeContext,
@@ -16,7 +14,6 @@ import {
 import {
   captureWorkspaceRuntimeRequestContext,
   isWorkspaceRuntimeRequestInvalidated,
-  workspaceRuntimeOwnerKey,
 } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import { MessengerApiError } from "~/shared/api/messenger-transport.internal";
@@ -144,14 +141,8 @@ export async function updateOwnProfile(
     ) {
       return { ok: true, profile, refreshPending: true };
     }
-    const user = adaptWorkspaceMessengerUserDto(dto);
-    const store = useUsersStore.getState();
-    const ownerKey = workspaceRuntimeOwnerKey(runtime);
-    if (store.ownerKey == null) store.upsertUser(user);
-    else if (!store.upsertUserForOwner(ownerKey, user))
-      return { ok: true, profile, refreshPending: true };
-    writeUsersToCacheForOwner(ownerKey, [user], undefined, () => !invalidated());
-    return { ok: true, profile, refreshPending: false };
+    const user = applyOwnUserProjection(dto, runtime, () => !invalidated());
+    return { ok: true, profile, refreshPending: user == null };
   } catch {
     if (invalidated()) return { ok: false, kind: "stale" };
     // IAM has already saved the edit. A failed projection read must not report a failed save.
@@ -208,17 +199,8 @@ function applyOwnAvatarResponse(
   userDto: WorkspaceMessengerUserDto,
   isCurrent: () => boolean,
 ): OwnAvatarMutationResult {
-  const ownerKey = workspaceRuntimeOwnerKey(runtimeContext);
-  const user = adaptWorkspaceMessengerUserDto(userDto);
-  const state = useUsersStore.getState();
-  let applied = true;
-  if (state.ownerKey == null) {
-    state.upsertUser(user);
-  } else {
-    applied = state.upsertUserForOwner(ownerKey, user);
-  }
-
-  if (!applied) {
+  const user = applyOwnUserProjection(userDto, runtimeContext, isCurrent);
+  if (user == null) {
     return {
       ok: false,
       kind: "transient",
@@ -226,7 +208,6 @@ function applyOwnAvatarResponse(
     };
   }
 
-  writeUsersToCacheForOwner(ownerKey, [user], undefined, isCurrent);
   return { ok: true, avatarUrl: user.avatarUrl };
 }
 

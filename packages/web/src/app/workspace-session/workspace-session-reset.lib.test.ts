@@ -16,7 +16,7 @@ const mocks = vi.hoisted(() => ({
   startPresence: vi.fn(),
   stopPresence: vi.fn(),
   fetchSettings: vi.fn(() => Promise.resolve({ meet_url: null })),
-  userState: { ownerKey: "", usersById: {} },
+  useHasUserForOwner: vi.fn(),
 }));
 
 vi.mock("./workspace-session.lib", () => ({
@@ -27,9 +27,9 @@ vi.mock("./workspace-session.lib", () => ({
 vi.mock("~/entities/workspace-auth/workspace-auth.lib", () => ({
   fetchWorkspaceServerSettingsForOrganization: mocks.fetchSettings,
 }));
-vi.mock("~/entities/user/user.model", () => ({
-  reconcileUsersStores: vi.fn(),
-  useUsersStore: (select: (state: typeof mocks.userState) => unknown) => select(mocks.userState),
+vi.mock("~/entities/user/users-runtime", () => ({
+  reconcileUsersSessions: vi.fn(),
+  useHasUserForOwner: mocks.useHasUserForOwner,
 }));
 
 const owner: WorkspaceAuthSession = {
@@ -53,14 +53,15 @@ afterEach(() => {
 it("stops established session hosts and rejects new work while keeping IAM sessions for reload", () => {
   const sessions = [owner];
   useWorkspaceAuthStore.setState({ sessions, currentAccountId: owner.accountId });
-  mocks.userState = {
-    ownerKey: workspaceRuntimeOwnerKey(owner),
-    usersById: { [owner.userUuid]: {} },
-  };
+  mocks.useHasUserForOwner.mockReturnValue(true);
   mocks.startPresence.mockReturnValue(mocks.stopPresence);
   const { rerender, result } = renderHook(
     ({ sessions }) => useWorkspaceSessionRuntime(sessions, sessions[0] ?? null, true),
     { initialProps: { sessions } },
+  );
+  expect(mocks.useHasUserForOwner).toHaveBeenCalledWith(
+    owner.userUuid,
+    workspaceRuntimeOwnerKey(owner),
   );
   expect(mocks.update).toHaveBeenCalledOnce();
   expect(mocks.startPresence).toHaveBeenCalledOnce();

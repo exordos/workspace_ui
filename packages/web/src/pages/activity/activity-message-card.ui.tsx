@@ -5,7 +5,7 @@ import type {
   MessengerTopic,
 } from "~/applications/messenger/model/messenger.types";
 import { selectUserDisplayName } from "~/entities/user/user-selectors.lib";
-import { useUsersStore } from "~/entities/user/user.model";
+import { useUserById } from "~/entities/user/users";
 import { t } from "~/i18n/i18n";
 import { formatActivityItemTime } from "~/shared/lib/datetime.lib";
 import type { WorkspaceMessageSummaryOptions } from "~/shared/lib/workspace-message-render/workspace-message-document.types";
@@ -30,7 +30,7 @@ function ActivityMessageSenderName({
 }: Readonly<{
   authorUuid: string;
 }>) {
-  const user = useUsersStore((state) => state.usersById[authorUuid]);
+  const user = useUserById(authorUuid);
   return <>{selectUserDisplayName(user, "")}</>;
 }
 

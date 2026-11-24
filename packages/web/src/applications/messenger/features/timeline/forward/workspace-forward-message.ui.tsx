@@ -19,7 +19,7 @@ import {
   selectSelectableWorkspaceUsers,
   selectUserDisplayName,
 } from "~/entities/user/user-selectors.lib";
-import { useUsersStore } from "~/entities/user/user.model";
+import { readActiveUser, useUserIds, useUsersById } from "~/entities/user/users";
 import {
   selectCurrentWorkspaceRuntimeContext,
   useWorkspaceAuthStore,
@@ -117,8 +117,8 @@ const WorkspaceForwardTargetPicker = React.memo<WorkspaceForwardTargetPickerProp
     const [selectedTopic, setSelectedTopic] = useState("");
     const [selectedUserUuid, setSelectedUserUuid] = useState("");
     const [directSearch, setDirectSearch] = useState("");
-    const usersById = useUsersStore((state) => state.usersById);
-    const userIds = useUsersStore((state) => state.userIds);
+    const usersById = useUsersById();
+    const userIds = useUserIds();
 
     const streamOptions = useMemo(() => buildWorkspaceForwardStreamOptions(streams), [streams]);
     const topicOptions = useMemo(
@@ -426,7 +426,7 @@ export const WorkspaceForwardMessageDialog: React.FC = () => {
             selectedText,
             wroteLabel: t("message.replyQuoteWrote"),
             resolveAuthorLabel: (authorUuid) => {
-              const user = useUsersStore.getState().usersById[authorUuid];
+              const user = readActiveUser(authorUuid);
               return user == null ? authorUuid : selectUserDisplayName(user, authorUuid);
             },
             resolveSourceLabel: (message) => {
@@ -434,7 +434,7 @@ export const WorkspaceForwardMessageDialog: React.FC = () => {
               const topic = messengerState.topicsById[message.topicUuid];
               const streamLabel = stream?.name.trim() || message.streamUuid;
               if (stream?.isPrivate && stream.directUserUuid != null) {
-                const directUser = useUsersStore.getState().usersById[stream.directUserUuid];
+                const directUser = readActiveUser(stream.directUserUuid);
                 return selectUserDisplayName(directUser, streamLabel);
               }
               const topicLabel = topic == null ? "" : resolveTopicDisplayInfo(topic.name).label;

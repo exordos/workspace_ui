@@ -17,39 +17,52 @@ vi.mock("../applications/messenger/model/chats/chats", () => ({
 vi.mock("../applications/messenger/model/messages/messages-consumers", () => ({
   readActiveMessageIndex: () => mockMessageIndex,
 }));
-vi.mock("../entities/user/user.model", () => ({
-  useUsersStore: { getState: vi.fn(() => ({})) },
+vi.mock("../entities/user/users", () => ({
+  readActiveUsers: () => mockUsersSnapshot,
 }));
 vi.mock("../entities/workspace-auth/workspace-auth.model", () => ({
   useWorkspaceAuthStore: { getState: vi.fn(() => ({})) },
 }));
-const { mockThemeState, mockChatCatalog, mockMessageIndex, initConsoleCaptureMock } = vi.hoisted(
-  () => ({
-    mockChatCatalog: { folderIds: ["folder"] },
-    mockMessageIndex: {
-      messagesById: {},
-      conversationWindowsById: {
-        conversation: {
-          generation: Symbol("window"),
-          mode: "tail",
-          anchorMessageUuid: null,
-          messageUuids: ["message"],
-          beforePageMarker: null,
-          afterPageMarker: null,
-          revision: 1,
-        },
+const {
+  mockThemeState,
+  mockChatCatalog,
+  mockMessageIndex,
+  mockUsersSnapshot,
+  initConsoleCaptureMock,
+} = vi.hoisted(() => ({
+  mockChatCatalog: { folderIds: ["folder"] },
+  mockMessageIndex: {
+    messagesById: {},
+    conversationWindowsById: {
+      conversation: {
+        generation: Symbol("window"),
+        mode: "tail",
+        anchorMessageUuid: null,
+        messageUuids: ["message"],
+        beforePageMarker: null,
+        afterPageMarker: null,
+        revision: 1,
       },
     },
-    mockThemeState: {
-      paletteId: "orange-warm",
-      mode: "dark",
-      setPalette: vi.fn(),
-      setMode: vi.fn(),
-      toggleMode: vi.fn(),
-    },
-    initConsoleCaptureMock: vi.fn(() => () => {}),
-  }),
-);
+  },
+  mockThemeState: {
+    paletteId: "orange-warm",
+    mode: "dark",
+    setPalette: vi.fn(),
+    setMode: vi.fn(),
+    toggleMode: vi.fn(),
+  },
+  mockUsersSnapshot: {
+    ownerKey: "owner",
+    usersById: { user: { displayName: "Test user" } },
+    userIds: ["user"],
+    loadStatus: "ready",
+    error: null,
+    lastLoadedAt: 100,
+    lastRefreshedAt: 200,
+  },
+  initConsoleCaptureMock: vi.fn(() => () => {}),
+}));
 vi.mock("../entities/theme/theme.model", () => ({
   useThemeStore: {
     getState: vi.fn(() => mockThemeState),
@@ -215,6 +228,18 @@ describe("devtools", () => {
       expect(mockMessageIndex.conversationWindowsById.conversation.messageUuids).toEqual([
         "message",
       ]);
+    });
+
+    it("exposes a detached users snapshot without Zustand mutators", () => {
+      installDevTools();
+      const users = getDev()!.stores.users as { getState: () => typeof mockUsersSnapshot };
+      expect(Object.keys(users)).toEqual(["getState"]);
+      const snapshot = users.getState();
+      expect(snapshot).toEqual(mockUsersSnapshot);
+      snapshot.usersById.user.displayName = "Console edit";
+      snapshot.userIds.push("console-user");
+      expect(mockUsersSnapshot.usersById.user.displayName).toBe("Test user");
+      expect(mockUsersSnapshot.userIds).toEqual(["user"]);
     });
   });
 

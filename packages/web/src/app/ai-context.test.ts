@@ -10,12 +10,13 @@ import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { MESSENGER_ALL_CHATS_FOLDER_UUID } from "../applications/messenger/model/chats/messenger-folder-system-type.lib";
 import { useMessengerStore } from "../applications/messenger/model/chats/messenger.model";
 import { useThemeStore } from "../entities/theme/theme.model";
-import { useUsersStore } from "../entities/user/user.model";
+import { readActiveUser } from "../entities/user/users";
 import {
   useWorkspaceAuthStore,
   type WorkspaceAuthProfile,
 } from "../entities/workspace-auth/workspace-auth.model";
 import { workspaceRuntimeOwnerKey } from "../entities/workspace-runtime/workspace-runtime.lib";
+import { createUser } from "../test/factories";
 import {
   installAiContext,
   notifyAiNewMessage,
@@ -23,8 +24,8 @@ import {
   type AiContextBridge,
 } from "./ai-context";
 
-vi.mock("../entities/user/user.model", () => ({
-  useUsersStore: { getState: vi.fn() },
+vi.mock("../entities/user/users", () => ({
+  readActiveUser: vi.fn(),
 }));
 vi.mock("../entities/theme/theme.model", () => ({
   useThemeStore: { getState: vi.fn() },
@@ -47,9 +48,7 @@ function getAi(): AiContextBridge {
 }
 
 function setupDefaultStoreMocks() {
-  vi.mocked(useUsersStore.getState).mockReturnValue({
-    getUser: vi.fn(() => undefined),
-  } as never);
+  vi.mocked(readActiveUser).mockReturnValue(undefined);
   vi.mocked(useThemeStore.getState).mockReturnValue({
     paletteId: "orange-warm",
     mode: "dark",
@@ -171,13 +170,11 @@ describe("ai-context", () => {
 
     // AI uses user info for personalized responses and context
     it("returns user info from workspace stores when logged in", () => {
-      vi.mocked(useUsersStore.getState).mockReturnValue({
-        getUser: vi.fn((id: string) =>
-          id === "user-uuid"
-            ? { displayName: "Alice Test", email: "alice@example.com" }
-            : undefined,
-        ),
-      } as never);
+      vi.mocked(readActiveUser).mockImplementation((id) =>
+        id === "user-uuid"
+          ? createUser({ uuid: id, displayName: "Alice Test", email: "alice@example.com" })
+          : undefined,
+      );
       activateWorkspaceSession();
 
       installAiContext();
@@ -190,9 +187,7 @@ describe("ai-context", () => {
 
     // Profile may load async — AI should still get available data
     it("returns partial info when user profile is not loaded yet", () => {
-      vi.mocked(useUsersStore.getState).mockReturnValue({
-        getUser: vi.fn(() => undefined),
-      } as never);
+      vi.mocked(readActiveUser).mockReturnValue(undefined);
       activateWorkspaceSession({
         email: "user@example.com",
         username: "fallback-user",

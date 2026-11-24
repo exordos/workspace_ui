@@ -8,11 +8,14 @@ import { removeMessengerStreamProjection } from "~/applications/messenger/runtim
 import { createActivityRealtimeApplier } from "~/entities/activity/activity-realtime-applier.lib";
 import { createExternalAccountRealtimeApplier } from "~/entities/external-account/external-account-realtime-applier.lib";
 import { createExternalChatRealtimeApplier } from "~/entities/external-chat/external-chat-realtime-applier.lib";
-import { workspaceStatusDecoration } from "~/entities/user/user-presence-status.lib";
-import { createUserRealtimeApplier } from "~/entities/user/user-realtime-applier.lib";
 import { selectUserDisplayName } from "~/entities/user/user-selectors.lib";
-import { startWorkspacePresenceReporter } from "~/entities/user/user-workspace-presence-reporter.lib";
-import { useUsersStore } from "~/entities/user/user.model";
+import type { UsersById } from "~/entities/user/user.types";
+import { readActiveUser, readActiveUsers } from "~/entities/user/users";
+import {
+  createUserRealtimeApplier,
+  startWorkspacePresenceReporter,
+  workspaceStatusDecoration,
+} from "~/entities/user/users-runtime";
 import {
   buildWorkspaceRequestOptions,
   ensureFreshWorkspaceSession,
@@ -84,6 +87,8 @@ const repairRealtimeDeletedMessagePointers: NonNullable<
   });
 };
 
+const EMPTY_CALL_INVITE_USERS: Readonly<UsersById> = {};
+
 // The applier calls this only for live frames, outside recovery and catch-up.
 const ingestRealtimeCallInvite: NonNullable<MessengerRealtimeApplierOptions["onMessageCreated"]> = (
   ownerKey,
@@ -92,7 +97,8 @@ const ingestRealtimeCallInvite: NonNullable<MessengerRealtimeApplierOptions["onM
   context,
 ) => {
   if (readWorkspaceSession(context.owner, "active") == null) return;
-  const { usersById } = useUsersStore.getState();
+  const users = readActiveUsers();
+  const usersById = users.ownerKey === ownerKey ? users.usersById : EMPTY_CALL_INVITE_USERS;
   const currentUserUuid = context.owner.userUuid;
   const currentUserDisplayName = selectUserDisplayName(usersById[currentUserUuid], currentUserUuid);
   const invite = buildWorkspaceIncomingDmCallInvite({
@@ -235,8 +241,7 @@ export function startWorkspaceSessionPresence(runtimeContext: WorkspaceRuntimeCo
   const ownerKey = workspaceRuntimeOwnerKey(runtimeContext);
   const readOwnUser = () => {
     if (readWorkspaceSession(runtimeContext, "active") == null) return null;
-    const users = useUsersStore.getState();
-    return users.ownerKey === ownerKey ? (users.usersById[runtimeContext.userUuid] ?? null) : null;
+    return readActiveUser(runtimeContext.userUuid, ownerKey) ?? null;
   };
   return startWorkspacePresenceReporter({
     clientOptions: buildWorkspaceRequestOptions(runtimeContext),

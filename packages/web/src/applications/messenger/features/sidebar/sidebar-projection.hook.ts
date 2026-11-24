@@ -8,8 +8,8 @@ import {
   createMessagesIndexSource,
   type MessagesIndexSnapshot,
 } from "~/applications/messenger/model/messages/messages-consumers";
-import { useUsersStore } from "~/entities/user/user.model";
 import type { UsersById } from "~/entities/user/user.types";
+import { readActiveUsers, subscribeActiveUsers } from "~/entities/user/users";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import {
   isWorkspaceRuntimeRequestContextCurrent,
@@ -40,6 +40,7 @@ interface SidebarProjectionSnapshot {
   messagesById: MessagesIndexSnapshot["messagesById"];
   usersById: UsersById;
 }
+const EMPTY_SIDEBAR_USERS: UsersById = {};
 const EMPTY_SIDEBAR_MESSAGES: MessagesIndexSnapshot["messagesById"] = {};
 
 function createSidebarProjectionSubscription(runtime: WorkspaceRuntimeContext | null) {
@@ -51,7 +52,6 @@ function createSidebarProjectionSubscription(runtime: WorkspaceRuntimeContext | 
     ownerKey: expectedOwner,
     isLoading: runtime != null,
   };
-  const emptyUsers = useUsersStore.getInitialState().usersById;
   let cached: SidebarProjectionSnapshot | undefined;
   const isRuntimeCurrent = () =>
     runtime == null
@@ -65,12 +65,13 @@ function createSidebarProjectionSubscription(runtime: WorkspaceRuntimeContext | 
     const valid = isRuntimeCurrent() && current.ownerKey === expectedOwner;
     const messenger = valid ? current : emptyMessenger;
     const messages = messageSource.getSnapshot();
-    const users = useUsersStore.getState();
+    const users = readActiveUsers();
     const messagesById =
       valid && messages.ownerKey === messenger.ownerKey
         ? messages.messagesById
         : EMPTY_SIDEBAR_MESSAGES;
-    const usersById = valid && users.ownerKey === messenger.ownerKey ? users.usersById : emptyUsers;
+    const usersById =
+      valid && users.ownerKey === messenger.ownerKey ? users.usersById : EMPTY_SIDEBAR_USERS;
     if (
       cached?.messagesById === messagesById &&
       cached.usersById === usersById &&
@@ -138,7 +139,7 @@ function createSidebarProjectionSubscription(runtime: WorkspaceRuntimeContext | 
         messageOwner = state.ownerKey;
         changed(ownerChanged);
       }),
-      useUsersStore.subscribe((state, previous) => changed(state.ownerKey !== previous.ownerKey)),
+      subscribeActiveUsers(changed),
       onVisibilityChange((visible) => {
         if (visible) flush();
         else cancel();

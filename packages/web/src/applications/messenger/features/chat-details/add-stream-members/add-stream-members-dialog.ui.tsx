@@ -7,8 +7,8 @@ import {
   isSelectableWorkspaceUser,
   selectUserDisplayName,
 } from "~/entities/user/user-selectors.lib";
-import { useUsersStore } from "~/entities/user/user.model";
 import type { User } from "~/entities/user/user.types";
+import { useUsersById } from "~/entities/user/users";
 import {
   selectCurrentWorkspaceRuntimeContext,
   useWorkspaceAuthStore,
@@ -72,7 +72,7 @@ export const AddStreamMembersDialog: React.FC<AddStreamMembersDialogProps> = ({ 
   const toggleSelected = useAddStreamMembersStore((s) => s.toggleSelected);
   const close = useAddStreamMembersStore((s) => s.close);
   const submit = useAddStreamMembersStore((s) => s.submit);
-  const usersById = useUsersStore((s) => s.usersById);
+  const usersById = useUsersById();
   const streamsById = useChatsCatalog((s) => s.streamsById);
   const streamBindingIdsByStreamId = useChatsCatalog((s) => s.streamBindingIdsByStreamId);
   const streamBindingsById = useChatsCatalog((s) => s.streamBindingsById);

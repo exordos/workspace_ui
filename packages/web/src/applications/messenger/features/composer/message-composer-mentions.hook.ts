@@ -3,7 +3,7 @@ import {
   selectSelectableWorkspaceUsers,
   selectUserDisplayName,
 } from "~/entities/user/user-selectors.lib";
-import { useUsersStore } from "~/entities/user/user.model";
+import { useUserIds, useUsersById } from "~/entities/user/users";
 import {
   MENTION_SUGGESTION_LIMIT,
   rankMentionSuggestions,
@@ -19,8 +19,8 @@ export function useComposerMentions(
   options: { enabled?: boolean; context?: ComposerMentionContextInput } = {},
 ) {
   const { enabled = true, context } = options;
-  const userIds = useUsersStore((s) => s.userIds);
-  const usersById = useUsersStore((s) => s.usersById);
+  const userIds = useUserIds();
+  const usersById = useUsersById();
   const mentionQuery = useMentionSuggestStore((s) => s.query);
   const mentionSuggestions = useMentionSuggestStore((s) => s.results);
   const showMentions = useMentionSuggestStore((s) => s.visible);

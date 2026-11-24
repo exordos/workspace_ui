@@ -12,7 +12,7 @@ import type {
   MessengerSidebarStreamItem,
   MessengerSidebarTopicItem,
 } from "~/applications/messenger/model/messenger.types";
-import { useUsersStore } from "~/entities/user/user.model";
+import { useUsersById } from "~/entities/user/users";
 import {
   selectCurrentWorkspaceRuntimeContext,
   useWorkspaceAuthStore,
@@ -185,7 +185,7 @@ export const InboxPage: React.FC = () => {
     return null;
   }, [workspaceRoute, workspaceRuntimeContext]);
   const messagesById = useMessageIndex((state) => state.messagesById);
-  const usersById = useUsersStore((state) => state.usersById);
+  const usersById = useUsersById();
   const streamIds = useChatsCatalog((state) => state.streamIds);
   const streamsById = useChatsCatalog((state) => state.streamsById);
   const topicIds = useChatsCatalog((state) => state.topicIds);

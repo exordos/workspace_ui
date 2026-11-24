@@ -10,8 +10,8 @@ import {
 import { summarizeMessengerPoll } from "~/applications/messenger/model/messages/polls/messenger-poll-text.lib";
 import type { MessengerMessage } from "~/applications/messenger/model/messenger.types";
 import { selectUserDisplayName } from "~/entities/user/user-selectors.lib";
-import { useUsersStore } from "~/entities/user/user.model";
 import type { User } from "~/entities/user/user.types";
+import { useUserById } from "~/entities/user/users";
 import { t } from "~/i18n/i18n";
 import { formatMessageTimeWithDate } from "~/shared/lib/datetime.lib";
 import type { WorkspaceMessageBodyQuoteSegment } from "~/shared/lib/workspace-message-render/workspace-message-document.types";
@@ -237,9 +237,7 @@ function WorkspaceMessageQuotePresentation({
     },
     [],
   );
-  const author = useUsersStore((state) =>
-    resolved.message == null ? undefined : state.usersById[resolved.message.authorUuid],
-  );
+  const author = useUserById(resolved.message?.authorUuid);
   const authorLabel = resolveQuoteAuthorLabel({
     isForwardSnapshot,
     status: resolved.status,

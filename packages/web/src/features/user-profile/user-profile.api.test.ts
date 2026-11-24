@@ -215,6 +215,42 @@ describe("Workspace own avatar API", () => {
     );
   });
 
+  it("can apply an own avatar before the selected catalog is initialized", async () => {
+    useUsersStore.getState().clear();
+    const avatar = "urn:image:33333333-3333-4333-8333-333333333333";
+    uploadUserAvatarMock.mockResolvedValue(createUserDto(avatar));
+
+    await expect(uploadOwnAvatar(runtime, new File(["avatar"], "avatar.png"))).resolves.toEqual({
+      ok: true,
+      avatarUrl: avatar,
+    });
+    expect(useUsersStore.getState().ownerKey).toBeNull();
+    expect(useUsersStore.getState().usersById[USER_UUID]?.avatarUrl).toBe(avatar);
+    expect(writeUsersToCacheForOwnerMock).toHaveBeenCalledWith(
+      workspaceRuntimeOwnerKey(runtime),
+      [expect.objectContaining({ uuid: USER_UUID })],
+      undefined,
+      expect.any(Function),
+    );
+  });
+
+  it("does not write another user's avatar response to the selected catalog", async () => {
+    const anotherUserUuid = "33333333-3333-4333-8333-333333333333";
+    uploadUserAvatarMock.mockResolvedValue({
+      ...createUserDto("urn:image:44444444-4444-4444-8444-444444444444"),
+      uuid: anotherUserUuid,
+    });
+
+    await expect(
+      uploadOwnAvatar(runtime, new File(["avatar"], "avatar.png")),
+    ).resolves.toMatchObject({
+      ok: false,
+      kind: "transient",
+    });
+    expect(useUsersStore.getState().usersById[anotherUserUuid]).toBeUndefined();
+    expect(writeUsersToCacheForOwnerMock).not.toHaveBeenCalled();
+  });
+
   it("keeps the default avatar returned by reset instead of clearing it locally", async () => {
     const avatar = "urn:gravatar:0123456789abcdef0123456789abcdef";
     resetUserAvatarMock.mockResolvedValue(createUserDto(avatar));

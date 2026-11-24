@@ -1,7 +1,7 @@
 import { useCallback, useLayoutEffect, useMemo, useRef } from "react";
 import { readActiveChats, useChatsCatalog } from "~/applications/messenger/model/chats/chats";
 import { useMessageIndex } from "~/applications/messenger/model/messages/messages-consumers";
-import { useUsersStore } from "~/entities/user/user.model";
+import { useUsersById, useUsersOwnerKey } from "~/entities/user/users";
 import {
   selectCurrentWorkspaceRuntimeContext,
   useWorkspaceAuthStore,
@@ -25,8 +25,8 @@ export function useEncryptedChatInfo(streamUuid: string, sendingKeyUuid: string 
   const bindingsById = useChatsCatalog((state) => state.streamBindingsById);
   const messagesOwnerKey = useMessageIndex((state) => state.ownerKey);
   const messagesById = useMessageIndex((state) => state.messagesById);
-  const usersOwnerKey = useUsersStore((state) => state.ownerKey);
-  const usersById = useUsersStore((state) => state.usersById);
+  const usersOwnerKey = useUsersOwnerKey();
+  const usersById = useUsersById();
   const projection = useMemo(
     () =>
       selectEncryptedChatInfo({

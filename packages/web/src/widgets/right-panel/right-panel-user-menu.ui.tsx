@@ -5,7 +5,7 @@ import { useThemeStore } from "~/entities/theme/theme.model";
 import { readManualStatus } from "~/entities/user/user-manual-status.lib";
 import { selectUserStatusLabel } from "~/entities/user/user-selectors.lib";
 import { updateWorkspaceOwnStatus } from "~/entities/user/user-workspace-status-actions.lib";
-import { useUsersStore } from "~/entities/user/user.model";
+import { useUserById } from "~/entities/user/users";
 import { removeWorkspaceSession } from "~/entities/workspace-auth/workspace-auth.lib";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { resolveWorkspacePostLogoutRoute } from "~/entities/workspace-auth/workspace-post-logout-route.lib";
@@ -66,11 +66,7 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
       : undefined;
   });
   const getCurrentWorkspaceSession = useWorkspaceAuthStore((s) => s.getCurrentSession);
-  const currentWorkspaceUser = useUsersStore((s) =>
-    currentWorkspaceSession?.userUuid != null
-      ? s.usersById[currentWorkspaceSession.userUuid]
-      : undefined,
-  );
+  const currentWorkspaceUser = useUserById(currentWorkspaceSession?.userUuid);
   const currentThemeMode = useThemeStore((s) => s.mode);
   const [externalAccountsOpen, setExternalAccountsOpen] = useState(false);
   const [statusDialogOpen, setStatusDialogOpen] = useState(false);

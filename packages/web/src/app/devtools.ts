@@ -13,7 +13,7 @@ import { readChatCatalogDiagnostics } from "~/applications/messenger/model/chats
 import { readActiveMessageIndex } from "~/applications/messenger/model/messages/messages-consumers";
 import { useCallParticipantsStore } from "~/entities/call/call.model";
 import { useThemeStore } from "~/entities/theme/theme.model";
-import { useUsersStore } from "~/entities/user/user.model";
+import { readActiveUsers } from "~/entities/user/users";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { t, setLocale, getLocale, getSupportedLocales } from "~/i18n/i18n";
 import { initConsoleCapture } from "~/shared/lib/console-capture.lib";
@@ -36,7 +36,7 @@ interface DevTools {
   stores: {
     messenger: { getState: typeof readChatCatalogDiagnostics };
     messages: { getState: typeof readMessageDiagnostics };
-    users: typeof useUsersStore;
+    users: { getState: typeof readActiveUsers };
     workspaceAuth: typeof useWorkspaceAuthStore;
     theme: typeof useThemeStore;
     sidebar: typeof useSidebarConfigStore;
@@ -98,7 +98,7 @@ export function installDevTools(): void {
     stores: {
       messenger: { getState: () => structuredClone(readChatCatalogDiagnostics()) },
       messages: { getState: readMessageDiagnostics },
-      users: useUsersStore,
+      users: { getState: () => structuredClone(readActiveUsers()) },
       workspaceAuth: useWorkspaceAuthStore,
       theme: useThemeStore,
       sidebar: useSidebarConfigStore,
@@ -147,7 +147,7 @@ Log scopes: app, api, realtime, connection-health, action, store:<name>, trace:*
   __dev__.logs() / __dev__.logs("error")
   __dev__.clearLogs()
 
-  __dev__.stores.<name>.getState()   — state snapshot (messenger and messages are read-only)
+  __dev__.stores.<name>.getState()   — state snapshot (messenger, messages and users are read-only)
   __dev__.theme.toggle() / __dev__.theme.setPalette("blue-cold")
   __dev__.i18n.setLocale("en")
   __dev__.perf.startTimer("label")

@@ -83,18 +83,23 @@ import {
   chatCommands,
   useChatRouteMembership,
 } from "~/applications/messenger/model/chats/chat-commands";
-import {
-  createWorkspaceComposerDrafts,
-  getEmptyWorkspaceComposerDraftSnapshot,
-} from "~/applications/messenger/model/drafts/composer-draft-actions.lib";
-import type { WorkspaceComposerDraftContent } from "~/applications/messenger/model/drafts/composer-draft.types";
+import { readActiveChats, useChatsCatalog } from "~/applications/messenger/model/chats/chats";
+import { isWorkspaceSelfChat } from "~/applications/messenger/model/chats/messenger-self-chat.lib";
 import { subscribeRealChatKeyChanges } from "~/applications/messenger/model/crypto/chat-crypto-resources.lib";
 import {
   decryptRealChatEnvelopeResult,
   decryptRealChatMessage,
 } from "~/applications/messenger/model/crypto/chat-crypto-runtime.lib";
 import { acquireChatCryptoSession } from "~/applications/messenger/model/crypto/chat-crypto-session.lib";
-import { readActiveChats, useChatsCatalog } from "~/applications/messenger/model/chats/chats";
+import {
+  buildMessengerSecretMarkdown,
+  restoreMessengerSecretMarkdown,
+} from "~/applications/messenger/model/crypto/messenger-secret-message.lib";
+import {
+  createWorkspaceComposerDrafts,
+  getEmptyWorkspaceComposerDraftSnapshot,
+} from "~/applications/messenger/model/drafts/composer-draft-actions.lib";
+import type { WorkspaceComposerDraftContent } from "~/applications/messenger/model/drafts/composer-draft.types";
 import { messageCommands } from "~/applications/messenger/model/messages/message-commands";
 import {
   createMessages,
@@ -110,6 +115,8 @@ import {
 } from "~/applications/messenger/model/messages/messages-consumers";
 import { canPrepareMessengerEncryptedMessage } from "~/applications/messenger/model/messages/messenger-message-content.lib";
 import type { MessengerSendOptions } from "~/applications/messenger/model/messages/outgoing/messenger-outbox.types";
+import { supportsMessengerPolls } from "~/applications/messenger/model/messages/polls/messenger-poll-actions.lib";
+import { summarizeMessengerPoll } from "~/applications/messenger/model/messages/polls/messenger-poll-text.lib";
 import {
   conversationIdForStream,
   conversationIdForTopic,
@@ -117,15 +124,8 @@ import {
   parseMessengerConversationId,
   selectMessengerConversationFromWorkspaceRoute,
 } from "~/applications/messenger/model/messenger-ids.lib";
-import { supportsMessengerPolls } from "~/applications/messenger/model/messages/polls/messenger-poll-actions.lib";
-import { summarizeMessengerPoll } from "~/applications/messenger/model/messages/polls/messenger-poll-text.lib";
 import { buildMessengerRequestOptions } from "~/applications/messenger/model/messenger-request-options.lib";
 import { runMessengerRuntimeMutation } from "~/applications/messenger/model/messenger-runtime-mutation.lib";
-import {
-  buildMessengerSecretMarkdown,
-  restoreMessengerSecretMarkdown,
-} from "~/applications/messenger/model/crypto/messenger-secret-message.lib";
-import { isWorkspaceSelfChat } from "~/applications/messenger/model/chats/messenger-self-chat.lib";
 import type {
   MessengerConversationId,
   MessengerMessage,
@@ -134,8 +134,8 @@ import type {
   MessengerUuid,
 } from "~/applications/messenger/model/messenger.types";
 import { selectUserDisplayName } from "~/entities/user/user-selectors.lib";
-import { useUsersStore } from "~/entities/user/user.model";
 import type { UsersById } from "~/entities/user/user.types";
+import { useUsersById } from "~/entities/user/users";
 import {
   selectCurrentWorkspaceRuntimeContext,
   useWorkspaceAuthStore,
@@ -159,17 +159,6 @@ import type { RightDrawerContextValue } from "~/shared/contexts/right-drawer.typ
 import { chatBottomNoticeBarClassName } from "~/shared/lib/chat-bottom-notice-bar.lib";
 import { writeText } from "~/shared/lib/clipboard";
 import { createLogger } from "~/shared/lib/logger";
-import { useWorkspaceMessageAnchorNavigation } from "./anchor-navigation/workspace-message-anchor-navigation.hook";
-import {
-  useWorkspaceConversationOpening,
-  useWorkspaceTopicResolution,
-} from "./conversation-opening/workspace-conversation-opening.hook";
-import type {
-  WorkspaceMessageAnchorFocusTarget,
-  WorkspaceMessageAnchorNavigationIntent,
-  WorkspaceMessageAnchorPreviewPresentation,
-  WorkspaceMessageAnchorRouteRequest,
-} from "./anchor-navigation/workspace-message-anchor-navigation.types";
 import { toast } from "~/shared/lib/toast/toast";
 import {
   createWorkspaceFileResourceCache,
@@ -210,6 +199,8 @@ import { Button } from "~/shared/ui/button";
 import { Icon } from "~/shared/ui/icon";
 import { Spinner } from "~/shared/ui/loading";
 import { ChatPageComposerSection } from "../../features/composer/chat-page-composer-section.ui";
+import { ChatPageWorkspaceMessageListSection } from "../../features/timeline/chat-page-workspace-message-list-section.ui";
+import { useWorkspaceMessageAnchorNavigation } from "./anchor-navigation/workspace-message-anchor-navigation.hook";
 import {
   hasConversationBeenViewed,
   markConversationViewed,
@@ -227,7 +218,16 @@ import {
   ChatPageClosedTopicPrompt,
   ChatPageStreamTopicPrompt,
 } from "./chat-page-stream-topic-prompt.ui";
-import { ChatPageWorkspaceMessageListSection } from "../../features/timeline/chat-page-workspace-message-list-section.ui";
+import {
+  useWorkspaceConversationOpening,
+  useWorkspaceTopicResolution,
+} from "./conversation-opening/workspace-conversation-opening.hook";
+import type {
+  WorkspaceMessageAnchorFocusTarget,
+  WorkspaceMessageAnchorNavigationIntent,
+  WorkspaceMessageAnchorPreviewPresentation,
+  WorkspaceMessageAnchorRouteRequest,
+} from "./anchor-navigation/workspace-message-anchor-navigation.types";
 import type { WorkspaceChatMessagesLoadErrorKind } from "../../features/timeline/chat-page-workspace-message-list-section.types";
 
 const toggleChatInfoDrawer = (rightDrawer: RightDrawerContextValue | null): void => {
@@ -1208,9 +1208,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
     (state) => state.realtimeReadyRuntimeGeneration,
   );
   const realtimeReadyOwnerKey = useChatsCatalog((state) => state.realtimeReadyOwnerKey);
-  const usersById = useUsersStore((state) =>
-    Object.keys(state.usersById).length > 0 ? state.usersById : EMPTY_USERS_BY_ID,
-  );
+  const usersById = useUsersById(EMPTY_USERS_BY_ID);
   const topicsById = useChatsCatalog((state) => state.topicsById);
   const topicIds = useChatsCatalog((state) => state.topicIds);
   const allWorkspaceMessagesById = useMessageIndex((state) =>

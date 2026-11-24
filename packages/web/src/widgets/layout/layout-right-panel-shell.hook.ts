@@ -13,7 +13,7 @@ import type {
   MessengerMessage,
   MessengerUuid,
 } from "~/applications/messenger/model/messenger.types";
-import { useUsersStore } from "~/entities/user/user.model";
+import { useUsersById, useUsersOwnerKey } from "~/entities/user/users";
 import {
   selectCurrentWorkspaceRuntimeContext,
   useWorkspaceAuthStore,
@@ -106,8 +106,8 @@ export function useLayoutRightPanelShell(
   const workspaceStreamBindingIdsByStreamId = useChatsCatalog(
     (state) => state.streamBindingIdsByStreamId,
   );
-  const workspaceUsersById = useUsersStore((state) => state.usersById);
-  const workspaceUsersOwnerKey = useUsersStore((state) => state.ownerKey);
+  const workspaceUsersById = useUsersById();
+  const workspaceUsersOwnerKey = useUsersOwnerKey();
   const workspaceSessions = useWorkspaceAuthStore((state) => state.sessions);
   const workspaceCurrentAccountId = useWorkspaceAuthStore((state) => state.currentAccountId);
   const workspaceRuntimeContext = useMemo(
