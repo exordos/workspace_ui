@@ -3,8 +3,10 @@ import {
   isWorkspaceRuntimeRequestContextCurrent,
   workspaceRuntimeOwnerKey,
 } from "~/entities/workspace-runtime/workspace-runtime.lib";
+import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import { getServerSettings } from "~/shared/api/messenger-client";
 import type { WorkspaceMessengerServerSettingsDto } from "~/shared/api/messenger.types";
+import type { WorkspaceClientOptions } from "~/shared/api/workspace-client";
 import {
   DEFAULT_IAM_TOKEN_URL,
   decodeWorkspaceIamClaims,
@@ -26,8 +28,10 @@ import { deleteWorkspaceExternalAccountOwnerCache } from "~/shared/lib/workspace
 import { deleteWorkspaceMessengerOwnerCache } from "~/shared/lib/workspace-messenger-cache-db";
 import { workspaceOrgOriginFromLoginServerUrlInput } from "~/shared/lib/workspace-org-origin.lib";
 import { deleteWorkspaceUserOwnerCache } from "~/shared/lib/workspace-user-cache-db";
+import { buildWorkspaceSessionRequestOptions } from "./workspace-auth-request-options.lib";
 import { useWorkspaceAuthStore, workspaceAuthSessionIncarnation } from "./workspace-auth.model";
 import { recordSuccessfulWorkspaceOrganization } from "./workspace-organization-history.lib";
+import type { WorkspaceRequestOptionsOverrides } from "./workspace-auth-request-options.lib";
 import type { WorkspaceAuthProfile, WorkspaceAuthSession } from "./workspace-auth.model";
 
 const TOKEN_REFRESH_SKEW_MS = 60_000;
@@ -771,6 +775,21 @@ export function ensureFreshWorkspaceSession(
     })
     .catch(() => undefined);
   return raceWithAbortSignal(refreshPromise, options.signal);
+}
+
+// Build options for the common Workspace API with the captured runtime's auth session.
+export function buildWorkspaceRequestOptions(
+  runtimeContext: WorkspaceRuntimeContext,
+  overrides?: WorkspaceRequestOptionsOverrides,
+  signal?: AbortSignal,
+): WorkspaceClientOptions {
+  return buildWorkspaceSessionRequestOptions({
+    runtimeContext,
+    refreshSession: ensureFreshWorkspaceSession,
+    apiPath: "/api/workspace/v1",
+    overrides,
+    signal,
+  });
 }
 
 export async function prepareWorkspaceProjectLogin({

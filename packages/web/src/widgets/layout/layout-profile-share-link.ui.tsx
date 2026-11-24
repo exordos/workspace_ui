@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { buildWorkspaceRequestOptions } from "~/applications/messenger/model/messenger-request-options.lib";
 import { applyBootstrapUsers, resolveCachedWorkspaceUser } from "~/entities/user/user-sync.lib";
 import { useUsersStore } from "~/entities/user/user.model";
+import { buildWorkspaceRequestOptions } from "~/entities/workspace-auth/workspace-auth.lib";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import {
   captureWorkspaceRuntimeRequestContext,

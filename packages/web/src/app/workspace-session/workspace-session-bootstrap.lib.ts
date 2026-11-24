@@ -1,4 +1,3 @@
-import { buildWorkspaceRequestOptions } from "~/applications/messenger/model/messenger-request-options.lib";
 import {
   invalidateMessengerSessionProtectedResources,
   markMessengerSessionBootstrapError,
@@ -12,7 +11,10 @@ import {
   refreshWorkspaceSessionUsers,
   restoreWorkspaceSessionUsers,
 } from "~/entities/user/user-sync.lib";
-import { ensureFreshWorkspaceSession } from "~/entities/workspace-auth/workspace-auth.lib";
+import {
+  buildWorkspaceRequestOptions,
+  ensureFreshWorkspaceSession,
+} from "~/entities/workspace-auth/workspace-auth.lib";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { isWorkspaceRuntimeRequestContextCurrent } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";

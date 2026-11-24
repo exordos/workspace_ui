@@ -10,6 +10,7 @@ import {
   refreshWorkspaceSessionUsers,
   restoreWorkspaceSessionUsers,
 } from "~/entities/user/user-sync.lib";
+import type * as WorkspaceAuthModule from "~/entities/workspace-auth/workspace-auth.lib";
 import { ensureFreshWorkspaceSession } from "~/entities/workspace-auth/workspace-auth.lib";
 import {
   useWorkspaceAuthStore,
@@ -34,7 +35,8 @@ vi.mock("~/entities/user/user-sync.lib", () => ({
   refreshWorkspaceSessionUsers: vi.fn(),
   restoreWorkspaceSessionUsers: vi.fn(),
 }));
-vi.mock("~/entities/workspace-auth/workspace-auth.lib", () => ({
+vi.mock("~/entities/workspace-auth/workspace-auth.lib", async (importOriginal) => ({
+  ...(await importOriginal<typeof WorkspaceAuthModule>()),
   ensureFreshWorkspaceSession: vi.fn(),
 }));
 vi.mock("~/shared/api/workspace-client", () => ({ getEpoch: vi.fn() }));

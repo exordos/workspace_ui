@@ -13,8 +13,6 @@
     "entities/feed/feed.api.ts -> applications/messenger/model/messenger-request-options.lib.ts",
     "entities/feed/feed.api.ts -> applications/messenger/model/messenger.types.ts",
     "entities/feed/feed.model.ts -> applications/messenger/model/messenger.types.ts",
-    "entities/user/user-sync.lib.ts -> applications/messenger/model/messenger-request-options.lib.ts",
-    "entities/user/user-workspace-status-actions.lib.ts -> applications/messenger/model/messenger-request-options.lib.ts",
     "entities/workspace-auth/workspace-auth.lib.ts -> applications/messenger/model/messenger-runtime-mutation.lib.ts"
   ],
   "legacy-direction": [

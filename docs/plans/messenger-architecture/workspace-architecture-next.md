@@ -13,11 +13,9 @@
 - Декларации `import type` и `export type` участвуют только в проверке границ. Циклы определяются по статическим зависимостям исполнения. Формы `import { type X }` и `export { type X }` сохраняют такую зависимость при `verbatimModuleSyntax`.
 - Существующие нарушения перечислены по правилу и направленной паре файлов. При исправлении связи удали её запись из списка исключений и повтори `npm run arch:check`. Команда показывает новые нарушения с путями файлов и требует удалить записи, которые больше не нужны. [Список исключений](../../../scripts/check-architecture-baseline.json)
 
-Этапы 2–4 запланированы.
-
 ## 2. Разорвать зависимости от Messenger
 
-1. Передать `buildWorkspaceRequestOptions` и общую логику получения токена владельцу Workspace auth. Переключить потребителей на этот вход. Сохранить выбор сессии, обновление токена и отмену запросов. [Текущая сборка параметров](../../../packages/web/src/applications/messenger/model/messenger-request-options.lib.ts)
+1. **Готово.** `buildWorkspaceRequestOptions` доступна через Workspace auth. Общая сборка параметров и обновление токена используются запросами Workspace и Messenger. Сессия запроса выбирается по переданному runtime, сигнал отмены передаётся при обновлении токена. [Вход Workspace auth](../../../packages/web/src/entities/workspace-auth/workspace-auth.lib.ts) · [Общая сборка параметров](../../../packages/web/src/entities/workspace-auth/workspace-auth-request-options.lib.ts)
 2. Отдельным изменением подключить очистку ресурсов Messenger через `app`. Auth определяет завершение сессии и отзывает право записи. Messenger дожидается текущих операций и удаляет свой кеш. Повторный вход с тем же ключом владельца делает прежнее удаление неактуальным. [Действующая очистка](../../../packages/web/src/entities/workspace-auth/workspace-auth.lib.ts) · [Правила привязки к сессии](../../ORG_SCOPED_ASYNC_SAFETY.md#selected-screen-and-owner-operations)
 
 ## 3. Открыть контракт `users`

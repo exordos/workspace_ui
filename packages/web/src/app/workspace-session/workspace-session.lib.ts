@@ -1,6 +1,5 @@
 import { repairDeletedMessagePointers } from "~/applications/messenger/model/chats/messenger-deleted-message-pointer-repair.lib";
 import { createMessengerReactionAggregateRevalidateHandler } from "~/applications/messenger/model/messages/messenger-message-reactions-actions.lib";
-import { buildWorkspaceRequestOptions } from "~/applications/messenger/model/messenger-request-options.lib";
 import {
   createMessengerRealtimeApplier,
   type MessengerRealtimeApplierOptions,
@@ -14,7 +13,10 @@ import { createUserRealtimeApplier } from "~/entities/user/user-realtime-applier
 import { selectUserDisplayName } from "~/entities/user/user-selectors.lib";
 import { startWorkspacePresenceReporter } from "~/entities/user/user-workspace-presence-reporter.lib";
 import { useUsersStore } from "~/entities/user/user.model";
-import { ensureFreshWorkspaceSession } from "~/entities/workspace-auth/workspace-auth.lib";
+import {
+  buildWorkspaceRequestOptions,
+  ensureFreshWorkspaceSession,
+} from "~/entities/workspace-auth/workspace-auth.lib";
 import {
   useWorkspaceAuthStore,
   workspaceAuthSessionIncarnation,

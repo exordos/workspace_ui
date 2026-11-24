@@ -10,10 +10,7 @@ import {
   getJsonResult,
   sendFormDataResult,
 } from "~/shared/api/messenger-transport.internal";
-import {
-  buildMessengerRequestOptions,
-  buildWorkspaceRequestOptions,
-} from "./messenger-request-options.lib";
+import { buildMessengerRequestOptions } from "./messenger-request-options.lib";
 
 function createRuntimeContext(
   overrides: Partial<WorkspaceRuntimeContext> = {},
@@ -131,7 +128,7 @@ describe("messenger request options", () => {
   it("uses the Workspace base for common API calls outside dev builds", () => {
     expect(
       withDevEnv(false, () =>
-        buildWorkspaceRequestOptions(
+        workspaceAuth.buildWorkspaceRequestOptions(
           createRuntimeContext({ organizationOrigin: "https://org-a.example.com/" }),
         ),
       ),
@@ -140,21 +137,42 @@ describe("messenger request options", () => {
     });
   });
 
-  it("keeps explicit overrides for project and dev target origin", () => {
-    expect(
-      buildMessengerRequestOptions(createRuntimeContext(), {
+  it.each([buildMessengerRequestOptions, workspaceAuth.buildWorkspaceRequestOptions])(
+    "keeps explicit overrides for %p",
+    (buildOptions) => {
+      expect(
+        buildOptions(createRuntimeContext(), {
+          baseUrl: " /custom-api ",
+          devTargetOrigin: " https://override.example.com ",
+          fetchImpl: fetch,
+          projectId: " project-b ",
+        }),
+      ).toMatchObject({
+        accessToken: "access-token-a",
         baseUrl: "/custom-api",
         devTargetOrigin: "https://override.example.com",
         fetchImpl: fetch,
         projectId: "project-b",
-      }),
-    ).toMatchObject({
-      accessToken: "access-token-a",
-      baseUrl: "/custom-api",
-      devTargetOrigin: "https://override.example.com",
-      fetchImpl: fetch,
-      projectId: "project-b",
+      });
+    },
+  );
+
+  it("uses the request signal unless the token lookup supplies its own", async () => {
+    const requestSignal = new AbortController().signal;
+    const tokenSignal = new AbortController().signal;
+    const refresh = vi
+      .spyOn(workspaceAuth, "ensureFreshWorkspaceSession")
+      .mockResolvedValue(createAuthSession());
+    const options = buildMessengerRequestOptions(createRuntimeContext(), undefined, requestSignal);
+
+    await options.getAccessToken?.();
+    await options.getAccessToken?.({ signal: tokenSignal });
+
+    expect(refresh).toHaveBeenNthCalledWith(1, "account-a", {
+      force: false,
+      signal: requestSignal,
     });
+    expect(refresh).toHaveBeenNthCalledWith(2, "account-a", { force: false, signal: tokenSignal });
   });
 
   it("refreshes once after REST 401 and retries with the new authorization header", async () => {
@@ -241,7 +259,7 @@ describe("messenger request options", () => {
     expect(forbiddenFetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("deduplicates parallel forced refreshes for the same session", async () => {
+  it("shares a forced refresh across Messenger requests and Workspace options", async () => {
     resetWorkspaceAuthStore();
     useWorkspaceAuthStore.setState({
       sessions: [createAuthSession({ accessToken: "old-token" })],
@@ -285,8 +303,16 @@ describe("messenger request options", () => {
     await waitForCondition(() => forceRefreshCount === 1);
 
     expect(forceRefreshCount).toBe(1);
+    const workspaceRefresh = expect(
+      workspaceAuth
+        .buildWorkspaceRequestOptions(createRuntimeContext())
+        .getAccessToken?.({ force: true }),
+    ).resolves.toBe("new-token");
     resolveForcedRefresh();
-    await expect(Promise.all([firstRequest, secondRequest])).resolves.toHaveLength(2);
+    await Promise.all([
+      expect(Promise.all([firstRequest, secondRequest])).resolves.toHaveLength(2),
+      workspaceRefresh,
+    ]);
     expect(authorizationHeaders(fetchMock)).toEqual([
       "Bearer old-token",
       "Bearer old-token",
