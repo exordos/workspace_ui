@@ -124,7 +124,8 @@ Run commands from the repository root unless stated otherwise.
 | Storybook bundling            | `npm run build-storybook` (outputs `packages/web/storybook-static`)                              |
 | Focused web behavior          | `npm run test --workspace=web -- src/path/to/file.test.ts` (replace the path)                    |
 | Type/API/store contracts      | `npm run typecheck` (web and Electron)                                                           |
-| All unit tests                | `npm run test` (web Vitest and Electron script tests)                                            |
+| Web import boundaries         | `npm run arch:check`                                                                             |
+| All unit tests                | `npm run test` (architecture checker, web Vitest and Electron script tests)                      |
 | Broad web quality gate        | `npm run check` (web typecheck, lint, format, coverage; complexity report; npm audit)            |
 | Electron scripts              | `npm run test --workspace=exordos-workspace`                                                     |
 | User flow or route regression | Focused Playwright spec, e.g. `npm run e2e -- e2e/workspace-realtime.spec.ts --project=chromium` |

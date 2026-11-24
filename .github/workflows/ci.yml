@@ -42,6 +42,9 @@ jobs:
       - name: Install dependencies
         run: npm install
 
+      - name: Architecture imports
+        run: npm run arch:check
+
       - name: TypeScript
         run: npm run typecheck
 
@@ -98,7 +101,7 @@ jobs:
           TEST_RESULT: ${{ needs.tests.result }}
         run: |
           if [[ "${LINT_RESULT}" != "success" || "${TEST_RESULT}" != "success" ]]; then
-            echo "::error::TypeScript, ESLint and unit tests must all succeed."
+            echo "::error::Architecture imports, TypeScript, ESLint and unit tests must all succeed."
             exit 1
           fi
 
