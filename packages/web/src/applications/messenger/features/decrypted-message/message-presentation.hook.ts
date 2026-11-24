@@ -275,16 +275,12 @@ export function useMessagePresentations(
   return { scope, presentations, pendingMessageUuids };
 }
 
-/** Reading a prepared result does not create another asynchronous lifecycle. */
+/** Read the window's result for a message that needs decryption. */
 export function usePreparedMessagePresentation(
-  message: MessengerMessage | null,
+  message: MessengerMessage,
 ): MessagePresentation | undefined {
   const prepared = useContext(MessagePresentationContext);
-  if (message == null) return undefined;
-  const immediate = getImmediateMessengerMessageContent(message);
-  return immediate == null
-    ? prepared?.get(getMessengerMessageContentKey(message))
-    : { ...immediate, retry: NOOP };
+  return prepared?.get(getMessengerMessageContentKey(message));
 }
 
 /** Mount only in a fallback component when no prepared encrypted result exists. */

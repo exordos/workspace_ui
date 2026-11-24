@@ -24,8 +24,9 @@ function KeyResponseServiceMessage({
   response,
   ...props
 }: Readonly<WorkspaceEncryptedMessageBubbleProps & { response: KeyResponsePayload }>) {
-  const { message, currentUserUuid, resolveAuthorLabel, actions } = props;
-  const suppliedRequest = actions?.resolveKeyRequestMessage?.(response.requestMessageUuid);
+  const { message, currentUserUuid, resolveAuthorLabel, actions, linkedKeyRequest } = props;
+  const suppliedRequest =
+    linkedKeyRequest ?? actions?.resolveKeyRequestMessage?.(response.requestMessageUuid);
   const { message: resolvedRequest } = useResolvedMessengerQuoteMessage(
     response.requestMessageUuid,
     suppliedRequest == null,

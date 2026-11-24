@@ -17,17 +17,25 @@ function LocalWorkspaceMessageBubble({
   return <WorkspaceMessageContentBubble {...props} content={content} />;
 }
 
+// Only encrypted bodies consume the prepared window; ordinary messages already have their body.
+function PreparedWorkspaceMessageBubble({
+  source,
+  ...props
+}: WorkspaceMessageBubbleProps & { readonly source: MessengerMessage }) {
+  const content = usePreparedMessagePresentation(source);
+  if (content == null) return <LocalWorkspaceMessageBubble {...props} source={source} />;
+  return <WorkspaceMessageContentBubble {...props} content={content} />;
+}
+
 export const WorkspaceMessageBubble = React.memo(function WorkspaceMessageBubble(
   props: WorkspaceMessageBubbleProps,
 ) {
   const source = props.message.kind === "server" ? props.message.message : null;
-  const content = usePreparedMessagePresentation(source);
-  if (source?.payload.kind === "poll")
+  if (source == null || source.payload.kind === "markdown")
+    return <WorkspaceMessageContentBubble {...props} />;
+  if (source.payload.kind === "poll")
     return <WorkspacePollMessageBubble {...props} source={source} />;
-  if (source != null && content == null)
-    return <LocalWorkspaceMessageBubble {...props} source={source} />;
-  if (source != null && content?.status === "ready" && content.kind === "service") {
-    return <WorkspaceEncryptedMessageBubble {...props} message={source} />;
-  }
-  return <WorkspaceMessageContentBubble {...props} content={content} />;
+  if (source.payload.kind === "e2ee")
+    return <PreparedWorkspaceMessageBubble {...props} source={source} />;
+  return <WorkspaceEncryptedMessageBubble {...props} message={source} />;
 });

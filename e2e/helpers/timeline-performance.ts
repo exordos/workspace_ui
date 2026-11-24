@@ -20,11 +20,14 @@ interface TimelineSample {
   viewport: { width: number; height: number };
 }
 
+type TimelineRowWork = Pick<TimelineSample, "rowCommits" | "changedRowUuids" | "reactObserverMs">;
+
 declare global {
   interface Window {
     __timelineMeasurement: {
       begin(expectedRows: number, edit?: { uuid: string; text: string }): void;
       finish(): Promise<TimelineSample>;
+      finishEdit(): TimelineRowWork; // Keep tracking committed rows after the first visible frame.
     };
   }
 }
@@ -35,6 +38,7 @@ export async function installTimelineProbe(page: Page): Promise<void> {
     let currentRoot: RowFiber | null = null;
     let sample: Promise<TimelineSample> | null = null;
     let readCommit: ((root: RowFiber) => void) | null = null;
+    let readEditWork: (() => TimelineRowWork) | null = null;
 
     function readRows(root: RowFiber | null): Map<string, RowFiber> {
       const rows = new Map<string, RowFiber>();
@@ -70,6 +74,8 @@ export async function installTimelineProbe(page: Page): Promise<void> {
         let previousRows = readRows(currentRoot);
         let reactObserverMs = 0;
         let rowCommits = 0;
+        const rowWork = () => ({ rowCommits, changedRowUuids: [...changedRows], reactObserverMs });
+        readEditWork = edit == null ? null : rowWork;
         readCommit = (root) => {
           const start = performance.now();
           const rows = readRows(root);
@@ -102,20 +108,19 @@ export async function installTimelineProbe(page: Page): Promise<void> {
               rows === expectedRows &&
               (edit == null || editedRow?.textContent?.includes(edit.text))
             ) {
-              readCommit = null;
+              if (edit == null) readCommit = null;
               resolve({
                 visibleMs: now - startedAt,
                 longestFrameMs,
                 rows,
-                rowCommits,
-                changedRowUuids: [...changedRows],
-                reactObserverMs,
+                ...rowWork(),
                 viewport: { width: window.innerWidth, height: window.innerHeight },
               });
               return;
             }
             if (now - startedAt > 10_000) {
               readCommit = null;
+              readEditWork = null;
               reject(new Error(`Timeline displayed ${rows} rows, expected ${expectedRows}`));
               return;
             }
@@ -127,6 +132,13 @@ export async function installTimelineProbe(page: Page): Promise<void> {
       finish() {
         if (sample == null) throw new Error("Start the timeline probe before reading it");
         return sample;
+      },
+      finishEdit() {
+        if (readEditWork == null) throw new Error("Start an edit before reading settled row work");
+        const work = readEditWork();
+        readEditWork = null;
+        readCommit = null;
+        return work;
       },
     };
   }, ROW_SELECTOR);

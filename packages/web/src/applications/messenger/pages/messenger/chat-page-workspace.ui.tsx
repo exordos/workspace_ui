@@ -68,7 +68,17 @@ import {
   getEncryptedChatServiceActions,
   getEncryptedChatServiceState,
 } from "~/applications/messenger/features/decrypted-message/encrypted-chat-message/encrypted-chat-service-actions.lib";
+import { CreatePollDialog } from "~/applications/messenger/features/polls/create-poll-dialog.ui";
+import type { PollDraft } from "~/applications/messenger/features/polls/create-poll-dialog.ui";
+import { preparePollSend } from "~/applications/messenger/features/polls/create-poll.lib";
+import type { PollSendAttempt } from "~/applications/messenger/features/polls/create-poll.lib";
 import { selectMessengerSidebarTopicsForStream } from "~/applications/messenger/features/sidebar/messenger-sidebar.lib";
+import { useWorkspaceForwardMessageStore } from "~/applications/messenger/features/timeline/forward/workspace-forward-message.model";
+import { normalizeWorkspacePreviewBlob } from "~/applications/messenger/features/timeline/messenger-workspace-message-preview-blob.lib";
+import { useWorkspaceVisibleMessageRead } from "~/applications/messenger/features/timeline/read/workspace-visible-message-read.hook";
+import { WorkspaceMessageAnchorTransition } from "~/applications/messenger/features/timeline/workspace-message-anchor-transition.ui";
+import type { WorkspaceMessageConversationReference } from "~/applications/messenger/features/timeline/workspace-message-list.types";
+import { recordWorkspaceMessageQuickReactionUse } from "~/applications/messenger/features/timeline/workspace-message-quick-reaction-history.lib";
 import {
   chatCommands,
   useChatRouteMembership,
@@ -116,7 +126,6 @@ import {
   restoreMessengerSecretMarkdown,
 } from "~/applications/messenger/model/crypto/messenger-secret-message.lib";
 import { isWorkspaceSelfChat } from "~/applications/messenger/model/chats/messenger-self-chat.lib";
-import { normalizeWorkspacePreviewBlob } from "~/applications/messenger/features/timeline/messenger-workspace-message-preview-blob.lib";
 import type {
   MessengerConversationId,
   MessengerMessage,
@@ -149,24 +158,18 @@ import { useRightDrawer } from "~/shared/contexts/right-drawer";
 import type { RightDrawerContextValue } from "~/shared/contexts/right-drawer.types";
 import { chatBottomNoticeBarClassName } from "~/shared/lib/chat-bottom-notice-bar.lib";
 import { writeText } from "~/shared/lib/clipboard";
+import { createLogger } from "~/shared/lib/logger";
 import { useWorkspaceMessageAnchorNavigation } from "./anchor-navigation/workspace-message-anchor-navigation.hook";
 import {
   useWorkspaceConversationOpening,
   useWorkspaceTopicResolution,
 } from "./conversation-opening/workspace-conversation-opening.hook";
-import { useWorkspaceForwardMessageStore } from "~/applications/messenger/features/timeline/forward/workspace-forward-message.model";
 import type {
   WorkspaceMessageAnchorFocusTarget,
   WorkspaceMessageAnchorNavigationIntent,
   WorkspaceMessageAnchorPreviewPresentation,
   WorkspaceMessageAnchorRouteRequest,
 } from "./anchor-navigation/workspace-message-anchor-navigation.types";
-import { CreatePollDialog } from "~/applications/messenger/features/polls/create-poll-dialog.ui";
-import type { PollDraft } from "~/applications/messenger/features/polls/create-poll-dialog.ui";
-import { preparePollSend } from "~/applications/messenger/features/polls/create-poll.lib";
-import type { PollSendAttempt } from "~/applications/messenger/features/polls/create-poll.lib";
-import { useWorkspaceVisibleMessageRead } from "~/applications/messenger/features/timeline/read/workspace-visible-message-read.hook";
-import { createLogger } from "~/shared/lib/logger";
 import { toast } from "~/shared/lib/toast/toast";
 import {
   createWorkspaceFileResourceCache,
@@ -206,9 +209,6 @@ import {
 import { Button } from "~/shared/ui/button";
 import { Icon } from "~/shared/ui/icon";
 import { Spinner } from "~/shared/ui/loading";
-import { WorkspaceMessageAnchorTransition } from "~/applications/messenger/features/timeline/workspace-message-anchor-transition.ui";
-import type { WorkspaceMessageConversationReference } from "~/applications/messenger/features/timeline/workspace-message-list.types";
-import { recordWorkspaceMessageQuickReactionUse } from "~/applications/messenger/features/timeline/workspace-message-quick-reaction-history.lib";
 import { ChatPageComposerSection } from "../../features/composer/chat-page-composer-section.ui";
 import {
   hasConversationBeenViewed,
@@ -1218,7 +1218,8 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
   );
   const handleRequestMessageKey = useCallback(
     (messageUuid: string) => {
-      const message = allWorkspaceMessagesById[messageUuid];
+      // The bound model checks the selected owner and generation when the action runs.
+      const message = messages?.getMessage(messageUuid);
       if (
         message?.streamUuid !== streamUuid ||
         message.payload.kind === "markdown" ||
@@ -1231,7 +1232,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
         message.topicUuid,
       );
     },
-    [allWorkspaceMessagesById, streamUuid, encryptedChat.requestKey],
+    [messages, streamUuid, encryptedChat.requestKey],
   );
   const getKeyRequestActions = useCallback(
     (message: MessengerMessage) =>
@@ -3134,6 +3135,20 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
     [handleLoadWorkspaceFileResource],
   );
 
+  const clearMediaViewerError = useCallback(() => setActionError(null), []);
+  const handleMediaViewerRuntimeUnavailable = useCallback(
+    () => setActionError(t("workspaceMessenger.runtimeUnavailable")),
+    [],
+  );
+  const handleOpenUnsupportedFilePreview = useCallback(
+    () => setActionError(t("workspaceMessenger.mediaViewerUnsupported")),
+    [],
+  );
+  const handleMediaViewerLoadError = useCallback((error: unknown) => {
+    setActionError(
+      normalizeWorkspaceActionError(error, t("workspaceMessenger.mediaViewerUnsupported")),
+    );
+  }, []);
   const { openWorkspaceMedia: handleOpenWorkspaceMedia } = useWorkspaceMediaViewer({
     scope: {
       ownerKey,
@@ -3145,25 +3160,11 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
     runAction: runChatScopedAction,
     onDownload: handleDownloadFile,
     deriveDownloadFileName: deriveWorkspaceDownloadFileName,
-    onOpenStart: () => {
-      setActionError(null);
-    },
-    onRuntimeUnavailable: () => {
-      setActionError(t("workspaceMessenger.runtimeUnavailable"));
-    },
-    onUnsupported: () => {
-      setActionError(t("workspaceMessenger.mediaViewerUnsupported"));
-    },
-    onLoadError: (error) => {
-      setActionError(
-        normalizeWorkspaceActionError(error, t("workspaceMessenger.mediaViewerUnsupported")),
-      );
-    },
+    onOpenStart: clearMediaViewerError,
+    onRuntimeUnavailable: handleMediaViewerRuntimeUnavailable,
+    onUnsupported: handleOpenUnsupportedFilePreview,
+    onLoadError: handleMediaViewerLoadError,
   });
-
-  const handleOpenUnsupportedFilePreview = useCallback(() => {
-    setActionError(t("workspaceMessenger.mediaViewerUnsupported"));
-  }, []);
 
   const { scheduleReadBatch, scheduleTopicReadAtBottom, readRequestBoundaryMessageUuids } =
     useWorkspaceVisibleMessageRead({ runtimeContext, conversationId, topicUuid });

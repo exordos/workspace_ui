@@ -1,10 +1,7 @@
 import { expect, test } from "./fixtures";
-import { seedAuthStorage } from "./helpers/seed-auth";
+import { realtimeCursorStorageKey, seedAuthStorage } from "./helpers/seed-auth";
 import { e2eOrgBasePath, E2E_STREAM_UUID, E2E_TOPIC_UUID } from "./helpers/navigate-messenger";
 import {
-  E2E_ACCOUNT_ID,
-  E2E_INSTANCE_ID,
-  E2E_ORGANIZATION_ID,
   E2E_PROJECT_ID,
   E2E_USER_UUID,
   foldersSuccess,
@@ -26,22 +23,6 @@ const RECOVERED_CURSOR = {
   epochGeneration: "e2e-generation-1",
   epochVersion: 0,
 };
-
-function realtimeCursorStorageKey(): string {
-  return [
-    "workspace-realtime:cursor",
-    "account",
-    E2E_ACCOUNT_ID,
-    "instance",
-    E2E_INSTANCE_ID,
-    "organization",
-    E2E_ORGANIZATION_ID,
-    "project",
-    E2E_PROJECT_ID,
-    "user",
-    E2E_USER_UUID,
-  ].join(":");
-}
 
 function createGate() {
   let release = () => {};

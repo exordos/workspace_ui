@@ -22,6 +22,9 @@ export interface WorkspaceMessageDayGroup {
 }
 
 const UNKNOWN_DATE_KEY = "unknown-date";
+// The store replaces changed snapshots and reuses their untouched neighbors.
+const serverItems = new WeakMap<MessengerMessage, WorkspaceMessageListServerItem>();
+const outgoingItems = new WeakMap<OutgoingMessageView, WorkspaceMessageListOutgoingItem>();
 
 interface MutableWorkspaceMessageAuthorGroup {
   authorUuid: MessengerUuid;
@@ -75,7 +78,9 @@ export function createWorkspaceMessageListServerItem(
   message: MessengerMessage,
   key: string = message.uuid,
 ): WorkspaceMessageListServerItem {
-  return {
+  const cached = key === message.uuid ? serverItems.get(message) : undefined;
+  if (cached != null) return cached;
+  const item: WorkspaceMessageListServerItem = {
     kind: "server",
     key,
     message,
@@ -84,12 +89,16 @@ export function createWorkspaceMessageListServerItem(
     isOwn: message.isOwn,
     read: message.read,
   };
+  if (key === message.uuid) serverItems.set(message, item);
+  return item;
 }
 
 export function createWorkspaceMessageListOutgoingItem(
   message: OutgoingMessageView,
 ): WorkspaceMessageListOutgoingItem {
-  return {
+  const cached = outgoingItems.get(message);
+  if (cached != null) return cached;
+  const item: WorkspaceMessageListOutgoingItem = {
     kind: "outgoing",
     key: message.placementUuid,
     message,
@@ -98,6 +107,8 @@ export function createWorkspaceMessageListOutgoingItem(
     isOwn: true,
     read: true,
   };
+  outgoingItems.set(message, item);
+  return item;
 }
 
 export function getWorkspaceMessageDateKey(message: WorkspaceMessageListItem): string {

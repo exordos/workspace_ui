@@ -8,6 +8,23 @@ import {
   E2E_USER_UUID,
 } from "../mocks/workspace-default-responses";
 
+// The durable journal cursor of the same owner seeded below.
+export function realtimeCursorStorageKey(): string {
+  return [
+    "workspace-realtime:cursor",
+    "account",
+    E2E_ACCOUNT_ID,
+    "instance",
+    E2E_INSTANCE_ID,
+    "organization",
+    E2E_ORGANIZATION_ID,
+    "project",
+    E2E_PROJECT_ID,
+    "user",
+    E2E_USER_UUID,
+  ].join(":");
+}
+
 export async function seedAuthStorage(page: Page, apiKey?: string): Promise<string> {
   const key = apiKey ?? `fixture-key-${Date.now()}`;
   await page.goto("/");

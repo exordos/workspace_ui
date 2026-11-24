@@ -1,4 +1,7 @@
-import type { MessengerUuid } from "~/applications/messenger/model/messenger.types";
+import type {
+  MessengerMessage,
+  MessengerUuid,
+} from "~/applications/messenger/model/messenger.types";
 import type { UsersById } from "~/entities/user/user.types";
 import type { WorkspaceMessageMentionResolver } from "~/shared/lib/workspace-message-render/workspace-message-document.types";
 import type { WorkspaceMessageBubbleQuickActionsConfig } from "./workspace-message-bubble-quick-actions.ui";
@@ -21,6 +24,7 @@ export interface WorkspaceMessageBubbleProps {
   resolveMention?: WorkspaceMessageMentionResolver;
   quoteRenderMode?: WorkspaceQuoteRenderMode;
   actions?: WorkspaceMessageListActions;
+  linkedKeyRequest?: MessengerMessage; // Request currently known for this key grant or rejection.
   presentationMode?: "message" | "preview";
   passiveLoadersEnabled?: boolean;
   quickActions?: WorkspaceMessageBubbleQuickActionsConfig;

@@ -38,7 +38,10 @@ import {
   groupWorkspaceMessagesByDayAndAuthor,
   isWorkspaceServiceMessage,
 } from "./workspace-message-list-grouping.lib";
-import { collectWorkspaceMessageMediaGallery } from "./workspace-message-list-media.lib";
+import {
+  collectWorkspaceMessageMediaGallery,
+  type WorkspaceMessageMediaGallery,
+} from "./workspace-message-list-media.lib";
 import { useWorkspaceMessageListScroll } from "./workspace-message-list-scroll.hook";
 import { WorkspaceMessageSelectionControl } from "./workspace-message-selection-control.ui";
 import { WorkspaceMessageTopicLink } from "./workspace-message-topic-link.ui";
@@ -440,6 +443,7 @@ interface WorkspaceMessageListRowProps {
   quoteRenderMode?: WorkspaceMessageListPresentation["quoteRenderMode"];
   quickActions?: WorkspaceMessageListPresentation["quickActions"];
   actions?: WorkspaceMessageListProps["actions"];
+  linkedKeyRequest?: MessengerMessage; // This response row's render-time request dependency.
   passiveLoadersEnabled: boolean;
   collapsedService?: boolean;
 }
@@ -460,6 +464,7 @@ const WorkspaceMessageListRow = React.memo(function WorkspaceMessageListRow({
   quoteRenderMode,
   quickActions,
   actions,
+  linkedKeyRequest,
   passiveLoadersEnabled,
   collapsedService = false,
 }: WorkspaceMessageListRowProps): React.ReactElement {
@@ -571,6 +576,7 @@ const WorkspaceMessageListRow = React.memo(function WorkspaceMessageListRow({
           quoteRenderMode={quoteRenderMode}
           quickActions={quickActions}
           actions={actions}
+          linkedKeyRequest={linkedKeyRequest}
           passiveLoadersEnabled={passiveLoadersEnabled}
         />
       </div>
@@ -602,6 +608,7 @@ interface WorkspaceMessageAuthorGroupViewProps {
   quoteRenderMode?: WorkspaceMessageListPresentation["quoteRenderMode"];
   quickActions?: WorkspaceMessageListPresentation["quickActions"];
   actions?: WorkspaceMessageListProps["actions"];
+  resolveKeyRequestMessage: (uuid: MessengerUuid) => MessengerMessage | null;
   passiveLoadersEnabled: boolean;
   selectedMessageUuids: ReadonlySet<MessengerUuid>;
   readRequestBoundariesByTopic: ReadonlyMap<string, WorkspaceReadRequestBoundary>;
@@ -621,6 +628,7 @@ const WorkspaceMessageAuthorGroupView = React.memo(function WorkspaceMessageAuth
   quoteRenderMode,
   quickActions,
   actions,
+  resolveKeyRequestMessage,
   passiveLoadersEnabled,
   selectedMessageUuids,
   readRequestBoundariesByTopic,
@@ -671,6 +679,11 @@ const WorkspaceMessageAuthorGroupView = React.memo(function WorkspaceMessageAuth
       quoteRenderMode={quoteRenderMode}
       quickActions={quickActions}
       actions={actions}
+      linkedKeyRequest={
+        message.kind === "server"
+          ? resolveLinkedKeyRequest(message.message, resolveKeyRequestMessage)
+          : undefined
+      }
       passiveLoadersEnabled={passiveLoadersEnabled}
       collapsedService={serviceGroup && !serviceExpanded && !selectionMode}
     />
@@ -719,7 +732,10 @@ const WorkspaceMessageAuthorGroupView = React.memo(function WorkspaceMessageAuth
           <WorkspaceServiceMessageGroup
             count={group.messages.length}
             expanded={serviceExpanded || selectionMode}
-            status={getWorkspaceServiceGroupStatus(group.messages, currentUserUuid, actions)}
+            status={getWorkspaceServiceGroupStatus(group.messages, currentUserUuid, {
+              ...actions,
+              resolveKeyRequestMessage,
+            })}
             onToggle={() => onToggleService(group)}
             toggleDisabled={selectionMode}
           >
@@ -780,7 +796,9 @@ export const WorkspaceMessageList: React.FC<
     );
   }
   return (
-    <MessagePresentationContext.Provider value={prepared.presentations}>
+    <MessagePresentationContext.Provider
+      value={prepared.presentations.size === 0 ? null : prepared.presentations}
+    >
       <WorkspaceMessageListContent
         {...props}
         messages={messages}
@@ -795,6 +813,40 @@ export const WorkspaceMessageList: React.FC<
     </MessagePresentationContext.Provider>
   );
 };
+
+// Route only the relevant reactive request snapshot to a response row.
+function resolveLinkedKeyRequest(
+  message: MessengerMessage,
+  resolveRequest: (uuid: MessengerUuid) => MessengerMessage | null,
+): MessengerMessage | undefined {
+  const { payload } = message;
+  return payload.kind === "key_grant" || payload.kind === "key_reject"
+    ? (resolveRequest(payload.requestMessageUuid) ?? undefined)
+    : undefined;
+}
+
+// Clicks use the gallery from the last committed list, including any newly loaded rows.
+function useOpenCommittedMediaGallery(
+  gallery: WorkspaceMessageMediaGallery,
+  onOpen: NonNullable<WorkspaceMessageListProps["actions"]>["onOpenWorkspaceMedia"],
+) {
+  const committedGallery = useRef(gallery);
+  useLayoutEffect(() => {
+    committedGallery.current = gallery;
+  }, [gallery]);
+  return useCallback(
+    (file: WorkspaceMessageFileReference) => {
+      const current = committedGallery.current;
+      const startIndex = current.indexByFileUuid.get(file.fileUuid.trim());
+      if (startIndex == null) {
+        void onOpen?.(file);
+        return;
+      }
+      void onOpen?.(file, { items: current.items, startIndex });
+    },
+    [onOpen],
+  );
+}
 
 const WorkspaceMessageListContent: React.FC<
   WorkspaceMessageListProps & { focusedMessagePending: boolean }
@@ -942,9 +994,12 @@ const WorkspaceMessageListContent: React.FC<
     (uuid: MessengerUuid) => requestsByUuid.get(uuid) ?? null,
     [requestsByUuid],
   );
+  const serviceActions = useMemo(
+    () => ({ ...actions, resolveKeyRequestMessage }),
+    [actions, resolveKeyRequestMessage],
+  );
   const accountServiceMessages = presentation?.serviceMessages === "account";
   const visibleListItems = useMemo(() => {
-    const serviceActions = { ...actions, resolveKeyRequestMessage };
     return accountServiceMessages
       ? listItems.filter(
           (item) =>
@@ -952,7 +1007,7 @@ const WorkspaceMessageListContent: React.FC<
             isWorkspaceMessageRelevantToAccount(item.message, currentUserUuid, serviceActions),
         )
       : listItems;
-  }, [accountServiceMessages, actions, currentUserUuid, listItems, resolveKeyRequestMessage]);
+  }, [accountServiceMessages, currentUserUuid, listItems, serviceActions]);
   // Responses can outlive their request's history window. Reuse the existing
   // scoped resolver before deciding whether the recipient is this account.
   const requestResolvers = accountServiceMessages
@@ -1048,31 +1103,18 @@ const WorkspaceMessageListContent: React.FC<
     });
     return collectWorkspaceMessageMediaGallery(displayMessages, { resolveMention });
   }, [renderedMessages, resolveMention]);
-  const handleOpenWorkspaceMedia = useCallback(
-    (file: WorkspaceMessageFileReference) => {
-      const fileUuid = file.fileUuid.trim();
-      const startIndex = workspaceMediaGallery.indexByFileUuid.get(fileUuid);
-      if (startIndex == null) {
-        void actions?.onOpenWorkspaceMedia?.(file);
-        return;
-      }
-
-      void actions?.onOpenWorkspaceMedia?.(file, {
-        items: workspaceMediaGallery.items,
-        startIndex,
-      });
-    },
-    [actions, workspaceMediaGallery],
+  const handleOpenWorkspaceMedia = useOpenCommittedMediaGallery(
+    workspaceMediaGallery,
+    actions?.onOpenWorkspaceMedia,
   );
   const messageActions = useMemo(() => {
     return {
       ...actions,
-      resolveKeyRequestMessage,
       ...(actions?.onOpenWorkspaceMedia != null
         ? { onOpenWorkspaceMedia: handleOpenWorkspaceMedia }
         : {}),
     };
-  }, [actions, handleOpenWorkspaceMedia, resolveKeyRequestMessage]);
+  }, [actions, handleOpenWorkspaceMedia]);
   const scrollRequestKey = useMemo(() => {
     return `${conversationId}:${scrollToBottomKey ?? ""}`;
   }, [conversationId, scrollToBottomKey]);
@@ -1166,7 +1208,7 @@ const WorkspaceMessageListContent: React.FC<
     selectionMode,
     focusedMessageTarget,
     currentUserUuid,
-    actions: messageActions,
+    actions: serviceActions,
     scrollContainerRef,
     preserveMessageLayout,
   });
@@ -1426,6 +1468,7 @@ const WorkspaceMessageListContent: React.FC<
                   quoteRenderMode={presentation?.quoteRenderMode}
                   quickActions={presentation?.quickActions}
                   actions={messageActions}
+                  resolveKeyRequestMessage={resolveKeyRequestMessage}
                   passiveLoadersEnabled={!anchorHandoffPending}
                   selectedMessageUuids={selectedMessageUuids}
                   readRequestBoundariesByTopic={readRequestBoundariesByTopic}

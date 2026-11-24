@@ -549,6 +549,20 @@ describe("WorkspaceMessageList", () => {
         "data-message-uuid",
         response.uuid,
       );
+      const toggle = screen.getByRole("button", { name: /1 event/ });
+      if (toggle.getAttribute("aria-expanded") === "false") fireEvent.click(toggle);
+      expect(screen.getByText(/Test laptop/)).toBeInTheDocument();
+      act(() => {
+        useWorkspaceMessageStore.setState({
+          messagesById: {
+            [request.uuid]: {
+              ...request,
+              payload: { ...SERVICE_REQUEST, deviceName: "Renamed laptop" },
+            },
+          },
+        });
+      });
+      expect(screen.getByText(/Renamed laptop/)).toBeInTheDocument();
       rerender(<WorkspaceMessageList {...props} currentUserUuid="another-account" />);
       expect(container.querySelector("[data-empty-state]")).toBeInTheDocument();
     } finally {
@@ -5580,31 +5594,38 @@ describe("WorkspaceMessageList", () => {
     expect(onDownloadFile).not.toHaveBeenCalled();
   });
 
-  it("opens a Workspace image gallery with all conversation images and clicked index", () => {
+  it("opens the current gallery from an unchanged row after a neighboring attachment is edited", () => {
     const onOpenWorkspaceMedia = vi.fn();
     const firstFileUuid = "11111111-1111-4111-8111-111111111111";
     const secondFileUuid = "22222222-2222-4222-8222-222222222222";
-    render(
-      <WorkspaceMessageList
-        messages={[
-          createWorkspaceMessage({
-            uuid: "workspace-gallery-first-message",
-            markdown: `![first.png](urn:image:${firstFileUuid}?name=first.png&content_type=image%2Fpng)`,
-            createdAt: "2026-07-03T09:00:00.000Z",
-          }),
-          createWorkspaceMessage({
-            uuid: "workspace-gallery-second-message",
-            markdown: `![second.png](urn:image:${secondFileUuid}?name=second.png&content_type=image%2Fpng)`,
-            createdAt: "2026-07-03T09:01:00.000Z",
-          }),
-        ]}
-        currentUserUuid="current-user-uuid"
-        conversationId="topic:stream-uuid-1:topic-uuid-1"
-        actions={{ onOpenWorkspaceMedia }}
-      />,
-    );
+    const newFirstFileUuid = "33333333-3333-4333-8333-333333333333";
+    const first = createWorkspaceMessage({
+      uuid: "workspace-gallery-first-message",
+      markdown: `![first.png](urn:image:${firstFileUuid}?name=first.png&content_type=image%2Fpng)`,
+      createdAt: "2026-07-03T09:00:00.000Z",
+    });
+    const second = createWorkspaceMessage({
+      uuid: "workspace-gallery-second-message",
+      markdown: `![second.png](urn:image:${secondFileUuid}?name=second.png&content_type=image%2Fpng)`,
+      createdAt: "2026-07-03T09:01:00.000Z",
+    });
+    const props = {
+      currentUserUuid: "current-user-uuid",
+      conversationId: "topic:stream-uuid-1:topic-uuid-1",
+      actions: { onOpenWorkspaceMedia },
+    } as const;
+    const { rerender } = render(<WorkspaceMessageList {...props} messages={[first, second]} />);
+    const secondImageButton = screen.getAllByRole("button", { name: "Изображение" })[1]!;
+    const editedFirst = {
+      ...first,
+      payload: {
+        kind: "markdown",
+        content: `![edited.png](urn:image:${newFirstFileUuid}?name=edited.png&content_type=image%2Fpng)`,
+      },
+    } as const;
+    rerender(<WorkspaceMessageList {...props} messages={[editedFirst, second]} />);
 
-    fireEvent.click(screen.getAllByRole("button", { name: "Изображение" })[1]!);
+    fireEvent.click(secondImageButton);
 
     expect(onOpenWorkspaceMedia).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -5616,8 +5637,8 @@ describe("WorkspaceMessageList", () => {
           {
             messageUuid: "workspace-gallery-first-message",
             file: expect.objectContaining({
-              fileUuid: firstFileUuid,
-              name: "first.png",
+              fileUuid: newFirstFileUuid,
+              name: "edited.png",
             }),
           },
           {

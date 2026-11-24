@@ -177,17 +177,23 @@ export const WorkspaceMessageQuote = React.memo(function WorkspaceMessageQuote(
     (props.loadEnabled ?? true) && !isForwardSnapshot,
   );
   const source = isForwardSnapshot ? null : resolved.message;
-  const content = usePreparedMessagePresentation(source);
-  if (source?.payload.kind === "e2ee" && content == null)
-    return <LocalWorkspaceMessageQuote {...props} resolved={resolved} source={source} />;
-  return (
-    <WorkspaceMessageQuotePresentation
-      {...props}
-      resolved={resolved}
-      decryption={source?.payload.kind === "e2ee" ? (content ?? null) : null}
-    />
-  );
+  if (source?.payload.kind === "e2ee")
+    return <PreparedWorkspaceMessageQuote {...props} resolved={resolved} source={source} />;
+  return <WorkspaceMessageQuotePresentation {...props} resolved={resolved} decryption={null} />;
 });
+
+// Plain and forwarded quotes use their existing data without subscribing to encrypted preparations.
+function PreparedWorkspaceMessageQuote({
+  source,
+  ...props
+}: WorkspaceMessageQuoteProps & {
+  readonly source: MessengerMessage;
+  readonly resolved: ResolvedMessengerQuoteMessage;
+}) {
+  const content = usePreparedMessagePresentation(source);
+  if (content == null) return <LocalWorkspaceMessageQuote {...props} source={source} />;
+  return <WorkspaceMessageQuotePresentation {...props} decryption={content} />;
+}
 
 function LocalWorkspaceMessageQuote({
   source,

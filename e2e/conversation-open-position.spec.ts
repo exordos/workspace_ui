@@ -17,7 +17,7 @@
  */
 import { expect, test } from "./fixtures";
 import { e2eOrgBasePath, E2E_STREAM_UUID, E2E_TOPIC_UUID } from "./helpers/navigate-messenger";
-import { seedAuthStorage } from "./helpers/seed-auth";
+import { realtimeCursorStorageKey, seedAuthStorage } from "./helpers/seed-auth";
 import {
   installTimelineProbe,
   readTimelineCpu,
@@ -36,7 +36,7 @@ import {
   REAL_CONVERSATION_SAMPLE,
   type RealConversationSampleMessage,
 } from "./mocks/real-conversation-sample";
-import type { Page, Route, WebSocketRoute } from "@playwright/test";
+import type { Locator, Page, Route, WebSocketRoute } from "@playwright/test";
 
 test.describe.configure({ mode: "serial" });
 
@@ -110,7 +110,7 @@ async function installConversation(
     messageCount?: number;
     historyGate?: Promise<void>;
     historyPageSize?: number;
-    olderPageGate?: Promise<void>;
+    olderPageGate?: (pageMarker: string) => Promise<void> | undefined;
     sample?: readonly RealConversationSampleMessage[];
   } = {},
 ): Promise<void> {
@@ -182,7 +182,7 @@ async function installConversation(
         items = items.filter((item) => !item.read);
       }
       if (pageMarker != null) {
-        await options.olderPageGate;
+        await options.olderPageGate?.(pageMarker);
         const markerIndex = items.findIndex((item) => item.uuid === pageMarker);
         if (markerIndex >= 0) {
           items = sortDir === "desc" ? items.slice(0, markerIndex) : items.slice(markerIndex + 1);
@@ -318,6 +318,23 @@ function driftAllowance(painted: TracePoint[]): number {
   return Math.round((painted.at(0)?.clientHeight ?? 0) / 4);
 }
 
+// Capture the visible row relative to the feed viewport, even if its top is clipped.
+function readVisibleTimelineRow(scroller: Locator) {
+  return scroller.evaluate((root) => {
+    const viewport = root.getBoundingClientRect();
+    for (const row of root.querySelectorAll("[data-message-uuid]")) {
+      const rect = row.getBoundingClientRect();
+      if (rect.bottom > viewport.top && rect.top < viewport.bottom) {
+        return {
+          uuid: row.getAttribute("data-message-uuid"),
+          offset: rect.top - viewport.top,
+        };
+      }
+    }
+    return null;
+  });
+}
+
 test.describe("Conversation open position @mock", () => {
   test("prepending a delayed older page preserves the reader's row and offset", async ({
     authenticatedMocked: page,
@@ -333,7 +350,10 @@ test.describe("Conversation open position @mock", () => {
       throw new Error("Expected enough sample messages for two history pages");
     }
     await installWorkspaceReadyRealtime(page);
-    await installConversation(page, { historyPageSize: pageSize, olderPageGate });
+    await installConversation(page, {
+      historyPageSize: pageSize,
+      olderPageGate: () => olderPageGate,
+    });
 
     try {
       await page.goto(TOPIC_PATH);
@@ -355,21 +375,7 @@ test.describe("Conversation open position @mock", () => {
         .poll(() => scroller.evaluate((root) => root.scrollTop))
         .toBeGreaterThan(previousScrollTop);
 
-      const readVisibleRow = () =>
-        scroller.evaluate((root) => {
-          const viewport = root.getBoundingClientRect();
-          for (const row of root.querySelectorAll("[data-message-uuid]")) {
-            const rect = row.getBoundingClientRect();
-            if (rect.bottom > viewport.top && rect.top < viewport.bottom) {
-              return {
-                uuid: row.getAttribute("data-message-uuid"),
-                offset: rect.top - viewport.top,
-              };
-            }
-          }
-          return null;
-        });
-      const before = await readVisibleRow();
+      const before = await readVisibleTimelineRow(scroller);
       if (before?.uuid == null) throw new Error("Expected a visible history row after scrolling");
 
       const positionTrace = await scroller.evaluateHandle(
@@ -402,7 +408,7 @@ test.describe("Conversation open position @mock", () => {
 
       releaseOlderPage();
       await expect(olderRow).toBeAttached();
-      const after = await readVisibleRow();
+      const after = await readVisibleTimelineRow(scroller);
       const offsetDeltaPx = (after?.offset ?? Number.NaN) - before.offset;
       const frameOffsetsPx = await positionTrace.evaluate((trace) => trace.result);
       await testInfo.attach("delayed-prepend-position", {
@@ -563,7 +569,6 @@ test.describe("Conversation open position @mock", () => {
 });
 
 const INBOX_PATH = `${e2eOrgBasePath()}/inbox`;
-const TIMELINE_PAGE_SIZE = 50;
 const TIMELINE_SAMPLE_COUNT = 3;
 
 // Text-only messages isolate render and scroll costs from protected file resolution.
@@ -597,26 +602,55 @@ test.describe("Timeline performance @mock", () => {
       await installTimelineProbe(page);
       const sample = timelineSample(windowSize);
       const tail = sample.at(-1)!;
+      const pageSize = windowSize === 50 ? 25 : 50;
+      const finalPrependMarker = sampleUuid(sample[pageSize]!);
+      let releaseFinalPrepend: () => void = () => undefined;
+      const finalPrepend = new Promise<void>((resolve) => {
+        releaseFinalPrepend = resolve;
+      });
       let activeSocket: WebSocketRoute | undefined;
       await installWorkspaceReadyRealtime(page, {
         onConnection: (socket) => {
           activeSocket = socket;
         },
       });
-      await installConversation(page, { sample, historyPageSize: TIMELINE_PAGE_SIZE });
+      await installConversation(page, {
+        sample,
+        historyPageSize: pageSize,
+        olderPageGate: (marker) => (marker === finalPrependMarker ? finalPrepend : undefined),
+      });
       await seedAuthStorage(page);
       await page.goto(TOPIC_PATH);
 
       const scroller = page.locator("[data-workspace-scroll-controller='true']");
       const rows = scroller.locator("[data-message-uuid]");
-      await expect(rows).toHaveCount(TIMELINE_PAGE_SIZE);
+      await expect(rows).toHaveCount(pageSize);
       await expect(rows.last()).toBeInViewport();
       await expect.poll(() => activeSocket?.url()).toBeDefined();
-      for (let loaded = TIMELINE_PAGE_SIZE; loaded < windowSize; loaded += TIMELINE_PAGE_SIZE) {
+      for (let loaded = pageSize; loaded + pageSize < windowSize; loaded += pageSize) {
         await scroller.hover();
         await page.mouse.wheel(0, -100_000);
-        await expect(rows).toHaveCount(loaded + TIMELINE_PAGE_SIZE);
+        await expect(rows).toHaveCount(loaded + pageSize);
       }
+      const finalRequest = page.waitForRequest(
+        (request) => new URL(request.url()).searchParams.get("page_marker") === finalPrependMarker,
+      );
+      await scroller.hover();
+      await page.mouse.wheel(0, -100_000);
+      await finalRequest;
+      const scrollTop = await scroller.evaluate((root) => root.scrollTop);
+      await page.mouse.wheel(0, 180);
+      await expect
+        .poll(() => scroller.evaluate((root) => root.scrollTop))
+        .toBeGreaterThan(scrollTop);
+      const beforePrepend = await readVisibleTimelineRow(scroller);
+      if (beforePrepend?.uuid == null) throw new Error("Expected a visible history row");
+      releaseFinalPrepend();
+      await expect(rows).toHaveCount(windowSize);
+      const afterPrepend = await readVisibleTimelineRow(scroller);
+      expect(afterPrepend?.uuid).toBe(beforePrepend.uuid);
+      const offsetDeltaPx = (afterPrepend?.offset ?? Number.NaN) - beforePrepend.offset;
+      expect(Math.abs(offsetDeltaPx)).toBeLessThanOrEqual(1);
 
       const cdp = await page.context().newCDPSession(page);
       await cdp.send("Performance.enable");
@@ -651,6 +685,7 @@ test.describe("Timeline performance @mock", () => {
         );
         const text = `Updated timeline message ${index}`;
         const updatedAt = new Date(Date.UTC(2026, 7, 29, 17, index)).toISOString();
+        const epochVersion = index + 2;
         const editStart = await readTimelineCpu(cdp);
         await page.evaluate(({ count, edit }) => window.__timelineMeasurement.begin(count, edit), {
           count: windowSize,
@@ -660,7 +695,7 @@ test.describe("Timeline performance @mock", () => {
         activeSocket.send(
           JSON.stringify({
             schema_version: 1,
-            epoch_version: index + 2,
+            epoch_version: epochVersion,
             uuid: `11111111-1111-4111-8111-${String(index).padStart(12, "0")}`,
             project_id: E2E_PROJECT_ID,
             user_uuid: E2E_USER_UUID,
@@ -677,11 +712,36 @@ test.describe("Timeline performance @mock", () => {
         );
         const edit = await page.evaluate(() => window.__timelineMeasurement.finish());
         const editCpu = cpuDelta(editStart, await readTimelineCpu(cdp));
-        expect(edit.changedRowUuids).toContain(E2E_MESSAGE_UUID);
-        const { changedRowUuids, ...metrics } = edit;
-        edits.push({ ...metrics, distinctRows: changedRowUuids.length, ...editCpu });
+        await page.waitForFunction(
+          ({ key, epoch }) => {
+            const raw = localStorage.getItem(key);
+            return raw != null && JSON.parse(raw).epochVersion === epoch;
+          },
+          { key: realtimeCursorStorageKey(), epoch: epochVersion },
+          { timeout: 10_000 },
+        );
+        const settledWork = await page.evaluate(async () => {
+          await new Promise<void>((resolve) =>
+            requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+          );
+          return window.__timelineMeasurement.finishEdit();
+        });
+        expect(settledWork.changedRowUuids).toEqual([E2E_MESSAGE_UUID]);
+        const { changedRowUuids, ...metrics } = settledWork;
+        edits.push({
+          ...edit,
+          ...metrics,
+          changedRowUuids,
+          distinctRows: changedRowUuids.length,
+          ...editCpu,
+        });
       }
-      const results = JSON.stringify({ windowSize, openings, edits });
+      const results = JSON.stringify({
+        windowSize,
+        openings,
+        edits,
+        prepend: { before: beforePrepend, after: afterPrepend, offsetDeltaPx },
+      });
       await testInfo.attach("timeline-performance", {
         contentType: "application/json",
         body: results,
