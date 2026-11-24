@@ -8,6 +8,8 @@ import {
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import {
   selectWorkspaceMessageById,
+  getSelectedWorkspaceMessageStore,
+  getWorkspaceMessageStoreForOwner,
   useWorkspaceMessageStore,
   type WorkspaceMessageStoreState,
 } from "./message.model";
@@ -67,10 +69,11 @@ function readOutgoingMessageView(message: MessengerOutgoingMessage): OutgoingMes
   outgoingViews.set(message, view);
   return view;
 }
-let latestIndex = EMPTY_INDEX;
+const latestIndexes = new WeakMap<WorkspaceMessageStoreState["setOwner"], MessagesIndexSnapshot>();
 
 // Смена внутренних ревизий сама по себе не публикует новый снимок для потребителя.
 function readIndex(state: WorkspaceMessageStoreState): MessagesIndexSnapshot {
+  let latestIndex = latestIndexes.get(state.setOwner) ?? EMPTY_INDEX;
   const { ownerKey, messagesById, conversationWindowsById, messagesLoadingByConversationId } =
     state;
   if (
@@ -85,6 +88,7 @@ function readIndex(state: WorkspaceMessageStoreState): MessagesIndexSnapshot {
       conversationWindowsById,
       messagesLoadingByConversationId,
     };
+    latestIndexes.set(state.setOwner, latestIndex);
   }
   return latestIndex;
 }
@@ -156,8 +160,12 @@ export function createMessagesIndexSource(
   getCurrentRuntime: WorkspaceRuntimeContextGetter = getRuntime,
 ) {
   const ownerKey = runtime == null ? null : workspaceRuntimeOwnerKey(runtime);
+  const store =
+    ownerKey == null
+      ? getSelectedWorkspaceMessageStore()
+      : (getWorkspaceMessageStoreForOwner(ownerKey) ?? getSelectedWorkspaceMessageStore());
   const getSnapshot = (): MessagesIndexSnapshot => {
-    const state = useWorkspaceMessageStore.getState();
+    const state = store.getState();
     return state.ownerKey === ownerKey &&
       isWorkspaceRuntimeRequestContextCurrent(runtime, getCurrentRuntime)
       ? readIndex(state)
@@ -171,7 +179,7 @@ export function createMessagesIndexSource(
       previous = next;
       listener(next);
     };
-    const unsubscribeMessages = useWorkspaceMessageStore.subscribe(publish);
+    const unsubscribeMessages = store.subscribe(publish);
     const unsubscribeRuntime = useWorkspaceAuthStore.subscribe(publish);
     return () => {
       unsubscribeMessages();

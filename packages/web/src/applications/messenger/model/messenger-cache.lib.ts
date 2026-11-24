@@ -147,6 +147,13 @@ export function restoreMessengerStreamCache(ownerKey: string, streamUuid: Messen
   removedStreamCacheKeys.delete(streamCacheKey(ownerKey, streamUuid));
 }
 
+// Stream tombstones belong to one authorized incarnation, not to the next login.
+export function releaseMessengerStreamCacheFences(ownerKey: string): void {
+  for (const key of removedStreamCacheKeys.keys()) {
+    if (key.startsWith(`${ownerKey}\0`)) removedStreamCacheKeys.delete(key);
+  }
+}
+
 function keepCachedMessage(
   ownerKey: string,
   message: Pick<MessengerMessage, "streamUuid">,
@@ -378,12 +385,14 @@ function conversationFromTopic(
 export async function writeMessengerFolderSnapshotCache(
   ownerKey: string,
   folder: MessengerFolder,
+  options: { shouldApply?: () => boolean } = {},
 ): Promise<void> {
   const safeFolder = withoutRemovedCachedFolderItems(ownerKey, folder);
-  await upsertMessengerFolderSnapshotsCache(ownerKey, [safeFolder], safeFolder.items);
+  await upsertMessengerFolderSnapshotsCache(ownerKey, [safeFolder], safeFolder.items, options);
   await purgeRemovedStreamCaches(
     ownerKey,
     folder.items.map((item) => item.streamUuid),
+    options.shouldApply,
   );
 }
 
@@ -447,7 +456,7 @@ export async function upsertMessengerStreamCache(
           options,
         ),
   ]);
-  await purgeRemovedStreamCaches(ownerKey, [stream.uuid]);
+  await purgeRemovedStreamCaches(ownerKey, [stream.uuid], options.shouldApply);
 }
 
 export async function deleteMessengerStreamCache(
@@ -484,31 +493,36 @@ export async function deleteMessengerStreamCache(
 export async function upsertMessengerStreamBindingsCache(
   ownerKey: string,
   streamBindings: readonly MessengerStreamBinding[],
+  options: { shouldApply?: () => boolean } = {},
 ): Promise<void> {
   await upsertMessengerStreamBindingsCatalogCache(
     ownerKey,
     streamBindings.filter((binding) => !isStreamCacheRemoved(ownerKey, binding.streamUuid)),
+    options,
   );
   await purgeRemovedStreamCaches(
     ownerKey,
     streamBindings.map((binding) => binding.streamUuid),
+    options.shouldApply,
   );
 }
 
 export async function deleteMessengerStreamBindingCache(
   ownerKey: string,
   streamBindingUuid: MessengerUuid,
+  isWriteCurrent?: () => boolean,
 ): Promise<void> {
-  await deleteMessengerStreamBindingCatalogCache(ownerKey, streamBindingUuid);
+  await deleteMessengerStreamBindingCatalogCache(ownerKey, streamBindingUuid, isWriteCurrent);
 }
 
 export async function upsertMessengerTopicCache(
   ownerKey: string,
   topic: MessengerTopic,
+  options: { shouldApply?: () => boolean } = {},
 ): Promise<void> {
-  if (isStreamCacheRemoved(ownerKey, topic.streamUuid)) return;
+  if (options.shouldApply?.() === false || isStreamCacheRemoved(ownerKey, topic.streamUuid)) return;
   const snapshot = await readMessengerCatalogCache(ownerKey);
-  if (isStreamCacheRemoved(ownerKey, topic.streamUuid)) return;
+  if (options.shouldApply?.() === false || isStreamCacheRemoved(ownerKey, topic.streamUuid)) return;
   const stream = snapshot.streams.find((item) => item.uuid === topic.streamUuid);
   const conversations =
     stream == null
@@ -520,35 +534,38 @@ export async function upsertMessengerTopicCache(
           ),
         ];
   await Promise.all([
-    upsertMessengerTopicsCache(ownerKey, [topic]),
-    upsertMessengerConversationsCache(ownerKey, conversations),
+    upsertMessengerTopicsCache(ownerKey, [topic], options),
+    upsertMessengerConversationsCache(ownerKey, conversations, options),
   ]);
-  await purgeRemovedStreamCaches(ownerKey, [topic.streamUuid]);
+  await purgeRemovedStreamCaches(ownerKey, [topic.streamUuid], options.shouldApply);
 }
 
 export async function deleteMessengerTopicCache(
   ownerKey: string,
   topicUuid: MessengerUuid,
   streamUuid: MessengerUuid,
+  isWriteCurrent?: () => boolean,
 ): Promise<void> {
   await Promise.all([
-    deleteMessengerTopicCatalogCache(ownerKey, topicUuid, streamUuid),
-    deleteCachedTopicMessageBuckets(ownerKey, streamUuid, topicUuid),
+    deleteMessengerTopicCatalogCache(ownerKey, topicUuid, streamUuid, isWriteCurrent),
+    deleteCachedTopicMessageBuckets(ownerKey, streamUuid, topicUuid, isWriteCurrent),
   ]);
 }
 
 export async function deleteMessengerFolderCache(
   ownerKey: string,
   folderUuid: MessengerUuid,
+  isWriteCurrent?: () => boolean,
 ): Promise<void> {
-  await deleteMessengerFolderCatalogCache(ownerKey, folderUuid);
+  await deleteMessengerFolderCatalogCache(ownerKey, folderUuid, isWriteCurrent);
 }
 
 export async function deleteMessengerFolderItemCache(
   ownerKey: string,
   folderItemUuid: MessengerUuid,
+  isWriteCurrent?: () => boolean,
 ): Promise<void> {
-  await deleteMessengerFolderItemCatalogCache(ownerKey, folderItemUuid);
+  await deleteMessengerFolderItemCatalogCache(ownerKey, folderItemUuid, isWriteCurrent);
 }
 
 export async function readMessengerConversationWindowCache(
@@ -608,7 +625,11 @@ export async function writeMessengerConversationWindowCache(
     },
     isWriteCurrent,
   );
-  await purgeRemovedStreamCaches(ownerKey, parsed == null ? [] : [parsed.streamUuid]);
+  await purgeRemovedStreamCaches(
+    ownerKey,
+    parsed == null ? [] : [parsed.streamUuid],
+    isWriteCurrent,
+  );
 }
 
 export async function writeMessengerLiveMessageCache(
@@ -700,7 +721,7 @@ export type MessengerMessagePointerCacheRepair = (
 
 // An authoritative delete removes every membership of this UUID for one live owner.
 export interface MessengerMessageCacheDeleteOptions {
-  allMemberships: true;
+  allMemberships?: boolean; // Default to the explicitly supplied conversation memberships.
   isWriteCurrent: () => boolean; // Runtime and tombstone validity at commit.
 }
 

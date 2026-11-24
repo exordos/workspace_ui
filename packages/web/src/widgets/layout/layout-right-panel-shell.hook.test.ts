@@ -2,7 +2,7 @@ import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useMessengerStore } from "~/applications/messenger/model/chats/messenger.model";
 import type { MessengerBootstrapPayload } from "~/applications/messenger/model/messenger.types";
-import { useUsersStore } from "~/entities/user/user.model";
+import { getUsersStoreForOwner, useUsersStore } from "~/entities/user/user.model";
 import {
   useWorkspaceAuthStore,
   type WorkspaceAuthSession,
@@ -288,6 +288,7 @@ describe("useLayoutRightPanelShell", () => {
               streamUuid: STREAM_UUID,
             },
             rightDrawerWorkspaceUserUuidOverride: DIRECT_USER_UUID,
+            rightDrawerWorkspaceUserOwnerKey: OWNER_KEY,
           }),
         ),
       );
@@ -301,7 +302,8 @@ describe("useLayoutRightPanelShell", () => {
         });
       });
 
-      expect(useUsersStore.getState().ownerKey).toBe(OWNER_KEY);
+      expect(getUsersStoreForOwner(OWNER_KEY)?.getState().ownerKey).toBe(OWNER_KEY);
+      expect(useUsersStore.getState().usersById[DIRECT_USER_UUID]).toBeUndefined();
       expect(result.current.workspaceRightPanelInfo?.kind).not.toBe("userProfile");
       expect(result.current.rightPanelTitleResolved).not.toBe("Cora Lane");
     },

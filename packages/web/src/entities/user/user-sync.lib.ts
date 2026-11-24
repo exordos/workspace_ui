@@ -26,7 +26,7 @@ import {
 } from "~/shared/lib/workspace-user-cache-db";
 import type { WorkspaceUserCacheProfile } from "~/shared/lib/workspace-user-cache-db";
 import { adaptWorkspaceMessengerUserDto } from "./user-adapters.lib";
-import { useUsersStore } from "./user.model";
+import { getSelectedUsersStore, getUsersStoreForOwner, useUsersStore } from "./user.model";
 import type { UsersStoreState } from "./user.model";
 import type { User } from "./user.types";
 
@@ -283,26 +283,39 @@ export function clearActiveWorkspaceSessionUsers(): void {
   useUsersStore.getState().clear();
 }
 
+const completeUserStores = new WeakSet<ReturnType<typeof getSelectedUsersStore>>();
+
 // Restore cached profiles for display and separately report full snapshot validity.
 export async function restoreWorkspaceSessionUsers(
   options: WorkspaceSessionUsersOptions,
 ): Promise<UserCacheHydrateResult> {
   if (isUserSyncInvalidated(options)) return { status: "skipped", reason: "stale-owner" };
   const ownerKey = workspaceRuntimeOwnerKey(options.runtimeContext);
-  const active = options.surface === "active";
-  if (active && useUsersStore.getState().ownerKey !== ownerKey) {
-    useUsersStore.getState().startOwnerSync(ownerKey);
+  const store =
+    getUsersStoreForOwner(ownerKey) ??
+    (options.surface === "active" ? getSelectedUsersStore() : null);
+  if (store != null && store.getState().ownerKey !== ownerKey) {
+    store.getState().startOwnerSync(ownerKey);
   }
-  const before = useUsersStore.getState();
+  const before = store?.getState();
+  if (
+    store != null &&
+    before?.ownerKey === ownerKey &&
+    before.loadStatus === "ready" &&
+    completeUserStores.has(store)
+  ) {
+    return { status: "applied" };
+  }
   const snapshot = await readWorkspaceUserCacheSnapshot(ownerKey);
   if (isUserSyncInvalidated(options)) return { status: "skipped", reason: "stale-owner" };
-  if (active) {
-    const current = useUsersStore.getState();
+  if (store != null) {
+    const current = store.getState();
     if (current.ownerKey !== ownerKey) return { status: "skipped", reason: "stale-owner" };
-    if (current.usersById === before.usersById && current.lastLoadedAt == null) {
+    if (current.usersById === before?.usersById && current.lastLoadedAt == null) {
       const users = snapshot.profiles.map(fromWorkspaceUserCacheProfile);
       if (snapshot.complete && current.loadStatus !== "error") {
         current.replaceUsersForOwner(ownerKey, users);
+        completeUserStores.add(store);
       } else if (users.length > 0) {
         current.upsertUsersForOwner(ownerKey, users);
       }
@@ -321,7 +334,8 @@ export async function refreshWorkspaceSessionUsers(
   if (!isWriteCurrent()) return skipped;
   const ownerKey = workspaceRuntimeOwnerKey(runtimeContext);
   const active = options.surface === "active";
-  if (active) useUsersStore.getState().startOwnerSync(ownerKey);
+  const store = getUsersStoreForOwner(ownerKey) ?? (active ? getSelectedUsersStore() : null);
+  store?.getState().startOwnerSync(ownerKey);
 
   try {
     const dtos = await (client?.getUsers ?? defaultGetUsers)(
@@ -333,13 +347,13 @@ export async function refreshWorkspaceSessionUsers(
       throw new TypeError("Expected at least one valid messenger user");
     }
     const users = validDtos.map(adaptWorkspaceMessengerUserDto);
-    if (active) {
+    if (store != null) {
       if (reset) {
-        useUsersStore.getState().clear();
+        store.getState().clear();
         if (!isWriteCurrent()) return skipped;
-        useUsersStore.getState().startOwnerSync(ownerKey);
+        store.getState().startOwnerSync(ownerKey);
       }
-      if (!useUsersStore.getState().replaceUsersForOwner(ownerKey, users)) return skipped;
+      if (!store.getState().replaceUsersForOwner(ownerKey, users)) return skipped;
     }
     if (!isWriteCurrent()) return skipped;
 
@@ -354,10 +368,11 @@ export async function refreshWorkspaceSessionUsers(
       },
     );
     if (!active) await cacheWrite;
+    if (store != null && isWriteCurrent()) completeUserStores.add(store);
     return isWriteCurrent() ? { status: "applied" } : skipped;
   } catch (error) {
     if (!isWriteCurrent()) return skipped;
-    if (active) return markUsersSyncError(error, { ...options, ownerKey });
+    if (store != null) return markUsersSyncError(error, { ...options, ownerKey, store });
     return { status: "failed", error: normalizeUserSyncError(error) };
   }
 }

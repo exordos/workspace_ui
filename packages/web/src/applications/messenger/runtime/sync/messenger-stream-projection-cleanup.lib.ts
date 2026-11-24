@@ -1,13 +1,13 @@
 import { removeWorkspaceComposerDraftsForStream } from "~/applications/messenger/model/drafts/composer-draft.model";
-import { useWorkspaceMessageStore } from "~/applications/messenger/model/messages/message.model";
+import { getWorkspaceMessageStoreForOwner } from "~/applications/messenger/model/messages/message.model";
 import {
   deleteMessengerSearchResultsForOwner,
   deleteWorkspaceComposerDraftRecordsForStream,
 } from "~/shared/lib/workspace-messenger-cache-db";
 import {
+  getMessengerStoreForOwner,
   isMessengerStreamRemoved,
   markMessengerStreamRemoved,
-  useMessengerStore,
 } from "../../model/chats/messenger.model";
 import {
   deleteMessengerStreamCache,
@@ -21,7 +21,11 @@ export interface RemoveMessengerStreamProjectionOptions {
   streamUuid: MessengerUuid;
   removeActiveProjection: boolean;
   isOwnerCurrent?: () => boolean;
-  deleteCachedStream?: (ownerKey: string, streamUuid: MessengerUuid) => Promise<void> | void;
+  deleteCachedStream?: (
+    ownerKey: string,
+    streamUuid: MessengerUuid,
+    isCurrent?: () => boolean,
+  ) => Promise<void> | void;
   clearOwnerSearchCache?: boolean;
 }
 
@@ -44,7 +48,7 @@ export async function removeMessengerStreamProjection({
     cacheDeletion = Promise.resolve(
       deleteCachedStream == null
         ? deleteMessengerStreamCache(ownerKey, streamUuid, isRemovalCurrent)
-        : deleteCachedStream(ownerKey, streamUuid),
+        : deleteCachedStream(ownerKey, streamUuid, isRemovalCurrent),
     ).catch(() => undefined);
   } catch {
     cacheDeletion = Promise.resolve();
@@ -52,9 +56,10 @@ export async function removeMessengerStreamProjection({
 
   const draftCleanup = removeWorkspaceComposerDraftsForStream(ownerKey, streamUuid);
 
-  if (removeActiveProjection && useMessengerStore.getState().ownerKey === ownerKey) {
-    useMessengerStore.getState().removeStream(ownerKey, { uuid: streamUuid });
-    useWorkspaceMessageStore.getState().removeMessagesForStream(streamUuid);
+  const catalog = getMessengerStoreForOwner(ownerKey);
+  if (removeActiveProjection && catalog?.getState().ownerKey === ownerKey) {
+    catalog.getState().removeStream(ownerKey, { uuid: streamUuid });
+    getWorkspaceMessageStoreForOwner(ownerKey)?.getState().removeMessagesForStream(streamUuid);
   }
 
   await draftCleanup;

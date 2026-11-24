@@ -3,7 +3,7 @@ import { MemoryRouter, useLocation, useNavigate } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { adaptWorkspaceMessengerUserDto } from "~/entities/user/user-adapters.lib";
 import { toWorkspaceUserCacheProfile } from "~/entities/user/user-sync.lib";
-import { useUsersStore } from "~/entities/user/user.model";
+import { getSelectedUsersStore, useUsersStore } from "~/entities/user/user.model";
 import {
   useWorkspaceAuthStore,
   type WorkspaceAuthSession,
@@ -416,6 +416,7 @@ describe("LayoutProfileShareLink", () => {
   it.each(["unmount", "account change"])(
     "aborts a cached profile's refresh on %s",
     async (reason) => {
+      const ownerStore = getSelectedUsersStore();
       useUsersStore
         .getState()
         .upsertUserForOwner(workspaceRuntimeOwnerKey(SESSION), adaptWorkspaceMessengerUserDto(DTO));
@@ -443,7 +444,10 @@ describe("LayoutProfileShareLink", () => {
         resolve({ ...DTO, first_name: "Stale", updated_at: "2026-09-02T10:00:00Z" });
         return Promise.resolve();
       });
-      expect(useUsersStore.getState().usersById[USER]?.displayName).toBe("Alice Smith");
+      expect(ownerStore.getState().usersById[USER]?.displayName).toBe("Alice Smith");
+      if (reason === "account change") {
+        expect(useUsersStore.getState().usersById[USER]).toBeUndefined();
+      }
     },
   );
 

@@ -59,6 +59,7 @@ export interface LoadExternalAccountsOptions {
   store?: ExternalAccountsStoreApi;
   surface?: "active" | "background"; // Background recovery refreshes only the owner cache.
   restoreCache?: boolean; // Recovery should not reapply a snapshot from the pruned journal.
+  publishIfSelected?: () => boolean; // Owner recovery may publish to the compatibility store at commit.
 }
 
 function normalizeExternalAccountsError(error: unknown): string {
@@ -81,6 +82,7 @@ export async function loadExternalAccounts({
   store = useExternalAccountsStore,
   surface = "active",
   restoreCache = true,
+  publishIfSelected,
 }: LoadExternalAccountsOptions): Promise<LoadExternalAccountsResult> {
   const requestContext = captureWorkspaceRuntimeRequestContext(() => runtimeContext);
   if (requestContext == null) {
@@ -93,6 +95,7 @@ export async function loadExternalAccounts({
   }
 
   const loadGeneration = surface === "active" ? store.getState().startOwnerSync(ownerKey) : null;
+  const previousLoad = store.getState().loadGeneration;
   const isCurrent = () =>
     !isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, signal) &&
     (loadGeneration == null ||
@@ -141,6 +144,14 @@ export async function loadExternalAccounts({
     );
     if (!isCurrent()) {
       return { status: "skipped", ownerKey, reason: invalidatedRequestReason(signal) };
+    }
+    if (
+      loadGeneration == null &&
+      publishIfSelected?.() === true &&
+      store.getState().loadGeneration === previousLoad
+    ) {
+      const selectedLoad = store.getState().startOwnerSync(ownerKey);
+      store.getState().replaceAccountsForOwner(ownerKey, accounts, Date.now(), selectedLoad);
     }
     return { status: "applied", ownerKey };
   } catch (error) {

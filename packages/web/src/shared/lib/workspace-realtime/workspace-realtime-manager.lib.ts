@@ -45,6 +45,7 @@ export interface WorkspaceRealtimeManagerOptions<
   backgroundApplierFactory?: (
     options: WorkspaceRealtimeManagerApplierFactoryOptions,
   ) => WorkspaceRealtimeEventApplier;
+  selectSurface?: (context: TContext) => WorkspaceRealtimeSurface; // View selection does not restart this runtime.
   isOwnerCurrent?: (
     owner: WorkspaceRealtimeRuntimeOwner,
     surface: WorkspaceRealtimeSurface,
@@ -135,20 +136,33 @@ function delegateBySurface<TContext extends WorkspaceRealtimeManagerRuntimeConte
 
 function createRoutingApplier<TContext extends WorkspaceRealtimeManagerRuntimeContext>(
   getEntry: () => RuntimeEntry<TContext>,
+  selectSurface?: (context: TContext) => WorkspaceRealtimeSurface,
 ): WorkspaceRealtimeEventApplier {
+  function forCurrentSurface<Context extends WorkspaceRealtimeRuntimeContext>(
+    entry: RuntimeEntry<TContext>,
+    context: Context,
+  ): Context {
+    const surface = selectSurface?.(entry.managerContext) ?? context.surface;
+    return surface === context.surface ? context : { ...context, surface };
+  }
   return {
     applyEvent(event, context) {
       const entry = getEntry();
-      return delegateBySurface(entry, context).applyEvent(event, context);
+      const current = forCurrentSurface(entry, context);
+      return delegateBySurface(entry, current).applyEvent(event, current);
     },
     skipEvent(event, reason, context) {
       const entry = getEntry();
-      return delegateBySurface(entry, context).skipEvent(event, reason, context);
+      const current = forCurrentSurface(entry, context);
+      return delegateBySurface(entry, current).skipEvent(event, reason, current);
     },
     onTransportStateChange(state, context) {
       const entry = getEntry();
-      entry.lastTransportState = state;
-      return delegateBySurface(entry, context).onTransportStateChange(state, context);
+      const current = forCurrentSurface(entry, context);
+      const currentState =
+        state.surface === current.surface ? state : { ...state, surface: current.surface };
+      entry.lastTransportState = currentState;
+      return delegateBySurface(entry, current).onTransportStateChange(currentState, current);
     },
   };
 }
@@ -197,7 +211,7 @@ export function createWorkspaceRealtimeRuntimeManager<
         throw new Error("Workspace realtime manager entry is not initialized");
       }
       return entry;
-    });
+    }, options.selectSurface);
 
     const runtime = options.runtimeFactory({
       runtimeContext: managerContext,
@@ -231,7 +245,7 @@ export function createWorkspaceRealtimeRuntimeManager<
   ): boolean {
     // Surface или runtimeGeneration поменялись - перезапускаем тот же entry с новым context.
     return (
-      entry.surface !== nextSurface ||
+      (options.selectSurface == null && entry.surface !== nextSurface) ||
       !isSameRuntimeOwner(entry.managerContext.owner, nextContext.owner)
     );
   }
@@ -303,6 +317,7 @@ export function createWorkspaceRealtimeRuntimeManager<
       }
 
       existing.managerContext = managerContext;
+      existing.surface = surface;
     }
     await Promise.all(transitions);
   }

@@ -1,5 +1,5 @@
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
-import { useLocation } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useMessengerStore } from "~/applications/messenger/model/chats/messenger.model";
 import type { MessengerStream } from "~/applications/messenger/model/messenger.types";
@@ -13,6 +13,7 @@ import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace
 import { t } from "~/i18n/i18n";
 import { ELECTRON_MAC_TITLEBAR_STRIP_CLASS } from "~/shared/lib/electron-title-bar.lib";
 import { setCurrentOrgRouteIdResolver } from "~/shared/lib/org-route";
+import * as messengerCacheDb from "~/shared/lib/workspace-messenger-cache-db";
 import { createUser } from "~/test/factories";
 import { renderWithProviders } from "~/test/render";
 import { useRightDrawerStore } from "~/widgets/right-panel/right-drawer.model";
@@ -570,55 +571,86 @@ describe("TopBar", () => {
     },
   );
 
-  it("navigates to the next Workspace inbox after logging out from the current account", async () => {
-    const firstSession = createWorkspaceSession();
-    const secondSession = createWorkspaceSession({
-      accountId: "account-b",
-      instanceId: "instance-b",
-      organizationId: "next.example.com",
-      organizationOrigin: "https://next.example.com",
-      projectId: "project-b",
-      userUuid: "b225223c-637c-4afa-918f-5f2798b9305f",
-      login: "bob@example.com",
-      runtimeGeneration: 1,
-      profile: {
-        uuid: "b225223c-637c-4afa-918f-5f2798b9305f",
-        username: "bob",
-        firstName: "Bob",
-        lastName: "Workspace",
-        email: "bob@example.com",
-        status: "active",
-      },
-    });
-    useWorkspaceAuthStore.setState({
-      currentAccountId: firstSession.accountId,
-      runtimeGeneration: 1,
-      sessions: [firstSession, secondSession],
-    });
-    vi.spyOn(window, "confirm").mockReturnValue(true);
+  it.each([true, false])(
+    "keeps logout navigation independent of cache cleanup (current account=%s)",
+    async (removeCurrent) => {
+      const firstSession = createWorkspaceSession();
+      const secondSession = createWorkspaceSession({
+        accountId: "account-b",
+        instanceId: "instance-b",
+        organizationId: "next.example.com",
+        organizationOrigin: "https://next.example.com",
+        projectId: "project-b",
+        userUuid: "b225223c-637c-4afa-918f-5f2798b9305f",
+        login: "bob@example.com",
+        runtimeGeneration: 1,
+        profile: {
+          uuid: "b225223c-637c-4afa-918f-5f2798b9305f",
+          username: "bob",
+          firstName: "Bob",
+          lastName: "Workspace",
+          email: "bob@example.com",
+          status: "active",
+        },
+      });
+      useWorkspaceAuthStore.setState({
+        currentAccountId: firstSession.accountId,
+        runtimeGeneration: 1,
+        sessions: [firstSession, secondSession],
+      });
+      vi.spyOn(window, "confirm").mockReturnValue(true);
+      let finishCleanup: () => void = () => undefined;
+      const cleanup = new Promise<void>((resolve) => {
+        finishCleanup = () => resolve();
+      });
+      const deleteOwnerCache = vi
+        .spyOn(messengerCacheDb, "deleteWorkspaceMessengerOwnerCache")
+        .mockReturnValueOnce(cleanup);
+      const firstPath = "/org/workspace.example.com/project/project-a/stream/old-stream";
+      const nextInbox = "/org/next.example.com/project/project-b/inbox";
+      const nextLocation = removeCurrent
+        ? "/org/next.example.com/project/project-b/calendar"
+        : "/org/workspace.example.com/project/project-a/calendar";
 
-    renderWithProviders(
-      <>
-        <LocationProbe />
-        <TopBar />
-      </>,
-      { route: "/org/workspace.example.com/project/project-a/stream/old-stream" },
-    );
-
-    const accountMenuTrigger = screen
-      .getAllByRole("button", { name: t("auth.selectServer") })
-      .find((button) => button.getAttribute("aria-haspopup") === "menu");
-    expect(accountMenuTrigger).toBeDefined();
-    fireEvent.pointerDown(accountMenuTrigger!, { button: 0, ctrlKey: false });
-    fireEvent.click((await screen.findAllByRole("button", { name: t("auth.logoutFromOrg") }))[0]!);
-
-    await waitFor(() => {
-      expect(screen.getByTestId("location-path")).toHaveTextContent(
-        "/org/next.example.com/project/project-b/inbox",
+      renderWithProviders(
+        <>
+          <LocationProbe />
+          <TopBar />
+          <Link to={nextLocation}>Open calendar</Link>
+        </>,
+        { route: firstPath },
       );
-      expect(useWorkspaceAuthStore.getState().currentAccountId).toBe(secondSession.accountId);
-    });
-  });
+
+      const accountMenuTrigger = screen
+        .getAllByRole("button", { name: t("auth.selectServer") })
+        .find((button) => button.getAttribute("aria-haspopup") === "menu");
+      expect(accountMenuTrigger).toBeDefined();
+      fireEvent.pointerDown(accountMenuTrigger!, { button: 0, ctrlKey: false });
+      const logoutButtons = await screen.findAllByRole("button", { name: t("auth.logoutFromOrg") });
+      fireEvent.click(logoutButtons[removeCurrent ? 0 : 1]!);
+
+      try {
+        await waitFor(() => expect(deleteOwnerCache).toHaveBeenCalledOnce());
+        expect(screen.getByTestId("location-path")).toHaveTextContent(
+          removeCurrent ? nextInbox : firstPath,
+        );
+        expect(useWorkspaceAuthStore.getState().currentAccountId).toBe(
+          removeCurrent ? secondSession.accountId : firstSession.accountId,
+        );
+        const accountMenu = screen.queryByRole("menu");
+        if (accountMenu != null) fireEvent.keyDown(accountMenu, { key: "Escape" });
+        fireEvent.click(await screen.findByRole("link", { name: "Open calendar" }));
+        await act(async () => {
+          finishCleanup();
+          await cleanup;
+        });
+        expect(screen.getByTestId("location-path")).toHaveTextContent(nextLocation);
+      } finally {
+        finishCleanup();
+        deleteOwnerCache.mockRestore();
+      }
+    },
+  );
 
   it("shows short profile status without a hover title", () => {
     seedWorkspaceSession();

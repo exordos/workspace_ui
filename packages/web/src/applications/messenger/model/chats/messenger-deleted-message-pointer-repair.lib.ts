@@ -1,4 +1,7 @@
-import { useWorkspaceMessageStore } from "~/applications/messenger/model/messages/message.model";
+import {
+  getSelectedWorkspaceMessageStore,
+  getWorkspaceMessageStoreForOwner,
+} from "~/applications/messenger/model/messages/message.model";
 import {
   captureWorkspaceRuntimeRequestContext,
   isWorkspaceRuntimeRequestInvalidated,
@@ -21,7 +24,8 @@ import {
 } from "../messenger-request-options.lib";
 import {
   applyDeletedMessagePointerRepair,
-  useMessengerStore,
+  getMessengerStoreForOwner,
+  getSelectedMessengerStore,
   type MessengerDeletedMessagePointerTargets,
 } from "./messenger.model";
 import type { KnownMessageCacheWriter } from "../messages/messages-accept-update.lib";
@@ -100,7 +104,9 @@ function collectKnownReplacementMessages(plan: DeletedMessagePointerRepairPlan):
   stream: MessengerMessage | null;
   topic: MessengerMessage | null;
 } {
-  const messages = Object.values(useWorkspaceMessageStore.getState().messagesById).filter(
+  const messagesStore =
+    getWorkspaceMessageStoreForOwner(plan.ownerKey) ?? getSelectedWorkspaceMessageStore();
+  const messages = Object.values(messagesStore.getState().messagesById).filter(
     (message) => message.uuid !== plan.message.uuid,
   );
   return {
@@ -149,6 +155,8 @@ async function writeRepairCacheBestEffort(
   plan: DeletedMessagePointerRepairPlan,
   replacements: Partial<Record<DeletedMessagePointerScope, MessengerMessage>>,
   isCurrent: () => boolean,
+  catalog: ReturnType<typeof getSelectedMessengerStore>,
+  messagesStore: ReturnType<typeof getSelectedWorkspaceMessageStore>,
 ): Promise<void> {
   if (cache == null) return;
   const writes: { message: MessengerMessage; targets: MessengerMessagePointerCacheTargets }[] = [];
@@ -179,7 +187,7 @@ async function writeRepairCacheBestEffort(
     writes.map(async ({ message, targets: requested }) => {
       const currentBody = () => {
         if (!isCurrent()) return;
-        const messages = useWorkspaceMessageStore.getState();
+        const messages = messagesStore.getState();
         const latest = messages.messagesById[message.uuid];
         return messages.deletedMessageRevisionById[message.uuid] == null &&
           latest?.conversationId === message.conversationId &&
@@ -194,7 +202,7 @@ async function writeRepairCacheBestEffort(
       try {
         let latest = currentBody();
         while (latest != null) {
-          const targets = currentRepairTargets(message, requested);
+          const targets = currentRepairTargets(catalog.getState(), message, requested);
           if (!targets.stream && !targets.topic && !targets.conversationIds?.length) return;
 
           const { read } = latest;
@@ -221,10 +229,10 @@ async function writeRepairCacheBestEffort(
 
 // Recheck each target on a retry so a newer live pointer stays in place.
 function currentRepairTargets(
+  state: ReturnType<ReturnType<typeof getSelectedMessengerStore>["getState"]>,
   message: MessengerMessage,
   requested: MessengerMessagePointerCacheTargets,
 ): MessengerMessagePointerCacheTargets {
-  const state = useMessengerStore.getState();
   return {
     ...(requested.stream == null
       ? {}
@@ -250,7 +258,7 @@ export function captureDeletedMessagePointerRepair(
   ownerKey: string,
   message: MessengerDeletedMessage,
 ): DeletedMessagePointerRepairPlan {
-  const state = useMessengerStore.getState();
+  const state = (getMessengerStoreForOwner(ownerKey) ?? getSelectedMessengerStore()).getState();
   const streamConversationId = conversationIdForStream(message.streamUuid);
   const topicConversationId = conversationIdForTopic(message.streamUuid, message.topicUuid);
   return {
@@ -286,12 +294,15 @@ export async function repairDeletedMessagePointers({
   if (!hasPointerTargets(plan.targets)) return;
   const requestContext = captureWorkspaceRuntimeRequestContext(() => runtimeContext);
   if (requestContext == null || workspaceRuntimeOwnerKey(requestContext) !== plan.ownerKey) return;
-  const initialStore = useWorkspaceMessageStore.getState();
+  const catalog = getMessengerStoreForOwner(plan.ownerKey) ?? getSelectedMessengerStore();
+  const messagesStore =
+    getWorkspaceMessageStoreForOwner(plan.ownerKey) ?? getSelectedWorkspaceMessageStore();
+  const initialStore = messagesStore.getState();
   const canWrite = () =>
     isCurrent() &&
     !isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, signal) &&
-    useMessengerStore.getState().ownerKey === plan.ownerKey &&
-    useWorkspaceMessageStore.getState().ownerKey === initialStore.ownerKey;
+    catalog.getState().ownerKey === plan.ownerKey &&
+    messagesStore.getState().ownerKey === initialStore.ownerKey;
   if ((initialStore.ownerKey != null && initialStore.ownerKey !== plan.ownerKey) || !canWrite())
     return;
   const knownReplacements = collectKnownReplacementMessages(plan);
@@ -346,7 +357,7 @@ export async function repairDeletedMessagePointers({
       (scope === "topic" && message.topicUuid !== plan.message.topicUuid)
     )
       continue;
-    const messageStore = useWorkspaceMessageStore.getState();
+    const messageStore = messagesStore.getState();
     if (messageStore.deletedMessageRevisionById[message.uuid] != null) continue;
     const known = messageStore.messagesById[message.uuid];
     if (known == null || !isLaterMessageTimestamp(known.updatedAt, message.updatedAt))
@@ -354,7 +365,7 @@ export async function repairDeletedMessagePointers({
   }
   if (!canWrite()) return;
   // Both requests can supply the same UUID, or a subscriber may delete it during publication.
-  const updatedStore = useWorkspaceMessageStore.getState();
+  const updatedStore = messagesStore.getState();
   const effective = (scope: DeletedMessagePointerScope) => {
     const uuid = replacements[scope]?.uuid;
     if (uuid == null || updatedStore.deletedMessageRevisionById[uuid] != null) return undefined;
@@ -369,5 +380,13 @@ export async function repairDeletedMessagePointers({
     stream: effectiveReplacements.stream ?? null,
     topic: effectiveReplacements.topic ?? null,
   });
-  await writeRepairCacheBestEffort(cache, plan.ownerKey, plan, effectiveReplacements, canWrite);
+  await writeRepairCacheBestEffort(
+    cache,
+    plan.ownerKey,
+    plan,
+    effectiveReplacements,
+    canWrite,
+    catalog,
+    messagesStore,
+  );
 }

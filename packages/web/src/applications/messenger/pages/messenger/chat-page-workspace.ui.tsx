@@ -39,7 +39,36 @@ import {
   stageWorkspaceReplyHandoff,
   type WorkspaceReplyHandoffClaim,
 } from "~/applications/messenger/features/composer/reply/workspace-reply-handoff.model";
+import {
+  addWorkspaceReplyTab,
+  appendWorkspaceReplyTabs,
+  buildWorkspaceReplyMarkdown,
+  removeWorkspaceReplyTab,
+  reorderWorkspaceReplyTab,
+  replyToWorkspaceReply,
+  selectWorkspaceReplyTab,
+  setWorkspaceReplyAnswer,
+} from "~/applications/messenger/features/composer/reply/workspace-reply.lib";
+import { EMPTY_WORKSPACE_REPLY_SESSION } from "~/applications/messenger/features/composer/reply/workspace-reply.model";
+import type {
+  WorkspaceReplyQuote,
+  WorkspaceReplySession,
+  WorkspaceReplyTab,
+} from "~/applications/messenger/features/composer/reply/workspace-reply.types";
+import {
+  WorkspaceReplyTabs,
+  type WorkspaceReplyTabSelectSource,
+} from "~/applications/messenger/features/composer/reply/workspace-reply.ui";
+import { ChatChannelHeader } from "~/applications/messenger/features/conversation-header/chat-header-channel.ui";
+import { ChatDirectHeader } from "~/applications/messenger/features/conversation-header/chat-header-direct.ui";
+import { ChatFavoritesHeader } from "~/applications/messenger/features/conversation-header/chat-header-favorites.ui";
+import type { ChatHeaderCommonProps } from "~/applications/messenger/features/conversation-header/chat-header.types";
 import { selectWorkspaceChatHeaderView } from "~/applications/messenger/features/conversation-header/messenger-chat-header.lib";
+import {
+  getEncryptedChatServiceActions,
+  getEncryptedChatServiceState,
+} from "~/applications/messenger/features/decrypted-message/encrypted-chat-message/encrypted-chat-service-actions.lib";
+import { selectMessengerSidebarTopicsForStream } from "~/applications/messenger/features/sidebar/messenger-sidebar.lib";
 import {
   chatCommands,
   useChatRouteMembership,
@@ -87,7 +116,6 @@ import {
   restoreMessengerSecretMarkdown,
 } from "~/applications/messenger/model/crypto/messenger-secret-message.lib";
 import { isWorkspaceSelfChat } from "~/applications/messenger/model/chats/messenger-self-chat.lib";
-import { selectMessengerSidebarTopicsForStream } from "~/applications/messenger/features/sidebar/messenger-sidebar.lib";
 import { normalizeWorkspacePreviewBlob } from "~/applications/messenger/features/timeline/messenger-workspace-message-preview-blob.lib";
 import type {
   MessengerConversationId,
@@ -107,10 +135,6 @@ import {
   isWorkspaceRuntimeRequestContextCurrent,
   workspaceRuntimeOwnerKey,
 } from "~/entities/workspace-runtime/workspace-runtime.lib";
-import {
-  getEncryptedChatServiceActions,
-  getEncryptedChatServiceState,
-} from "~/applications/messenger/features/decrypted-message/encrypted-chat-message/encrypted-chat-service-actions.lib";
 import { useWorkspaceJitsiSettingsStore } from "~/features/jitsi-call/jitsi-call-settings.model";
 import { createJitsiCallKey, useJitsiCallStore } from "~/features/jitsi-call/jitsi-call.model";
 import { buildWorkspaceJitsiMeetingUrl } from "~/features/jitsi-call/workspace-jitsi-call.lib";
@@ -123,6 +147,8 @@ import { t } from "~/i18n/i18n";
 import { useOpenSearch } from "~/shared/contexts/open-search";
 import { useRightDrawer } from "~/shared/contexts/right-drawer";
 import type { RightDrawerContextValue } from "~/shared/contexts/right-drawer.types";
+import { chatBottomNoticeBarClassName } from "~/shared/lib/chat-bottom-notice-bar.lib";
+import { writeText } from "~/shared/lib/clipboard";
 import { useWorkspaceMessageAnchorNavigation } from "./anchor-navigation/workspace-message-anchor-navigation.hook";
 import {
   useWorkspaceConversationOpening,
@@ -140,28 +166,6 @@ import type { PollDraft } from "~/applications/messenger/features/polls/create-p
 import { preparePollSend } from "~/applications/messenger/features/polls/create-poll.lib";
 import type { PollSendAttempt } from "~/applications/messenger/features/polls/create-poll.lib";
 import { useWorkspaceVisibleMessageRead } from "~/applications/messenger/features/timeline/read/workspace-visible-message-read.hook";
-import {
-  addWorkspaceReplyTab,
-  appendWorkspaceReplyTabs,
-  buildWorkspaceReplyMarkdown,
-  removeWorkspaceReplyTab,
-  reorderWorkspaceReplyTab,
-  replyToWorkspaceReply,
-  selectWorkspaceReplyTab,
-  setWorkspaceReplyAnswer,
-} from "~/applications/messenger/features/composer/reply/workspace-reply.lib";
-import { EMPTY_WORKSPACE_REPLY_SESSION } from "~/applications/messenger/features/composer/reply/workspace-reply.model";
-import type {
-  WorkspaceReplyQuote,
-  WorkspaceReplySession,
-  WorkspaceReplyTab,
-} from "~/applications/messenger/features/composer/reply/workspace-reply.types";
-import {
-  WorkspaceReplyTabs,
-  type WorkspaceReplyTabSelectSource,
-} from "~/applications/messenger/features/composer/reply/workspace-reply.ui";
-import { chatBottomNoticeBarClassName } from "~/shared/lib/chat-bottom-notice-bar.lib";
-import { writeText } from "~/shared/lib/clipboard";
 import { createLogger } from "~/shared/lib/logger";
 import { toast } from "~/shared/lib/toast/toast";
 import {
@@ -202,10 +206,6 @@ import {
 import { Button } from "~/shared/ui/button";
 import { Icon } from "~/shared/ui/icon";
 import { Spinner } from "~/shared/ui/loading";
-import { ChatChannelHeader } from "~/applications/messenger/features/conversation-header/chat-header-channel.ui";
-import { ChatDirectHeader } from "~/applications/messenger/features/conversation-header/chat-header-direct.ui";
-import { ChatFavoritesHeader } from "~/applications/messenger/features/conversation-header/chat-header-favorites.ui";
-import type { ChatHeaderCommonProps } from "~/applications/messenger/features/conversation-header/chat-header.types";
 import { WorkspaceMessageAnchorTransition } from "~/applications/messenger/features/timeline/workspace-message-anchor-transition.ui";
 import type { WorkspaceMessageConversationReference } from "~/applications/messenger/features/timeline/workspace-message-list.types";
 import { recordWorkspaceMessageQuickReactionUse } from "~/applications/messenger/features/timeline/workspace-message-quick-reaction-history.lib";
@@ -1545,7 +1545,8 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
   const realtimeReady =
     runtimeContext != null &&
     realtimeReadyOwnerKey === ownerKey &&
-    realtimeReadyRuntimeGeneration === runtimeContext.runtimeGeneration;
+    realtimeReadyRuntimeGeneration ===
+      (runtimeContext.ownerRuntimeGeneration ?? runtimeContext.runtimeGeneration);
   const initialPositionReady = resolveInitialPositionReady({
     hasRuntimeContext: runtimeContext != null && ownerKey != null,
     hasConversationWindow: conversationWindowMode != null,

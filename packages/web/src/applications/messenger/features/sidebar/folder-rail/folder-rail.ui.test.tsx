@@ -18,6 +18,7 @@ vi.mock("~/entities/workspace-auth/workspace-auth.model", () => ({
   selectCurrentWorkspaceRuntimeContext: () => null,
   useWorkspaceAuthStore: {
     getState: () => ({
+      sessions: [],
       getCurrentRuntimeContext: getCurrentRuntimeContextMock,
     }),
     subscribe: () => () => undefined,

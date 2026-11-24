@@ -7,6 +7,8 @@ import {
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import {
   selectMessengerFolders,
+  getMessengerStoreForOwner,
+  getSelectedMessengerStore,
   useMessengerStore,
   type MessengerStoreState,
 } from "./messenger.model";
@@ -67,10 +69,11 @@ export const EMPTY_CHATS_CATALOG: ChatsCatalogSnapshot = {
 };
 const PENDING_CHATS_CATALOG: ChatsCatalogSnapshot = { ...EMPTY_CHATS_CATALOG, isLoading: true };
 const getRuntime = () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
-let latestCatalog = EMPTY_CHATS_CATALOG;
+const latestCatalogs = new WeakMap<MessengerStoreState["startBootstrap"], ChatsCatalogSnapshot>();
 
 // Повторное чтение и внутренние изменения store сохраняют ссылку на публичный снимок.
 function readCatalog(state: MessengerStoreState): ChatsCatalogSnapshot {
+  let latestCatalog = latestCatalogs.get(state.startBootstrap) ?? EMPTY_CHATS_CATALOG;
   if (FIELDS.some((field) => latestCatalog[field] !== state[field])) {
     const {
       ownerKey,
@@ -112,6 +115,7 @@ function readCatalog(state: MessengerStoreState): ChatsCatalogSnapshot {
       foldersById,
       folderIds,
     };
+    latestCatalogs.set(state.startBootstrap, latestCatalog);
   }
   return latestCatalog;
 }
@@ -124,6 +128,12 @@ export function readActiveChats(): ChatsCatalogSnapshot {
   return state.ownerKey === workspaceRuntimeOwnerKey(runtime)
     ? readCatalog(state)
     : PENDING_CHATS_CATALOG;
+}
+
+// Read a warm owner catalog for Workspace effects such as background notifications.
+export function readChatsForOwner(ownerKey: string): ChatsCatalogSnapshot {
+  const state = getMessengerStoreForOwner(ownerKey)?.getState();
+  return state?.ownerKey === ownerKey ? readCatalog(state) : EMPTY_CHATS_CATALOG;
 }
 
 // Подписка на выбранную часть каталога с немедленным сбросом на смене сессии.
@@ -162,8 +172,12 @@ export function createChatsCatalogSource(
   getCurrentRuntime: WorkspaceRuntimeContextGetter = getRuntime,
 ) {
   const ownerKey = runtime == null ? null : workspaceRuntimeOwnerKey(runtime);
+  const store =
+    ownerKey == null
+      ? getSelectedMessengerStore()
+      : (getMessengerStoreForOwner(ownerKey) ?? getSelectedMessengerStore());
   const getSnapshot = (): ChatsCatalogSnapshot => {
-    const state = useMessengerStore.getState();
+    const state = store.getState();
     return state.ownerKey === ownerKey &&
       isWorkspaceRuntimeRequestContextCurrent(runtime, getCurrentRuntime)
       ? readCatalog(state)
@@ -179,7 +193,7 @@ export function createChatsCatalogSource(
         previous = next;
         listener();
       };
-      const unsubscribeCatalog = useMessengerStore.subscribe(publish);
+      const unsubscribeCatalog = store.subscribe(publish);
       const unsubscribeRuntime = useWorkspaceAuthStore.subscribe(publish);
       return () => {
         unsubscribeCatalog();

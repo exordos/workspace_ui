@@ -23,6 +23,7 @@ export interface WorkspaceRuntimeContext extends WorkspaceRuntimeOwner {
   accessToken: string;
   refreshToken?: string;
   runtimeGeneration: number;
+  ownerRuntimeGeneration?: number; // Credential generation when runtimeGeneration fences a selected screen.
 }
 
 // Async requests keep this snapshot so stale responses cannot update another project.

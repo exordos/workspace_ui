@@ -84,9 +84,14 @@ function deleteOwnerRowsInStore(
   store: IDBObjectStore,
   ownerKey: string,
   onDeleted?: () => void,
+  isWriteCurrent?: () => boolean,
 ): void {
   const request = store.index(INDEX_BY_OWNER).openCursor(IDBKeyRange.only(ownerKey));
   request.onsuccess = () => {
+    if (isWriteCurrent?.() === false) {
+      store.transaction.abort();
+      return;
+    }
     const cursor = request.result;
     if (cursor == null) {
       onDeleted?.();
@@ -186,12 +191,21 @@ export async function replaceWorkspaceExternalAccountCache(
   }
 }
 
-export async function deleteWorkspaceExternalAccountOwnerCache(ownerKey: string): Promise<void> {
+export async function deleteWorkspaceExternalAccountOwnerCache(
+  ownerKey: string,
+  isWriteCurrent?: () => boolean,
+): Promise<void> {
   if (!isIndexedDBAvailable()) return;
   try {
     const db = await openWorkspaceExternalAccountCacheDb();
+    if (isWriteCurrent?.() === false) return;
     const transaction = db.transaction(STORE_ACCOUNTS, "readwrite");
-    deleteOwnerRowsInStore(transaction.objectStore(STORE_ACCOUNTS), ownerKey);
+    deleteOwnerRowsInStore(
+      transaction.objectStore(STORE_ACCOUNTS),
+      ownerKey,
+      undefined,
+      isWriteCurrent,
+    );
     await transactionDone(transaction);
   } catch {
     // Cache cleanup is best-effort.

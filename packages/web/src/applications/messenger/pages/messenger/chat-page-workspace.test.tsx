@@ -14,16 +14,26 @@ import type {
 } from "~/applications/messenger/features/conversation-header/chat-header.types";
 import { useWorkspaceForwardMessageStore } from "~/applications/messenger/features/timeline/forward/workspace-forward-message.model";
 import * as topicResolution from "~/applications/messenger/model/chats/messenger-conversation-metadata.lib";
+import { useMessengerStore } from "~/applications/messenger/model/chats/messenger.model";
+import { notifyRealChatKeyChanges } from "~/applications/messenger/model/crypto/chat-crypto-resources.lib";
 import type { RealChatSession } from "~/applications/messenger/model/crypto/chat-crypto-runtime.lib";
-import { useWorkspaceMessageStore } from "~/applications/messenger/model/messages/message.model";
 import {
   decryptRealChatEnvelopeResult,
   decryptRealChatMessage,
   decryptRealChatMessageResult,
 } from "~/applications/messenger/model/crypto/chat-crypto-runtime.lib";
+import {
+  resetWorkspaceComposerDraftStoreForTests,
+  selectWorkspaceComposerDraft,
+  useWorkspaceComposerDraftStore,
+} from "~/applications/messenger/model/drafts/composer-draft.model";
+import * as messageLoader from "~/applications/messenger/model/messages/history/messenger-messages-loader.lib";
+import {
+  getWorkspaceMessageStoreForOwner,
+  useWorkspaceMessageStore,
+} from "~/applications/messenger/model/messages/message.model";
 import { acceptServerMessages } from "~/applications/messenger/model/messages/messages-accept-server.lib";
 import { createMessengerPlacementUuid } from "~/applications/messenger/model/messages/messenger-message-identity.lib";
-import * as messageLoader from "~/applications/messenger/model/messages/history/messenger-messages-loader.lib";
 import { deliverMessengerOutgoingMessage } from "~/applications/messenger/model/messages/outgoing/messenger-outbox-delivery.lib";
 import { useMessengerOutboxStore } from "~/applications/messenger/model/messages/outgoing/messenger-outbox.model";
 import type {
@@ -32,13 +42,6 @@ import type {
   MessengerTopic,
 } from "~/applications/messenger/model/messenger.types";
 import { createMessengerRealtimeActiveApplier } from "~/applications/messenger/runtime/sync/messenger-realtime-applier.lib";
-import { useMessengerStore } from "~/applications/messenger/model/chats/messenger.model";
-import { notifyRealChatKeyChanges } from "~/applications/messenger/model/crypto/chat-crypto-resources.lib";
-import {
-  resetWorkspaceComposerDraftStoreForTests,
-  selectWorkspaceComposerDraft,
-  useWorkspaceComposerDraftStore,
-} from "~/applications/messenger/model/drafts/composer-draft.model";
 import { useDownloadStore } from "~/entities/download/download.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import type { WorkspaceAuthSession } from "~/entities/workspace-auth/workspace-auth.model";
@@ -2393,7 +2396,7 @@ describe("ChatPage Workspace route", () => {
     },
   );
 
-  it.each(["applied", "failed", "runtime-replaced"] as const)(
+  it.each(["applied", "failed", "credentials-refreshed"] as const)(
     "keeps an encrypted attachment after unmount when delivery is %s",
     async (outcome) => {
       const runtime = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
@@ -2438,10 +2441,11 @@ describe("ChatPage Workspace route", () => {
       const active = await captured.openRealChatSession.mock.results[0]?.value;
       unmount();
       expect(active.dispose).not.toHaveBeenCalled();
-      if (outcome === "runtime-replaced") {
+      if (outcome === "credentials-refreshed") {
         act(() => {
-          const nextSession = { ...createSession(), runtimeGeneration: 2 };
-          useWorkspaceAuthStore.setState({ sessions: [nextSession], runtimeGeneration: 2 });
+          useWorkspaceAuthStore.getState().updateTokens(runtime.accountId, {
+            accessToken: "next-access-token",
+          });
         });
         await waitFor(() =>
           expect(
@@ -4259,50 +4263,43 @@ describe("ChatPage Workspace route", () => {
     expect(document.querySelector("[data-message-anchor-transition='true']")).toBeNull();
   });
 
-  it.each(["ready", "unmounted"] as const)(
-    "holds an anchor request while its store belongs to the old owner, then %s",
-    async (outcome) => {
-      const conversationId = `topic:${STREAM_UUID}:${TOPIC_UUID}` as const;
-      updateTestConversationWindow(conversationId);
-      const sessionB: WorkspaceAuthSession = {
-        ...createSession(),
-        accountId: "org-b:project-b:user-b",
-        organizationId: "org-b",
-        projectId: "project-b",
-        userUuid: USER_B_UUID,
-        runtimeGeneration: 2,
-      };
-      useWorkspaceAuthStore.setState({
-        sessions: [sessionB],
-        currentAccountId: sessionB.accountId,
-        runtimeGeneration: sessionB.runtimeGeneration,
-      });
-      const ownerB = workspaceRuntimeOwnerKey(sessionB);
-      useMessengerStore.getState().clear();
-      useMessengerStore.getState().startBootstrap(ownerB);
-      useMessengerStore.getState().replaceBootstrapState(ownerB, createBootstrapPayload());
+  it("starts a direct anchor against the newly selected owner's store and cancels on unmount", async () => {
+    const conversationId = `topic:${STREAM_UUID}:${TOPIC_UUID}` as const;
+    updateTestConversationWindow(conversationId);
+    const request = createDeferred<ReturnType<typeof appliedWindowResult>>();
+    captured.loadWorkspaceMessageWindowAroundMessage.mockReturnValueOnce(request.promise);
+    const sessionB: WorkspaceAuthSession = {
+      ...createSession(),
+      accountId: "org-b:project-b:user-b",
+      organizationId: "org-b",
+      projectId: "project-b",
+      userUuid: USER_B_UUID,
+      runtimeGeneration: 2,
+    };
+    useWorkspaceAuthStore.setState({
+      sessions: [sessionB],
+      currentAccountId: sessionB.accountId,
+      runtimeGeneration: sessionB.runtimeGeneration,
+    });
+    const ownerB = workspaceRuntimeOwnerKey(sessionB);
+    useMessengerStore.getState().clear();
+    useMessengerStore.getState().startBootstrap(ownerB);
+    useMessengerStore.getState().replaceBootstrapState(ownerB, createBootstrapPayload());
 
-      const page = renderWorkspaceChatPageWithShellContexts(
-        `/org/org-b/project/project-b/stream/${STREAM_UUID}/topic/${TOPIC_UUID}#message-${MESSAGE_UUID}`,
-      );
+    const page = renderWorkspaceChatPageWithShellContexts(
+      `/org/org-b/project/project-b/stream/${STREAM_UUID}/topic/${TOPIC_UUID}#message-${MESSAGE_UUID}`,
+    );
 
-      expect(captured.loadWorkspaceMessageWindowAroundMessage).not.toHaveBeenCalled();
-      if (outcome === "unmounted") page.unmount();
-      await act(async () => {
-        useWorkspaceMessageStore.getState().setOwner(ownerB, false);
-        await Promise.resolve();
-      });
-
-      if (outcome === "unmounted") {
-        expect(captured.loadWorkspaceMessageWindowAroundMessage).not.toHaveBeenCalled();
-        return;
-      }
-
-      await waitFor(() =>
-        expect(captured.loadWorkspaceMessageWindowAroundMessage).toHaveBeenCalledTimes(1),
-      );
-    },
-  );
+    await waitFor(() =>
+      expect(captured.loadWorkspaceMessageWindowAroundMessage).toHaveBeenCalledTimes(1),
+    );
+    const input = captured.loadWorkspaceMessageWindowAroundMessage.mock.calls[0]?.[0];
+    expect(input?.store?.getState().ownerKey).toBe(ownerB);
+    page.unmount();
+    expect(input?.signal?.aborted).toBe(true);
+    request.resolve(appliedWindowResult(MESSAGE_UUID));
+    await request.promise;
+  });
 
   it("reloads a focused anchor missing from the DOM only once", async () => {
     const windowRequest = createDeferred<ReturnType<typeof appliedWindowResult>>();
@@ -6204,7 +6201,7 @@ describe("ChatPage Workspace route", () => {
     });
   });
 
-  it("stores a localized outbox error when the runtime changes during send", async () => {
+  it("stores a localized outbox error when credentials refresh during send", async () => {
     const session = createSession();
     const sendRequest = createDeferred<{
       status: "applied";
@@ -6237,15 +6234,8 @@ describe("ChatPage Workspace route", () => {
     if (outgoing == null) throw new Error("Expected an outgoing message");
 
     act(() => {
-      const nextSession = {
-        ...session,
+      useWorkspaceAuthStore.getState().updateTokens(session.accountId, {
         accessToken: "next-access-token",
-        runtimeGeneration: 2,
-      };
-      useWorkspaceAuthStore.setState({
-        sessions: [nextSession],
-        currentAccountId: nextSession.accountId,
-        runtimeGeneration: 2,
       });
     });
 
@@ -6263,6 +6253,64 @@ describe("ChatPage Workspace route", () => {
     await expect(sendPromise).resolves.toEqual(
       expect.objectContaining({ message: t("message.sendFailed") }),
     );
+  });
+
+  it("applies a delayed accepted POST to A while the selected store belongs to B", async () => {
+    const auth = useWorkspaceAuthStore.getState();
+    const ownerA = auth.getCurrentRuntimeContext()!;
+    const ownerKeyA = workspaceRuntimeOwnerKey(ownerA);
+    const actual = await vi.importActual<
+      typeof import("../../model/messages/messenger-message-actions.lib")
+    >("../../model/messages/messenger-message-actions.lib");
+    const response = createDeferred<void>();
+    const post = vi.fn();
+    type PlainRequest = Extract<
+      Parameters<typeof actual.sendMessengerMessage>[0],
+      { markdown: string }
+    >;
+    captured.sendMessengerMessage.mockImplementationOnce((request: PlainRequest) =>
+      actual.sendMessengerMessage({
+        ...request,
+        client: {
+          createMessage: () => {
+            post();
+            return response.promise.then(() => toMarkdownMessageDto(createSentMessage(request)));
+          },
+        },
+      }),
+    );
+    const confirm = vi.fn();
+    const outgoing = useMessengerOutboxStore.getState().enqueueOutgoingMessage(
+      {
+        ownerKey: ownerKeyA,
+        conversationId: `topic:${STREAM_UUID}:${TOPIC_UUID}`,
+        projectId: ownerA.projectId,
+        streamUuid: STREAM_UUID,
+        topicUuid: TOPIC_UUID,
+        authorUuid: ownerA.userUuid,
+        markdown: "Accepted by A",
+        status: "sending",
+        includeStreamConversation: false,
+      },
+      confirm,
+    );
+    const delivery = deliverMessengerOutgoingMessage(ownerA, outgoing.placementUuid);
+    await waitFor(() => expect(post).toHaveBeenCalledOnce());
+
+    auth.setSession({ ...createSession(), accountId: "account-b", instanceId: "instance-b" });
+    response.resolve();
+    await expect(delivery).resolves.toBe(true);
+
+    expect(
+      getWorkspaceMessageStoreForOwner(ownerKeyA)?.getState().messagesById[outgoing.placementUuid],
+    ).toMatchObject({ payload: { kind: "markdown", content: "Accepted by A" } });
+    expect(
+      useWorkspaceMessageStore.getState().messagesById[outgoing.placementUuid],
+    ).toBeUndefined();
+    expect(
+      useMessengerOutboxStore.getState().outgoingMessagesByPlacementUuid[outgoing.placementUuid],
+    ).toBeUndefined();
+    expect(confirm).toHaveBeenCalledOnce();
   });
 
   it("keeps an in-flight edit active when navigating to another chat", async () => {

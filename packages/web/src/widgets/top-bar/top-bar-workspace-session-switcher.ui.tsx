@@ -16,6 +16,7 @@ import {
   getOrganizationFallbackLogoUrl,
   getOrganizationLogoSrc,
 } from "~/shared/lib/organization-branding";
+import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
 import { AppTooltip } from "~/shared/ui/app-tooltip";
 import { Badge } from "~/shared/ui/badge";
 import { DropdownMenu, type DropdownMenuItem } from "~/shared/ui/dropdown-menu";
@@ -257,15 +258,22 @@ export const InstanceSwitcher: React.FC = () => {
                     t("auth.logoutFromOrgConfirm", { server: title }),
                   );
                   if (!confirmed) return;
-                  const removedCurrentSession = session.accountId === currentWorkspaceAccountId;
-                  void removeWorkspaceSession(session.accountId).then(() => {
-                    if (!removedCurrentSession) return;
-                    const nextRoute = resolveWorkspacePostLogoutRoute(getCurrentWorkspaceSession());
-                    const currentPath = `${location.pathname}${location.search}${location.hash}`;
-                    if (nextRoute !== currentPath) {
-                      void navigate(nextRoute, { replace: true });
-                    }
+                  const wasSelected =
+                    useWorkspaceAuthStore.getState().currentAccountId === session.accountId;
+                  void removeWorkspaceSession(session.accountId).catch((error: unknown) => {
+                    reportUnexpectedError("workspace-auth:logout", error);
                   });
+                  if (
+                    !wasSelected ||
+                    useWorkspaceAuthStore.getState().currentAccountId === session.accountId
+                  )
+                    return;
+                  // Auth revokes the selection synchronously. Cache cleanup has no navigation effect.
+                  const nextRoute = resolveWorkspacePostLogoutRoute(getCurrentWorkspaceSession());
+                  const currentPath = `${location.pathname}${location.search}${location.hash}`;
+                  if (nextRoute !== currentPath) {
+                    void navigate(nextRoute, { replace: true });
+                  }
                 }}
                 className="hover:bg-notice-base/20 border-notice-base/40 bg-notice-base/10 ml-1 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md border text-notice-base transition-colors"
                 aria-label={t("auth.logoutFromOrg")}

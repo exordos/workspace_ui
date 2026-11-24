@@ -1,6 +1,6 @@
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { useState } from "react";
-import { useLocation } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useUsersStore } from "~/entities/user/user.model";
 import {
@@ -9,6 +9,7 @@ import {
 } from "~/entities/workspace-auth/workspace-auth.model";
 import { useSettingsStore } from "~/features/settings/settings.model";
 import { setLocale, t } from "~/i18n/i18n";
+import * as messengerCacheDb from "~/shared/lib/workspace-messenger-cache-db";
 import { renderWithProviders } from "~/test/render";
 import { RightPanelShell as ProductionRightPanelShell } from "./right-panel-shell.ui";
 import type { RightPanelAccountScreen, RightPanelProps } from "./right-panel.types";
@@ -271,7 +272,7 @@ describe("RightPanelShell", () => {
     expect(screen.getByRole("dialog", { name: "" })).toHaveTextContent("Connect external account");
   });
 
-  it("navigates to the next Workspace inbox after user-menu logout from current account", async () => {
+  it("navigates before user-menu cache cleanup and preserves later navigation", async () => {
     const firstSession = createWorkspaceUserMenuSession();
     const secondSession = createWorkspaceUserMenuSession({
       accountId: "account-b",
@@ -297,23 +298,42 @@ describe("RightPanelShell", () => {
       sessions: [firstSession, secondSession],
     });
     vi.spyOn(window, "confirm").mockReturnValue(true);
+    let finishCleanup: () => void = () => undefined;
+    const cleanup = new Promise<void>((resolve) => {
+      finishCleanup = () => resolve();
+    });
+    const deleteOwnerCache = vi
+      .spyOn(messengerCacheDb, "deleteWorkspaceMessengerOwnerCache")
+      .mockReturnValueOnce(cleanup);
+    const nextLocation = "/org/next.example.com/project/project-b/calendar";
 
     renderWithProviders(
       <>
         <LocationProbe />
         <RightPanelShell mode="user-menu" title="Profile" />
+        <Link to={nextLocation}>Open calendar</Link>
       </>,
       { route: "/org/workspace.example.com/project/project-a/message/old-message" },
     );
 
     fireEvent.click(screen.getByRole("button", { name: t("auth.logoutFromOrg") }));
 
-    await waitFor(() => {
+    try {
+      await waitFor(() => expect(deleteOwnerCache).toHaveBeenCalledOnce());
       expect(screen.getByTestId("location-path")).toHaveTextContent(
         "/org/next.example.com/project/project-b/inbox",
       );
-    });
-    expect(useWorkspaceAuthStore.getState().currentAccountId).toBe(secondSession.accountId);
+      expect(useWorkspaceAuthStore.getState().currentAccountId).toBe(secondSession.accountId);
+      fireEvent.click(screen.getByRole("link", { name: "Open calendar" }));
+      await act(async () => {
+        finishCleanup();
+        await cleanup;
+      });
+      expect(screen.getByTestId("location-path")).toHaveTextContent(nextLocation);
+    } finally {
+      finishCleanup();
+      deleteOwnerCache.mockRestore();
+    }
   });
 
   it("saves Workspace status from the user menu", async () => {

@@ -119,6 +119,7 @@ export const Layout: React.FC<{
   const rightDrawerWorkspaceUserUuidOverride = useRightDrawerStore(
     (s) => s.workspaceUserUuidOverride,
   );
+  const rightDrawerWorkspaceUserOwnerKey = useRightDrawerStore((s) => s.workspaceUserOwnerKey);
   const openRightDrawerInfo = useRightDrawerStore((s) => s.openInfo);
   const openRightDrawerUserProfile = useRightDrawerStore((s) => s.openUserProfile);
   const openWorkspaceUserProfile = useRightDrawerStore((s) => s.openWorkspaceUserProfile);
@@ -256,6 +257,7 @@ export const Layout: React.FC<{
     rightDrawerMode,
     rightDrawerUserIdOverride,
     rightDrawerWorkspaceUserUuidOverride,
+    rightDrawerWorkspaceUserOwnerKey,
     mutedStreamIds,
     usersMapForRightDrawer,
     workspaceRoute: workspaceMessengerRoute,

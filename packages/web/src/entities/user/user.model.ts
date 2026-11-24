@@ -1,4 +1,5 @@
-import { create } from "zustand";
+import { createStore } from "zustand";
+import { createWorkspaceSessionStore } from "~/entities/workspace-auth/workspace-auth-session-store.lib";
 import type { User, UserLoadStatus, UsersById, UserUuid } from "./user.types";
 
 export interface UsersStoreState {
@@ -121,131 +122,138 @@ function buildUpsertUserState(
   };
 }
 
-export const useUsersStore = create<UsersStoreState>((set, get) => ({
-  ownerKey: null,
-  usersById: EMPTY_USERS_BY_ID,
-  userIds: EMPTY_USER_IDS,
-  loadStatus: "idle",
-  error: null,
-  lastLoadedAt: null,
-  lastRefreshedAt: null,
+const userStores = createWorkspaceSessionStore((ownerKey) =>
+  createStore<UsersStoreState>((set, get) => ({
+    ownerKey,
+    usersById: EMPTY_USERS_BY_ID,
+    userIds: EMPTY_USER_IDS,
+    loadStatus: "idle",
+    error: null,
+    lastLoadedAt: null,
+    lastRefreshedAt: null,
 
-  startOwnerSync(ownerKey) {
-    set((state) => {
-      if (state.ownerKey === ownerKey) {
+    startOwnerSync(ownerKey) {
+      set((state) => {
+        if (state.ownerKey === ownerKey) {
+          return {
+            loadStatus: "loading",
+            error: null,
+          };
+        }
+
         return {
+          ownerKey,
+          usersById: EMPTY_USERS_BY_ID,
+          userIds: EMPTY_USER_IDS,
           loadStatus: "loading",
           error: null,
+          lastLoadedAt: null,
+          lastRefreshedAt: null,
         };
-      }
+      });
+    },
 
-      return {
-        ownerKey,
+    replaceUsers(users, loadedAt = Date.now()) {
+      set((state) => buildReplaceUsersState(state, users, loadedAt));
+    },
+
+    replaceUsersForOwner(ownerKey, users, loadedAt = Date.now()) {
+      if (get().ownerKey !== ownerKey) {
+        return false;
+      }
+      set((state) => buildReplaceUsersState(state, users, loadedAt));
+      return true;
+    },
+
+    upsertUsers(users, refreshedAt = Date.now()) {
+      set((state) => buildUpsertUsersState(state, users, refreshedAt));
+    },
+
+    upsertUsersForOwner(ownerKey, users, refreshedAt = Date.now()) {
+      if (get().ownerKey !== ownerKey) {
+        return false;
+      }
+      set((state) => buildUpsertUsersState(state, users, refreshedAt));
+      return true;
+    },
+
+    upsertUser(user, refreshedAt = Date.now()) {
+      set((state) => buildUpsertUserState(state, user, refreshedAt));
+    },
+
+    upsertUserForOwner(ownerKey, user, refreshedAt = Date.now()) {
+      if (get().ownerKey !== ownerKey) {
+        return false;
+      }
+      set((state) => buildUpsertUserState(state, user, refreshedAt));
+      return true;
+    },
+
+    markOffline(userUuid, updatedAt = Date.now()) {
+      set((state) => {
+        const existing = state.usersById[userUuid];
+        if (existing == null) {
+          return state;
+        }
+
+        const nextUpdatedAt = toIsoTimestamp(updatedAt);
+        if (getTimestamp(nextUpdatedAt) < getTimestamp(existing.updatedAt)) {
+          return state;
+        }
+
+        return {
+          usersById: {
+            ...state.usersById,
+            [userUuid]: {
+              ...existing,
+              status: "offline",
+              updatedAt: nextUpdatedAt,
+            },
+          },
+          lastRefreshedAt: updatedAt,
+        };
+      });
+    },
+
+    markOfflineForOwner(ownerKey, userUuid, updatedAt = Date.now()) {
+      if (get().ownerKey !== ownerKey) {
+        return false;
+      }
+      get().markOffline(userUuid, updatedAt);
+      return true;
+    },
+
+    setLoadStatus(status, error = null) {
+      set({ loadStatus: status, error });
+    },
+
+    setLoadStatusForOwner(ownerKey, status, error = null) {
+      if (get().ownerKey !== ownerKey) {
+        return false;
+      }
+      set({ loadStatus: status, error });
+      return true;
+    },
+
+    getUser(userUuid) {
+      return get().usersById[userUuid];
+    },
+
+    clear() {
+      set({
+        ownerKey: null,
         usersById: EMPTY_USERS_BY_ID,
         userIds: EMPTY_USER_IDS,
-        loadStatus: "loading",
+        loadStatus: "idle",
         error: null,
         lastLoadedAt: null,
         lastRefreshedAt: null,
-      };
-    });
-  },
+      });
+    },
+  })),
+);
 
-  replaceUsers(users, loadedAt = Date.now()) {
-    set((state) => buildReplaceUsersState(state, users, loadedAt));
-  },
-
-  replaceUsersForOwner(ownerKey, users, loadedAt = Date.now()) {
-    if (get().ownerKey !== ownerKey) {
-      return false;
-    }
-    set((state) => buildReplaceUsersState(state, users, loadedAt));
-    return true;
-  },
-
-  upsertUsers(users, refreshedAt = Date.now()) {
-    set((state) => buildUpsertUsersState(state, users, refreshedAt));
-  },
-
-  upsertUsersForOwner(ownerKey, users, refreshedAt = Date.now()) {
-    if (get().ownerKey !== ownerKey) {
-      return false;
-    }
-    set((state) => buildUpsertUsersState(state, users, refreshedAt));
-    return true;
-  },
-
-  upsertUser(user, refreshedAt = Date.now()) {
-    set((state) => buildUpsertUserState(state, user, refreshedAt));
-  },
-
-  upsertUserForOwner(ownerKey, user, refreshedAt = Date.now()) {
-    if (get().ownerKey !== ownerKey) {
-      return false;
-    }
-    set((state) => buildUpsertUserState(state, user, refreshedAt));
-    return true;
-  },
-
-  markOffline(userUuid, updatedAt = Date.now()) {
-    set((state) => {
-      const existing = state.usersById[userUuid];
-      if (existing == null) {
-        return state;
-      }
-
-      const nextUpdatedAt = toIsoTimestamp(updatedAt);
-      if (getTimestamp(nextUpdatedAt) < getTimestamp(existing.updatedAt)) {
-        return state;
-      }
-
-      return {
-        usersById: {
-          ...state.usersById,
-          [userUuid]: {
-            ...existing,
-            status: "offline",
-            updatedAt: nextUpdatedAt,
-          },
-        },
-        lastRefreshedAt: updatedAt,
-      };
-    });
-  },
-
-  markOfflineForOwner(ownerKey, userUuid, updatedAt = Date.now()) {
-    if (get().ownerKey !== ownerKey) {
-      return false;
-    }
-    get().markOffline(userUuid, updatedAt);
-    return true;
-  },
-
-  setLoadStatus(status, error = null) {
-    set({ loadStatus: status, error });
-  },
-
-  setLoadStatusForOwner(ownerKey, status, error = null) {
-    if (get().ownerKey !== ownerKey) {
-      return false;
-    }
-    set({ loadStatus: status, error });
-    return true;
-  },
-
-  getUser(userUuid) {
-    return get().usersById[userUuid];
-  },
-
-  clear() {
-    set({
-      ownerKey: null,
-      usersById: EMPTY_USERS_BY_ID,
-      userIds: EMPTY_USER_IDS,
-      loadStatus: "idle",
-      error: null,
-      lastLoadedAt: null,
-      lastRefreshedAt: null,
-    });
-  },
-}));
+export const useUsersStore = userStores.useSelected; // Current Workspace screen.
+export const getUsersStoreForOwner = userStores.getForOwner; // Fixed profile model for session work.
+export const getSelectedUsersStore = userStores.getSelected;
+export const reconcileUsersStores = userStores.reconcile;

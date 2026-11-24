@@ -1,5 +1,10 @@
 import { buildMessengerRequestOptions } from "~/applications/messenger/model/messenger-request-options.lib";
 import {
+  resolveWorkspaceOwnerRuntimeForRequest,
+  useWorkspaceAuthStore,
+  workspaceAuthSessionIncarnation,
+} from "~/entities/workspace-auth/workspace-auth.model";
+import {
   isWorkspaceRuntimeRequestInvalidated,
   workspaceRuntimeOwnerKey,
 } from "~/entities/workspace-runtime/workspace-runtime.lib";
@@ -28,6 +33,7 @@ interface RemoteDraftJob {
   draftUuid: string;
   runtimeContext: WorkspaceRuntimeContext;
   getRuntimeContext: WorkspaceRuntimeContextGetter;
+  controller: AbortController; // Ends the job before its owner or credential context is released.
   timer: ReturnType<typeof setTimeout> | null;
   running: boolean;
   deleteRequested: boolean;
@@ -41,7 +47,11 @@ function remoteJobKey(ownerKey: string, draftUuid: string): string {
 }
 
 function isJobCurrent(job: RemoteDraftJob): boolean {
-  return !isWorkspaceRuntimeRequestInvalidated(job.runtimeContext, job.getRuntimeContext);
+  return !isWorkspaceRuntimeRequestInvalidated(
+    job.runtimeContext,
+    job.getRuntimeContext,
+    job.controller.signal,
+  );
 }
 
 function currentDraft(job: RemoteDraftJob): WorkspaceComposerDraft | null {
@@ -158,7 +168,11 @@ async function saveLatestDraft(
   }
 
   try {
-    const options = buildMessengerRequestOptions(job.runtimeContext);
+    const options = buildMessengerRequestOptions(
+      job.runtimeContext,
+      undefined,
+      job.controller.signal,
+    );
     let server;
     if (creating) {
       server = await createDraft(options, {
@@ -245,7 +259,7 @@ async function deleteLatestDraft(job: RemoteDraftJob): Promise<DeleteOutcome> {
         // without importing the old body into store/cache or repeating that plaintext POST.
         try {
           const found = await getDraft(
-            buildMessengerRequestOptions(job.runtimeContext),
+            buildMessengerRequestOptions(job.runtimeContext, undefined, job.controller.signal),
             deleting.draftUuid,
           );
           if (!isJobCurrent(job)) return "failed";
@@ -270,7 +284,7 @@ async function deleteLatestDraft(job: RemoteDraftJob): Promise<DeleteOutcome> {
 
   try {
     await deleteDraft(
-      buildMessengerRequestOptions(job.runtimeContext),
+      buildMessengerRequestOptions(job.runtimeContext, undefined, job.controller.signal),
       deleting.draftUuid,
       deleting.etag,
     );
@@ -393,20 +407,35 @@ function getOrCreateJob(params: {
   draft: WorkspaceComposerDraft;
 }): RemoteDraftJob | null {
   const ownerKey = workspaceRuntimeOwnerKey(params.runtimeContext);
-  if (ownerKey !== params.draft.ownerKey) return null;
+  if (
+    ownerKey !== params.draft.ownerKey ||
+    isWorkspaceRuntimeRequestInvalidated(params.runtimeContext, params.getRuntimeContext)
+  )
+    return null;
+  const authorizedRuntime = resolveWorkspaceOwnerRuntimeForRequest(params.runtimeContext);
+  const getRuntimeContext =
+    authorizedRuntime == null
+      ? params.getRuntimeContext
+      : () => useWorkspaceAuthStore.getState().getRuntimeContextForOwner(authorizedRuntime);
+  const runtimeContext = authorizedRuntime ?? params.runtimeContext;
   const key = remoteJobKey(ownerKey, params.draft.draftUuid);
   const existing = remoteJobs.get(key);
   if (existing != null) {
-    existing.runtimeContext = params.runtimeContext;
-    existing.getRuntimeContext = params.getRuntimeContext;
-    return existing;
+    if (
+      existing.runtimeContext.runtimeGeneration === runtimeContext.runtimeGeneration &&
+      isJobCurrent(existing)
+    )
+      return existing;
+    existing.controller.abort();
+    resolveJob(existing);
   }
   const job: RemoteDraftJob = {
     key,
     ownerKey,
     draftUuid: params.draft.draftUuid,
-    runtimeContext: params.runtimeContext,
-    getRuntimeContext: params.getRuntimeContext,
+    runtimeContext,
+    getRuntimeContext,
+    controller: new AbortController(),
     timer: null,
     running: false,
     deleteRequested: false,
@@ -500,7 +529,35 @@ export function resumeWorkspaceComposerDraftSync(params: {
 
 export function resetWorkspaceComposerDraftSyncForTests(): void {
   for (const job of remoteJobs.values()) {
-    if (job.timer != null) clearTimeout(job.timer);
+    job.controller.abort();
+    resolveJob(job);
   }
-  remoteJobs.clear();
 }
+
+// Stop only the owner whose authorization ended before any local-cache cleanup begins.
+export function disposeWorkspaceDraftSyncOwner(ownerKey: string): void {
+  for (const job of remoteJobs.values()) {
+    if (job.ownerKey !== ownerKey) continue;
+    job.controller.abort();
+    resolveJob(job);
+  }
+}
+
+useWorkspaceAuthStore.subscribe((state, previous) => {
+  if (state.sessions === previous.sessions) return;
+  for (const old of previous.sessions) {
+    const current = state.getRuntimeContextForOwner(old);
+    if (current?.runtimeGeneration === old.runtimeGeneration) continue;
+    disposeWorkspaceDraftSyncOwner(workspaceRuntimeOwnerKey(old));
+    if (
+      current != null &&
+      workspaceAuthSessionIncarnation(current) === workspaceAuthSessionIncarnation(old)
+    ) {
+      resumeWorkspaceComposerDraftSync({
+        runtimeContext: current,
+        getRuntimeContext: () =>
+          useWorkspaceAuthStore.getState().getRuntimeContextForOwner(current),
+      });
+    }
+  }
+});

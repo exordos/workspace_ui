@@ -1,4 +1,7 @@
-import { useWorkspaceMessageStore } from "./message.model";
+import {
+  getSelectedWorkspaceMessageStore,
+  getWorkspaceMessageStoreForOwner,
+} from "./message.model";
 import { applyActiveCreatedMessages } from "./messages-accept-created.lib";
 import { applyConversationHistory } from "./messages-accept-history.lib";
 import { applySentMessage } from "./messages-accept-sent.lib";
@@ -36,13 +39,23 @@ export function acceptServerMessages(
   input: CreatedInput,
 ): ReturnType<typeof applyActiveCreatedMessages> | StaleOwner;
 export function acceptServerMessages(input: ServerMessagesInput) {
-  const store = input.source === "realtime" ? useWorkspaceMessageStore : input.store;
+  const scopedInput =
+    input.source === "realtime"
+      ? {
+          ...input,
+          store:
+            input.store ??
+            getWorkspaceMessageStoreForOwner(input.ownerKey) ??
+            getSelectedWorkspaceMessageStore(),
+        }
+      : input;
+  const { store } = scopedInput;
   const initialOwner = store.getState().ownerKey;
   const isCurrent = () => input.isCurrent() && store.getState().ownerKey === initialOwner;
   const stale: StaleOwner = { status: "stale-owner" };
   if (!isCurrent() || (initialOwner != null && initialOwner !== input.ownerKey)) return stale;
 
-  const applied = applyMessages({ ...input, isCurrent });
+  const applied = applyMessages({ ...scopedInput, isCurrent });
   if (!isCurrent()) return stale;
   if (applied.status !== "applied") return applied;
 

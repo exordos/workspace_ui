@@ -73,8 +73,7 @@ export async function prepareWorkspaceSessionSnapshots(
   isTransportCurrent: () => boolean = () => true,
 ): Promise<WorkspaceRealtimeCursor> {
   const { owner, ownerKey, surface, signal } = context;
-  const getRuntimeContext = () =>
-    isTransportCurrent() ? readWorkspaceSession(owner, surface) : null;
+  const getRuntimeContext = () => (isTransportCurrent() ? readWorkspaceSession(owner) : null);
   const isCurrent = () => signal?.aborted !== true && getRuntimeContext() != null;
   const requireCurrent = () => {
     if (!isCurrent()) {
@@ -115,7 +114,7 @@ export async function prepareWorkspaceSessionSnapshots(
     throw error;
   }
   requireCurrent();
-  if (resetRequired && surface === "active") {
+  if (resetRequired && readWorkspaceSession(owner, "active") != null) {
     invalidateExternalChatsForOwner(ownerKey);
     useActivityStore.getState().invalidateUnreadMentions(ownerKey);
   }
@@ -127,7 +126,12 @@ export async function prepareWorkspaceSessionSnapshots(
   ];
   if (resetRequired) {
     requiredSnapshots.push(
-      loadExternalAccounts({ ...scope, restoreCache: false }).then(requireSnapshot),
+      loadExternalAccounts({
+        ...scope,
+        surface: "background",
+        restoreCache: false,
+        publishIfSelected: () => readWorkspaceSession(owner, "active") != null,
+      }).then(requireSnapshot),
     );
   }
   const results = await Promise.allSettled(requiredSnapshots);
@@ -135,7 +139,7 @@ export async function prepareWorkspaceSessionSnapshots(
   const failure = results.find((result) => result.status === "rejected");
   if (failure != null) throw failure.reason;
 
-  if (surface === "active" && !resetRequired) {
+  if (!resetRequired && readWorkspaceSession(owner, "active") != null) {
     useActivityStore.getState().invalidateUnreadMentions(ownerKey);
   }
   return { epochGeneration: epoch.epoch_generation, epochVersion: epoch.epoch_version };
@@ -148,8 +152,7 @@ export async function prepareWorkspaceSessionParticipant(
   isTransportCurrent: () => boolean,
 ): Promise<void> {
   const { owner, signal, surface } = context;
-  const getRuntimeContext = () =>
-    isTransportCurrent() ? readWorkspaceSession(owner, surface) : null;
+  const getRuntimeContext = () => (isTransportCurrent() ? readWorkspaceSession(owner) : null);
   const runtimeContext = getRuntimeContext();
   if (runtimeContext == null || signal?.aborted === true) {
     throw new DOMException("Workspace participant attempt canceled", "AbortError");

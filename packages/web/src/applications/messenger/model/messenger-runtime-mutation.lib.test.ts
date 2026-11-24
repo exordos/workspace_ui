@@ -6,6 +6,7 @@ import {
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import {
   resetMessengerRuntimeMutations,
+  runMessengerOwnerMutation,
   runMessengerRuntimeMutation,
 } from "./messenger-runtime-mutation.lib";
 
@@ -91,6 +92,28 @@ describe("messenger runtime mutations", () => {
     expect(signals[1]?.aborted).toBe(false);
     secondWork.resolve();
     await expect(second).resolves.toBe("second");
+  });
+
+  it("keeps accepted A work through selection and aborts only the owner who logs out", async () => {
+    const auth = useWorkspaceAuthStore.getState();
+    const accountA = auth.getCurrentSession()!;
+    const accountB = session({ accountId: "account-b", instanceId: "instance-b" });
+    useWorkspaceAuthStore.setState({ sessions: [accountA, accountB] });
+    const workA = deferred();
+    const workB = deferred();
+    const selectedA = runMessengerRuntimeMutation(currentRuntime(), () => workA.promise);
+    const ownerA = runMessengerOwnerMutation(accountA, () => workA.promise);
+    const ownerB = runMessengerOwnerMutation(accountB, () => workB.promise);
+
+    auth.setCurrentAccountId(accountB.accountId);
+    await expect(selectedA).rejects.toMatchObject({ name: "AbortError" });
+    auth.setCurrentAccountId(accountA.accountId);
+    auth.removeSession(accountB.accountId);
+    await expect(ownerB).rejects.toMatchObject({ name: "AbortError" });
+
+    workB.resolve();
+    workA.resolve();
+    await expect(ownerA).resolves.toBeUndefined();
   });
 
   it("keeps an active mutation across updates that preserve the same runtime", async () => {

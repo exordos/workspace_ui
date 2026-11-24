@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { readActiveChats } from "~/applications/messenger/model/chats/chats";
+import { readChatsForOwner } from "~/applications/messenger/model/chats/chats";
 import { resolveWorkspaceConversationMetadata } from "~/applications/messenger/model/chats/messenger-conversation-metadata.lib";
 import type { WorkspaceConversationMetadata } from "~/applications/messenger/model/chats/messenger-conversation-metadata.lib";
 import { selectMessengerConversationFromWorkspaceRoute } from "~/applications/messenger/model/messenger-ids.lib";
@@ -177,7 +177,11 @@ async function resolveCandidateMetadata(
   projection: MessengerBackgroundProjection,
   candidate: MessengerBackgroundNotificationCandidate,
 ): Promise<ReturnType<typeof resolveCurrentCandidate>> {
-  const resolved = resolveCurrentCandidate(projection, candidate, readActiveChats());
+  const resolved = resolveCurrentCandidate(
+    projection,
+    candidate,
+    readChatsForOwner(candidate.ownerKey),
+  );
   if (resolved.missingMetadata.length === 0) {
     return resolved;
   }
@@ -187,7 +191,12 @@ async function resolveCandidateMetadata(
     streamUuid: candidate.streamUuid,
     topicUuid: candidate.topicUuid,
   });
-  return resolveCurrentCandidate(projection, candidate, readActiveChats(), cachedMetadata);
+  return resolveCurrentCandidate(
+    projection,
+    candidate,
+    readChatsForOwner(candidate.ownerKey),
+    cachedMetadata,
+  );
 }
 
 function resolveTitleContext(
@@ -221,7 +230,7 @@ export interface WorkspaceNotificationOwner {
   ownerKey: string;
   projection: MessengerBackgroundProjection;
   accountLabel: string; // Short label displayed while conversation metadata is unavailable.
-  isSelected: boolean; // Only the selected owner can have a conversation in the viewport.
+  isSelected: () => boolean; // Only the currently selected owner can have a conversation in the viewport.
   isAuthorized: () => boolean; // Recheck after asynchronous metadata and author lookups.
 }
 
@@ -561,10 +570,8 @@ export function useLayoutWorkspaceNotifications(options: {
           continue;
         }
 
-        const viewport = readViewportState(
-          currentCandidate,
-          isSelected ? openConversationId : null,
-        );
+        const selected = isSelected();
+        const viewport = readViewportState(currentCandidate, selected ? openConversationId : null);
         const decision = shouldWorkspaceDesktopNotify({
           metadataUnavailable,
           message: {
@@ -611,7 +618,7 @@ export function useLayoutWorkspaceNotifications(options: {
           navigate,
           processedCandidates: processedCandidatesRef.current,
           deferredCandidates: deferredCandidatesRef.current,
-          isCancelled: () => cancelled || !isAuthorized(),
+          isCancelled: () => cancelled || !isAuthorized() || isSelected() !== selected,
           accountLabel,
         });
       }

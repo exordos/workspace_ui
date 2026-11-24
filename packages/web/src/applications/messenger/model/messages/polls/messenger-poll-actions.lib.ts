@@ -11,7 +11,10 @@ import type { MessengerPollAction } from "~/shared/api/messenger-messages.api";
 import { useMessengerStore } from "../../chats/messenger.model";
 import { messengerMessageActionCache } from "../../messenger-cache.lib";
 import { buildMessengerRequestOptions } from "../../messenger-request-options.lib";
-import { useWorkspaceMessageStore } from "../message.model";
+import {
+  getSelectedWorkspaceMessageStore,
+  getWorkspaceMessageStoreForOwner,
+} from "../message.model";
 import { acceptMessageUpdate } from "../messages-accept-update.lib";
 import { adaptMessengerMessage } from "../messenger-message-adapter.lib";
 import type { MessengerPollPayload, MessengerStream } from "../../messenger.types";
@@ -67,11 +70,13 @@ interface PollOptions {
   getRuntimeContext?: WorkspaceRuntimeContextGetter;
   messageUuid: string;
   signal?: AbortSignal;
+  store?: ReturnType<typeof getSelectedWorkspaceMessageStore>;
 }
 
 function isPollRequestStale(
   context: NonNullable<ReturnType<typeof captureWorkspaceRuntimeRequestContext>>,
   options: PollOptions,
+  store: ReturnType<typeof getSelectedWorkspaceMessageStore>,
 ): boolean {
   return (
     isWorkspaceRuntimeRequestInvalidated(
@@ -79,7 +84,7 @@ function isPollRequestStale(
       options.getRuntimeContext ??
         (() => useWorkspaceAuthStore.getState().getCurrentRuntimeContext()),
       options.signal,
-    ) || useWorkspaceMessageStore.getState().ownerKey !== workspaceRuntimeOwnerKey(context)
+    ) || store.getState().ownerKey !== workspaceRuntimeOwnerKey(context)
   );
 }
 
@@ -88,14 +93,16 @@ export async function mutateMessengerPoll(options: PollOptions & { action: Messe
   const context = captureWorkspaceRuntimeRequestContext(() => runtimeContext);
   if (context == null) return { status: "skipped" as const };
   const owner = workspaceRuntimeOwnerKey(context);
-  const stale = () => isPollRequestStale(context, options);
+  const store =
+    options.store ?? getWorkspaceMessageStoreForOwner(owner) ?? getSelectedWorkspaceMessageStore();
+  const stale = () => isPollRequestStale(context, options, store);
   if (stale()) return { status: "skipped" as const };
-  const initial = useWorkspaceMessageStore.getState();
+  const initial = store.getState();
   const original = initial.messagesById[messageUuid];
   if (original?.payload.kind !== "poll") throw new Error("A loaded poll is required");
   const placementRevision = initial.messagePlacementRevisionById[messageUuid];
   const isCurrent = () => {
-    const state = useWorkspaceMessageStore.getState();
+    const state = store.getState();
     const message = state.messagesById[messageUuid];
     return (
       !stale() &&
@@ -127,7 +134,7 @@ export async function mutateMessengerPoll(options: PollOptions & { action: Messe
     source: "poll-response",
     ownerKey: owner,
     message: adaptMessengerMessage(dto),
-    store: useWorkspaceMessageStore,
+    store,
     isCurrent,
     project: (message, messagesById) =>
       useMessengerStore.getState().applyMessagePointer(owner, message, messagesById),
@@ -138,7 +145,7 @@ export async function mutateMessengerPoll(options: PollOptions & { action: Messe
   return isCurrent()
     ? {
         status: "applied" as const,
-        message: useWorkspaceMessageStore.getState().messagesById[messageUuid],
+        message: store.getState().messagesById[messageUuid],
       }
     : { status: "skipped" as const };
 }
@@ -155,7 +162,11 @@ export async function getMessengerPollVoters(
     options;
   const context = captureWorkspaceRuntimeRequestContext(() => runtimeContext);
   if (context == null) throw new Error("missing-context");
-  const stale = () => isPollRequestStale(context, options);
+  const store =
+    options.store ??
+    getWorkspaceMessageStoreForOwner(workspaceRuntimeOwnerKey(context)) ??
+    getSelectedWorkspaceMessageStore();
+  const stale = () => isPollRequestStale(context, options, store);
   if (stale()) throw new Error("stale-owner");
   const result = await getPollVoters(
     buildMessengerRequestOptions(runtimeContext, undefined, signal),

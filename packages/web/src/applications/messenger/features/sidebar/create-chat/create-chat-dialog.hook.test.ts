@@ -320,7 +320,9 @@ describe("useCreateChatDialog", () => {
         rerender({ open: false });
         rerender({ open: true });
       } else {
-        act(() => seedWorkspaceSession());
+        act(() =>
+          useWorkspaceAuthStore.getState().updateTokens("account", { accessToken: "refreshed" }),
+        );
       }
       let newRequest: Promise<void> | undefined;
       act(() => {

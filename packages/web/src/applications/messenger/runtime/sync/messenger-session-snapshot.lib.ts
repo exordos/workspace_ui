@@ -13,18 +13,24 @@ import { deleteWorkspaceMessengerOwnerCache } from "~/shared/lib/workspace-messe
 import { adaptMessengerBootstrapPayload } from "../../model/chats/messenger-catalog-adapters.lib";
 import {
   captureMessengerStreamRemovalCheck,
+  getMessengerStoreForOwner,
+  getSelectedMessengerStore,
+  releaseMessengerStreamRemovalFences,
   restoreMessengerStream,
-  useMessengerStore,
 } from "../../model/chats/messenger.model";
 import { loadWorkspaceComposerDrafts } from "../../model/drafts/composer-draft-loader.lib";
 import { restoreWorkspaceComposerDraftsForStream } from "../../model/drafts/composer-draft.model";
 import { loadMessengerLastMessagesForSidebar } from "../../model/messages/history/messenger-last-messages-loader.lib";
-import { useWorkspaceMessageStore } from "../../model/messages/message.model";
+import {
+  getSelectedWorkspaceMessageStore,
+  getWorkspaceMessageStoreForOwner,
+} from "../../model/messages/message.model";
 import { clearMessengerReadBoundariesForOwner } from "../../model/messages/messenger-read-boundary.lib";
 import {
   captureMessengerStreamCacheRemovalCheck,
   createMessengerCatalogCacheReconcileFence,
   readMessengerCatalogPayloadCache,
+  releaseMessengerStreamCacheFences,
   restoreMessengerStreamCache,
   writeMessengerCatalogPayloadCache,
 } from "../../model/messenger-cache.lib";
@@ -55,17 +61,47 @@ function isSessionCatalogCurrent(options: MessengerSessionCatalogOptions): boole
   );
 }
 
-function assignActiveSessionOwner(ownerKey: string): void {
-  const messages = useWorkspaceMessageStore.getState();
-  const catalog = useMessengerStore.getState();
-  messages.setOwner(ownerKey, messages.ownerKey == null && catalog.ownerKey === ownerKey);
-  if (catalog.ownerKey !== ownerKey) catalog.startBootstrap(ownerKey);
+const completeCatalogStores = new WeakSet<ReturnType<typeof getSelectedMessengerStore>>();
+
+// Discard transient projections and replay fences when one owner instance ends.
+export function releaseMessengerSessionProjections(ownerKey: string): void {
+  clearMessengerReadBoundariesForOwner(ownerKey);
+  releaseMessengerStreamRemovalFences(ownerKey);
+  releaseMessengerStreamCacheFences(ownerKey);
+  useMessengerBackgroundProjectionStore.getState().clearOwner(ownerKey);
+  invalidateWorkspaceOwnerFileResources(ownerKey);
+}
+
+function sessionModelStores(options: MessengerSessionCatalogOptions) {
+  const ownerKey = workspaceRuntimeOwnerKey(options.runtimeContext);
+  const catalog =
+    getMessengerStoreForOwner(ownerKey) ??
+    (options.surface === "active" ? getSelectedMessengerStore() : null);
+  const messages =
+    getWorkspaceMessageStoreForOwner(ownerKey) ??
+    (options.surface === "active" ? getSelectedWorkspaceMessageStore() : null);
+  return { catalog, messages };
+}
+
+function prepareSessionModelOwners(options: MessengerSessionCatalogOptions) {
+  const ownerKey = workspaceRuntimeOwnerKey(options.runtimeContext);
+  const { catalog, messages } = sessionModelStores(options);
+  const currentCatalog = catalog?.getState();
+  const currentMessages = messages?.getState();
+  if (currentMessages?.ownerKey !== ownerKey) {
+    currentMessages?.setOwner(
+      ownerKey,
+      currentMessages.ownerKey == null && currentCatalog?.ownerKey === ownerKey,
+    );
+  }
+  if (currentCatalog?.ownerKey !== ownerKey) currentCatalog?.startBootstrap(ownerKey);
+  return { catalog, messages };
 }
 
 // Make the selected owner available to route loaders before their passive effects.
 export function prepareActiveMessengerSession(options: MessengerSessionCatalogOptions): void {
   if (options.surface !== "active" || !isSessionCatalogCurrent(options)) return;
-  assignActiveSessionOwner(workspaceRuntimeOwnerKey(options.runtimeContext));
+  prepareSessionModelOwners(options);
 }
 
 function sessionCatalogError(error: unknown): string {
@@ -76,8 +112,8 @@ function sessionCatalogError(error: unknown): string {
 
 // Reset the active singleton when there is no selected runtime.
 export function clearActiveMessengerSession(): void {
-  useMessengerStore.getState().clear();
-  useWorkspaceMessageStore.getState().setOwner(null, false);
+  getSelectedMessengerStore().getState().clear();
+  getSelectedWorkspaceMessageStore().getState().setOwner(null, false);
 }
 
 // Report failures before catalog HTTP starts, such as a failure to read the epoch.
@@ -85,10 +121,11 @@ export function markMessengerSessionBootstrapError(
   options: MessengerSessionCatalogOptions,
   error: unknown,
 ): void {
-  if (options.surface !== "active" || !isSessionCatalogCurrent(options)) return;
+  if (!isSessionCatalogCurrent(options)) return;
   const ownerKey = workspaceRuntimeOwnerKey(options.runtimeContext);
-  assignActiveSessionOwner(ownerKey);
-  useMessengerStore.getState().setBootstrapError(ownerKey, sessionCatalogError(error));
+  prepareSessionModelOwners(options)
+    .catalog?.getState()
+    .setBootstrapError(ownerKey, sessionCatalogError(error));
 }
 
 // Restore display state early. Only a complete snapshot serves as a catch-up baseline.
@@ -97,35 +134,39 @@ export async function restoreMessengerSessionCatalog(
 ): Promise<"restored" | "missing" | "skipped"> {
   if (!isSessionCatalogCurrent(options)) return "skipped";
   const ownerKey = workspaceRuntimeOwnerKey(options.runtimeContext);
-  const active = options.surface === "active";
-  if (active) {
-    assignActiveSessionOwner(ownerKey);
-    // Drafts have their own sync and can restore even when catalogue or epoch reads fail.
+  const { catalog, messages } = prepareSessionModelOwners(options);
+  if (catalog != null && completeCatalogStores.has(catalog)) {
+    const state = catalog.getState();
+    if (state.lastLoadedAt != null && !state.isLoading && state.error == null) return "restored";
+  }
+  if (catalog != null) {
+    // Drafts stay associated with the authorized owner when the screen changes.
     void loadWorkspaceComposerDrafts({ ...options, resumePending: true }).catch(() => undefined);
   }
-  const version = useMessengerStore.getState().bootstrapRequestVersion;
+  const version = catalog?.getState().bootstrapRequestVersion;
   const readCatalog =
     options.cache?.readMessengerCatalogPayloadCache ?? readMessengerCatalogPayloadCache;
   const cached = await readCatalog(ownerKey).catch(() => null);
   if (!isSessionCatalogCurrent(options)) return "skipped";
   if (cached == null) return "missing";
-  if (active) {
-    const catalog = useMessengerStore.getState();
-    if (catalog.bootstrapRequestVersion !== version || catalog.ownerKey !== ownerKey) {
+  if (catalog != null) {
+    const state = catalog.getState();
+    if (state.bootstrapRequestVersion !== version || state.ownerKey !== ownerKey) {
       return "skipped";
     }
-    catalog.replaceBootstrapState(ownerKey, cached.payload);
-    if (catalog.error != null) catalog.setBootstrapError(ownerKey, catalog.error);
-    if (cached.epochVersion != null) catalog.setRealtimeCursor(ownerKey, cached.epochVersion);
+    state.replaceBootstrapState(ownerKey, cached.payload);
+    if (state.error != null) state.setBootstrapError(ownerKey, state.error);
+    if (cached.epochVersion != null) state.setRealtimeCursor(ownerKey, cached.epochVersion);
+    if (cached.hasCompleteCatalog === true) completeCatalogStores.add(catalog);
     void loadMessengerLastMessagesForSidebar({
       runtimeContext: options.runtimeContext,
       getRuntimeContext: () =>
-        useMessengerStore.getState().bootstrapRequestVersion === version
-          ? options.getRuntimeContext()
-          : null,
+        catalog.getState().bootstrapRequestVersion === version ? options.getRuntimeContext() : null,
       signal: options.signal,
       clientOptions: options.clientOptions,
       client: { getMessagesByUuids: options.client?.getMessagesByUuids },
+      store: catalog,
+      messageStore: messages ?? undefined,
     });
   }
   return cached.hasCompleteCatalog === true ? "restored" : "missing";
@@ -146,17 +187,20 @@ function clearRecoveredMessengerProjections(
 ): void {
   clearMessengerReadBoundariesForOwner(ownerKey);
   useMessengerBackgroundProjectionStore.getState().clearOwner(ownerKey);
-  if (options.surface !== "active" || !isSessionCatalogCurrent(options)) return;
-  const catalog = useMessengerStore.getState();
-  if (catalog.ownerKey === ownerKey) catalog.clear({ preserveRemovedStreams: true });
-  const messages = useWorkspaceMessageStore.getState();
-  if (messages.ownerKey === ownerKey) messages.clear({ preserveRemovedStreams: true });
+  if (!isSessionCatalogCurrent(options)) return;
+  const { catalog, messages } = sessionModelStores(options);
+  if (catalog?.getState().ownerKey === ownerKey) {
+    completeCatalogStores.delete(catalog);
+    catalog.getState().clear({ preserveRemovedStreams: true });
+  }
+  if (messages?.getState().ownerKey === ownerKey)
+    messages.getState().clear({ preserveRemovedStreams: true });
 }
 
 // An authoritative server response can restore membership whose create event was pruned.
 function captureConfirmedStreams(
   ownerKey: string,
-  active: boolean,
+  messages: ReturnType<typeof getWorkspaceMessageStoreForOwner>,
 ): (streams: readonly MessengerStream[]) => void {
   const isDomainRemovalUnchanged = captureMessengerStreamRemovalCheck(ownerKey);
   const isCacheRemovalUnchanged = captureMessengerStreamCacheRemovalCheck(ownerKey);
@@ -166,8 +210,8 @@ function captureConfirmedStreams(
       restoreMessengerStream(ownerKey, uuid);
       restoreMessengerStreamCache(ownerKey, uuid);
       restoreWorkspaceComposerDraftsForStream(ownerKey, uuid);
-      if (active && useWorkspaceMessageStore.getState().ownerKey === ownerKey) {
-        useWorkspaceMessageStore.getState().restoreMessagesForStream(uuid);
+      if (messages?.getState().ownerKey === ownerKey) {
+        messages.getState().restoreMessagesForStream(uuid);
       }
     }
   };
@@ -201,18 +245,21 @@ export async function prepareMessengerSessionSnapshot(
     if (!isWriteCurrent()) return skipped;
   }
 
-  const onStreamsConfirmed = reset
-    ? captureConfirmedStreams(ownerKey, options.surface === "active")
-    : undefined;
+  const { catalog, messages } = prepareSessionModelOwners(options);
+  const onStreamsConfirmed = reset ? captureConfirmedStreams(ownerKey, messages) : undefined;
   if (options.surface === "active") {
-    assignActiveSessionOwner(ownerKey);
-    return bootstrapMessengerStore({
+    const outcome = await bootstrapMessengerStore({
       ...options,
+      store: catalog ?? undefined,
+      messageStore: messages ?? undefined,
       requireCompleteSnapshot: true,
       restoreCache: false,
       loadDrafts: false,
       onStreamsConfirmed,
     });
+    if (outcome.status === "applied" && catalog != null && isWriteCurrent())
+      completeCatalogStores.add(catalog);
+    return outcome;
   }
 
   const request = buildMessengerRequestOptions(runtimeContext, clientOptions, signal);
@@ -238,7 +285,21 @@ export async function prepareMessengerSessionSnapshot(
         requireWrite: true,
       },
     );
-    return isWriteCurrent() ? { status: "applied", ownerKey } : skipped;
+    if (!isWriteCurrent()) return skipped;
+    if (catalog != null) {
+      catalog.getState().replaceBootstrapState(ownerKey, payload);
+      completeCatalogStores.add(catalog);
+      void loadMessengerLastMessagesForSidebar({
+        runtimeContext,
+        getRuntimeContext: options.getRuntimeContext,
+        signal,
+        clientOptions,
+        client: { getMessagesByUuids: client?.getMessagesByUuids },
+        store: catalog,
+        messageStore: messages ?? undefined,
+      });
+    }
+    return { status: "applied", ownerKey };
   } catch (error) {
     return isWriteCurrent()
       ? { status: "failed", ownerKey, error: sessionCatalogError(error) }

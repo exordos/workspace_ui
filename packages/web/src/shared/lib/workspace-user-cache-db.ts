@@ -296,13 +296,17 @@ export async function upsertWorkspaceUserCache(
   }
 }
 
-export async function deleteWorkspaceUserOwnerCache(ownerKey: string): Promise<void> {
+export async function deleteWorkspaceUserOwnerCache(
+  ownerKey: string,
+  isWriteCurrent?: () => boolean,
+): Promise<void> {
   if (typeof indexedDB === "undefined") return;
   try {
     await withUsersStore(
       "readwrite",
       (store, tx) => {
-        deleteOwnerRowsInStore(store, ownerKey);
+        if (isWriteCurrent?.() === false) return;
+        deleteOwnerRowsInStore(store, ownerKey, undefined, isWriteCurrent);
         tx.objectStore(STORE_SNAPSHOTS).delete(ownerKey);
       },
       true,

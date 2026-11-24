@@ -1,4 +1,4 @@
-import { create } from "zustand";
+import { createStore } from "zustand";
 import { parseMessengerConversationId } from "~/applications/messenger/model/messenger-ids.lib";
 import type {
   MessengerConversationId,
@@ -10,6 +10,7 @@ import type {
   MessengerReactionCountsByName,
   MessengerUuid,
 } from "~/applications/messenger/model/messenger.types";
+import { createWorkspaceSessionStore } from "~/entities/workspace-auth/workspace-auth-session-store.lib";
 import { logStoreAction } from "~/shared/lib/logger";
 import { reconcileWorkspacePollSnapshot } from "~/shared/lib/workspace-messenger-poll-snapshot";
 import {
@@ -67,18 +68,6 @@ const EMPTY_STATUS: WorkspaceConversationMessagesStatus = {
   nextPageMarker: null,
   hasMore: false,
 };
-const removedStreamUuids = new Set<MessengerUuid>();
-
-function keepMessagesOutsideRemovedStreams(
-  messages: readonly MessengerMessage[],
-): MessengerMessage[] {
-  return messages.filter((message) => !removedStreamUuids.has(message.streamUuid));
-}
-
-function isRemovedStreamConversation(conversationId: MessengerConversationId): boolean {
-  const parsed = parseMessengerConversationId(conversationId);
-  return parsed != null && removedStreamUuids.has(parsed.streamUuid);
-}
 
 function omitConversationRecords<T>(
   record: Record<MessengerConversationId, T>,
@@ -453,847 +442,876 @@ function readMessagesUpTo(
   return change;
 }
 
-export const useWorkspaceMessageStore = create<WorkspaceMessageStoreState>((set, get) => ({
-  ...createEmptyWorkspaceMessageData(),
+const messageStores = createWorkspaceSessionStore((ownerKey) => {
+  const removedStreamUuids = new Set<MessengerUuid>();
+  const keepMessagesOutsideRemovedStreams = (messages: readonly MessengerMessage[]) =>
+    messages.filter((message) => !removedStreamUuids.has(message.streamUuid));
+  const isRemovedStreamConversation = (conversationId: MessengerConversationId) => {
+    const parsed = parseMessengerConversationId(conversationId);
+    return parsed != null && removedStreamUuids.has(parsed.streamUuid);
+  };
+  return createStore<WorkspaceMessageStoreState>((set, get) => ({
+    ...createEmptyWorkspaceMessageData(),
+    ownerKey,
 
-  setOwner(ownerKey, preserveExisting) {
-    set((state) => {
-      if (state.ownerKey === ownerKey) {
-        if (ownerKey != null || preserveExisting) return state;
+    setOwner(ownerKey, preserveExisting) {
+      set((state) => {
+        if (state.ownerKey === ownerKey) {
+          if (ownerKey != null || preserveExisting) return state;
+          removedStreamUuids.clear();
+          return createEmptyWorkspaceMessageData();
+        }
+        if (state.ownerKey == null && ownerKey != null && preserveExisting) {
+          return { ...state, ownerKey };
+        }
         removedStreamUuids.clear();
-        return createEmptyWorkspaceMessageData();
-      }
-      if (state.ownerKey == null && ownerKey != null && preserveExisting) {
-        return { ...state, ownerKey };
-      }
-      removedStreamUuids.clear();
-      return { ...createEmptyWorkspaceMessageData(), ownerKey };
-    });
-  },
+        return { ...createEmptyWorkspaceMessageData(), ownerKey };
+      });
+    },
 
-  replaceConversationWindow(input) {
-    logStoreAction("workspaceMessage", "replaceConversationWindow", {
-      conversationId: input.conversationId,
-      messages: input.messages.length,
-    });
-    let appliedWindow: WorkspaceConversationWindow | null = null;
-    set((state) => {
-      const previousWindow = state.conversationWindowsById[input.conversationId];
-      const currentRevision = previousWindow?.revision ?? 0;
-      const expectedRevisionMatches =
-        input.expectedRevision == null
-          ? previousWindow == null
-          : input.expectedRevision === currentRevision;
-      if (!expectedRevisionMatches || isRemovedStreamConversation(input.conversationId))
-        return state;
+    replaceConversationWindow(input) {
+      logStoreAction("workspaceMessage", "replaceConversationWindow", {
+        conversationId: input.conversationId,
+        messages: input.messages.length,
+      });
+      let appliedWindow: WorkspaceConversationWindow | null = null;
+      set((state) => {
+        const previousWindow = state.conversationWindowsById[input.conversationId];
+        const currentRevision = previousWindow?.revision ?? 0;
+        const expectedRevisionMatches =
+          input.expectedRevision == null
+            ? previousWindow == null
+            : input.expectedRevision === currentRevision;
+        if (!expectedRevisionMatches || isRemovedStreamConversation(input.conversationId))
+          return state;
 
-      const { messagesById, acceptedMessages } = mergeSnapshotMessages(
-        state,
-        input.conversationId,
-        keepMessagesOutsideRemovedStreams(input.messages),
-        input.capturedMutationRevision,
-      );
-      const revision = nextWindowRevision(previousWindow);
-      const serverWindow: WorkspaceConversationWindow = {
-        generation: Symbol("conversation window"),
-        mode: input.mode,
-        anchorMessageUuid: input.anchorMessageUuid,
-        messageUuids: mergeSortedWorkspaceMessageIds(
-          EMPTY_WORKSPACE_MESSAGE_IDS,
-          acceptedMessages,
+        const { messagesById, acceptedMessages } = mergeSnapshotMessages(
+          state,
+          input.conversationId,
+          keepMessagesOutsideRemovedStreams(input.messages),
+          input.capturedMutationRevision,
+        );
+        const revision = nextWindowRevision(previousWindow);
+        const serverWindow: WorkspaceConversationWindow = {
+          generation: Symbol("conversation window"),
+          mode: input.mode,
+          anchorMessageUuid: input.anchorMessageUuid,
+          messageUuids: mergeSortedWorkspaceMessageIds(
+            EMPTY_WORKSPACE_MESSAGE_IDS,
+            acceptedMessages,
+            messagesById,
+          ),
+          beforePageMarker: input.markers.beforePageMarker,
+          afterPageMarker: input.markers.afterPageMarker,
+          revision,
+        };
+        const retainedLiveMessages = liveMessagesForWindow(
+          { ...state, messagesById },
+          input.conversationId,
+          previousWindow,
+          serverWindow,
+          input.capturedMutationRevision,
+        );
+        appliedWindow = {
+          ...serverWindow,
+          messageUuids: mergeSortedWorkspaceMessageIds(
+            serverWindow.messageUuids,
+            retainedLiveMessages,
+            messagesById,
+          ),
+        };
+        return {
           messagesById,
-        ),
-        beforePageMarker: input.markers.beforePageMarker,
-        afterPageMarker: input.markers.afterPageMarker,
-        revision,
-      };
-      const retainedLiveMessages = liveMessagesForWindow(
-        { ...state, messagesById },
-        input.conversationId,
-        previousWindow,
-        serverWindow,
-        input.capturedMutationRevision,
-      );
-      appliedWindow = {
-        ...serverWindow,
-        messageUuids: mergeSortedWorkspaceMessageIds(
-          serverWindow.messageUuids,
-          retainedLiveMessages,
+          conversationWindowsById: {
+            ...state.conversationWindowsById,
+            [input.conversationId]: appliedWindow,
+          },
+          messagesLoadingByConversationId: {
+            ...state.messagesLoadingByConversationId,
+            [input.conversationId]: false,
+          },
+          messagesErrorByConversationId: {
+            ...state.messagesErrorByConversationId,
+            [input.conversationId]: null,
+          },
+        };
+      });
+      return appliedWindow;
+    },
+
+    mergeConversationWindowPage(input) {
+      const { direction, generation, pageMarker, edgeMessageUuid } = input.boundary;
+      logStoreAction("workspaceMessage", "mergeConversationWindowPage", {
+        conversationId: input.conversationId,
+        direction,
+        messages: input.messages.length,
+      });
+      let appliedWindow: WorkspaceConversationWindow | null = null;
+      set((state) => {
+        const previousWindow = state.conversationWindowsById[input.conversationId];
+        const currentBoundary = captureWorkspaceConversationWindowBoundary(
+          previousWindow,
+          direction,
+        );
+        if (
+          previousWindow == null ||
+          currentBoundary?.generation !== generation ||
+          currentBoundary.pageMarker !== pageMarker ||
+          currentBoundary.edgeMessageUuid !== edgeMessageUuid ||
+          isRemovedStreamConversation(input.conversationId)
+        ) {
+          return state;
+        }
+
+        const { messagesById, acceptedMessages } = mergeSnapshotMessages(
+          state,
+          input.conversationId,
+          keepMessagesOutsideRemovedStreams(input.messages),
+          input.capturedMutationRevision,
+        );
+        const revision = nextWindowRevision(previousWindow);
+        const mergedWindow: WorkspaceConversationWindow = {
+          ...previousWindow,
+          messageUuids: mergeSortedWorkspaceMessageIds(
+            previousWindow.messageUuids,
+            acceptedMessages,
+            messagesById,
+          ),
+          beforePageMarker:
+            direction === "before" ? input.pageMarker : previousWindow.beforePageMarker,
+          afterPageMarker:
+            direction === "after" ? input.pageMarker : previousWindow.afterPageMarker,
+          revision,
+        };
+        // Recheck live bodies against the expanded bounds, including a newly reached tail.
+        const retainedLiveMessages = liveMessagesForWindow(
+          { ...state, messagesById },
+          input.conversationId,
+          previousWindow,
+          mergedWindow,
+          input.capturedMutationRevision,
+        );
+        appliedWindow = {
+          ...mergedWindow,
+          messageUuids: mergeSortedWorkspaceMessageIds(
+            mergedWindow.messageUuids,
+            retainedLiveMessages,
+            messagesById,
+          ),
+        };
+        return {
           messagesById,
-        ),
-      };
-      return {
-        messagesById,
-        conversationWindowsById: {
-          ...state.conversationWindowsById,
-          [input.conversationId]: appliedWindow,
-        },
-        messagesLoadingByConversationId: {
-          ...state.messagesLoadingByConversationId,
-          [input.conversationId]: false,
-        },
-        messagesErrorByConversationId: {
-          ...state.messagesErrorByConversationId,
-          [input.conversationId]: null,
-        },
-      };
-    });
-    return appliedWindow;
-  },
+          conversationWindowsById: {
+            ...state.conversationWindowsById,
+            [input.conversationId]: appliedWindow,
+          },
+        };
+      });
+      return appliedWindow;
+    },
 
-  mergeConversationWindowPage(input) {
-    const { direction, generation, pageMarker, edgeMessageUuid } = input.boundary;
-    logStoreAction("workspaceMessage", "mergeConversationWindowPage", {
-      conversationId: input.conversationId,
-      direction,
-      messages: input.messages.length,
-    });
-    let appliedWindow: WorkspaceConversationWindow | null = null;
-    set((state) => {
-      const previousWindow = state.conversationWindowsById[input.conversationId];
-      const currentBoundary = captureWorkspaceConversationWindowBoundary(previousWindow, direction);
-      if (
-        previousWindow == null ||
-        currentBoundary?.generation !== generation ||
-        currentBoundary.pageMarker !== pageMarker ||
-        currentBoundary.edgeMessageUuid !== edgeMessageUuid ||
-        isRemovedStreamConversation(input.conversationId)
-      ) {
-        return state;
-      }
+    applyLiveCreatedMessage(message) {
+      get().applyLiveCreatedMessages([message]);
+    },
 
-      const { messagesById, acceptedMessages } = mergeSnapshotMessages(
-        state,
-        input.conversationId,
-        keepMessagesOutsideRemovedStreams(input.messages),
-        input.capturedMutationRevision,
-      );
-      const revision = nextWindowRevision(previousWindow);
-      const mergedWindow: WorkspaceConversationWindow = {
-        ...previousWindow,
-        messageUuids: mergeSortedWorkspaceMessageIds(
-          previousWindow.messageUuids,
-          acceptedMessages,
+    applyLiveCreatedMessages(messages) {
+      const accepted = keepMessagesOutsideRemovedStreams(messages);
+      if (accepted.length === 0) return;
+      logStoreAction("workspaceMessage", "applyLiveCreatedMessages", { count: accepted.length });
+      set((state) => {
+        const messagesById = { ...state.messagesById };
+        const messageMutationRevisionById = { ...state.messageMutationRevisionById };
+        const deletedMessageRevisionById = { ...state.deletedMessageRevisionById };
+        let conversationWindowsById = state.conversationWindowsById;
+        let mutationRevision = state.messageMutationRevision;
+        for (const message of accepted) {
+          const previous = messagesById[message.uuid];
+          messagesById[message.uuid] = mergeWorkspaceMessageSnapshot(previous, message);
+          mutationRevision += 1;
+          messageMutationRevisionById[message.uuid] = mutationRevision;
+          delete deletedMessageRevisionById[message.uuid];
+          for (const conversationId of conversationBucketsForWorkspaceMessage(message, {
+            includeStreamConversation: true,
+          })) {
+            const window = conversationWindowsById[conversationId];
+            if (window == null || !shouldInsertLiveMessageIntoWindow(window, message, messagesById))
+              continue;
+            if (conversationWindowsById === state.conversationWindowsById)
+              conversationWindowsById = { ...state.conversationWindowsById };
+            conversationWindowsById[conversationId] = {
+              ...window,
+              messageUuids: insertSortedWorkspaceMessageId(
+                window.messageUuids,
+                message,
+                messagesById,
+                previous,
+              ),
+              revision: nextWindowRevision(window),
+            };
+          }
+        }
+        return {
           messagesById,
-        ),
-        beforePageMarker:
-          direction === "before" ? input.pageMarker : previousWindow.beforePageMarker,
-        afterPageMarker: direction === "after" ? input.pageMarker : previousWindow.afterPageMarker,
-        revision,
-      };
-      // Recheck live bodies against the expanded bounds, including a newly reached tail.
-      const retainedLiveMessages = liveMessagesForWindow(
-        { ...state, messagesById },
-        input.conversationId,
-        previousWindow,
-        mergedWindow,
-        input.capturedMutationRevision,
-      );
-      appliedWindow = {
-        ...mergedWindow,
-        messageUuids: mergeSortedWorkspaceMessageIds(
-          mergedWindow.messageUuids,
-          retainedLiveMessages,
+          conversationWindowsById,
+          messageMutationRevision: mutationRevision,
+          messageMutationRevisionById,
+          deletedMessageRevisionById,
+        };
+      });
+    },
+
+    applyLiveKnownBodyMutation(message, capturedMutationRevision, source) {
+      if (removedStreamUuids.has(message.streamUuid)) return false;
+      logStoreAction("workspaceMessage", "applyLiveKnownBodyMutation", {
+        messageUuid: message.uuid,
+      });
+      let applied: MessengerMessage | null | false = false;
+      set((state) => {
+        if (
+          capturedMutationRevision != null &&
+          ((state.messageMutationRevisionById[message.uuid] ?? 0) > capturedMutationRevision ||
+            (state.deletedMessageRevisionById[message.uuid] ?? 0) > capturedMutationRevision)
+        ) {
+          return state;
+        }
+        const mutationRevision = state.messageMutationRevision + 1;
+        const previousMessage = state.messagesById[message.uuid];
+        const moved =
+          previousMessage != null &&
+          (previousMessage.streamUuid !== message.streamUuid ||
+            previousMessage.topicUuid !== message.topicUuid);
+        let merged: MessengerMessage | null = null;
+        if (source === "poll-response") {
+          if (
+            previousMessage == null ||
+            moved ||
+            state.deletedMessageRevisionById[message.uuid] != null
+          )
+            return state;
+          const poll = reconcileWorkspacePollSnapshot(previousMessage, message);
+          if (
+            poll == null ||
+            (previousMessage.payload === poll.payload &&
+              previousMessage.pollState === poll.pollState)
+          )
+            return state;
+          merged = {
+            ...previousMessage,
+            ...poll,
+            updatedAt: poll.updatedAt ?? previousMessage.updatedAt,
+          };
+        } else if (previousMessage != null) {
+          merged = mergeWorkspaceMessageSnapshot(previousMessage, message);
+        }
+        const messagesById =
+          merged == null ? state.messagesById : { ...state.messagesById, [message.uuid]: merged };
+        let conversationWindowsById = state.conversationWindowsById;
+        if (moved) {
+          conversationWindowsById = moveMessageBetweenLoadedWindows(
+            state.conversationWindowsById,
+            previousMessage,
+            message,
+            messagesById,
+          );
+        }
+        // Capture the body before subscribers can synchronously publish a newer update.
+        applied = merged;
+        return {
+          conversationWindowsById,
           messagesById,
-        ),
-      };
-      return {
-        messagesById,
-        conversationWindowsById: {
-          ...state.conversationWindowsById,
-          [input.conversationId]: appliedWindow,
-        },
-      };
-    });
-    return appliedWindow;
-  },
+          messageMutationRevision: mutationRevision,
+          messageMutationRevisionById: {
+            ...state.messageMutationRevisionById,
+            [message.uuid]: mutationRevision,
+          },
+          messagePlacementRevisionById: moved
+            ? { ...state.messagePlacementRevisionById, [message.uuid]: mutationRevision }
+            : state.messagePlacementRevisionById,
+        };
+      });
+      return applied;
+    },
 
-  applyLiveCreatedMessage(message) {
-    get().applyLiveCreatedMessages([message]);
-  },
+    upsertMessageBodyFromSnapshot(message, capturedMutationRevision) {
+      if (removedStreamUuids.has(message.streamUuid)) return false;
+      let applied = false;
+      set((state) => {
+        if (
+          (state.messageMutationRevisionById[message.uuid] ?? 0) > capturedMutationRevision ||
+          (state.deletedMessageRevisionById[message.uuid] ?? 0) > capturedMutationRevision
+        ) {
+          return state;
+        }
+        applied = true;
+        return {
+          messagesById: {
+            ...state.messagesById,
+            [message.uuid]: mergeWorkspaceMessageSnapshot(
+              state.messagesById[message.uuid],
+              message,
+            ),
+          },
+        };
+      });
+      return applied;
+    },
 
-  applyLiveCreatedMessages(messages) {
-    const accepted = keepMessagesOutsideRemovedStreams(messages);
-    if (accepted.length === 0) return;
-    logStoreAction("workspaceMessage", "applyLiveCreatedMessages", { count: accepted.length });
-    set((state) => {
-      const messagesById = { ...state.messagesById };
-      const messageMutationRevisionById = { ...state.messageMutationRevisionById };
-      const deletedMessageRevisionById = { ...state.deletedMessageRevisionById };
-      let conversationWindowsById = state.conversationWindowsById;
-      let mutationRevision = state.messageMutationRevision;
-      for (const message of accepted) {
-        const previous = messagesById[message.uuid];
-        messagesById[message.uuid] = mergeWorkspaceMessageSnapshot(previous, message);
-        mutationRevision += 1;
-        messageMutationRevisionById[message.uuid] = mutationRevision;
-        delete deletedMessageRevisionById[message.uuid];
-        for (const conversationId of conversationBucketsForWorkspaceMessage(message, {
-          includeStreamConversation: true,
-        })) {
-          const window = conversationWindowsById[conversationId];
-          if (window == null || !shouldInsertLiveMessageIntoWindow(window, message, messagesById))
-            continue;
-          if (conversationWindowsById === state.conversationWindowsById)
-            conversationWindowsById = { ...state.conversationWindowsById };
+    removeMessageFromSnapshot(messageUuid, capturedMutationRevision) {
+      let applied = false;
+      set((state) => {
+        if (
+          (state.messageMutationRevisionById[messageUuid] ?? 0) > capturedMutationRevision ||
+          (state.deletedMessageRevisionById[messageUuid] ?? 0) > capturedMutationRevision
+        ) {
+          return state;
+        }
+        applied = true;
+        const conversationWindowsById = { ...state.conversationWindowsById };
+        for (const [conversationId, window] of Object.entries(state.conversationWindowsById)) {
+          if (!window.messageUuids.includes(messageUuid)) continue;
           conversationWindowsById[conversationId] = {
             ...window,
-            messageUuids: insertSortedWorkspaceMessageId(
-              window.messageUuids,
-              message,
-              messagesById,
-              previous,
-            ),
+            messageUuids: removeWorkspaceMessageId(window.messageUuids, messageUuid),
             revision: nextWindowRevision(window),
           };
         }
-      }
-      return {
-        messagesById,
-        conversationWindowsById,
-        messageMutationRevision: mutationRevision,
-        messageMutationRevisionById,
-        deletedMessageRevisionById,
-      };
-    });
-  },
-
-  applyLiveKnownBodyMutation(message, capturedMutationRevision, source) {
-    if (removedStreamUuids.has(message.streamUuid)) return false;
-    logStoreAction("workspaceMessage", "applyLiveKnownBodyMutation", {
-      messageUuid: message.uuid,
-    });
-    let applied: MessengerMessage | null | false = false;
-    set((state) => {
-      if (
-        capturedMutationRevision != null &&
-        ((state.messageMutationRevisionById[message.uuid] ?? 0) > capturedMutationRevision ||
-          (state.deletedMessageRevisionById[message.uuid] ?? 0) > capturedMutationRevision)
-      ) {
-        return state;
-      }
-      const mutationRevision = state.messageMutationRevision + 1;
-      const previousMessage = state.messagesById[message.uuid];
-      const moved =
-        previousMessage != null &&
-        (previousMessage.streamUuid !== message.streamUuid ||
-          previousMessage.topicUuid !== message.topicUuid);
-      let merged: MessengerMessage | null = null;
-      if (source === "poll-response") {
-        if (
-          previousMessage == null ||
-          moved ||
-          state.deletedMessageRevisionById[message.uuid] != null
-        )
-          return state;
-        const poll = reconcileWorkspacePollSnapshot(previousMessage, message);
-        if (
-          poll == null ||
-          (previousMessage.payload === poll.payload && previousMessage.pollState === poll.pollState)
-        )
-          return state;
-        merged = {
-          ...previousMessage,
-          ...poll,
-          updatedAt: poll.updatedAt ?? previousMessage.updatedAt,
-        };
-      } else if (previousMessage != null) {
-        merged = mergeWorkspaceMessageSnapshot(previousMessage, message);
-      }
-      const messagesById =
-        merged == null ? state.messagesById : { ...state.messagesById, [message.uuid]: merged };
-      let conversationWindowsById = state.conversationWindowsById;
-      if (moved) {
-        conversationWindowsById = moveMessageBetweenLoadedWindows(
-          state.conversationWindowsById,
-          previousMessage,
-          message,
+        const mutationRevision = state.messageMutationRevision + 1;
+        const messagesById = { ...state.messagesById };
+        delete messagesById[messageUuid];
+        return {
           messagesById,
-        );
-      }
-      // Capture the body before subscribers can synchronously publish a newer update.
-      applied = merged;
-      return {
-        conversationWindowsById,
-        messagesById,
-        messageMutationRevision: mutationRevision,
-        messageMutationRevisionById: {
-          ...state.messageMutationRevisionById,
-          [message.uuid]: mutationRevision,
-        },
-        messagePlacementRevisionById: moved
-          ? { ...state.messagePlacementRevisionById, [message.uuid]: mutationRevision }
-          : state.messagePlacementRevisionById,
-      };
-    });
-    return applied;
-  },
-
-  upsertMessageBodyFromSnapshot(message, capturedMutationRevision) {
-    if (removedStreamUuids.has(message.streamUuid)) return false;
-    let applied = false;
-    set((state) => {
-      if (
-        (state.messageMutationRevisionById[message.uuid] ?? 0) > capturedMutationRevision ||
-        (state.deletedMessageRevisionById[message.uuid] ?? 0) > capturedMutationRevision
-      ) {
-        return state;
-      }
-      applied = true;
-      return {
-        messagesById: {
-          ...state.messagesById,
-          [message.uuid]: mergeWorkspaceMessageSnapshot(state.messagesById[message.uuid], message),
-        },
-      };
-    });
-    return applied;
-  },
-
-  removeMessageFromSnapshot(messageUuid, capturedMutationRevision) {
-    let applied = false;
-    set((state) => {
-      if (
-        (state.messageMutationRevisionById[messageUuid] ?? 0) > capturedMutationRevision ||
-        (state.deletedMessageRevisionById[messageUuid] ?? 0) > capturedMutationRevision
-      ) {
-        return state;
-      }
-      applied = true;
-      const conversationWindowsById = { ...state.conversationWindowsById };
-      for (const [conversationId, window] of Object.entries(state.conversationWindowsById)) {
-        if (!window.messageUuids.includes(messageUuid)) continue;
-        conversationWindowsById[conversationId] = {
-          ...window,
-          messageUuids: removeWorkspaceMessageId(window.messageUuids, messageUuid),
-          revision: nextWindowRevision(window),
+          conversationWindowsById,
+          messageMutationRevision: mutationRevision,
+          messageMutationRevisionById: {
+            ...state.messageMutationRevisionById,
+            [messageUuid]: mutationRevision,
+          },
+          deletedMessageRevisionById: {
+            ...state.deletedMessageRevisionById,
+            [messageUuid]: mutationRevision,
+          },
+          messagePlacementRevisionById: {
+            ...state.messagePlacementRevisionById,
+            [messageUuid]: mutationRevision,
+          },
         };
-      }
-      const mutationRevision = state.messageMutationRevision + 1;
-      const messagesById = { ...state.messagesById };
-      delete messagesById[messageUuid];
-      return {
-        messagesById,
-        conversationWindowsById,
-        messageMutationRevision: mutationRevision,
-        messageMutationRevisionById: {
-          ...state.messageMutationRevisionById,
-          [messageUuid]: mutationRevision,
-        },
-        deletedMessageRevisionById: {
-          ...state.deletedMessageRevisionById,
-          [messageUuid]: mutationRevision,
-        },
-        messagePlacementRevisionById: {
-          ...state.messagePlacementRevisionById,
-          [messageUuid]: mutationRevision,
-        },
-      };
-    });
-    return applied;
-  },
+      });
+      return applied;
+    },
 
-  applyMessageEdit(messageUuid, patch) {
-    logStoreAction("workspaceMessage", "applyMessageEdit", { messageUuid });
-    set((state) => {
-      const message = state.messagesById[messageUuid];
-      if (message == null) return state;
+    applyMessageEdit(messageUuid, patch) {
+      logStoreAction("workspaceMessage", "applyMessageEdit", { messageUuid });
+      set((state) => {
+        const message = state.messagesById[messageUuid];
+        if (message == null) return state;
 
-      return {
-        messagesById: {
-          ...state.messagesById,
-          [messageUuid]: {
-            ...message,
-            payload: { kind: "markdown", content: patch.markdown },
-            updatedAt: patch.updatedAt ?? message.updatedAt,
-          },
-        },
-      };
-    });
-  },
-
-  applyOwnMessageReactions(messageUuid, projection) {
-    logStoreAction("workspaceMessage", "applyOwnMessageReactions", { messageUuid });
-    set((state) => {
-      const message = state.messagesById[messageUuid];
-      if (message == null) return state;
-
-      return {
-        messagesById: {
-          ...state.messagesById,
-          [messageUuid]: {
-            ...message,
-            ownReactionUuidsByEmojiName: normalizeOwnReactionProjection(projection),
-          },
-        },
-      };
-    });
-  },
-
-  setOwnMessageReaction(messageUuid, emojiName, reactionUuid) {
-    logStoreAction("workspaceMessage", "setOwnMessageReaction", { messageUuid, emojiName });
-    set((state) => {
-      const message = state.messagesById[messageUuid];
-      if (message == null || emojiName.trim().length === 0) return state;
-
-      return {
-        messagesById: {
-          ...state.messagesById,
-          [messageUuid]: {
-            ...message,
-            ownReactionUuidsByEmojiName: {
-              ...message.ownReactionUuidsByEmojiName,
-              [emojiName]: reactionUuid,
+        return {
+          messagesById: {
+            ...state.messagesById,
+            [messageUuid]: {
+              ...message,
+              payload: { kind: "markdown", content: patch.markdown },
+              updatedAt: patch.updatedAt ?? message.updatedAt,
             },
           },
-        },
-      };
-    });
-  },
+        };
+      });
+    },
 
-  removeOwnMessageReaction(messageUuid, emojiName) {
-    logStoreAction("workspaceMessage", "removeOwnMessageReaction", { messageUuid, emojiName });
-    set((state) => {
-      const message = state.messagesById[messageUuid];
-      if (message?.ownReactionUuidsByEmojiName[emojiName] == null) return state;
+    applyOwnMessageReactions(messageUuid, projection) {
+      logStoreAction("workspaceMessage", "applyOwnMessageReactions", { messageUuid });
+      set((state) => {
+        const message = state.messagesById[messageUuid];
+        if (message == null) return state;
 
-      const nextOwnReactionUuidsByEmojiName = { ...message.ownReactionUuidsByEmojiName };
-      delete nextOwnReactionUuidsByEmojiName[emojiName];
-
-      return {
-        messagesById: {
-          ...state.messagesById,
-          [messageUuid]: {
-            ...message,
-            ownReactionUuidsByEmojiName: nextOwnReactionUuidsByEmojiName,
+        return {
+          messagesById: {
+            ...state.messagesById,
+            [messageUuid]: {
+              ...message,
+              ownReactionUuidsByEmojiName: normalizeOwnReactionProjection(projection),
+            },
           },
-        },
-      };
-    });
-  },
+        };
+      });
+    },
 
-  beginOptimisticOwnMessageReaction(messageUuid, emojiName, operation, requestId, currentUserUuid) {
-    logStoreAction("workspaceMessage", "beginOptimisticOwnMessageReaction", {
+    setOwnMessageReaction(messageUuid, emojiName, reactionUuid) {
+      logStoreAction("workspaceMessage", "setOwnMessageReaction", { messageUuid, emojiName });
+      set((state) => {
+        const message = state.messagesById[messageUuid];
+        if (message == null || emojiName.trim().length === 0) return state;
+
+        return {
+          messagesById: {
+            ...state.messagesById,
+            [messageUuid]: {
+              ...message,
+              ownReactionUuidsByEmojiName: {
+                ...message.ownReactionUuidsByEmojiName,
+                [emojiName]: reactionUuid,
+              },
+            },
+          },
+        };
+      });
+    },
+
+    removeOwnMessageReaction(messageUuid, emojiName) {
+      logStoreAction("workspaceMessage", "removeOwnMessageReaction", { messageUuid, emojiName });
+      set((state) => {
+        const message = state.messagesById[messageUuid];
+        if (message?.ownReactionUuidsByEmojiName[emojiName] == null) return state;
+
+        const nextOwnReactionUuidsByEmojiName = { ...message.ownReactionUuidsByEmojiName };
+        delete nextOwnReactionUuidsByEmojiName[emojiName];
+
+        return {
+          messagesById: {
+            ...state.messagesById,
+            [messageUuid]: {
+              ...message,
+              ownReactionUuidsByEmojiName: nextOwnReactionUuidsByEmojiName,
+            },
+          },
+        };
+      });
+    },
+
+    beginOptimisticOwnMessageReaction(
       messageUuid,
       emojiName,
       operation,
-    });
-    set((state) => {
-      const message = state.messagesById[messageUuid];
-      if (message == null || emojiName.trim().length === 0) return state;
-
-      const pending = clonePendingOwnReactions(message.pendingOwnReactionsByEmojiName);
-      if (pending[emojiName] != null) return state;
-
-      const previousCount = message.reactions[emojiName] ?? 0;
-      const previousOwnReactionUuid = message.ownReactionUuidsByEmojiName[emojiName] ?? null;
-      const previousReactionUserUuids = message.reactionUserUuidsByEmojiName[emojiName] ?? null;
-      if (operation === "add" && previousOwnReactionUuid != null) return state;
-      const nextOwnReactionUuidsByEmojiName = { ...message.ownReactionUuidsByEmojiName };
-      if (operation === "remove") {
-        delete nextOwnReactionUuidsByEmojiName[emojiName];
-      }
-
-      pending[emojiName] = {
-        requestId,
-        operation,
-        previousCount,
-        previousOwnReactionUuid,
-      };
-      const nextReactionUserUuids = optimisticReactionUserUuids(
-        previousReactionUserUuids,
-        previousCount,
-        operation,
-        currentUserUuid,
-      );
-
-      return {
-        messagesById: {
-          ...state.messagesById,
-          [messageUuid]: {
-            ...message,
-            reactions: setReactionCount(
-              message.reactions,
-              emojiName,
-              optimisticReactionCount(previousCount, operation),
-            ),
-            optimisticReactionUserUuidsByEmojiName: {
-              ...message.optimisticReactionUserUuidsByEmojiName,
-              [emojiName]: nextReactionUserUuids == null ? null : [...nextReactionUserUuids],
-            },
-            ownReactionUuidsByEmojiName: nextOwnReactionUuidsByEmojiName,
-            pendingOwnReactionsByEmojiName: pending,
-          },
-        },
-      };
-    });
-  },
-
-  settleOptimisticOwnMessageReaction(messageUuid, emojiName, requestId) {
-    logStoreAction("workspaceMessage", "settleOptimisticOwnMessageReaction", {
-      messageUuid,
-      emojiName,
-    });
-    set((state) => {
-      const message = state.messagesById[messageUuid];
-      const pendingAction = message?.pendingOwnReactionsByEmojiName?.[emojiName];
-      if (message == null || pendingAction?.requestId !== requestId) return state;
-
-      const pending = clonePendingOwnReactions(message.pendingOwnReactionsByEmojiName);
-      delete pending[emojiName];
-
-      return {
-        messagesById: {
-          ...state.messagesById,
-          [messageUuid]: {
-            ...message,
-            pendingOwnReactionsByEmojiName: Object.keys(pending).length > 0 ? pending : undefined,
-          },
-        },
-      };
-    });
-  },
-
-  rollbackOptimisticOwnMessageReaction(messageUuid, emojiName, requestId) {
-    logStoreAction("workspaceMessage", "rollbackOptimisticOwnMessageReaction", {
-      messageUuid,
-      emojiName,
-    });
-    set((state) => {
-      const message = state.messagesById[messageUuid];
-      const pendingAction = message?.pendingOwnReactionsByEmojiName?.[emojiName];
-      if (message == null || pendingAction?.requestId !== requestId) return state;
-
-      const pending = clonePendingOwnReactions(message.pendingOwnReactionsByEmojiName);
-      delete pending[emojiName];
-      const optimisticReactionUserUuidsByEmojiName = {
-        ...message.optimisticReactionUserUuidsByEmojiName,
-      };
-      const hasUnreconciledOptimisticUsers = Object.hasOwn(
-        optimisticReactionUserUuidsByEmojiName,
+      requestId,
+      currentUserUuid,
+    ) {
+      logStoreAction("workspaceMessage", "beginOptimisticOwnMessageReaction", {
+        messageUuid,
         emojiName,
-      );
-      delete optimisticReactionUserUuidsByEmojiName[emojiName];
-
-      const nextOwnReactionUuidsByEmojiName = { ...message.ownReactionUuidsByEmojiName };
-      if (pendingAction.previousOwnReactionUuid == null) {
-        delete nextOwnReactionUuidsByEmojiName[emojiName];
-      } else {
-        nextOwnReactionUuidsByEmojiName[emojiName] = pendingAction.previousOwnReactionUuid;
-      }
-
-      return {
-        messagesById: {
-          ...state.messagesById,
-          [messageUuid]: {
-            ...message,
-            reactions: hasUnreconciledOptimisticUsers
-              ? setReactionCount(message.reactions, emojiName, pendingAction.previousCount)
-              : message.reactions,
-            optimisticReactionUserUuidsByEmojiName:
-              Object.keys(optimisticReactionUserUuidsByEmojiName).length > 0
-                ? optimisticReactionUserUuidsByEmojiName
-                : undefined,
-            ownReactionUuidsByEmojiName: nextOwnReactionUuidsByEmojiName,
-            pendingOwnReactionsByEmojiName: Object.keys(pending).length > 0 ? pending : undefined,
-          },
-        },
-      };
-    });
-  },
-
-  applyMessageReactionAggregate(messageUuid, aggregate) {
-    logStoreAction("workspaceMessage", "applyMessageReactionAggregate", { messageUuid });
-    set((state) => {
-      const message = state.messagesById[messageUuid];
-      if (message == null) return state;
-
-      return {
-        messagesById: {
-          ...state.messagesById,
-          [messageUuid]: {
-            ...message,
-            reactions: cloneReactionAggregate(aggregate),
-          },
-        },
-      };
-    });
-  },
-
-  removeMessage(messageUuid) {
-    logStoreAction("workspaceMessage", "removeMessage", { messageUuid });
-    set((state) => {
-      const conversationIds = Object.keys(state.conversationWindowsById);
-      let conversationWindowsById = state.conversationWindowsById;
-      for (const conversationId of conversationIds) {
-        const window = state.conversationWindowsById[conversationId];
-        if (!window?.messageUuids.includes(messageUuid)) continue;
-        if (conversationWindowsById === state.conversationWindowsById) {
-          conversationWindowsById = { ...state.conversationWindowsById };
-        }
-        conversationWindowsById[conversationId] = {
-          ...window,
-          messageUuids: removeWorkspaceMessageId(window.messageUuids, messageUuid),
-          revision: nextWindowRevision(window),
-        };
-      }
-      const mutationRevision = state.messageMutationRevision + 1;
-      const messagesById = { ...state.messagesById };
-      delete messagesById[messageUuid];
-      return {
-        messagesById,
-        conversationWindowsById,
-        messageMutationRevision: mutationRevision,
-        messageMutationRevisionById: {
-          ...state.messageMutationRevisionById,
-          [messageUuid]: mutationRevision,
-        },
-        deletedMessageRevisionById: {
-          ...state.deletedMessageRevisionById,
-          [messageUuid]: mutationRevision,
-        },
-        messagePlacementRevisionById: {
-          ...state.messagePlacementRevisionById,
-          [messageUuid]: mutationRevision,
-        },
-      };
-    });
-  },
-
-  markMessageRead(messageUuid, options) {
-    logStoreAction("workspaceMessage", "markMessageRead", { messageUuid });
-    set((state) => {
-      const message = state.messagesById[messageUuid];
-      if (message == null || message.read) return state;
-
-      if (options?.conversationIds != null) {
-        const messageIsVisible = options.conversationIds.some((conversationId) =>
-          (
-            state.conversationWindowsById[conversationId]?.messageUuids ??
-            EMPTY_WORKSPACE_MESSAGE_IDS
-          ).includes(messageUuid),
-        );
-        if (!messageIsVisible) return state;
-      }
-
-      const mutationRevision = state.messageMutationRevision + 1;
-      return {
-        messagesById: {
-          ...state.messagesById,
-          [messageUuid]: {
-            ...message,
-            read: true,
-          },
-        },
-        messageMutationRevision: mutationRevision,
-        messageMutationRevisionById: {
-          ...state.messageMutationRevisionById,
-          [messageUuid]: mutationRevision,
-        },
-      };
-    });
-  },
-
-  markMessagesRead(messageUuids, options) {
-    logStoreAction("workspaceMessage", "markMessagesRead", { messages: messageUuids.length });
-    if (messageUuids.length === 0) return;
-    set((state) => {
-      const nextMessagesById = { ...state.messagesById };
-      const nextMutationRevisionById = { ...state.messageMutationRevisionById };
-      const mutationRevision = state.messageMutationRevision + 1;
-      let changed = false;
-      for (const messageUuid of new Set(messageUuids)) {
+        operation,
+      });
+      set((state) => {
         const message = state.messagesById[messageUuid];
-        if (message == null || message.read) continue;
-        if (
-          options?.conversationIds != null &&
-          !options.conversationIds.some((conversationId) =>
+        if (message == null || emojiName.trim().length === 0) return state;
+
+        const pending = clonePendingOwnReactions(message.pendingOwnReactionsByEmojiName);
+        if (pending[emojiName] != null) return state;
+
+        const previousCount = message.reactions[emojiName] ?? 0;
+        const previousOwnReactionUuid = message.ownReactionUuidsByEmojiName[emojiName] ?? null;
+        const previousReactionUserUuids = message.reactionUserUuidsByEmojiName[emojiName] ?? null;
+        if (operation === "add" && previousOwnReactionUuid != null) return state;
+        const nextOwnReactionUuidsByEmojiName = { ...message.ownReactionUuidsByEmojiName };
+        if (operation === "remove") {
+          delete nextOwnReactionUuidsByEmojiName[emojiName];
+        }
+
+        pending[emojiName] = {
+          requestId,
+          operation,
+          previousCount,
+          previousOwnReactionUuid,
+        };
+        const nextReactionUserUuids = optimisticReactionUserUuids(
+          previousReactionUserUuids,
+          previousCount,
+          operation,
+          currentUserUuid,
+        );
+
+        return {
+          messagesById: {
+            ...state.messagesById,
+            [messageUuid]: {
+              ...message,
+              reactions: setReactionCount(
+                message.reactions,
+                emojiName,
+                optimisticReactionCount(previousCount, operation),
+              ),
+              optimisticReactionUserUuidsByEmojiName: {
+                ...message.optimisticReactionUserUuidsByEmojiName,
+                [emojiName]: nextReactionUserUuids == null ? null : [...nextReactionUserUuids],
+              },
+              ownReactionUuidsByEmojiName: nextOwnReactionUuidsByEmojiName,
+              pendingOwnReactionsByEmojiName: pending,
+            },
+          },
+        };
+      });
+    },
+
+    settleOptimisticOwnMessageReaction(messageUuid, emojiName, requestId) {
+      logStoreAction("workspaceMessage", "settleOptimisticOwnMessageReaction", {
+        messageUuid,
+        emojiName,
+      });
+      set((state) => {
+        const message = state.messagesById[messageUuid];
+        const pendingAction = message?.pendingOwnReactionsByEmojiName?.[emojiName];
+        if (message == null || pendingAction?.requestId !== requestId) return state;
+
+        const pending = clonePendingOwnReactions(message.pendingOwnReactionsByEmojiName);
+        delete pending[emojiName];
+
+        return {
+          messagesById: {
+            ...state.messagesById,
+            [messageUuid]: {
+              ...message,
+              pendingOwnReactionsByEmojiName: Object.keys(pending).length > 0 ? pending : undefined,
+            },
+          },
+        };
+      });
+    },
+
+    rollbackOptimisticOwnMessageReaction(messageUuid, emojiName, requestId) {
+      logStoreAction("workspaceMessage", "rollbackOptimisticOwnMessageReaction", {
+        messageUuid,
+        emojiName,
+      });
+      set((state) => {
+        const message = state.messagesById[messageUuid];
+        const pendingAction = message?.pendingOwnReactionsByEmojiName?.[emojiName];
+        if (message == null || pendingAction?.requestId !== requestId) return state;
+
+        const pending = clonePendingOwnReactions(message.pendingOwnReactionsByEmojiName);
+        delete pending[emojiName];
+        const optimisticReactionUserUuidsByEmojiName = {
+          ...message.optimisticReactionUserUuidsByEmojiName,
+        };
+        const hasUnreconciledOptimisticUsers = Object.hasOwn(
+          optimisticReactionUserUuidsByEmojiName,
+          emojiName,
+        );
+        delete optimisticReactionUserUuidsByEmojiName[emojiName];
+
+        const nextOwnReactionUuidsByEmojiName = { ...message.ownReactionUuidsByEmojiName };
+        if (pendingAction.previousOwnReactionUuid == null) {
+          delete nextOwnReactionUuidsByEmojiName[emojiName];
+        } else {
+          nextOwnReactionUuidsByEmojiName[emojiName] = pendingAction.previousOwnReactionUuid;
+        }
+
+        return {
+          messagesById: {
+            ...state.messagesById,
+            [messageUuid]: {
+              ...message,
+              reactions: hasUnreconciledOptimisticUsers
+                ? setReactionCount(message.reactions, emojiName, pendingAction.previousCount)
+                : message.reactions,
+              optimisticReactionUserUuidsByEmojiName:
+                Object.keys(optimisticReactionUserUuidsByEmojiName).length > 0
+                  ? optimisticReactionUserUuidsByEmojiName
+                  : undefined,
+              ownReactionUuidsByEmojiName: nextOwnReactionUuidsByEmojiName,
+              pendingOwnReactionsByEmojiName: Object.keys(pending).length > 0 ? pending : undefined,
+            },
+          },
+        };
+      });
+    },
+
+    applyMessageReactionAggregate(messageUuid, aggregate) {
+      logStoreAction("workspaceMessage", "applyMessageReactionAggregate", { messageUuid });
+      set((state) => {
+        const message = state.messagesById[messageUuid];
+        if (message == null) return state;
+
+        return {
+          messagesById: {
+            ...state.messagesById,
+            [messageUuid]: {
+              ...message,
+              reactions: cloneReactionAggregate(aggregate),
+            },
+          },
+        };
+      });
+    },
+
+    removeMessage(messageUuid) {
+      logStoreAction("workspaceMessage", "removeMessage", { messageUuid });
+      set((state) => {
+        const conversationIds = Object.keys(state.conversationWindowsById);
+        let conversationWindowsById = state.conversationWindowsById;
+        for (const conversationId of conversationIds) {
+          const window = state.conversationWindowsById[conversationId];
+          if (!window?.messageUuids.includes(messageUuid)) continue;
+          if (conversationWindowsById === state.conversationWindowsById) {
+            conversationWindowsById = { ...state.conversationWindowsById };
+          }
+          conversationWindowsById[conversationId] = {
+            ...window,
+            messageUuids: removeWorkspaceMessageId(window.messageUuids, messageUuid),
+            revision: nextWindowRevision(window),
+          };
+        }
+        const mutationRevision = state.messageMutationRevision + 1;
+        const messagesById = { ...state.messagesById };
+        delete messagesById[messageUuid];
+        return {
+          messagesById,
+          conversationWindowsById,
+          messageMutationRevision: mutationRevision,
+          messageMutationRevisionById: {
+            ...state.messageMutationRevisionById,
+            [messageUuid]: mutationRevision,
+          },
+          deletedMessageRevisionById: {
+            ...state.deletedMessageRevisionById,
+            [messageUuid]: mutationRevision,
+          },
+          messagePlacementRevisionById: {
+            ...state.messagePlacementRevisionById,
+            [messageUuid]: mutationRevision,
+          },
+        };
+      });
+    },
+
+    markMessageRead(messageUuid, options) {
+      logStoreAction("workspaceMessage", "markMessageRead", { messageUuid });
+      set((state) => {
+        const message = state.messagesById[messageUuid];
+        if (message == null || message.read) return state;
+
+        if (options?.conversationIds != null) {
+          const messageIsVisible = options.conversationIds.some((conversationId) =>
             (
               state.conversationWindowsById[conversationId]?.messageUuids ??
               EMPTY_WORKSPACE_MESSAGE_IDS
             ).includes(messageUuid),
-          )
-        ) {
-          continue;
+          );
+          if (!messageIsVisible) return state;
         }
-        nextMessagesById[messageUuid] = { ...message, read: true };
-        nextMutationRevisionById[messageUuid] = mutationRevision;
-        changed = true;
-      }
-      return changed
-        ? {
-            messagesById: nextMessagesById,
-            messageMutationRevision: mutationRevision,
-            messageMutationRevisionById: nextMutationRevisionById,
+
+        const mutationRevision = state.messageMutationRevision + 1;
+        return {
+          messagesById: {
+            ...state.messagesById,
+            [messageUuid]: {
+              ...message,
+              read: true,
+            },
+          },
+          messageMutationRevision: mutationRevision,
+          messageMutationRevisionById: {
+            ...state.messageMutationRevisionById,
+            [messageUuid]: mutationRevision,
+          },
+        };
+      });
+    },
+
+    markMessagesRead(messageUuids, options) {
+      logStoreAction("workspaceMessage", "markMessagesRead", { messages: messageUuids.length });
+      if (messageUuids.length === 0) return;
+      set((state) => {
+        const nextMessagesById = { ...state.messagesById };
+        const nextMutationRevisionById = { ...state.messageMutationRevisionById };
+        const mutationRevision = state.messageMutationRevision + 1;
+        let changed = false;
+        for (const messageUuid of new Set(messageUuids)) {
+          const message = state.messagesById[messageUuid];
+          if (message == null || message.read) continue;
+          if (
+            options?.conversationIds != null &&
+            !options.conversationIds.some((conversationId) =>
+              (
+                state.conversationWindowsById[conversationId]?.messageUuids ??
+                EMPTY_WORKSPACE_MESSAGE_IDS
+              ).includes(messageUuid),
+            )
+          ) {
+            continue;
           }
-        : state;
-    });
-  },
-
-  markMessagesReadUpTo(messageUuid, options) {
-    logStoreAction("workspaceMessage", "markMessagesReadUpTo", { messageUuid });
-    return readMessagesUpTo(set, messageUuid, options).projectedMessages;
-  },
-
-  confirmMessagesReadUpTo(anchor, options, capturedMutationRevision) {
-    if (removedStreamUuids.has(anchor.streamUuid)) return [];
-    return readMessagesUpTo(set, anchor.uuid, options, { anchor, capturedMutationRevision })
-      .projectedMessages;
-  },
-
-  beginOptimisticMessagesReadUpTo(messageUuid, options) {
-    logStoreAction("workspaceMessage", "beginOptimisticMessagesReadUpTo", { messageUuid });
-    return readMessagesUpTo(set, messageUuid, options);
-  },
-
-  beginOptimisticMessagesRead(scope) {
-    logStoreAction("workspaceMessage", "beginOptimisticMessagesRead", { ...scope });
-    const change: {
-      previousMessages: MessengerMessage[];
-      projectedMessages: MessengerMessage[];
-    } = {
-      previousMessages: [],
-      projectedMessages: [],
-    };
-
-    set((state) => {
-      const nextMessagesById = { ...state.messagesById };
-      const nextMutationRevisionById = { ...state.messageMutationRevisionById };
-      const mutationRevision = state.messageMutationRevision + 1;
-      for (const message of Object.values(state.messagesById)) {
-        if (
-          message.read ||
-          message.streamUuid !== scope.streamUuid ||
-          (scope.topicUuid != null && message.topicUuid !== scope.topicUuid)
-        ) {
-          continue;
+          nextMessagesById[messageUuid] = { ...message, read: true };
+          nextMutationRevisionById[messageUuid] = mutationRevision;
+          changed = true;
         }
+        return changed
+          ? {
+              messagesById: nextMessagesById,
+              messageMutationRevision: mutationRevision,
+              messageMutationRevisionById: nextMutationRevisionById,
+            }
+          : state;
+      });
+    },
 
-        const projectedMessage = { ...message, read: true };
-        change.previousMessages.push(message);
-        change.projectedMessages.push(projectedMessage);
-        nextMessagesById[message.uuid] = projectedMessage;
-        nextMutationRevisionById[message.uuid] = mutationRevision;
-      }
+    markMessagesReadUpTo(messageUuid, options) {
+      logStoreAction("workspaceMessage", "markMessagesReadUpTo", { messageUuid });
+      return readMessagesUpTo(set, messageUuid, options).projectedMessages;
+    },
 
-      return change.projectedMessages.length === 0
-        ? state
-        : {
-            messagesById: nextMessagesById,
-            messageMutationRevision: mutationRevision,
-            messageMutationRevisionById: nextMutationRevisionById,
-          };
-    });
+    confirmMessagesReadUpTo(anchor, options, capturedMutationRevision) {
+      if (removedStreamUuids.has(anchor.streamUuid)) return [];
+      return readMessagesUpTo(set, anchor.uuid, options, { anchor, capturedMutationRevision })
+        .projectedMessages;
+    },
 
-    return change satisfies WorkspaceOptimisticMessageReadChange;
-  },
+    beginOptimisticMessagesReadUpTo(messageUuid, options) {
+      logStoreAction("workspaceMessage", "beginOptimisticMessagesReadUpTo", { messageUuid });
+      return readMessagesUpTo(set, messageUuid, options);
+    },
 
-  rollbackOptimisticMessagesRead(change) {
-    logStoreAction("workspaceMessage", "rollbackOptimisticMessagesRead", {
-      messages: change.previousMessages.length,
-    });
-    if (change.previousMessages.length === 0) return;
-
-    set((state) => {
-      let nextMessagesById = state.messagesById;
-      let nextMutationRevisionById = state.messageMutationRevisionById;
-      const mutationRevision = state.messageMutationRevision + 1;
-      for (let index = 0; index < change.previousMessages.length; index += 1) {
-        const previousMessage = change.previousMessages[index];
-        const projectedMessage = change.projectedMessages[index];
-        if (
-          previousMessage == null ||
-          projectedMessage == null ||
-          state.messagesById[previousMessage.uuid] !== projectedMessage
-        ) {
-          continue;
-        }
-        if (nextMessagesById === state.messagesById) {
-          nextMessagesById = { ...state.messagesById };
-          nextMutationRevisionById = { ...state.messageMutationRevisionById };
-        }
-        nextMessagesById[previousMessage.uuid] = previousMessage;
-        nextMutationRevisionById[previousMessage.uuid] = mutationRevision;
-      }
-      return nextMessagesById === state.messagesById
-        ? state
-        : {
-            messagesById: nextMessagesById,
-            messageMutationRevision: mutationRevision,
-            messageMutationRevisionById: nextMutationRevisionById,
-          };
-    });
-  },
-
-  setMessagesLoading(conversationId, loading) {
-    if (isRemovedStreamConversation(conversationId)) return;
-    logStoreAction("workspaceMessage", "setMessagesLoading", { conversationId, loading });
-    set((state) => ({
-      messagesLoadingByConversationId: {
-        ...state.messagesLoadingByConversationId,
-        [conversationId]: loading,
-      },
-    }));
-  },
-
-  setMessagesError(conversationId, error) {
-    if (isRemovedStreamConversation(conversationId)) return;
-    logStoreAction("workspaceMessage", "setMessagesError", { conversationId, error });
-    set((state) => ({
-      messagesErrorByConversationId: {
-        ...state.messagesErrorByConversationId,
-        [conversationId]: error,
-      },
-    }));
-  },
-
-  removeMessagesForStream(streamUuid) {
-    logStoreAction("workspaceMessage", "removeMessagesForStream", { streamUuid });
-    removedStreamUuids.add(streamUuid);
-    set((state) => {
-      const removedConversationIds = new Set(
-        [
-          ...Object.keys(state.conversationWindowsById),
-          ...Object.keys(state.messagesLoadingByConversationId),
-          ...Object.keys(state.messagesErrorByConversationId),
-        ].filter(
-          (conversationId) =>
-            parseMessengerConversationId(conversationId)?.streamUuid === streamUuid,
-        ),
-      );
-      const nextMessagesById = Object.fromEntries(
-        Object.entries(state.messagesById).filter(
-          ([, message]) => message.streamUuid !== streamUuid,
-        ),
-      );
-      return {
-        messagesById: nextMessagesById,
-        conversationWindowsById: omitConversationRecords(
-          state.conversationWindowsById,
-          removedConversationIds,
-        ),
-        messagesLoadingByConversationId: omitConversationRecords(
-          state.messagesLoadingByConversationId,
-          removedConversationIds,
-        ),
-        messagesErrorByConversationId: omitConversationRecords(
-          state.messagesErrorByConversationId,
-          removedConversationIds,
-        ),
+    beginOptimisticMessagesRead(scope) {
+      logStoreAction("workspaceMessage", "beginOptimisticMessagesRead", { ...scope });
+      const change: {
+        previousMessages: MessengerMessage[];
+        projectedMessages: MessengerMessage[];
+      } = {
+        previousMessages: [],
+        projectedMessages: [],
       };
-    });
-  },
 
-  restoreMessagesForStream(streamUuid) {
-    removedStreamUuids.delete(streamUuid);
-  },
+      set((state) => {
+        const nextMessagesById = { ...state.messagesById };
+        const nextMutationRevisionById = { ...state.messageMutationRevisionById };
+        const mutationRevision = state.messageMutationRevision + 1;
+        for (const message of Object.values(state.messagesById)) {
+          if (
+            message.read ||
+            message.streamUuid !== scope.streamUuid ||
+            (scope.topicUuid != null && message.topicUuid !== scope.topicUuid)
+          ) {
+            continue;
+          }
 
-  clear(options) {
-    logStoreAction("workspaceMessage", "clear", {});
-    if (options?.preserveRemovedStreams !== true) removedStreamUuids.clear();
-    set((state) => ({ ...createEmptyWorkspaceMessageData(), ownerKey: state.ownerKey }));
-  },
-}));
+          const projectedMessage = { ...message, read: true };
+          change.previousMessages.push(message);
+          change.projectedMessages.push(projectedMessage);
+          nextMessagesById[message.uuid] = projectedMessage;
+          nextMutationRevisionById[message.uuid] = mutationRevision;
+        }
+
+        return change.projectedMessages.length === 0
+          ? state
+          : {
+              messagesById: nextMessagesById,
+              messageMutationRevision: mutationRevision,
+              messageMutationRevisionById: nextMutationRevisionById,
+            };
+      });
+
+      return change satisfies WorkspaceOptimisticMessageReadChange;
+    },
+
+    rollbackOptimisticMessagesRead(change) {
+      logStoreAction("workspaceMessage", "rollbackOptimisticMessagesRead", {
+        messages: change.previousMessages.length,
+      });
+      if (change.previousMessages.length === 0) return;
+
+      set((state) => {
+        let nextMessagesById = state.messagesById;
+        let nextMutationRevisionById = state.messageMutationRevisionById;
+        const mutationRevision = state.messageMutationRevision + 1;
+        for (let index = 0; index < change.previousMessages.length; index += 1) {
+          const previousMessage = change.previousMessages[index];
+          const projectedMessage = change.projectedMessages[index];
+          if (
+            previousMessage == null ||
+            projectedMessage == null ||
+            state.messagesById[previousMessage.uuid] !== projectedMessage
+          ) {
+            continue;
+          }
+          if (nextMessagesById === state.messagesById) {
+            nextMessagesById = { ...state.messagesById };
+            nextMutationRevisionById = { ...state.messageMutationRevisionById };
+          }
+          nextMessagesById[previousMessage.uuid] = previousMessage;
+          nextMutationRevisionById[previousMessage.uuid] = mutationRevision;
+        }
+        return nextMessagesById === state.messagesById
+          ? state
+          : {
+              messagesById: nextMessagesById,
+              messageMutationRevision: mutationRevision,
+              messageMutationRevisionById: nextMutationRevisionById,
+            };
+      });
+    },
+
+    setMessagesLoading(conversationId, loading) {
+      if (isRemovedStreamConversation(conversationId)) return;
+      logStoreAction("workspaceMessage", "setMessagesLoading", { conversationId, loading });
+      set((state) => ({
+        messagesLoadingByConversationId: {
+          ...state.messagesLoadingByConversationId,
+          [conversationId]: loading,
+        },
+      }));
+    },
+
+    setMessagesError(conversationId, error) {
+      if (isRemovedStreamConversation(conversationId)) return;
+      logStoreAction("workspaceMessage", "setMessagesError", { conversationId, error });
+      set((state) => ({
+        messagesErrorByConversationId: {
+          ...state.messagesErrorByConversationId,
+          [conversationId]: error,
+        },
+      }));
+    },
+
+    removeMessagesForStream(streamUuid) {
+      logStoreAction("workspaceMessage", "removeMessagesForStream", { streamUuid });
+      removedStreamUuids.add(streamUuid);
+      set((state) => {
+        const removedConversationIds = new Set(
+          [
+            ...Object.keys(state.conversationWindowsById),
+            ...Object.keys(state.messagesLoadingByConversationId),
+            ...Object.keys(state.messagesErrorByConversationId),
+          ].filter(
+            (conversationId) =>
+              parseMessengerConversationId(conversationId)?.streamUuid === streamUuid,
+          ),
+        );
+        const nextMessagesById = Object.fromEntries(
+          Object.entries(state.messagesById).filter(
+            ([, message]) => message.streamUuid !== streamUuid,
+          ),
+        );
+        return {
+          messagesById: nextMessagesById,
+          conversationWindowsById: omitConversationRecords(
+            state.conversationWindowsById,
+            removedConversationIds,
+          ),
+          messagesLoadingByConversationId: omitConversationRecords(
+            state.messagesLoadingByConversationId,
+            removedConversationIds,
+          ),
+          messagesErrorByConversationId: omitConversationRecords(
+            state.messagesErrorByConversationId,
+            removedConversationIds,
+          ),
+        };
+      });
+    },
+
+    restoreMessagesForStream(streamUuid) {
+      removedStreamUuids.delete(streamUuid);
+    },
+
+    clear(options) {
+      logStoreAction("workspaceMessage", "clear", {});
+      if (options?.preserveRemovedStreams !== true) removedStreamUuids.clear();
+      set((state) => ({ ...createEmptyWorkspaceMessageData(), ownerKey: state.ownerKey }));
+    },
+  }));
+});
+
+export const useWorkspaceMessageStore = messageStores.useSelected; // Current screen and legacy tooling.
+export const getSelectedWorkspaceMessageStore = messageStores.getSelected; // Capture the current view's store.
+export const getWorkspaceMessageStoreForOwner = messageStores.getForOwner; // Fixed owner for model work.
+export const reconcileWorkspaceMessageStores = messageStores.reconcile;
 
 interface ConversationMessagesCacheEntry {
   ids: readonly MessengerUuid[];
@@ -1350,7 +1368,10 @@ interface ConversationStatusCacheEntry {
   result: WorkspaceConversationMessagesStatus;
 }
 
-const conversationStatusCache = new Map<MessengerConversationId, ConversationStatusCacheEntry>();
+const conversationStatusCache = new WeakMap<
+  WorkspaceMessageStoreState["setOwner"],
+  Map<MessengerConversationId, ConversationStatusCacheEntry>
+>();
 
 export function selectWorkspaceMessageStatusForConversation(
   state: WorkspaceMessageStoreState,
@@ -1365,7 +1386,8 @@ export function selectWorkspaceMessageStatusForConversation(
     return EMPTY_STATUS;
   }
 
-  const cached = conversationStatusCache.get(conversationId);
+  let ownerCache = conversationStatusCache.get(state.setOwner);
+  const cached = ownerCache?.get(conversationId);
   if (
     cached?.loading === loading &&
     cached.error === error &&
@@ -1381,7 +1403,11 @@ export function selectWorkspaceMessageStatusForConversation(
     nextPageMarker,
     hasMore,
   };
-  conversationStatusCache.set(conversationId, {
+  if (ownerCache == null) {
+    ownerCache = new Map();
+    conversationStatusCache.set(state.setOwner, ownerCache);
+  }
+  ownerCache.set(conversationId, {
     ...status,
     result: status,
   });

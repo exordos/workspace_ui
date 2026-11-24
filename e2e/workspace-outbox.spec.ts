@@ -6,6 +6,7 @@ import type {
 import { test, expect } from "./fixtures";
 import { expectReadyMessageComposer } from "./helpers/message-composer";
 import { e2eOrgBasePath } from "./helpers/navigate-messenger";
+import { seedAuthStorage } from "./helpers/seed-auth";
 import {
   E2E_STREAM_UUID,
   E2E_TOPIC_UUID,
@@ -15,9 +16,24 @@ import {
 
 for (const encryption of [false, true]) {
   test(`${encryption ? "encrypted" : "ordinary"} outbox frees typing and focus, and retries an uncertain send without duplicates @mock`, async ({
-    authenticated: page,
+    page,
   }) => {
     const keyUuid = crypto.randomUUID();
+    if (encryption) {
+      const stream = {
+        ...streamsSuccess()[0],
+        encryption: true,
+        current_encryption_key_uuid: keyUuid,
+      };
+      await page.route(/\/messenger\/streams\/?(?:[^?]*)?(?:\?.*)?$/, async (route) => {
+        if (route.request().method() !== "GET") return route.fallback();
+        const path = new URL(route.request().url()).pathname.replace(/\/$/, "");
+        await route.fulfill({ json: path.endsWith("/streams") ? [stream] : stream });
+      });
+    }
+    // The stream's encryption mode belongs to its original catalog snapshot.
+    await seedAuthStorage(page);
+    await page.goto(`${e2eOrgBasePath()}/messenger`);
     if (encryption) {
       await page.evaluate(
         async ({ keyUuid, streamUuid }) => {
@@ -41,16 +57,6 @@ for (const encryption of [false, true]) {
         },
         { keyUuid, streamUuid: E2E_STREAM_UUID },
       );
-      const stream = {
-        ...streamsSuccess()[0],
-        encryption: true,
-        current_encryption_key_uuid: keyUuid,
-      };
-      await page.route(/\/messenger\/streams\/?(?:[^?]*)?(?:\?.*)?$/, async (route) => {
-        if (route.request().method() !== "GET") return route.fallback();
-        const path = new URL(route.request().url()).pathname.replace(/\/$/, "");
-        await route.fulfill({ json: path.endsWith("/streams") ? [stream] : stream });
-      });
     }
     const requests: WorkspaceMessengerCreateMessageRequestBody[] = [];
     const committed = new Map<string, WorkspaceMessengerMessageDto>();

@@ -28,6 +28,15 @@ export function clearPreparedPlaintextWindows() {
   preparedWindows.clear();
 }
 
+// Drop plaintext belonging to an ending owner without touching a different owner.
+export function clearPreparedPlaintextForOwner(ownerKey: string): void {
+  for (const [key, window] of preparedWindows) {
+    if ([...window.values()].some((record) => record.ownerKey === ownerKey)) {
+      preparedWindows.delete(key);
+    }
+  }
+}
+
 export function invalidatePreparedPlaintextWindows(
   change: Pick<PreparedPlaintextRecord, "ownerKey" | "deviceId" | "streamUuid" | "keyUuid">,
 ) {

@@ -30,7 +30,7 @@ vi.mock("~/entities/workspace-auth/workspace-auth.model", () => ({
   selectCurrentWorkspaceRuntimeContext: () => null,
   useWorkspaceAuthStore: Object.assign(
     (selector: (state: typeof mocks.auth) => unknown) => selector(mocks.auth),
-    { getState: () => mocks.auth },
+    { getState: () => mocks.auth, subscribe: () => () => undefined },
   ),
 }));
 vi.mock("~/applications/messenger/model/chats/messenger.model", () => ({

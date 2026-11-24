@@ -111,23 +111,20 @@ function candidatesForConversation(
 }
 
 async function persist(operation: ScheduledOperation): Promise<void> {
-  if (
-    operation.ownerGeneration !==
-    ownerGeneration(operation.kind === "write" ? operation.draft.ownerKey : operation.ownerKey)
-  )
-    return;
+  const ownerKey = operation.kind === "write" ? operation.draft.ownerKey : operation.ownerKey;
+  const isOwnerCurrent = () => operation.ownerGeneration === ownerGeneration(ownerKey);
+  if (!isOwnerCurrent()) return;
   if (operation.kind === "delete") {
-    await deleteWorkspaceComposerDraftRecord(operation.ownerKey, operation.draftUuid);
+    await deleteWorkspaceComposerDraftRecord(ownerKey, operation.draftUuid, isOwnerCurrent);
     return;
   }
   const draft = operation.draft;
-  if (
-    hasWorkspaceComposerDraftSecret(draft.content) ||
-    useWorkspaceComposerDraftStore.getState().draftsByKey[draft.key]?.snapshotId !==
-      draft.snapshotId
-  )
-    return;
-  await writeWorkspaceComposerDraftRecord(draft.ownerKey, draft);
+  const isWriteCurrent = () =>
+    isOwnerCurrent() &&
+    useWorkspaceComposerDraftStore.getState().draftsByKey[draft.key]?.snapshotId ===
+      draft.snapshotId;
+  if (hasWorkspaceComposerDraftSecret(draft.content) || !isWriteCurrent()) return;
+  await writeWorkspaceComposerDraftRecord(ownerKey, draft, isWriteCurrent);
 }
 
 function scheduleWrite(draft: WorkspaceComposerDraft): void {
@@ -833,27 +830,19 @@ export const useWorkspaceComposerDraftStore = create<WorkspaceComposerDraftStore
     },
 
     async disposeOwner(ownerKey) {
-      // Drop private plaintext before awaiting any outstanding durable writes.
-      set((state) => ({
-        privateShadowsByConversationKey: Object.fromEntries(
-          Object.entries(state.privateShadowsByConversationKey).filter(
-            ([, shadow]) => shadow.ownerKey !== ownerKey,
-          ),
-        ),
-      }));
+      // Detach the old incarnation before another login can reuse its durable key.
       ownerGenerations.set(ownerKey, ownerGeneration(ownerKey) + 1);
       hydratedOwners.delete(ownerKey);
       hydrationPromises.delete(ownerKey);
       for (const key of removedStreamKeys) {
         if (key.startsWith(`${ownerKey}\0`)) removedStreamKeys.delete(key);
       }
-      const keys = [...pendingOperations.keys()].filter((key) => key.startsWith(`${ownerKey}:`));
-      for (const key of keys) clearPendingOperation(key);
-      await Promise.all(
-        keys
-          .map((key) => persistChains.get(key))
-          .filter((chain): chain is Promise<void> => chain != null),
-      );
+      for (const key of pendingOperations.keys()) {
+        if (key.startsWith(`${ownerKey}:`)) clearPendingOperation(key);
+      }
+      const oldWrites = [...persistChains.entries()]
+        .filter(([key]) => key.startsWith(`${ownerKey}:`))
+        .map(([, write]) => write);
       set((state) => ({
         privateShadowsByConversationKey: Object.fromEntries(
           Object.entries(state.privateShadowsByConversationKey).filter(
@@ -874,6 +863,7 @@ export const useWorkspaceComposerDraftStore = create<WorkspaceComposerDraftStore
           ),
         ),
       }));
+      await Promise.all(oldWrites);
     },
 
     async clear() {

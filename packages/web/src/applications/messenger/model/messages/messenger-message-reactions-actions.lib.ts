@@ -28,7 +28,11 @@ import {
   buildMessengerRequestOptions,
   type MessengerRequestOptionsOverrides,
 } from "../messenger-request-options.lib";
-import { useWorkspaceMessageStore } from "./message.model";
+import {
+  getSelectedWorkspaceMessageStore,
+  getWorkspaceMessageStoreForOwner,
+  type useWorkspaceMessageStore,
+} from "./message.model";
 import type {
   MessengerOwnMessageReactionCacheRow,
   MessengerOwnMessageReactionCacheWrite,
@@ -412,7 +416,8 @@ export async function hydrateMessengerOwnMessageReactionsFromCache({
   messageUuids,
   cache = defaultReactionCache,
   signal,
-  store = useWorkspaceMessageStore,
+  store = getWorkspaceMessageStoreForOwner(workspaceRuntimeOwnerKey(runtimeContext)) ??
+    getSelectedWorkspaceMessageStore(),
   isRequestCurrent,
 }: MessengerVisibleOwnReactionsOptions): Promise<MessengerOwnReactionsSyncResult> {
   const action = captureReactionAction(runtimeContext, getRuntimeContext, signal);
@@ -452,7 +457,8 @@ export async function revalidateMessengerOwnMessageReactions({
   client = {},
   cache = defaultReactionCache,
   signal,
-  store = useWorkspaceMessageStore,
+  store = getWorkspaceMessageStoreForOwner(workspaceRuntimeOwnerKey(runtimeContext)) ??
+    getSelectedWorkspaceMessageStore(),
   messageUuids,
 }: MessengerVisibleOwnReactionsOptions): Promise<MessengerOwnReactionsSyncResult> {
   const action = captureReactionAction(runtimeContext, getRuntimeContext, signal);
@@ -511,7 +517,8 @@ export async function syncMessengerOwnerOwnMessageReactions({
   client = {},
   cache = defaultReactionCache,
   signal,
-  store = useWorkspaceMessageStore,
+  store = getWorkspaceMessageStoreForOwner(workspaceRuntimeOwnerKey(runtimeContext)) ??
+    getSelectedWorkspaceMessageStore(),
   messageUuids,
   isRequestCurrent,
 }: MessengerVisibleOwnReactionsOptions): Promise<MessengerOwnReactionsSyncResult> {
@@ -568,7 +575,8 @@ export async function addMessengerMessageReaction({
   client = {},
   cache = defaultReactionCache,
   signal,
-  store = useWorkspaceMessageStore,
+  store = getWorkspaceMessageStoreForOwner(workspaceRuntimeOwnerKey(runtimeContext)) ??
+    getSelectedWorkspaceMessageStore(),
   messageUuid,
   emojiName,
 }: MessengerSingleReactionOptions): Promise<MessengerMessageReactionActionResult> {
@@ -706,7 +714,8 @@ export async function removeMessengerMessageReaction({
   client = {},
   cache = defaultReactionCache,
   signal,
-  store = useWorkspaceMessageStore,
+  store = getWorkspaceMessageStoreForOwner(workspaceRuntimeOwnerKey(runtimeContext)) ??
+    getSelectedWorkspaceMessageStore(),
   messageUuid,
   emojiName,
 }: MessengerSingleReactionOptions): Promise<MessengerMessageReactionActionResult> {
@@ -820,7 +829,8 @@ export async function toggleMessengerMessageReaction({
   client = {},
   cache = defaultReactionCache,
   signal,
-  store = useWorkspaceMessageStore,
+  store = getWorkspaceMessageStoreForOwner(workspaceRuntimeOwnerKey(runtimeContext)) ??
+    getSelectedWorkspaceMessageStore(),
   messageUuid,
   emojiName,
 }: MessengerSingleReactionOptions): Promise<MessengerMessageReactionActionResult> {
@@ -884,7 +894,8 @@ export function createMessengerReactionAggregateRevalidateHandler({
   client,
   cache,
   signal,
-  store = useWorkspaceMessageStore,
+  store = getWorkspaceMessageStoreForOwner(workspaceRuntimeOwnerKey(runtimeContext)) ??
+    getSelectedWorkspaceMessageStore(),
 }: MessengerMessageReactionBaseOptions): (ownerKey: string, message: MessengerMessage) => void {
   const expectedOwnerKey = workspaceRuntimeOwnerKey(runtimeContext);
 

@@ -7,6 +7,7 @@ import {
 import type { WorkspaceRuntimeContextGetter } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import { useMessengerStore } from "../chats/messenger.model";
+import { useWorkspaceMessageStore } from "../messages/message.model";
 import {
   editMessengerMessage,
   sendMessengerE2eePayload,
@@ -84,6 +85,7 @@ export interface OpenRealChatSessionOptions {
   readonly getRuntimeContext?: WorkspaceRuntimeContextGetter;
   readonly signal?: AbortSignal;
   readonly messengerStore?: Pick<typeof useMessengerStore, "getState" | "subscribe">;
+  readonly messageStore?: Pick<typeof useWorkspaceMessageStore, "getState">;
 }
 
 /** One live owner/device/chat session. Secrets remain in dedicated storage and controller memory. */
@@ -93,6 +95,7 @@ export async function openRealChatSession({
   getRuntimeContext = () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
   signal,
   messengerStore = useMessengerStore,
+  messageStore = useWorkspaceMessageStore,
 }: OpenRealChatSessionOptions) {
   const capture = captureWorkspaceRuntimeRequestContext(() => runtimeContext);
   if (capture == null) throw new Error("unavailable");
@@ -306,6 +309,7 @@ export async function openRealChatSession({
       getRuntimeContext,
       signal,
       messengerStore,
+      store: messageStore,
       streamUuid,
       topicUuid,
       payload,
@@ -987,6 +991,7 @@ export async function openRealChatSession({
           getRuntimeContext,
           signal,
           messengerStore,
+          store: messageStore,
           streamUuid,
           topicUuid: stage.rotation.topicUuid,
           includeStreamConversation: stage.rotation.topicUuid === defaultTopicUuid(),
@@ -1102,6 +1107,7 @@ export async function openRealChatSession({
             markdown,
             sourceMessage: message,
             messengerStore,
+            store: messageStore,
             isCurrent: guard,
           }),
         );
@@ -1128,6 +1134,7 @@ export async function openRealChatSession({
               encryptedPayload,
               sourceMessage: message,
               messengerStore,
+              store: messageStore,
               isCurrent: guard,
             }),
           );

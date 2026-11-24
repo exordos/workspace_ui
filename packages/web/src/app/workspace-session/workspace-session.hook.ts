@@ -1,13 +1,12 @@
 import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
-import {
-  clearActiveMessengerSession,
-  prepareActiveMessengerSession,
-} from "~/applications/messenger/runtime/sync/messenger-session-snapshot.lib";
-import { clearActiveWorkspaceSessionUsers } from "~/entities/user/user-sync.lib";
-import { useUsersStore } from "~/entities/user/user.model";
+import { reconcileMessengerStores } from "~/applications/messenger/model/chats/messenger.model";
+import { reconcileWorkspaceMessageStores } from "~/applications/messenger/model/messages/message.model";
+import { releaseMessengerSessionProjections } from "~/applications/messenger/runtime/sync/messenger-session-snapshot.lib";
+import { reconcileUsersStores, useUsersStore } from "~/entities/user/user.model";
 import { fetchWorkspaceServerSettingsForOrganization } from "~/entities/workspace-auth/workspace-auth.lib";
 import {
   useWorkspaceAuthStore,
+  workspaceAuthSessionIncarnation,
   type WorkspaceAuthSession,
 } from "~/entities/workspace-auth/workspace-auth.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
@@ -29,6 +28,10 @@ export function useWorkspaceSessionRuntime(
   enabled: boolean,
 ): () => void {
   const manager = useRef<ReturnType<typeof createWorkspaceSessionRuntimeManager> | null>(null);
+  const cursorStorage = useRef<ReturnType<
+    typeof createWorkspaceRealtimeBrowserCursorStorage
+  > | null>(null);
+  const previousSessions = useRef(new Map<string, WorkspaceAuthSession>());
   const activeOwnerKey = activeSession == null ? null : workspaceRuntimeOwnerKey(activeSession);
   const canReportPresence = useUsersStore(
     (state) =>
@@ -39,19 +42,25 @@ export function useWorkspaceSessionRuntime(
 
   useLayoutEffect(() => {
     if (!enabled) return;
-    if (activeSession == null) {
-      clearActiveMessengerSession();
-      clearActiveWorkspaceSessionUsers();
-      return;
+    cursorStorage.current ??= createWorkspaceRealtimeBrowserCursorStorage();
+    const currentSessions = new Map(
+      sessions.map((session) => [workspaceRuntimeOwnerKey(session), session]),
+    );
+    for (const [ownerKey, previous] of previousSessions.current) {
+      const current = currentSessions.get(ownerKey);
+      if (
+        current != null &&
+        workspaceAuthSessionIncarnation(current) === workspaceAuthSessionIncarnation(previous)
+      )
+        continue;
+      cursorStorage.current.clear(previous);
+      releaseMessengerSessionProjections(ownerKey);
     }
-
-    // History and route actions can run as soon as the screen mounts.
-    prepareActiveMessengerSession({
-      runtimeContext: activeSession,
-      getRuntimeContext: () => readWorkspaceSession(activeSession, "active"),
-      surface: "active",
-    });
-  }, [activeSession, enabled]);
+    previousSessions.current = currentSessions;
+    reconcileMessengerStores(sessions);
+    reconcileWorkspaceMessageStores(sessions);
+    reconcileUsersStores(sessions);
+  }, [enabled, sessions]);
 
   useEffect(() => {
     if (!enabled) return undefined;
@@ -72,10 +81,8 @@ export function useWorkspaceSessionRuntime(
 
   useEffect(() => {
     if (!enabled) return;
-    if (manager.current == null && sessions.length > 0) {
-      manager.current = createWorkspaceSessionRuntimeManager(
-        createWorkspaceRealtimeBrowserCursorStorage(),
-      );
+    if (manager.current == null && sessions.length > 0 && cursorStorage.current != null) {
+      manager.current = createWorkspaceSessionRuntimeManager(cursorStorage.current);
     }
     void manager.current
       ?.update(sessions.map(toWorkspaceSessionContext), activeOwnerKey)

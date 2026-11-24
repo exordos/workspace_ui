@@ -31,6 +31,7 @@ import {
   loadMessengerLastMessagesForSidebar,
   primeMessengerLastMessagesFromCache,
   type MessengerLastMessagesCacheDeps,
+  type MessengerLastMessagesMessageStoreApi,
 } from "../../model/messages/history/messenger-last-messages-loader.lib";
 import {
   createMessengerCatalogCacheReconcileFence as defaultCreateMessengerCatalogCacheReconcileFence,
@@ -124,6 +125,7 @@ export interface BootstrapMessengerStoreOptions {
   beforeServerRefresh?: () => Promise<void>;
   onStreamsConfirmed?: (streams: readonly MessengerStream[]) => void; // Reconcile skipped membership history on a gap.
   store?: MessengerStoreApi;
+  messageStore?: MessengerLastMessagesMessageStoreApi; // Fixed message projection for this catalog owner.
 }
 
 function normalizeBootstrapError(error: unknown): string {
@@ -246,6 +248,7 @@ export async function bootstrapMessengerStore({
   beforeServerRefresh,
   onStreamsConfirmed,
   store = useMessengerStore,
+  messageStore,
 }: BootstrapMessengerStoreOptions): Promise<MessengerBootstrapResult> {
   const requestContext = captureWorkspaceRuntimeRequestContext(() => runtimeContext);
   if (requestContext == null) {
@@ -288,6 +291,7 @@ export async function bootstrapMessengerStore({
       clientOptions,
       signal,
       store,
+      messageStore,
     });
   };
 
@@ -306,6 +310,7 @@ export async function bootstrapMessengerStore({
       ownerKey,
       payload: cached.payload,
       cache: lastMessagesCache,
+      messageStore,
       isCurrent: () => isWriteCurrent() && !hasFreshCatalog,
     });
     if (isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, signal)) return;

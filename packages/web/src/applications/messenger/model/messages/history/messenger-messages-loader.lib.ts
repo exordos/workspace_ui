@@ -36,7 +36,13 @@ import {
   buildMessengerRequestOptions,
   type MessengerRequestOptionsOverrides,
 } from "../../messenger-request-options.lib";
-import { useWorkspaceMessageStore } from "../message.model";
+import {
+  getSelectedWorkspaceMessageStore,
+  getWorkspaceMessageStoreForOwner,
+  type useWorkspaceMessageStore,
+  type WorkspaceConversationWindow,
+  type WorkspaceConversationWindowBoundary,
+} from "../message.model";
 import { acceptServerMessages } from "../messages-accept-server.lib";
 import { adaptMessengerMessage } from "../messenger-message-adapter.lib";
 import {
@@ -60,10 +66,6 @@ import type {
   MessengerMessage,
   MessengerUuid,
 } from "../../messenger.types";
-import type {
-  WorkspaceConversationWindow,
-  WorkspaceConversationWindowBoundary,
-} from "../message.model";
 import type { ResolvedConversationHistoryWindow } from "../messages-accept-history.lib";
 
 // The first message page is loaded only after the user opens a conversation.
@@ -1190,7 +1192,8 @@ export async function loadMessengerConversationMessages({
   ownReactionSync,
   clientOptions,
   signal,
-  store = useWorkspaceMessageStore,
+  store = getWorkspaceMessageStoreForOwner(workspaceRuntimeOwnerKey(runtimeContext)) ??
+    getSelectedWorkspaceMessageStore(),
 }: LoadMessengerConversationMessagesOptions): Promise<MessengerConversationMessagesResult> {
   const requestContext = captureWorkspaceRuntimeRequestContext(() => runtimeContext);
   if (requestContext == null) {
@@ -1287,7 +1290,8 @@ export async function resolveMessengerMessageAnchor({
   client = {},
   clientOptions,
   signal,
-  store = useWorkspaceMessageStore,
+  store = getWorkspaceMessageStoreForOwner(workspaceRuntimeOwnerKey(runtimeContext)) ??
+    getSelectedWorkspaceMessageStore(),
 }: ResolveMessengerMessageAnchorOptions): Promise<MessengerMessageAnchorResolveResult> {
   const requestContext = captureWorkspaceRuntimeRequestContext(() => runtimeContext);
   if (requestContext == null) {
@@ -1364,7 +1368,8 @@ export async function fetchMessengerMessageWindow({
   client = {},
   clientOptions,
   signal,
-  store = useWorkspaceMessageStore,
+  store = getWorkspaceMessageStoreForOwner(workspaceRuntimeOwnerKey(runtimeContext)) ??
+    getSelectedWorkspaceMessageStore(),
 }: FetchMessengerMessageWindowOptions): Promise<MessengerMessageWindowFetchResult> {
   const requestContext = captureWorkspaceRuntimeRequestContext(() => runtimeContext);
   if (requestContext == null) {
@@ -1463,7 +1468,8 @@ export async function applyMessengerMessageWindow({
   ownReactionSync,
   clientOptions,
   signal,
-  store = useWorkspaceMessageStore,
+  store = getWorkspaceMessageStoreForOwner(workspaceRuntimeOwnerKey(runtimeContext)) ??
+    getSelectedWorkspaceMessageStore(),
 }: ApplyMessengerMessageWindowOptions): Promise<MessengerMessageWindowApplyResult> {
   const requestContext = captureWorkspaceRuntimeRequestContext(() => runtimeContext);
   if (requestContext == null) {
@@ -1700,7 +1706,8 @@ export async function loadMessengerMessageWindowPage({
   ownReactionSync,
   clientOptions,
   signal,
-  store = useWorkspaceMessageStore,
+  store = getWorkspaceMessageStoreForOwner(workspaceRuntimeOwnerKey(runtimeContext)) ??
+    getSelectedWorkspaceMessageStore(),
 }: LoadMessengerMessageWindowPageOptions): Promise<MessengerMessageWindowPageResult> {
   const requestContext = captureWorkspaceRuntimeRequestContext(() => runtimeContext);
   if (requestContext == null) {

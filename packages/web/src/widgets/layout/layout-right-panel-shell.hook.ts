@@ -41,6 +41,7 @@ export interface UseLayoutRightPanelShellParams {
   rightDrawerMode: RightDrawerMode;
   rightDrawerUserIdOverride: number | null;
   rightDrawerWorkspaceUserUuidOverride: MessengerUuid | null;
+  rightDrawerWorkspaceUserOwnerKey?: string | null;
   mutedStreamIds: Set<number>;
   usersMapForRightDrawer: Map<number, { full_name?: string; email?: string }>;
   workspaceRoute: WorkspaceMessengerRouteMatch | null;
@@ -71,6 +72,7 @@ export function useLayoutRightPanelShell(
     rightDrawerMode,
     rightDrawerUserIdOverride,
     rightDrawerWorkspaceUserUuidOverride,
+    rightDrawerWorkspaceUserOwnerKey,
     usersMapForRightDrawer,
     workspaceRoute,
   } = params;
@@ -123,7 +125,9 @@ export function useLayoutRightPanelShell(
     workspaceRuntimeContext != null &&
     workspaceRoute?.orgId === workspaceRuntimeContext.organizationId &&
     workspaceRoute.projectId === workspaceRuntimeContext.projectId &&
-    workspaceUsersOwnerKey === workspaceOwnerKey;
+    workspaceUsersOwnerKey === workspaceOwnerKey &&
+    (rightDrawerWorkspaceUserOwnerKey == null ||
+      rightDrawerWorkspaceUserOwnerKey === workspaceOwnerKey);
   const hasUnavailableProfileOverride =
     (rightDrawerWorkspaceUserUuidOverride?.trim().length ?? 0) > 0 && !canSelectWorkspaceProfile;
   const shouldSelectWorkspaceTopicMessages =

@@ -308,6 +308,7 @@ describe("messenger realtime active applier", () => {
       expect(upsertCachedStream).toHaveBeenLastCalledWith(
         context.ownerKey,
         expect.objectContaining({ allowKeySharingByHolders: expected }),
+        { shouldApply: expect.any(Function) },
       );
     }
   });
@@ -453,7 +454,12 @@ describe("messenger realtime active applier", () => {
       expect(useMessengerStore.getState().lastEpochVersion).toBe(lastEpoch);
       expect(readProjection()?.lastEpochVersion).toBe(lastEpoch);
       if (batch) expect(writeRealtimeCursor).not.toHaveBeenCalled();
-      else expect(writeRealtimeCursor).toHaveBeenCalledExactlyOnceWith(context.ownerKey, lastEpoch);
+      else
+        expect(writeRealtimeCursor).toHaveBeenCalledExactlyOnceWith(
+          context.ownerKey,
+          lastEpoch,
+          expect.any(Function),
+        );
     },
   );
 
@@ -533,6 +539,7 @@ describe("messenger realtime active applier", () => {
         expect(writeRealtimeCursor).toHaveBeenCalledExactlyOnceWith(
           context.ownerKey,
           event.epoch_version,
+          expect.any(Function),
         );
       }
       expect(useWorkspaceMessageStore.getState().messagesById[receipt.uuid]).toBe(canonical);
@@ -717,7 +724,11 @@ describe("messenger realtime active applier", () => {
     expect(completed).toBe(false);
     releaseMessages?.();
     await vi.waitFor(() =>
-      expect(cache.writeRealtimeCursor).toHaveBeenCalledWith(context.ownerKey, 12),
+      expect(cache.writeRealtimeCursor).toHaveBeenCalledWith(
+        context.ownerKey,
+        12,
+        expect.any(Function),
+      ),
     );
     expect(completed).toBe(false);
     releaseCursor?.();
@@ -783,7 +794,11 @@ describe("messenger realtime active applier", () => {
       context,
     );
     expect(useMessengerStore.getState().lastEpochVersion).toBe(12);
-    expect(cache.writeRealtimeCursor).toHaveBeenCalledWith(context.ownerKey, 12);
+    expect(cache.writeRealtimeCursor).toHaveBeenCalledWith(
+      context.ownerKey,
+      12,
+      expect.any(Function),
+    );
   });
 
   it("does not publish the applied epoch before the read boundary is durable", async () => {
@@ -1270,6 +1285,7 @@ describe("messenger realtime active applier", () => {
         messages: [expect.objectContaining({ uuid: MESSAGE_A })],
         source: "realtime",
       },
+      expect.any(Function),
     );
     expect(cache.writeConversationMessagePage).toHaveBeenNthCalledWith(
       2,
@@ -1279,6 +1295,7 @@ describe("messenger realtime active applier", () => {
         messages: [expect.objectContaining({ uuid: MESSAGE_A })],
         source: "realtime",
       },
+      expect.any(Function),
     );
     applier.applyEvent(
       {
@@ -1332,9 +1349,24 @@ describe("messenger realtime active applier", () => {
       { allMemberships: true, isWriteCurrent: expect.any(Function) },
     );
     expect(cache.writeRealtimeCursor).toHaveBeenCalledTimes(3);
-    expect(cache.writeRealtimeCursor).toHaveBeenNthCalledWith(1, ownerKey, 11);
-    expect(cache.writeRealtimeCursor).toHaveBeenNthCalledWith(2, ownerKey, 12);
-    expect(cache.writeRealtimeCursor).toHaveBeenNthCalledWith(3, ownerKey, 13);
+    expect(cache.writeRealtimeCursor).toHaveBeenNthCalledWith(
+      1,
+      ownerKey,
+      11,
+      expect.any(Function),
+    );
+    expect(cache.writeRealtimeCursor).toHaveBeenNthCalledWith(
+      2,
+      ownerKey,
+      12,
+      expect.any(Function),
+    );
+    expect(cache.writeRealtimeCursor).toHaveBeenNthCalledWith(
+      3,
+      ownerKey,
+      13,
+      expect.any(Function),
+    );
   });
 
   it("notifies only the public window affected by a legacy realtime edit", async () => {
@@ -1503,7 +1535,11 @@ describe("messenger realtime active applier", () => {
     expect(application).toBeUndefined();
     expect(onMessageDeleted).toHaveBeenCalledOnce();
     expect(useMessengerStore.getState().lastEpochVersion).toBe(5);
-    expect(cache.writeRealtimeCursor).toHaveBeenCalledWith(context.ownerKey, 5);
+    expect(cache.writeRealtimeCursor).toHaveBeenCalledWith(
+      context.ownerKey,
+      5,
+      expect.any(Function),
+    );
 
     releaseRepair?.();
     await repair;
@@ -1530,7 +1566,11 @@ describe("messenger realtime active applier", () => {
 
     await Promise.resolve();
     expect(useMessengerStore.getState().lastEpochVersion).toBe(5);
-    expect(cache.writeRealtimeCursor).toHaveBeenCalledWith(context.ownerKey, 5);
+    expect(cache.writeRealtimeCursor).toHaveBeenCalledWith(
+      context.ownerKey,
+      5,
+      expect.any(Function),
+    );
   });
 
   it("preserves realtime body and pointers when an older fetched anchor window is applied", async () => {
@@ -1746,7 +1786,11 @@ describe("messenger realtime active applier", () => {
       expect.objectContaining({ payload: newer.payload }),
       expect.any(Function),
     );
-    expect(writeRealtimeCursor).toHaveBeenCalledExactlyOnceWith(context.ownerKey, 2);
+    expect(writeRealtimeCursor).toHaveBeenCalledExactlyOnceWith(
+      context.ownerKey,
+      2,
+      expect.any(Function),
+    );
     const projection =
       useMessengerBackgroundProjectionStore.getState().projectionsByOwnerKey[context.ownerKey];
     expect(projection?.messageIdSnapshotsById[MESSAGE_A]?.updatedAt).toBe(DATE_LATER);
@@ -2465,7 +2509,7 @@ describe("messenger realtime active applier", () => {
     );
     expect(useMessengerStore.getState().lastEpochVersion).toBe(33);
     expect(cache.writeConversationMessagePage).toHaveBeenCalled();
-    expect(cache.writeRealtimeCursor).toHaveBeenCalledWith(ownerKey, 33);
+    expect(cache.writeRealtimeCursor).toHaveBeenCalledWith(ownerKey, 33, expect.any(Function));
   });
 
   it("does not write background events to messenger store", () => {
@@ -3001,7 +3045,9 @@ describe("messenger realtime active applier", () => {
         items: [expect.objectContaining({ unreadCount: 5 })],
       }),
     );
-    expect(upsertCachedFolder).toHaveBeenCalledWith(context.ownerKey, folder);
+    expect(upsertCachedFolder).toHaveBeenCalledWith(context.ownerKey, folder, {
+      shouldApply: expect.any(Function),
+    });
   });
 
   it("removes realtime folder item membership while preserving the backend folder counter", () => {
@@ -3158,9 +3204,11 @@ describe("messenger realtime active applier", () => {
         updatedAt: DATE_LATER,
       }),
     );
-    expect(cache.upsertCachedStreamBindings).toHaveBeenCalledWith(context.ownerKey, [
-      expect.objectContaining({ uuid: STREAM_BINDING_A, role: "moderator" }),
-    ]);
+    expect(cache.upsertCachedStreamBindings).toHaveBeenCalledWith(
+      context.ownerKey,
+      [expect.objectContaining({ uuid: STREAM_BINDING_A, role: "moderator" })],
+      { shouldApply: expect.any(Function) },
+    );
 
     applier.applyEvent(
       {
@@ -3181,6 +3229,7 @@ describe("messenger realtime active applier", () => {
     expect(cache.deleteCachedStreamBinding).toHaveBeenCalledWith(
       context.ownerKey,
       STREAM_BINDING_A,
+      expect.any(Function),
     );
   });
 

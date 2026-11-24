@@ -12,6 +12,20 @@ An async result may arrive after account, organization, project or user changes,
 
 `workspaceRuntimeOwnerKey()` is the stable identity for persisted data. Generation identifies a live runtime and must be checked before commits; it is not part of the durable cache/cursor key.
 
+## Selected screen and owner operations
+
+The selected screen captures its generation through `getCurrentRuntimeContext`.
+Returning to a previous account creates a new screen generation. A different
+account's refresh or removal leaves the selected context's identity unchanged.
+
+The session host and accepted background operations use an owner context with
+the owner's current credential generation. Account selection leaves that
+generation unchanged. Credential refresh fences requests using older credentials
+while retaining the models of the same login. Logout and re-authentication end
+the old login incarnation and detach its in-memory work. A delayed cleanup must
+recheck the durable owner identity before writing in case a new login reused it.
+See the [session model scenario](plans/messenger-architecture/workspace-runtime.md#шаг-13-модели-владельца-и-время-жизни-операций).
+
 ## Active runtime work
 
 1. Capture the request context before starting asynchronous work using `captureWorkspaceRuntimeRequestContext(getRuntimeContext)`.

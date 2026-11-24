@@ -21,9 +21,11 @@ vi.mock("~/shared/lib/workspace-messenger-cache-db", () => ({
   deleteWorkspaceComposerDraftRecord,
 }));
 
+import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import { MessengerApiError } from "~/shared/api/messenger-transport.internal";
 import { clearLogHistory, getLogHistory } from "~/shared/lib/logger";
+import { createWorkspaceComposerDrafts } from "./composer-draft-actions.lib";
 import {
   protectWorkspaceComposerDraft,
   deleteWorkspaceComposerDraftFromServer,
@@ -111,12 +113,38 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  useWorkspaceAuthStore.getState().clear();
   resetWorkspaceComposerDraftSyncForTests();
   resetWorkspaceComposerDraftStoreForTests();
   vi.useRealTimers();
 });
 
 describe("workspace composer draft remote queue", () => {
+  it("deletes only the submitted draft when A receives a receipt in the background", () => {
+    const auth = useWorkspaceAuthStore.getState();
+    const profile = { uuid: "u", username: "A", firstName: null, lastName: null, email: null };
+    auth.setSession({ ...runtimeContext, login: "A", profile });
+    const selected = auth.getCurrentRuntimeContext()!;
+    const scope = { runtimeContext: selected, getRuntimeContext: auth.getCurrentRuntimeContext };
+    const drafts = createWorkspaceComposerDrafts(scope, CONVERSATION);
+    const old = useWorkspaceComposerDraftStore
+      .getState()
+      .setDraft(OWNER, CONVERSATION, content("sent"), TARGET)!;
+    const submission = drafts.captureSubmission();
+    expect(submission.beginNextDraftOnAcceptance()).toBe(true);
+    const next = useWorkspaceComposerDraftStore
+      .getState()
+      .setDraft(OWNER, CONVERSATION, content("new"), TARGET)!;
+    auth.setSession({ ...runtimeContext, accountId: "b", instanceId: "i-b", login: "B", profile });
+
+    submission.completeOnReceipt();
+
+    const state = useWorkspaceComposerDraftStore.getState();
+    expect(state.draftsByKey[old.key]?.syncStatus).toBe("deleting");
+    expect(state.draftsByKey[next.key]?.content.text).toBe("new");
+    expect(submission.canCompleteComposer()).toBe(false);
+  });
+
   it("creates once and then updates the newest local text after an in-flight POST", async () => {
     const created = createDeferred<ReturnType<typeof snapshot>>();
     createDraft.mockReturnValueOnce(created.promise);

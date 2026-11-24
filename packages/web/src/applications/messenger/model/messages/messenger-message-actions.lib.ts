@@ -29,7 +29,11 @@ import {
   captureDeletedMessagePointerRepair,
   repairDeletedMessagePointers,
 } from "../chats/messenger-deleted-message-pointer-repair.lib";
-import { useMessengerStore } from "../chats/messenger.model";
+import {
+  getMessengerStoreForOwner,
+  getSelectedMessengerStore,
+  type useMessengerStore,
+} from "../chats/messenger.model";
 import {
   decodeChatE2eePayload,
   encodeChatE2eePayload,
@@ -45,7 +49,11 @@ import {
   type MessengerRequestOptionsOverrides,
 } from "../messenger-request-options.lib";
 import { compareWorkspaceMessages } from "./message-workspace-order.lib";
-import { useWorkspaceMessageStore } from "./message.model";
+import {
+  getSelectedWorkspaceMessageStore,
+  getWorkspaceMessageStoreForOwner,
+  type useWorkspaceMessageStore,
+} from "./message.model";
 import { acceptMessageDeletion } from "./messages-accept-deletion.lib";
 import { acceptMessageRead, type ConfirmedMessageReadCache } from "./messages-accept-read.lib";
 import { acceptServerMessages } from "./messages-accept-server.lib";
@@ -144,6 +152,7 @@ export type SendMessengerMessageOptions = MessengerMessageActionBaseOptions & {
   topicUuid: MessengerUuid;
   canonicalMessageUuid?: MessengerUuid;
   includeStreamConversation?: boolean;
+  messengerStore?: Pick<typeof useMessengerStore, "getState">;
 } & (
     | { markdown: string; pollPayload?: never }
     | { markdown?: never; pollPayload: WorkspaceMessengerPollPayloadDto }
@@ -208,7 +217,10 @@ export async function sendMessengerMessage({
   client = {},
   cache = messengerMessageActionCache,
   signal,
-  store = useWorkspaceMessageStore,
+  store = getWorkspaceMessageStoreForOwner(workspaceRuntimeOwnerKey(runtimeContext)) ??
+    getSelectedWorkspaceMessageStore(),
+  messengerStore = getMessengerStoreForOwner(workspaceRuntimeOwnerKey(runtimeContext)) ??
+    getSelectedMessengerStore(),
   streamUuid,
   topicUuid,
   markdown,
@@ -226,7 +238,7 @@ export async function sendMessengerMessage({
     return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
 
   const requestOptions = buildMessengerRequestOptions(runtimeContext, clientOptions, signal);
-  const catalog = useMessengerStore.getState();
+  const catalog = messengerStore.getState();
   const knownStream =
     catalog.ownerKey === action.ownerKey ? catalog.streamsById[streamUuid] : undefined;
   const stream =
@@ -284,6 +296,7 @@ export async function sendMessengerMessage({
     message,
     capturedMutationRevision,
     store,
+    messengerStore,
     includeStreamConversation,
     writePage: cache.writeConversationMessagePage,
   });
@@ -317,8 +330,10 @@ export async function sendMessengerE2eePayload({
   client = {},
   cache = messengerMessageActionCache,
   signal,
-  store = useWorkspaceMessageStore,
-  messengerStore = useMessengerStore,
+  store = getWorkspaceMessageStoreForOwner(workspaceRuntimeOwnerKey(runtimeContext)) ??
+    getSelectedWorkspaceMessageStore(),
+  messengerStore = getMessengerStoreForOwner(workspaceRuntimeOwnerKey(runtimeContext)) ??
+    getSelectedMessengerStore(),
   streamUuid,
   topicUuid,
   payload,
@@ -441,12 +456,14 @@ export async function editMessengerMessage({
   client = {},
   cache = messengerMessageActionCache,
   signal,
-  store = useWorkspaceMessageStore,
+  store = getWorkspaceMessageStoreForOwner(workspaceRuntimeOwnerKey(runtimeContext)) ??
+    getSelectedWorkspaceMessageStore(),
   messageUuid,
   markdown,
   encryptedPayload,
   sourceMessage,
-  messengerStore = useMessengerStore,
+  messengerStore = getMessengerStoreForOwner(workspaceRuntimeOwnerKey(runtimeContext)) ??
+    getSelectedMessengerStore(),
   isCurrent,
 }: EditMessengerMessageOptions): Promise<MessengerMessageActionResult> {
   if (markdown != null && hasWorkspaceSecretDraft(markdown)) throw new Error("invalid-secret");
@@ -579,7 +596,8 @@ export async function deleteMessengerMessage({
   client = {},
   cache = messengerMessageActionCache,
   signal,
-  store = useWorkspaceMessageStore,
+  store = getWorkspaceMessageStoreForOwner(workspaceRuntimeOwnerKey(runtimeContext)) ??
+    getSelectedWorkspaceMessageStore(),
   messageUuid,
   streamUuid,
   topicUuid,
@@ -657,7 +675,8 @@ function projectReadUpTo(
   conversationIds: readonly MessengerConversationId[] | undefined,
 ): ReadUpToProjection {
   if (anchor == null) return EMPTY_READ_UP_TO_PROJECTION;
-  const topicBeforeRead = useMessengerStore.getState().topicsById[anchor.topicUuid] ?? null;
+  const topicBeforeRead =
+    getMessengerStoreForOwner(ownerKey)?.getState().topicsById[anchor.topicUuid] ?? null;
   const state = store.getState();
   const scope = conversationIds ?? [
     anchor.conversationId,
@@ -717,7 +736,8 @@ async function submitMessengerReadUpTo(
     client = {},
     cache = messengerMessageActionCache,
     signal,
-    store = useWorkspaceMessageStore,
+    store = getWorkspaceMessageStoreForOwner(workspaceRuntimeOwnerKey(runtimeContext)) ??
+      getSelectedWorkspaceMessageStore(),
     messageUuid,
     conversationIds,
   }: MarkMessengerMessagesReadUpToOptions,
@@ -767,7 +787,9 @@ async function submitMessengerReadUpTo(
       messageUuid: dto.uuid,
     },
     projectPointer: (message, currentMessagesById) =>
-      useMessengerStore.getState().applyMessagePointer(ownerKey, message, currentMessagesById),
+      getMessengerStoreForOwner(ownerKey)
+        ?.getState()
+        .applyMessagePointer(ownerKey, message, currentMessagesById),
   });
   if (accepted.status === "stale-owner") return stale;
   if (accepted.cacheWrite != null) await accepted.cacheWrite;

@@ -45,8 +45,6 @@ function activeMessage(): MessengerMessage {
 describe("useResolvedMessengerQuoteMessage", () => {
   beforeEach(() => {
     mocked.load.mockClear();
-    useWorkspaceMessageStore.getState().clear();
-    seedWorkspaceMessageBody(activeMessage());
     useWorkspaceAuthStore.setState({
       currentAccountId: "account-a",
       runtimeGeneration: 1,
@@ -71,6 +69,8 @@ describe("useResolvedMessengerQuoteMessage", () => {
         },
       ],
     });
+    useWorkspaceMessageStore.getState().clear();
+    seedWorkspaceMessageBody(activeMessage());
   });
 
   it("returns an active-store hit immediately without a background refresh", () => {

@@ -17,6 +17,7 @@ import { performApplicationColdStart } from "~/shared/lib/local-reset";
 import { createLogger } from "~/shared/lib/logger";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { toast } from "~/shared/lib/toast/toast";
+import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
 import { Icon } from "~/shared/ui/icon";
 import { PanelMenuRow } from "~/shared/ui/panel-menu-row";
 import { ScrollArea } from "~/shared/ui/scroll-area";
@@ -210,13 +211,19 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
     window.location.reload();
   }, [t]);
 
-  const handleLogoutFromCurrentOrg = useCallback(async () => {
+  const handleLogoutFromCurrentOrg = useCallback(() => {
     if (currentWorkspaceSession == null) return;
     const confirmed = window.confirm(
       t("auth.logoutFromOrgConfirm", { server: currentServerLabel }),
     );
     if (!confirmed) return;
-    await removeWorkspaceSession(currentWorkspaceSession.accountId);
+    const accountId = currentWorkspaceSession.accountId;
+    const wasSelected = useWorkspaceAuthStore.getState().currentAccountId === accountId;
+    void removeWorkspaceSession(accountId).catch((error: unknown) => {
+      reportUnexpectedError("workspace-auth:logout", error);
+    });
+    if (!wasSelected || useWorkspaceAuthStore.getState().currentAccountId === accountId) return;
+    // Apply this UI intent while the synchronous selection change still belongs to the click.
     void navigate(resolveWorkspacePostLogoutRoute(getCurrentWorkspaceSession()), { replace: true });
     closeDrawer();
   }, [

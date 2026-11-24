@@ -132,7 +132,7 @@ describe("workspace composer draft owner disposal", () => {
         disposed = true;
       });
     expect(useWorkspaceComposerDraftStore.getState().privateShadowsByConversationKey).toEqual({});
-    // Logout removes the session after disposal; ignore work arriving during that await too.
+    // A replacement may reuse this durable key while the old write drains.
     useWorkspaceComposerDraftStore
       .getState()
       .setPrivateDraftShadow(OWNER, CONVERSATION, privateContent);
@@ -144,7 +144,9 @@ describe("workspace composer draft owner disposal", () => {
     await disposal;
 
     expect(disposed).toBe(true);
-    expect(useWorkspaceComposerDraftStore.getState().privateShadowsByConversationKey).toEqual({});
+    expect(
+      Object.values(useWorkspaceComposerDraftStore.getState().privateShadowsByConversationKey),
+    ).toEqual([expect.objectContaining({ ownerKey: OWNER, content: privateContent })]);
   });
 
   it("removes only private shadows for the revoked owner and stream", async () => {

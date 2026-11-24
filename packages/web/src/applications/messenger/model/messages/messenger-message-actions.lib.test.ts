@@ -42,6 +42,7 @@ import {
 } from "../messenger-cache.lib";
 import * as messengerRequestOptions from "../messenger-request-options.lib";
 import { loadMessengerConversationMessages } from "./history/messenger-messages-loader.lib";
+import { selectWorkspaceMessagesForConversation, useWorkspaceMessageStore } from "./message.model";
 import {
   deleteMessengerMessage,
   editMessengerMessage,
@@ -57,7 +58,6 @@ import { adaptMessengerMessage } from "./messenger-message-adapter.lib";
 import { createMessengerPlacementUuid } from "./messenger-message-identity.lib";
 import { readMessengerReadBoundary } from "./messenger-read-boundary.lib";
 import { useMessengerOutboxStore } from "./outgoing/messenger-outbox.model";
-import { selectWorkspaceMessagesForConversation, useWorkspaceMessageStore } from "./message.model";
 import type { ChatE2eePayload } from "../crypto/chat-e2ee.types";
 import type { MessengerMessagePayload, MessengerConversationId } from "../messenger.types";
 
@@ -462,6 +462,7 @@ describe("messenger message actions", () => {
           expect(writeRealtimeCursor).toHaveBeenCalledExactlyOnceWith(
             ownerKey,
             stale.epoch_version,
+            expect.any(Function),
           );
         }
         expect(useMessengerStore.getState().lastEpochVersion).toBe(stale.epoch_version);
@@ -1203,7 +1204,11 @@ describe("messenger message actions", () => {
       }
       await expectCachedTail(ownerKey, MESSAGE_B);
       await expect(readMessengerMessageBodyCache(ownerKey, [MESSAGE_A])).resolves.toEqual([]);
-      expect(writeRealtimeCursor).toHaveBeenCalledExactlyOnceWith(ownerKey, 2);
+      expect(writeRealtimeCursor).toHaveBeenCalledExactlyOnceWith(
+        ownerKey,
+        2,
+        expect.any(Function),
+      );
     });
 
     it("repairs the same durable tail after its read flag changes during the transaction", async () => {

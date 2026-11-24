@@ -1,4 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
+import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
+import "../../messenger-runtime-mutation.lib";
 import { selectWorkspaceMessagesForConversation, useWorkspaceMessageStore } from "../message.model";
 import {
   selectMessengerOutgoingMessagesForConversation,
@@ -50,8 +53,53 @@ describe("messenger outbox store", () => {
   });
 
   afterEach(() => {
+    useWorkspaceAuthStore.getState().clear();
     vi.restoreAllMocks();
     vi.useRealTimers();
+  });
+
+  it("keeps outgoing records across selection and releases only an ending incarnation", () => {
+    const auth = useWorkspaceAuthStore.getState();
+    const session = {
+      accountId: "a",
+      instanceId: "i-a",
+      organizationId: "org",
+      organizationOrigin: "https://workspace.example.test",
+      projectId: "project",
+      userUuid: "user-a",
+      accessToken: "test-access",
+      login: "A",
+      profile: { uuid: "user-a", username: "A", firstName: null, lastName: null, email: null },
+    };
+    const accountB = { ...session, accountId: "b", instanceId: "i-b" };
+    const enqueue = (owner: typeof session) =>
+      useMessengerOutboxStore.getState().enqueueOutgoingMessage({
+        ownerKey: workspaceRuntimeOwnerKey(owner),
+        conversationId: CONVERSATION_A,
+        projectId: owner.projectId,
+        streamUuid: "stream-a",
+        topicUuid: TOPIC_UUID,
+        authorUuid: owner.userUuid,
+        markdown: "draft",
+        status: "sending",
+        includeStreamConversation: false,
+      });
+
+    auth.setSession(session);
+    const outgoingA = enqueue(session);
+    auth.setSession(accountB);
+    const outgoingB = enqueue(accountB);
+    auth.setCurrentAccountId(session.accountId);
+
+    const records = () => useMessengerOutboxStore.getState().outgoingMessagesByPlacementUuid;
+    expect(records()[outgoingA.placementUuid]).toBe(outgoingA);
+    expect(records()[outgoingB.placementUuid]).toBe(outgoingB);
+    auth.removeSession(accountB.accountId);
+    expect(records()[outgoingB.placementUuid]).toBeUndefined();
+    expect(records()[outgoingA.placementUuid]).toBe(outgoingA);
+
+    auth.setSession({ ...session, accessToken: "replacement-access" });
+    expect(records()[outgoingA.placementUuid]).toBeUndefined();
   });
 
   it("keeps local outgoing messages outside the canonical Workspace message store", () => {

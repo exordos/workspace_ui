@@ -1,4 +1,8 @@
-import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
+import {
+  resolveWorkspaceOwnerRuntimeForRequest,
+  useWorkspaceAuthStore,
+  workspaceAuthSessionIncarnation,
+} from "~/entities/workspace-auth/workspace-auth.model";
 import {
   isWorkspaceRuntimeRequestInvalidated,
   workspaceRuntimeOwnerKey,
@@ -6,10 +10,14 @@ import {
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import { t } from "~/i18n/i18n";
 import { parseWorkspaceSecretDraft } from "~/shared/lib/workspace-secret-draft.lib";
+import { getMessengerStoreForOwner } from "../../chats/messenger.model";
 import { acquireChatCryptoSession } from "../../crypto/chat-crypto-session.lib";
 import { buildMessengerSecretMarkdown } from "../../crypto/messenger-secret-message.lib";
-import { runMessengerRuntimeMutation } from "../../messenger-runtime-mutation.lib";
-import { useWorkspaceMessageStore } from "../message.model";
+import { runMessengerOwnerMutation } from "../../messenger-runtime-mutation.lib";
+import {
+  getSelectedWorkspaceMessageStore,
+  getWorkspaceMessageStoreForOwner,
+} from "../message.model";
 import { sendMessengerMessage } from "../messenger-message-actions.lib";
 import {
   isMessengerOutgoingMessageReceipt,
@@ -22,23 +30,39 @@ import type { MessengerMessage } from "../../messenger.types";
 import type { MessengerMessageActionResult } from "../messenger-message-actions.lib";
 
 const deliveries = new Map<string, Promise<boolean>>();
-const getRuntimeContext = () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
 
 /** Delivery belongs to the runtime and outbox, so navigating away cannot discard it. */
 export function deliverMessengerOutgoingMessage(
-  runtimeContext: WorkspaceRuntimeContext | null,
+  requestContext: WorkspaceRuntimeContext | null,
   placementUuid: string,
 ): Promise<boolean> {
   const outgoing =
     useMessengerOutboxStore.getState().outgoingMessagesByPlacementUuid[placementUuid];
   if (outgoing == null) return Promise.resolve(false);
+  if (requestContext == null || workspaceRuntimeOwnerKey(requestContext) !== outgoing.ownerKey)
+    return Promise.resolve(false);
+  const runtimeContext = resolveWorkspaceOwnerRuntimeForRequest(requestContext);
+  const selectedStore = getSelectedWorkspaceMessageStore();
+  const store =
+    getWorkspaceMessageStoreForOwner(outgoing.ownerKey) ??
+    (selectedStore.getState().ownerKey === outgoing.ownerKey ? selectedStore : null);
+  if (runtimeContext == null) return Promise.resolve(false);
+  if (store == null) {
+    useMessengerOutboxStore
+      .getState()
+      .markOutgoingMessageFailed(placementUuid, t("workspaceMessenger.runtimeUnavailable"));
+    return Promise.resolve(false);
+  }
+  const getRuntimeContext = () =>
+    useWorkspaceAuthStore.getState().getRuntimeContextForOwner(runtimeContext);
+  const messengerStore = getMessengerStoreForOwner(outgoing.ownerKey) ?? undefined;
   let encryption = outgoing.encryption;
   // The validated POST may outlive a dismissed local row or be followed by an edit.
   const matchesReceipt = (message: MessengerMessage | null) =>
     message != null && isMessengerOutgoingMessageReceipt({ ...outgoing, encryption }, message);
   // Realtime or history may have confirmed delivery before the HTTP response was lost.
   const settleIfIndexed = () => {
-    const state = useWorkspaceMessageStore.getState();
+    const state = store.getState();
     const message = state.messagesById[placementUuid];
     if (state.ownerKey !== outgoing.ownerKey || message == null || !matchesReceipt(message))
       return false;
@@ -46,12 +70,6 @@ export function deliverMessengerOutgoingMessage(
     return true;
   };
   if (settleIfIndexed()) return Promise.resolve(true);
-  if (runtimeContext == null || workspaceRuntimeOwnerKey(runtimeContext) !== outgoing.ownerKey) {
-    useMessengerOutboxStore
-      .getState()
-      .markOutgoingMessageFailed(placementUuid, t("workspaceMessenger.runtimeUnavailable"));
-    return Promise.resolve(false);
-  }
   const deliveryKeyFor = (generation: number) =>
     `${outgoing.ownerKey}:${generation}:${placementUuid}`;
   const deliveryKey = deliveryKeyFor(runtimeContext.runtimeGeneration);
@@ -59,7 +77,7 @@ export function deliverMessengerOutgoingMessage(
   if (pending != null) return pending;
   const receipt = trackMessengerOutgoingReceipt(outgoing.ownerKey, placementUuid);
   useMessengerOutboxStore.getState().markOutgoingMessageSending(placementUuid);
-  const delivery = runMessengerRuntimeMutation(runtimeContext, async (signal) => {
+  const delivery = runMessengerOwnerMutation(runtimeContext, async (signal) => {
     if (receipt.confirmed || settleIfIndexed()) return true;
     if (outgoing.markdown.trim().length === 0) throw new Error(t("message.sendFailed"));
     const routing = {
@@ -126,6 +144,8 @@ export function deliverMessengerOutgoingMessage(
         runtimeContext,
         getRuntimeContext,
         signal,
+        store,
+        messengerStore,
         streamUuid: outgoing.streamUuid,
         markdown: outgoing.markdown,
       });
@@ -143,10 +163,14 @@ export function deliverMessengerOutgoingMessage(
     .catch((error: unknown) => {
       if (receipt.confirmed) return true;
       const current = getRuntimeContext();
+      if (
+        current == null ||
+        workspaceAuthSessionIncarnation(current) !== workspaceAuthSessionIncarnation(runtimeContext)
+      )
+        return false;
       if (!isWorkspaceRuntimeRequestInvalidated(runtimeContext, () => current) && settleIfIndexed())
         return true;
-      const currentDelivery =
-        current == null ? undefined : deliveries.get(deliveryKeyFor(current.runtimeGeneration));
+      const currentDelivery = deliveries.get(deliveryKeyFor(current.runtimeGeneration));
       // Runtime replacement may already have handed this row to a newer attempt.
       if (currentDelivery != null && currentDelivery !== delivery) return false;
       const outbox = useMessengerOutboxStore.getState();

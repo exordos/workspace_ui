@@ -230,7 +230,31 @@ describe("Workspace session snapshot coordination", () => {
     expect(refreshWorkspaceSessionUsers).not.toHaveBeenCalled();
   });
 
-  it("discards a late epoch after switching the selected owner", async () => {
+  it("can finish an owner snapshot after switching the selected account", async () => {
+    const delayedEpoch = deferred<WorkspaceMessengerEpochDto>();
+    vi.mocked(getEpoch).mockReturnValueOnce(delayedEpoch.promise);
+    const barrier = prepareWorkspaceSessionSnapshots(context, {
+      savedCursor: null,
+      expiry: null,
+      resetRequired: false,
+    });
+    await vi.waitFor(() => expect(getEpoch).toHaveBeenCalledOnce());
+    useWorkspaceAuthStore.getState().setCurrentAccountId(B.accountId);
+    delayedEpoch.resolve(epoch);
+    await expect(barrier).resolves.toEqual(newCursor);
+    expect(prepareMessengerSessionSnapshot).toHaveBeenCalledWith(
+      expect.objectContaining({
+        runtimeContext: expect.objectContaining({ accountId: A.accountId }),
+      }),
+    );
+    expect(refreshWorkspaceSessionUsers).toHaveBeenCalledWith(
+      expect.objectContaining({
+        runtimeContext: expect.objectContaining({ accountId: A.accountId }),
+      }),
+    );
+  });
+
+  it("discards a late epoch after the owner logs out", async () => {
     const delayedEpoch = deferred<WorkspaceMessengerEpochDto>();
     vi.mocked(getEpoch).mockReturnValueOnce(delayedEpoch.promise);
     const barrier = prepareWorkspaceSessionSnapshots(context, {
@@ -240,7 +264,7 @@ describe("Workspace session snapshot coordination", () => {
     });
     const rejected = expect(barrier).rejects.toHaveProperty("name", "AbortError");
     await vi.waitFor(() => expect(getEpoch).toHaveBeenCalledOnce());
-    useWorkspaceAuthStore.setState({ currentAccountId: B.accountId });
+    useWorkspaceAuthStore.getState().removeSession(A.accountId);
     delayedEpoch.resolve(epoch);
     await rejected;
     expect(prepareMessengerSessionSnapshot).not.toHaveBeenCalled();

@@ -16,6 +16,7 @@ function resetStore(): void {
     sessions: [],
     currentAccountId: null,
     runtimeGeneration: 0,
+    runtimeGenerationSequence: 0,
     sessionSelectionGeneration: 0,
   });
 }
@@ -138,6 +139,41 @@ describe("workspace-auth store", () => {
       runtimeGeneration: before + 1,
     });
     expect(useWorkspaceAuthStore.getState().sessionSelectionGeneration).toBe(selectionBefore);
+  });
+
+  it("keeps credential and incarnation stable through A to B to A", () => {
+    const auth = useWorkspaceAuthStore.getState();
+    const accountA = createSession();
+    auth.setSession(accountA);
+    const firstScreen = auth.getCurrentRuntimeContext();
+    const firstOwner = auth.getRuntimeContextForOwner(accountA);
+    auth.setSession(createSession({ accountId: "account-b" }));
+    auth.setCurrentAccountId(accountA.accountId);
+
+    expect(auth.getCurrentRuntimeContext()?.runtimeGeneration).not.toBe(
+      firstScreen?.runtimeGeneration,
+    );
+    expect(auth.getCurrentRuntimeContext()?.ownerRuntimeGeneration).toBe(
+      firstOwner?.runtimeGeneration,
+    );
+    expect(auth.getRuntimeContextForOwner(accountA)).toMatchObject({
+      runtimeGeneration: firstOwner?.runtimeGeneration,
+      incarnationGeneration: firstOwner?.incarnationGeneration,
+    });
+
+    const selected = auth.getCurrentRuntimeContext();
+    const backgroundBefore = useWorkspaceAuthStore
+      .getState()
+      .sessions.find(({ accountId }) => accountId === "account-b");
+    auth.updateTokens("account-b", { accessToken: "updated-background-token" });
+    const backgroundAfter = useWorkspaceAuthStore
+      .getState()
+      .sessions.find(({ accountId }) => accountId === "account-b");
+    expect(backgroundAfter?.runtimeGeneration).not.toBe(backgroundBefore?.runtimeGeneration);
+    expect(backgroundAfter?.incarnationGeneration).toBe(backgroundBefore?.incarnationGeneration);
+    expect(auth.getCurrentRuntimeContext()).toBe(selected);
+    auth.removeSession("account-b");
+    expect(auth.getCurrentRuntimeContext()).toBe(selected);
   });
 
   it("updates duplicate account while preserving the original instance id", () => {

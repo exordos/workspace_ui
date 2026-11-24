@@ -13,7 +13,8 @@ const readCatalogCacheMock = vi.hoisted(() =>
   vi.fn(() => Promise.resolve<{ payload: { streams: unknown[]; topics: unknown[] } } | null>(null)),
 );
 
-vi.mock("../messenger-cache.lib", () => ({
+vi.mock("../messenger-cache.lib", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   readMessengerCatalogPayloadCache: (...args: Parameters<typeof readCatalogCacheMock>) =>
     readCatalogCacheMock(...args),
 }));

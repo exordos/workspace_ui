@@ -16,7 +16,11 @@ import {
   writeMessengerMessageBodyCache as defaultWriteMessengerMessageBodyCache,
 } from "../messenger-cache.lib";
 import { buildMessengerRequestOptions } from "../messenger-request-options.lib";
-import { useWorkspaceMessageStore } from "./message.model";
+import {
+  getSelectedWorkspaceMessageStore,
+  getWorkspaceMessageStoreForOwner,
+  type useWorkspaceMessageStore,
+} from "./message.model";
 import { adaptMessengerMessage } from "./messenger-message-adapter.lib";
 import { applyMessengerReadBoundary } from "./messenger-read-boundary.lib";
 import type { MessengerConversationId, MessengerMessage, MessengerUuid } from "../messenger.types";
@@ -168,7 +172,8 @@ async function loadMessengerQuoteMessageUncached({
   signal,
   client,
   cache,
-  store = useWorkspaceMessageStore,
+  store = getWorkspaceMessageStoreForOwner(workspaceRuntimeOwnerKey(runtimeContext)) ??
+    getSelectedWorkspaceMessageStore(),
 }: LoadMessengerQuoteMessageOptions): Promise<MessengerQuoteMessageLoadResult> {
   const ownerKey = workspaceRuntimeOwnerKey(runtimeContext);
   const requestContext = captureWorkspaceRuntimeRequestContext(() => runtimeContext);

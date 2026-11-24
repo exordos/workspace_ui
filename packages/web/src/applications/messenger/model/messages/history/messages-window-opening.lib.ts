@@ -4,7 +4,10 @@ import {
   type WorkspaceRuntimeContextGetter,
 } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
-import { useWorkspaceMessageStore } from "../message.model";
+import {
+  getSelectedWorkspaceMessageStore,
+  getWorkspaceMessageStoreForOwner,
+} from "../message.model";
 import {
   applyMessengerMessageWindow,
   conversationContainsAnchor,
@@ -83,7 +86,8 @@ export async function openMessengerMessageWindow({
     fetchWindow: fetchMessengerMessageWindow,
     applyWindow: applyMessengerMessageWindow,
   },
-  store = useWorkspaceMessageStore,
+  store = getWorkspaceMessageStoreForOwner(workspaceRuntimeOwnerKey(runtimeContext)) ??
+    getSelectedWorkspaceMessageStore(),
 }: OpenMessengerMessageWindowOptions): Promise<MessengerMessageWindowOpenResult> {
   const ownerKey = workspaceRuntimeOwnerKey(runtimeContext);
   const isCurrent = () =>

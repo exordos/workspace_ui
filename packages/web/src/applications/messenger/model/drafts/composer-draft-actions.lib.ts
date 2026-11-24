@@ -1,5 +1,10 @@
 import { useShallow } from "zustand/react/shallow";
 import {
+  resolveWorkspaceOwnerRuntimeForRequest,
+  useWorkspaceAuthStore,
+  workspaceAuthSessionIncarnation,
+} from "~/entities/workspace-auth/workspace-auth.model";
+import {
   isWorkspaceRuntimeRequestContextCurrent,
   workspaceRuntimeOwnerKey,
   type WorkspaceRuntimeContextGetter,
@@ -125,6 +130,7 @@ export function createWorkspaceComposerDrafts(
   const ownerKey = workspaceRuntimeOwnerKey(runtimeContext);
   const scopeKey = createWorkspaceComposerDraftKey(ownerKey, conversationId);
   const isCurrent = () =>
+    context.signal?.aborted !== true &&
     isWorkspaceRuntimeRequestContextCurrent(runtimeContext, getRuntimeContext);
   const store = useWorkspaceComposerDraftStore;
   const selected = (state: WorkspaceComposerDraftStoreState) =>
@@ -150,8 +156,12 @@ export function createWorkspaceComposerDrafts(
   }
 
   // Deletion keeps the ETag and waits for an in-flight create or update.
-  function queueDeletion(draft: WorkspaceComposerDraft, reason: "clear" | "sent"): void {
-    if (!deleteWorkspaceComposerDraftFromServer({ ...context, draft })) {
+  function queueDeletion(
+    draft: WorkspaceComposerDraft,
+    reason: "clear" | "sent",
+    request: WorkspaceComposerDraftActionContext = context,
+  ): void {
+    if (!deleteWorkspaceComposerDraftFromServer({ ...request, draft })) {
       editorLog.warn("Draft deletion was rejected", {
         reason,
         draftUuid: draft.draftUuid,
@@ -187,6 +197,7 @@ export function createWorkspaceComposerDrafts(
     },
     // Закрытие визита сохраняет отложенную локальную операцию.
     leave(): void {
+      if (!isCurrent()) return;
       const current = selected(store.getState());
       if (current != null) void store.getState().flushDraft(ownerKey, current.draftUuid);
       store.getState().leaveConversation(ownerKey, conversationId);
@@ -239,6 +250,16 @@ export function createWorkspaceComposerDrafts(
       const state = store.getState();
       const capturedPrivate = privateDraft(state)?.snapshotId;
       const draftAtSubmission = selected(state);
+      const ownerAtSubmission = resolveWorkspaceOwnerRuntimeForRequest(runtimeContext);
+      const readReceiptOwner: WorkspaceRuntimeContextGetter = () => {
+        if (ownerAtSubmission == null) return isCurrent() ? runtimeContext : null;
+        const owner = useWorkspaceAuthStore.getState().getRuntimeContextForOwner(ownerAtSubmission);
+        return owner != null &&
+          workspaceAuthSessionIncarnation(owner) ===
+            workspaceAuthSessionIncarnation(ownerAtSubmission)
+          ? owner
+          : null;
+      };
       const capturedDraft =
         draftAtSubmission == null
           ? null
@@ -267,16 +288,21 @@ export function createWorkspaceComposerDrafts(
           return isCurrent() && privateDraft(latest) == null && selected(latest) == null;
         },
         completeOnReceipt(): void {
-          if (!isCurrent() || capturedPrivate != null) return;
+          const ownerRuntime = readReceiptOwner();
+          if (ownerRuntime == null || capturedPrivate != null) return;
           const current = store.getState();
-          completed = privateDraft(current) == null && selectedStillMatches(selected(current));
+          completed =
+            isCurrent() && privateDraft(current) == null && selectedStillMatches(selected(current));
           if (capturedDraft == null) return;
           const sameRecord = current.draftsByKey[capturedDraft.key];
           if (
             sameRecord?.snapshotId === capturedDraft.snapshotId &&
             sameRecord.disposition === "editable"
           )
-            queueDeletion(sameRecord, "sent");
+            queueDeletion(sameRecord, "sent", {
+              runtimeContext: ownerRuntime,
+              getRuntimeContext: readReceiptOwner,
+            });
         },
         canCompleteComposer(): boolean {
           const current = store.getState();

@@ -36,7 +36,7 @@ export function useWorkspaceNotificationOwners(): readonly WorkspaceNotification
         ownerKey,
         projection,
         accountLabel: accountLabel(session),
-        isSelected: session.accountId === currentAccountId,
+        isSelected: () => useWorkspaceAuthStore.getState().currentAccountId === session.accountId,
         isAuthorized: () => readWorkspaceSession(session) != null,
       });
     }

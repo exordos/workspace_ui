@@ -2,7 +2,7 @@ import {
   captureDeletedMessagePointerRepair,
   type DeletedMessagePointerRepairPlan,
 } from "../chats/messenger-deleted-message-pointer-repair.lib";
-import { useMessengerStore } from "../chats/messenger.model";
+import { getMessengerStoreForOwner } from "../chats/messenger.model";
 import { conversationIdForStream, conversationIdForTopic } from "../messenger-ids.lib";
 import type { WorkspaceMessageStoreState } from "./message.model";
 import type { MessengerMessageCacheDeletion } from "../messenger-cache.lib";
@@ -59,6 +59,7 @@ function preparePointerRepairs(
 export function acceptMessageDeletion(input: AcceptMessageDeletionInput) {
   const { ownerKey, reported, store, deleteCache, beforeRequest } = input;
   const initial = store.getState();
+  const catalog = getMessengerStoreForOwner(ownerKey);
   const currentOwner = () => input.isCurrent() && store.getState().ownerKey === initial.ownerKey;
   const stale = { status: "stale-owner" } as const;
   if (!currentOwner() || (initial.ownerKey != null && initial.ownerKey !== ownerKey)) return stale;
@@ -82,7 +83,7 @@ export function acceptMessageDeletion(input: AcceptMessageDeletionInput) {
   };
   for (const { message } of plans) {
     if (!isCurrent()) return stale;
-    useMessengerStore.getState().clearMessagePointer(ownerKey, message);
+    catalog?.getState().clearMessagePointer(ownerKey, message);
   }
   if (!isCurrent()) return stale;
 

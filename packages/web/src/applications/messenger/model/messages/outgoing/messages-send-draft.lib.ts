@@ -1,4 +1,5 @@
 import type { WorkspaceComposerDraftSubmission } from "~/applications/messenger/model/drafts/composer-draft-actions.lib";
+import { resolveWorkspaceOwnerRuntimeForRequest } from "~/entities/workspace-auth/workspace-auth.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import { createLogger } from "~/shared/lib/logger";
@@ -74,6 +75,8 @@ export function sendMessengerDraft(
 
   function accept(encryption?: MessengerOutgoingEncryption): MessagesAcceptedDraft {
     if (!isCurrent()) throw new MessagesDraftSendError("stale");
+    const deliveryRuntime =
+      resolveWorkspaceOwnerRuntimeForRequest(runtimeContext) ?? runtimeContext;
     const { streamUuid, topicUuid, includeStreamConversation } = target;
     let confirmed = false;
     const confirm = () => {
@@ -100,7 +103,7 @@ export function sendMessengerDraft(
     );
     const delivery = confirmed
       ? Promise.resolve(true)
-      : deliverMessengerOutgoingMessage(runtimeContext, outgoing.placementUuid);
+      : deliverMessengerOutgoingMessage(deliveryRuntime, outgoing.placementUuid);
     let clearOnAcceptance: boolean | null = hasFragments ? false : null;
     let canClearEditor = false;
     try {

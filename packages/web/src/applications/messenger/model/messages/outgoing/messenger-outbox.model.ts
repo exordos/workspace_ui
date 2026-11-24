@@ -286,6 +286,9 @@ export const useMessengerOutboxStore = create<MessengerOutboxStoreState>((set, g
 
   clearOwner(ownerKey) {
     logStoreAction("messengerOutbox", "clearOwner", { ownerKey });
+    for (const key of receiptObservers.keys()) {
+      if (key.startsWith(`${ownerKey}\u0000`)) receiptObservers.delete(key);
+    }
     set((state) => {
       const nextMessagesByPlacementUuid: Record<string, MessengerOutgoingMessage> = {};
       let nextPlacementUuidsByConversationId = state.outgoingMessagePlacementUuidsByConversationId;

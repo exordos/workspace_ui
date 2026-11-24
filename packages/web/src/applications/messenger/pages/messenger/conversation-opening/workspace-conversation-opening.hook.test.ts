@@ -62,7 +62,7 @@ const getRuntimeContext = () => useWorkspaceAuthStore.getState().getCurrentRunti
 const streamUuid = "75309057-419c-4b12-a7c1-3932429ec4a6";
 const conversationId = `topic:${streamUuid}:4ec0b996-b778-45f8-8ef4-ef863be0c047`;
 const secondConversationId = `topic:${streamUuid}:ed25f944-8106-4386-b2f9-65e9db32d465`;
-const messages = createMessages({ runtimeContext: runtime, getRuntimeContext });
+let messages: ReturnType<typeof createMessages>;
 const applied: MessengerConversationMessagesResult = {
   status: "applied",
   ownerKey,
@@ -87,6 +87,7 @@ beforeEach(() => {
   messageStore.setOwner(ownerKey, false);
   useMessengerStore.getState().clear();
   useMessengerStore.getState().startBootstrap(ownerKey);
+  messages = createMessages({ runtimeContext: runtime, getRuntimeContext });
   mocks.resolve.mockReset();
   requests.length = 0;
   mocks.saved.mockReset().mockReturnValue(null);

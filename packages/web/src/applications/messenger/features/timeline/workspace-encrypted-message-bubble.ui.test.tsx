@@ -2,8 +2,6 @@ import "fake-indexeddb/auto";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
-import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { EncryptedChatServiceState } from "~/applications/messenger/features/decrypted-message/encrypted-chat-message/encrypted-chat-service-actions.lib";
 import type { EncryptedChatServiceMessageProps } from "~/applications/messenger/features/decrypted-message/encrypted-chat-message/encrypted-chat-service-message.ui";
 import { useMessengerStore } from "~/applications/messenger/model/chats/messenger.model";
@@ -15,12 +13,17 @@ import {
 import * as cryptoRuntime from "~/applications/messenger/model/crypto/chat-crypto-runtime.lib";
 import { encodeChatE2eePayload } from "~/applications/messenger/model/crypto/chat-e2ee-payload-adapters.lib";
 import { createRealChatCryptoProvider } from "~/applications/messenger/model/crypto/chat-real-crypto-provider.lib";
-import { useWorkspaceMessageStore } from "~/applications/messenger/model/messages/message.model";
+import {
+  getSelectedWorkspaceMessageStore,
+  useWorkspaceMessageStore,
+} from "~/applications/messenger/model/messages/message.model";
 import type { MessengerOutgoingMessage } from "~/applications/messenger/model/messages/outgoing/messenger-outbox.types";
 import type {
   MessengerMessage,
   MessengerStream,
 } from "~/applications/messenger/model/messenger.types";
+import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
+import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { setLocale } from "~/i18n/i18n";
 import {
   buildWorkspaceForwardUrn,
@@ -110,7 +113,9 @@ async function seedRealEncryptedMessage(
   text: string,
   uuid = "55555555-5555-4555-8555-555555555555",
 ) {
-  const runtime = seedMessageRuntime("author");
+  // Distinct historical keys belong to messages within the same authorized session.
+  const runtime =
+    useWorkspaceAuthStore.getState().getCurrentRuntimeContext() ?? seedMessageRuntime("author");
   const owner = workspaceRuntimeOwnerKey(runtime);
   const keyUuid = crypto.randomUUID();
   const provider = createRealChatCryptoProvider();
@@ -701,6 +706,7 @@ describe("real encrypted message presentation", () => {
     async (invalidation) => {
       const { stored, runtime, owner, device } = await seedRealEncryptedMessage("Original secret");
       if (stored.payload.kind !== "e2ee") throw new Error("Missing encrypted payload");
+      const originalStore = getSelectedWorkspaceMessageStore();
       const payload = stored.payload;
       let complete!: (value: cryptoRuntime.RealChatMessageDecryption) => void;
       const pending = new Promise<cryptoRuntime.RealChatMessageDecryption>((resolve) => {
@@ -748,9 +754,11 @@ describe("real encrypted message presentation", () => {
         await pending;
       });
       expect(container).not.toHaveTextContent("Stale quoted secret");
-      expect(useWorkspaceMessageStore.getState().messagesById[stored.uuid]?.payload.kind).toBe(
-        "e2ee",
-      );
+      expect(originalStore.getState().messagesById[stored.uuid]?.payload.kind).toBe("e2ee");
+      if (invalidation === "runtime replacement") {
+        expect(getSelectedWorkspaceMessageStore()).not.toBe(originalStore);
+        expect(useWorkspaceMessageStore.getState().messagesById[stored.uuid]).toBeUndefined();
+      }
     },
   );
 

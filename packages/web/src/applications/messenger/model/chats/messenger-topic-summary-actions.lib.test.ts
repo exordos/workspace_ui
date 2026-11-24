@@ -202,8 +202,9 @@ describe("updateMessengerTopicSummaryConfiguration", () => {
 
   it("uses the auth-store runtime by default and observes an owner switch", async () => {
     const context = runtimeContext();
-    const ownerKey = prepareStore(context);
     setAuthRuntime(context);
+    const ownerKey = prepareStore(context);
+    const originalCatalog = useMessengerStore.getState();
     const request = deferred<WorkspaceMessengerTopicDto>();
     const upsertCachedTopic = vi.fn(() => Promise.resolve());
 
@@ -231,7 +232,8 @@ describe("updateMessengerTopicSummaryConfiguration", () => {
       ownerKey,
       reason: "stale-owner",
     });
-    expect(useMessengerStore.getState().topicsById[TOPIC_A]?.summaryEnabled).toBe(true);
+    expect(originalCatalog.topicsById[TOPIC_A]?.summaryEnabled).toBe(true);
+    expect(useMessengerStore.getState().topicsById[TOPIC_A]).toBeUndefined();
     expect(upsertCachedTopic).not.toHaveBeenCalled();
   });
 

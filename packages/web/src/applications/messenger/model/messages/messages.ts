@@ -15,10 +15,11 @@ import {
 } from "./history/messenger-messages-loader.lib";
 import {
   captureWorkspaceConversationWindowBoundary,
+  getSelectedWorkspaceMessageStore,
+  getWorkspaceMessageStoreForOwner,
   selectWorkspaceConversationWindow,
   selectWorkspaceMessagesForConversation,
   selectWorkspaceMessageStatusForConversation,
-  useWorkspaceMessageStore,
 } from "./message.model";
 import { sendMessengerDraft } from "./outgoing/messages-send-draft.lib";
 import { deliverMessengerOutgoingMessage } from "./outgoing/messenger-outbox-delivery.lib";
@@ -146,11 +147,20 @@ export interface Messages {
   loadMore(options: LoadMoreOptions): Promise<MessagesOperationResult>; // Догрузка по границе окна.
 }
 
-// Все фасады общего хранилища учитывают одно текущее открытие на разговор.
-const pendingWindowOpenings = new Map<
-  MessengerConversationId,
-  { ownerKey: string; runtimeGeneration: number }
+// Openings are shared by facades of the same model, including its current view generation.
+const openingsByOwnerStore = new WeakMap<
+  ReturnType<typeof getSelectedWorkspaceMessageStore>,
+  Map<MessengerConversationId, { runtimeGeneration: number }>
 >();
+
+function getPendingWindowOpenings(store: ReturnType<typeof getSelectedWorkspaceMessageStore>) {
+  let openings = openingsByOwnerStore.get(store);
+  if (openings == null) {
+    openings = new Map();
+    openingsByOwnerStore.set(store, openings);
+  }
+  return openings;
+}
 
 // Realtime может обновить общий словарь без изменений в текущем окне. Сравниваем
 // порядок и ссылки сообщений, чтобы сохранить прежний массив для подписчиков.
@@ -174,10 +184,12 @@ export function createMessages({
   getRuntimeContext: WorkspaceRuntimeContextGetter; // Текущая сессия для проверки актуальности.
 }): Messages {
   const ownerKey = workspaceRuntimeOwnerKey(runtimeContext);
+  const store = getWorkspaceMessageStoreForOwner(ownerKey) ?? getSelectedWorkspaceMessageStore();
+  const pendingWindowOpenings = getPendingWindowOpenings(store);
   const snapshots = new Map<MessengerConversationId, MessageWindowSnapshot>();
   // Сессия и хранилище могут переключиться в разное время. Проверяем владельца обоих.
   const getOwnedRuntimeContext: WorkspaceRuntimeContextGetter = () =>
-    useWorkspaceMessageStore.getState().ownerKey === ownerKey ? getRuntimeContext() : null;
+    store.getState().ownerKey === ownerKey ? getRuntimeContext() : null;
 
   function getWindow(conversationId: MessengerConversationId): MessageWindowSnapshot {
     if (!isWorkspaceRuntimeRequestContextCurrent(runtimeContext, getOwnedRuntimeContext)) {
@@ -185,7 +197,7 @@ export function createMessages({
       return EMPTY_MESSAGE_WINDOW;
     }
 
-    const state = useWorkspaceMessageStore.getState();
+    const state = store.getState();
     const window = selectWorkspaceConversationWindow(state, conversationId);
     const status = selectWorkspaceMessageStatusForConversation(state, conversationId);
     const selected = selectWorkspaceMessagesForConversation(state, conversationId);
@@ -245,11 +257,11 @@ export function createMessages({
           !isWorkspaceRuntimeRequestContextCurrent(runtimeContext, getRuntimeContext)
         ) {
           finish(false);
-        } else if (useWorkspaceMessageStore.getState().ownerKey === ownerKey) {
+        } else if (store.getState().ownerKey === ownerKey) {
           finish(true);
         }
       };
-      const unsubscribe = useWorkspaceMessageStore.subscribe(checkStore);
+      const unsubscribe = store.subscribe(checkStore);
       signal.addEventListener("abort", onAbort, { once: true });
       checkStore();
     });
@@ -282,9 +294,10 @@ export function createMessages({
 
   return {
     polls: {
-      mutate: (options) => mutateMessengerPoll({ ...options, runtimeContext, getRuntimeContext }),
+      mutate: (options) =>
+        mutateMessengerPoll({ ...options, runtimeContext, getRuntimeContext, store }),
       getVoters: (options) =>
-        getMessengerPollVoters({ ...options, runtimeContext, getRuntimeContext }),
+        getMessengerPollVoters({ ...options, runtimeContext, getRuntimeContext, store }),
     },
     sendDraft: (options) => sendMessengerDraft(runtimeContext, isRuntimeCurrent, options),
     retryOutgoing(placementUuid) {
@@ -298,13 +311,13 @@ export function createMessages({
     },
     getMessage(messageUuid) {
       return isWorkspaceRuntimeRequestContextCurrent(runtimeContext, getOwnedRuntimeContext)
-        ? (useWorkspaceMessageStore.getState().messagesById[messageUuid] ?? null)
+        ? (store.getState().messagesById[messageUuid] ?? null)
         : null;
     },
     getWindow,
     subscribeWindow(conversationId, listener) {
       let previous = getWindow(conversationId);
-      return useWorkspaceMessageStore.subscribe(() => {
+      return store.subscribe(() => {
         const current = getWindow(conversationId);
         if (previous === current) return;
         previous = current;
@@ -321,7 +334,7 @@ export function createMessages({
       const unavailable = unavailableReason(signal);
       if (unavailable != null) return { status: "skipped", reason: unavailable };
 
-      const opening = { ownerKey, runtimeGeneration: runtimeContext.runtimeGeneration };
+      const opening = { runtimeGeneration: runtimeContext.runtimeGeneration };
       pendingWindowOpenings.set(conversationId, opening);
       // Позднее завершение или отмена старого открытия сохраняет запись нового.
       const clearOpening = (): boolean =>
@@ -334,6 +347,7 @@ export function createMessages({
           loadMessengerConversationMessages({
             runtimeContext,
             getRuntimeContext: getOwnedRuntimeContext,
+            store,
             conversationId,
             signal,
             resolveUnreadBoundary: savedPosition == null,
@@ -360,7 +374,7 @@ export function createMessages({
       onResolved,
     }) {
       if (
-        useWorkspaceMessageStore.getState().ownerKey !== ownerKey &&
+        store.getState().ownerKey !== ownerKey &&
         !(await waitForMessageStore(signal, isRequestCurrent))
       ) {
         return { status: "skipped", ownerKey, reason: "stale-owner" };
@@ -368,6 +382,7 @@ export function createMessages({
       return openMessengerMessageWindow({
         runtimeContext,
         getRuntimeContext: getOwnedRuntimeContext,
+        store,
         messageUuid,
         signal,
         isRequestCurrent,
@@ -378,6 +393,7 @@ export function createMessages({
       return openMessengerMessageWindow({
         runtimeContext,
         getRuntimeContext: getOwnedRuntimeContext,
+        store,
         messageUuid,
         signal,
         isRequestCurrent,
@@ -390,13 +406,10 @@ export function createMessages({
 
       // До ответа сервера догрузка с границы предварительного окна прервала бы открытие.
       const opening = pendingWindowOpenings.get(conversationId);
-      if (
-        opening?.ownerKey === ownerKey &&
-        opening.runtimeGeneration === runtimeContext.runtimeGeneration
-      )
+      if (opening?.runtimeGeneration === runtimeContext.runtimeGeneration)
         return { status: "skipped", reason: "busy" };
 
-      const state = useWorkspaceMessageStore.getState();
+      const state = store.getState();
       const window = selectWorkspaceConversationWindow(state, conversationId);
       const boundary = captureWorkspaceConversationWindowBoundary(window, direction);
       if (window == null || boundary == null) return { status: "skipped", reason: "no-boundary" };
@@ -406,6 +419,7 @@ export function createMessages({
       const options = {
         runtimeContext,
         getRuntimeContext: getOwnedRuntimeContext,
+        store,
         conversationId,
         boundary,
         signal,

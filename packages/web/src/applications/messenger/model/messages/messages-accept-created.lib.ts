@@ -1,5 +1,5 @@
 import { isLaterMessageTimestamp } from "~/shared/lib/workspace-messenger-message-time";
-import { useWorkspaceMessageStore } from "./message.model";
+import { getSelectedWorkspaceMessageStore } from "./message.model";
 import type { AppliedServerMessages } from "./messages-server-state.lib";
 import type { MessengerMessage, MessengerUuid } from "../messenger.types";
 
@@ -7,6 +7,7 @@ import type { MessengerMessage, MessengerUuid } from "../messenger.types";
 type AcceptActiveCreatedMessagesInput = {
   ownerKey: string; // Владелец сообщений и исходящих операций.
   isCurrent: () => boolean; // Проверка владельца, поколения и отмены на момент записи.
+  store?: ReturnType<typeof getSelectedWorkspaceMessageStore>;
   // Каталог обновляет указатели по снимку тел, который соответствует режиму приёма.
   updatePointers: (
     messages: readonly MessengerMessage[],
@@ -34,10 +35,11 @@ export function applyActiveCreatedMessages({
   mode,
   messages,
   updatePointers,
+  store: ownerStore = getSelectedWorkspaceMessageStore(),
 }: AcceptActiveCreatedMessagesInput): AppliedServerMessages & {
   currentMessages: () => readonly MessengerMessage[]; // Тела, которые допустимо проецировать и кешировать.
 } {
-  const store = useWorkspaceMessageStore.getState();
+  const store = ownerStore.getState();
   const newestById = new Map<MessengerUuid, MessengerMessage>();
   for (const message of messages) {
     const known = newestById.get(message.uuid) ?? store.messagesById[message.uuid];
@@ -53,7 +55,7 @@ export function applyActiveCreatedMessages({
   else if (accepted[0] != null) store.applyLiveCreatedMessage(accepted[0]);
 
   const currentMessages = () => {
-    const current = useWorkspaceMessageStore.getState();
+    const current = ownerStore.getState();
     return accepted.filter((message) => {
       const known = current.messagesById[message.uuid];
       return known != null && !conflictsWithKnownBody(known, message);
@@ -69,7 +71,7 @@ export function applyActiveCreatedMessages({
       // Одиночный указатель использует снимок до записи, пакет видит тела всей пачки.
       updatePointers(
         current,
-        mode === "single" ? store.messagesById : useWorkspaceMessageStore.getState().messagesById,
+        mode === "single" ? store.messagesById : ownerStore.getState().messagesById,
       );
     },
   };
