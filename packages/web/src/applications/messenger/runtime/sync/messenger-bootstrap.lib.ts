@@ -1,12 +1,5 @@
 import { loadWorkspaceComposerDrafts } from "~/applications/messenger/model/drafts/composer-draft-loader.lib";
 import {
-  applyBootstrapUsers,
-  hydrateUsersFromCache,
-  markUsersSyncError,
-} from "~/entities/user/user-sync.lib";
-import type { UserCacheDeps, UserSyncClientDeps } from "~/entities/user/user-sync.lib";
-import { useUsersStore } from "~/entities/user/user.model";
-import {
   captureWorkspaceRuntimeRequestContext,
   isWorkspaceRuntimeRequestInvalidated,
   workspaceRuntimeOwnerKey,
@@ -28,7 +21,6 @@ import type {
   WorkspaceMessengerStreamDto,
   WorkspaceMessengerTopicDto,
 } from "~/shared/api/messenger.types";
-import { getUsers as defaultGetUsers } from "~/shared/api/workspace-client";
 import { isAbortError } from "~/shared/lib/abort-error";
 import {
   adaptMessengerBootstrapPayload,
@@ -50,16 +42,11 @@ import {
 } from "../../model/messenger-cache.lib";
 import {
   buildMessengerRequestOptions,
-  buildWorkspaceRequestOptions,
   type MessengerRequestOptionsOverrides,
 } from "../../model/messenger-request-options.lib";
 import type { MessengerStoreState } from "../../model/chats/messenger.model";
-import type { MessengerFolder } from "../../model/messenger.types";
+import type { MessengerFolder, MessengerStream } from "../../model/messenger.types";
 type MessengerBootstrapClientCall<T> = (options: MessengerClientOptions) => Promise<T[]>;
-type BootstrapUsers = Awaited<ReturnType<NonNullable<UserSyncClientDeps["getUsers"]>>>;
-type BootstrapUsersResult =
-  | { status: "fulfilled"; value: BootstrapUsers }
-  | { status: "rejected"; reason: unknown };
 
 // Load a minimal project snapshot for the new Workspace messenger path.
 // This is not the old Zulip chat list: data goes directly into the separate messenger store.
@@ -67,7 +54,6 @@ export interface MessengerBootstrapClientDeps {
   getStreams?: MessengerBootstrapClientCall<WorkspaceMessengerStreamDto>;
   getTopics?: MessengerBootstrapClientCall<WorkspaceMessengerTopicDto>;
   getFolders?: MessengerBootstrapClientCall<WorkspaceMessengerFolderDto>;
-  getUsers?: UserSyncClientDeps["getUsers"];
   getMessagesByUuids?: (
     options: MessengerClientOptions,
     messageUuids: string[],
@@ -86,6 +72,7 @@ export interface MessengerBootstrapCacheDeps {
   replaceMessengerFolderSnapshotsCache?: (
     ownerKey: string,
     folders: ReturnType<typeof adaptMessengerFolder>[],
+    isWriteCurrent?: () => boolean,
   ) => Promise<void> | void;
   createMessengerCatalogCacheReconcileFence?: () => number;
 }
@@ -131,11 +118,12 @@ export interface BootstrapMessengerStoreOptions {
   clientOptions?: MessengerRequestOptionsOverrides;
   signal?: AbortSignal;
   loadDrafts?: boolean;
+  restoreCache?: boolean; // The session coordinator can restore separately before choosing its cursor.
   // Replacing a realtime cursor requires every catalog request to succeed.
   requireCompleteSnapshot?: boolean;
   beforeServerRefresh?: () => Promise<void>;
+  onStreamsConfirmed?: (streams: readonly MessengerStream[]) => void; // Reconcile skipped membership history on a gap.
   store?: MessengerStoreApi;
-  userCache?: Pick<UserCacheDeps, "readUsersCache" | "replaceUsersCache">;
 }
 
 function normalizeBootstrapError(error: unknown): string {
@@ -175,6 +163,7 @@ interface BootstrapFoldersOptions {
   store: MessengerStoreApi;
   isCurrentBootstrap: () => boolean;
   requireCompleteSnapshot: boolean;
+  onComplete: (folders: MessengerFolder[]) => void;
 }
 
 async function loadBootstrapFolders({
@@ -188,6 +177,7 @@ async function loadBootstrapFolders({
   store,
   isCurrentBootstrap,
   requireCompleteSnapshot,
+  onComplete,
 }: BootstrapFoldersOptions): Promise<MessengerBootstrapResult | null> {
   try {
     const folders = await (client.getFolders ?? defaultGetFolders)(requestOptions);
@@ -202,12 +192,19 @@ async function loadBootstrapFolders({
 
     const adaptedFolders = folders.map(adaptMessengerFolder);
     store.getState().replaceFolderSnapshots(ownerKey, adaptedFolders);
-    writeBootstrapCacheBestEffort(() =>
-      (cache.replaceMessengerFolderSnapshotsCache ?? defaultReplaceMessengerFolderSnapshotsCache)(
-        ownerKey,
-        adaptedFolders,
-      ),
-    );
+    if (requireCompleteSnapshot) {
+      onComplete(adaptedFolders);
+    } else {
+      writeBootstrapCacheBestEffort(() =>
+        (cache.replaceMessengerFolderSnapshotsCache ?? defaultReplaceMessengerFolderSnapshotsCache)(
+          ownerKey,
+          adaptedFolders,
+          () =>
+            isCurrentBootstrap() &&
+            !isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, signal),
+        ),
+      );
+    }
     return null;
   } catch (folderError) {
     if (isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, signal)) {
@@ -244,10 +241,11 @@ export async function bootstrapMessengerStore({
   clientOptions,
   signal,
   loadDrafts = true,
+  restoreCache = true,
   requireCompleteSnapshot = false,
   beforeServerRefresh,
+  onStreamsConfirmed,
   store = useMessengerStore,
-  userCache,
 }: BootstrapMessengerStoreOptions): Promise<MessengerBootstrapResult> {
   const requestContext = captureWorkspaceRuntimeRequestContext(() => runtimeContext);
   if (requestContext == null) {
@@ -277,18 +275,13 @@ export async function bootstrapMessengerStore({
     }
     return null;
   };
-  useUsersStore.getState().startOwnerSync(ownerKey);
-  void hydrateUsersFromCache({
-    ownerKey,
-    requestContext,
-    getRuntimeContext,
-    signal,
-    cache: userCache,
-  });
+  const isWriteCurrent = (): boolean =>
+    isCurrentBootstrap() &&
+    !isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, signal);
   const loadLastMessagesForCurrentSidebar = (revalidateCached = false): void => {
     void loadMessengerLastMessagesForSidebar({
       runtimeContext,
-      getRuntimeContext,
+      getRuntimeContext: () => (isCurrentBootstrap() ? getRuntimeContext() : null),
       client: { getMessagesByUuids: client.getMessagesByUuids },
       cache: lastMessagesCache,
       revalidateCached,
@@ -300,7 +293,7 @@ export async function bootstrapMessengerStore({
 
   let hasFreshCatalog = false;
   let bootstrapError: string | null = null;
-  void (async () => {
+  const restoreCachedCatalog = async () => {
     const cached = await (
       cache.readMessengerCatalogPayloadCache ?? defaultReadMessengerCatalogPayloadCache
     )(ownerKey);
@@ -313,6 +306,7 @@ export async function bootstrapMessengerStore({
       ownerKey,
       payload: cached.payload,
       cache: lastMessagesCache,
+      isCurrent: () => isWriteCurrent() && !hasFreshCatalog,
     });
     if (isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, signal)) return;
 
@@ -330,14 +324,10 @@ export async function bootstrapMessengerStore({
       store.getState().setRealtimeCursor(ownerKey, cached.epochVersion);
     }
     loadLastMessagesForCurrentSidebar();
-  })();
+  };
+  if (restoreCache) void restoreCachedCatalog().catch(() => undefined);
 
   const requestOptions = buildMessengerRequestOptions(runtimeContext, clientOptions, signal);
-  const workspaceRequestOptions = buildWorkspaceRequestOptions(
-    runtimeContext,
-    clientOptions,
-    signal,
-  );
   const catalogReconcileFence = (
     cache.createMessengerCatalogCacheReconcileFence ??
     defaultCreateMessengerCatalogCacheReconcileFence
@@ -361,72 +351,38 @@ export async function bootstrapMessengerStore({
 
     // Streams and topics are needed first: they quickly build the base chat list.
     // Folders are loaded separately below, so a folder error does not break the whole sidebar.
-    const usersRequest: Promise<BootstrapUsersResult> = (client.getUsers ?? defaultGetUsers)(
-      workspaceRequestOptions,
-    ).then(
-      (value) => ({ status: "fulfilled", value }),
-      (reason: unknown) => ({ status: "rejected", reason }),
-    );
-    const [streams, topics, usersResult] = await Promise.all([
+    const [streams, topics] = await Promise.all([
       (client.getStreams ?? defaultGetStreams)(requestOptions),
       (client.getTopics ?? defaultGetTopics)(requestOptions),
-      usersRequest,
     ]);
 
     const skipAfterCatalogLoad = currentBootstrapSkipResult();
     if (skipAfterCatalogLoad != null) return skipAfterCatalogLoad;
-
-    if (usersResult.status === "fulfilled") {
-      const usersSyncResult = applyBootstrapUsers(usersResult.value, {
-        ownerKey,
-        requestContext,
-        getRuntimeContext,
-        signal,
-        cache: userCache,
-      });
-      if (usersSyncResult.status === "skipped") {
-        finishCurrentBootstrapSilently();
-        return { status: "skipped", ownerKey, reason: "stale-owner" };
-      }
-    } else {
-      markUsersSyncError(usersResult.reason, {
-        ownerKey,
-        requestContext,
-        getRuntimeContext,
-        signal,
-      });
-    }
 
     const payloadWithoutFolders = adaptMessengerBootstrapPayload({
       streams,
       topics,
       folders: [],
     });
-    await primeMessengerLastMessagesFromCache({
-      ownerKey,
-      payload: payloadWithoutFolders,
-      cache: lastMessagesCache,
-    });
-    const skipAfterMessageHydrate = currentBootstrapSkipResult();
-    if (skipAfterMessageHydrate != null) return skipAfterMessageHydrate;
-
+    onStreamsConfirmed?.(payloadWithoutFolders.streams);
     hasFreshCatalog = true;
     const preservedFolders = currentFolders(store.getState());
     store.getState().replaceBootstrapState(ownerKey, {
       ...payloadWithoutFolders,
       folders: preservedFolders,
     });
-    writeBootstrapCacheBestEffort(() =>
-      (cache.writeMessengerCatalogPayloadCache ?? defaultWriteMessengerCatalogPayloadCache)(
-        ownerKey,
-        payloadWithoutFolders,
-        {
+    const writeCatalog =
+      cache.writeMessengerCatalogPayloadCache ?? defaultWriteMessengerCatalogPayloadCache;
+    if (!requireCompleteSnapshot) {
+      writeBootstrapCacheBestEffort(() =>
+        writeCatalog(ownerKey, payloadWithoutFolders, {
           mode: "reconcile",
           reconcileFence: catalogReconcileFence,
           reconcileFolders: false,
-        },
-      ),
-    );
+          isWriteCurrent,
+        }),
+      );
+    }
     loadLastMessagesForCurrentSidebar(true);
 
     // Folders arrive as a separate user layer above streams.
@@ -441,16 +397,25 @@ export async function bootstrapMessengerStore({
       store,
       isCurrentBootstrap,
       requireCompleteSnapshot,
+      onComplete: (folders) => {
+        writeBootstrapCacheBestEffort(() =>
+          writeCatalog(
+            ownerKey,
+            { ...payloadWithoutFolders, folders },
+            {
+              mode: "reconcile",
+              reconcileFence: catalogReconcileFence,
+              reconcileFolders: true,
+              completeCatalog: true,
+              isWriteCurrent,
+            },
+          ),
+        );
+      },
     });
     if (folderResult != null) return folderResult;
 
-    if (requireCompleteSnapshot && usersResult.status === "rejected") {
-      const message = normalizeBootstrapError(usersResult.reason);
-      store.getState().setBootstrapError(ownerKey, message);
-      return { status: "failed", ownerKey, error: message };
-    }
-
-    return { status: "applied", ownerKey };
+    return currentBootstrapSkipResult() ?? { status: "applied", ownerKey };
   } catch (error) {
     const skipAfterFailure = currentBootstrapSkipResult();
     if (skipAfterFailure != null) return skipAfterFailure;

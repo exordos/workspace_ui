@@ -210,6 +210,8 @@ test.describe("Workspace realtime @mock", () => {
     const sockets: WebSocketRoute[] = [];
     let epochRequests = 0;
     let recoveringFromExpiredCursor = false;
+    let externalSnapshotRequests = 0;
+    const externalSnapshotGate = createGate();
 
     await page.route(
       (url) => url.pathname.endsWith("/epoch/"),
@@ -231,6 +233,26 @@ test.describe("Workspace realtime @mock", () => {
         epochRequests += 1;
       }
     });
+
+    await page.route(
+      (url) => url.pathname.endsWith("/external_accounts/"),
+      async (route) => {
+        if (!recoveringFromExpiredCursor || route.request().method() !== "GET") {
+          await route.fallback();
+          return;
+        }
+        externalSnapshotRequests += 1;
+        if (externalSnapshotRequests === 1) {
+          await route.fulfill({
+            status: 503,
+            json: { message: "Snapshot temporarily unavailable" },
+          });
+          return;
+        }
+        await externalSnapshotGate.promise;
+        await route.fulfill({ json: [] });
+      },
+    );
 
     await page.routeWebSocket(
       (url) => url.pathname === WORKSPACE_EVENTS_SOCKET_PATH,
@@ -286,9 +308,13 @@ test.describe("Workspace realtime @mock", () => {
     recoveringFromExpiredCursor = true;
     await activeSocket.close({ code: 4410, reason: "epoch_pruned" });
 
-    await expect
-      .poll(() => epochRequests, { timeout: 20_000 })
-      .toBeGreaterThan(epochRequestsBeforeRecovery);
+    try {
+      await expect.poll(() => externalSnapshotRequests, { timeout: 20_000 }).toBe(2);
+      expect(epochRequests).toBeGreaterThanOrEqual(epochRequestsBeforeRecovery + 2);
+      expect(socketUrls.length).toBe(connectionsBeforeRecovery);
+    } finally {
+      externalSnapshotGate.release();
+    }
     await expect
       .poll(() => socketUrls.length, { timeout: 20_000 })
       .toBeGreaterThan(connectionsBeforeRecovery);
@@ -300,5 +326,19 @@ test.describe("Workspace realtime @mock", () => {
         ),
       )
       .toEqual(RECOVERED_CURSOR);
+  });
+
+  test("starts the authorized session when opening a non-Messenger route", async ({ page }) => {
+    const sockets: string[] = [];
+    await page.routeWebSocket(
+      (url) => url.pathname === WORKSPACE_EVENTS_SOCKET_PATH,
+      (socket) => {
+        sockets.push(socket.url());
+      },
+    );
+    await seedAuthStorage(page);
+    await page.goto("/calendar");
+    await expect(page).toHaveURL(/\/calendar$/);
+    await expect.poll(() => sockets.length).toBe(1);
   });
 });

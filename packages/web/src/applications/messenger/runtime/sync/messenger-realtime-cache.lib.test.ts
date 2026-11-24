@@ -305,7 +305,11 @@ const mappingCases: MappingCase[] = [
       stream: { uuid: STREAM_UUID },
     },
     assertMutation: (writer) => {
-      expect(writer.deleteCachedStream).toHaveBeenCalledWith(OWNER_KEY, STREAM_UUID);
+      expect(writer.deleteCachedStream).toHaveBeenCalledWith(
+        OWNER_KEY,
+        STREAM_UUID,
+        expect.any(Function),
+      );
     },
   },
   {

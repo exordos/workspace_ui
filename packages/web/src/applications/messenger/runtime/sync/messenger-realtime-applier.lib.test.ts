@@ -1694,6 +1694,7 @@ describe("messenger realtime active applier", () => {
         uuid: MESSAGE_A,
         reactions: { thumbs_up: 2, eyes: 1 },
       }),
+      context,
     );
   });
 
@@ -1791,6 +1792,7 @@ describe("messenger realtime active applier", () => {
         uuid: MESSAGE_A,
         reactions: {},
       }),
+      context,
     );
   });
 
@@ -2522,7 +2524,11 @@ describe("messenger realtime active applier", () => {
 
     await vi.waitFor(() => expect(removeProjection).toHaveBeenCalledOnce());
     expect(deleteCachedStream).toHaveBeenCalledOnce();
-    expect(deleteCachedStream).toHaveBeenCalledWith(context.ownerKey, STREAM_A);
+    expect(deleteCachedStream).toHaveBeenCalledWith(
+      context.ownerKey,
+      STREAM_A,
+      expect.any(Function),
+    );
     expect(writeRealtimeCursor).toHaveBeenCalledWith(context.ownerKey, 43);
     expect(removeProjection).toHaveBeenCalledWith(
       expect.objectContaining({

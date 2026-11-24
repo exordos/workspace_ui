@@ -36,6 +36,24 @@ function createOwner(overrides: Partial<WorkspaceRealtimeCursorOwner> = {}) {
 }
 
 describe("workspace-realtime cursor", () => {
+  it("preserves an owner reset requirement until an authoritative snapshot replaces it", () => {
+    const rawStorage = new MemoryStorage();
+    const owner = createOwner();
+    const anotherOwner = createOwner({ accountId: "account-b" });
+    const first = createWorkspaceRealtimeCursorStorage(rawStorage);
+    const replacement = createWorkspaceRealtimeCursorStorage(rawStorage);
+    const cursor = { epochGeneration: "generation-b", epochVersion: 15 };
+    first.requireSnapshotReset(owner);
+    first.write(owner, cursor);
+    first.write(anotherOwner, cursor);
+    expect(replacement.read(owner)).toBeNull();
+    expect(replacement.isSnapshotResetRequired(owner)).toBe(true);
+    expect(replacement.read(anotherOwner)).toEqual(cursor);
+    replacement.writeSnapshotBoundary(owner, cursor);
+    expect(first.isSnapshotResetRequired(owner)).toBe(false);
+    expect(first.read(owner)).toEqual(cursor);
+  });
+
   it("builds a durable key from account, instance, organization, project, and user", () => {
     expect(workspaceRealtimeCursorKey(createOwner({ accountId: "account:a" }))).toBe(
       "workspace-realtime:cursor:account:account%3Aa:instance:instance-a:organization:org-a:project:project-a:user:user-a",

@@ -31,6 +31,7 @@ export interface WorkspaceMessengerCacheOwnerMetaRow {
   schemaVersion: number;
   lastHydratedAt: number | null;
   lastCompactedAt: number | null;
+  hasCompleteCatalog?: boolean; // A full streams, topics and folders snapshot reached the cache.
 }
 
 export interface WorkspaceMessengerCachedStream {
@@ -436,6 +437,9 @@ export interface WorkspaceMessengerCatalogCacheWriteSnapshot {
 export interface WorkspaceMessengerCatalogCacheWriteOptions {
   mode?: "partial" | "reconcile";
   reconcileFence?: number;
+  isWriteCurrent?: () => boolean; // Runtime validity at each asynchronous write.
+  completeCatalog?: boolean; // Set only by a complete authoritative snapshot.
+  requireWrite?: boolean; // Background has no in-memory fallback for a full snapshot.
 }
 
 export interface WorkspaceMessengerConversationMessagePage {
@@ -675,7 +679,15 @@ export async function deleteWorkspaceMessengerCacheDatabase(): Promise<void> {
   });
 }
 
-export async function deleteWorkspaceMessengerOwnerCache(ownerKey: string): Promise<void> {
+// A cursor gap discards derived projections while preserving unsynced local drafts.
+export async function deleteWorkspaceMessengerOwnerCache(
+  ownerKey: string,
+  options: {
+    preserveDrafts?: boolean;
+    isWriteCurrent?: () => boolean;
+    requireWrite?: boolean;
+  } = {},
+): Promise<void> {
   if (!isIndexedDBAvailable()) return;
 
   try {
@@ -696,27 +708,32 @@ export async function deleteWorkspaceMessengerOwnerCache(ownerKey: string): Prom
       stores.ownMessageReactions,
       stores.realtimeCursor,
       stores.searchResults,
-      stores.composerDrafts,
+      ...(options.preserveDrafts === true ? [] : [stores.composerDrafts]),
       stores.readBoundaries,
     ];
-    const idsByStore = await Promise.all(
-      storeNames.map(async (storeName) => {
-        if (storeName === stores.ownerMeta || storeName === stores.realtimeCursor) {
-          return { storeName, ids: [ownerKey] };
-        }
-        return { storeName, ids: await readRowIdsByOwner(db, ownerKey, storeName) };
-      }),
-    );
+    if (options.isWriteCurrent?.() === false) return;
     const transaction = db.transaction(storeNames, "readwrite");
-    for (const { storeName, ids } of idsByStore) {
+    for (const storeName of storeNames) {
       const store = transaction.objectStore(storeName);
-      for (const id of ids) {
-        store.delete(id);
+      if (storeName === stores.ownerMeta || storeName === stores.realtimeCursor) {
+        store.delete(ownerKey);
+        continue;
       }
+      const request = store.index("byOwner").openCursor(IDBKeyRange.only(ownerKey));
+      request.onsuccess = () => {
+        if (options.isWriteCurrent?.() === false) {
+          transaction.abort();
+          return;
+        }
+        const cursor = request.result;
+        if (cursor == null) return;
+        cursor.delete();
+        cursor.continue();
+      };
     }
     await transactionDone(transaction);
-  } catch {
-    return;
+  } catch (error) {
+    if (options.requireWrite) throw error;
   }
 }
 
@@ -1185,6 +1202,7 @@ async function deleteMissingCatalogRows(
   storeName: string,
   incomingIds: ReadonlySet<string>,
   reconcileFence: number,
+  isWriteCurrent?: () => boolean,
 ): Promise<void> {
   const transaction = db.transaction(storeName, "readwrite");
   const index = transaction.objectStore(storeName).index("byOwner");
@@ -1192,7 +1210,7 @@ async function deleteMissingCatalogRows(
 
   request.onsuccess = () => {
     const cursor = request.result;
-    if (cursor == null) return;
+    if (cursor == null || isWriteCurrent?.() === false) return;
 
     const row = cursor.value as { id: string; cacheUpdatedAt?: number };
     const cacheUpdatedAt = row.cacheUpdatedAt ?? 0;
@@ -1257,6 +1275,7 @@ async function upsertTopics(
     stores.topics,
     rows,
     (store, previous, row) => {
+      if (options.shouldApply?.() === false) return;
       if (!shouldUpsertCatalogRow(previous, row.topic.updatedAt, options)) return;
       store.put({
         ...row,
@@ -1362,6 +1381,7 @@ async function upsertUsers(
     stores.users,
     rows,
     (store, previous, row) => {
+      if (options.shouldApply?.() === false) return;
       if (shouldUpsertCatalogRow(previous, row.user.updatedAt, options)) store.put(row);
     },
   );
@@ -1385,6 +1405,7 @@ async function upsertStreamBindings(
     stores.streamBindings,
     rows,
     (store, previous, row) => {
+      if (options.shouldApply?.() === false) return;
       if (shouldUpsertCatalogRow(previous, row.streamBinding.updatedAt, options)) store.put(row);
     },
   );
@@ -1405,10 +1426,13 @@ async function writeCatalogCollection<TItem>(
   options: WorkspaceMessengerCatalogCacheWriteOptions,
   reconcileFence: number,
 ): Promise<void> {
-  if (items === undefined) return;
+  if (items === undefined || options.isWriteCurrent?.() === false) return;
 
-  await upsert(db, ownerKey, items, options.mode === "reconcile" ? { reconcileFence } : undefined);
-  if (options.mode !== "reconcile") return;
+  await upsert(db, ownerKey, items, {
+    ...(options.mode === "reconcile" ? { reconcileFence } : {}),
+    shouldApply: options.isWriteCurrent,
+  });
+  if (options.mode !== "reconcile" || options.isWriteCurrent?.() === false) return;
 
   await deleteMissingCatalogRows(
     db,
@@ -1416,6 +1440,7 @@ async function writeCatalogCollection<TItem>(
     storeName,
     new Set(items.map((item) => getCacheId(ownerKey, item))),
     reconcileFence,
+    options.isWriteCurrent,
   );
 }
 
@@ -1468,25 +1493,19 @@ export async function writeMessengerCatalogCache(
   snapshot: WorkspaceMessengerCatalogCacheWriteSnapshot,
   options: WorkspaceMessengerCatalogCacheWriteOptions = {},
 ): Promise<void> {
-  if (!isIndexedDBAvailable()) return;
+  if (!isIndexedDBAvailable()) {
+    if (options.requireWrite) throw new Error("Messenger catalog cache is unavailable");
+    return;
+  }
 
   try {
     const db = await openWorkspaceMessengerCacheDb();
+    if (options.isWriteCurrent?.() === false) return;
     const stores = WORKSPACE_MESSENGER_CACHE_STORES;
     const reconcileFence =
       options.mode === "reconcile"
         ? (options.reconcileFence ?? createMessengerCatalogCacheReconcileFence())
         : 0;
-    const transaction = db.transaction(stores.ownerMeta, "readwrite");
-
-    transaction.objectStore(stores.ownerMeta).put({
-      ownerKey,
-      schemaVersion: DB_VERSION,
-      lastHydratedAt: snapshot.lastHydratedAt ?? Date.now(),
-      lastCompactedAt: null,
-    } satisfies WorkspaceMessengerCacheOwnerMetaRow);
-    await transactionDone(transaction);
-
     await Promise.all([
       writeCatalogCollection(
         db,
@@ -1549,8 +1568,30 @@ export async function writeMessengerCatalogCache(
         reconcileFence,
       ),
     ]);
-  } catch {
-    return;
+    if (options.isWriteCurrent?.() === false) return;
+    const transaction = db.transaction(stores.ownerMeta, "readwrite");
+    const meta = transaction.objectStore(stores.ownerMeta);
+    const previous = await requestToPromise<WorkspaceMessengerCacheOwnerMetaRow | undefined>(
+      meta.get(ownerKey),
+    );
+    const completeCatalog =
+      options.completeCatalog === true &&
+      snapshot.streams !== undefined &&
+      snapshot.topics !== undefined &&
+      snapshot.folders !== undefined &&
+      snapshot.folderItems !== undefined;
+    if (options.isWriteCurrent?.() !== false) {
+      meta.put({
+        ownerKey,
+        schemaVersion: DB_VERSION,
+        lastHydratedAt: snapshot.lastHydratedAt ?? Date.now(),
+        lastCompactedAt: null,
+        ...(completeCatalog || previous?.hasCompleteCatalog ? { hasCompleteCatalog: true } : {}),
+      } satisfies WorkspaceMessengerCacheOwnerMetaRow);
+    }
+    await transactionDone(transaction);
+  } catch (error) {
+    if (options.requireWrite) throw error;
   }
 }
 
@@ -1662,6 +1703,7 @@ function folderWithRemovedItems(
 export async function deleteMessengerStreamCatalogCache(
   ownerKey: string,
   streamUuid: string,
+  isWriteCurrent?: () => boolean,
 ): Promise<void> {
   if (!isIndexedDBAvailable()) return;
 
@@ -1683,6 +1725,7 @@ export async function deleteMessengerStreamCatalogCache(
     const folderItemIdsToDelete = folderItemRows
       .filter((row) => row.streamUuid === streamUuid)
       .map((row) => row.id);
+    if (isWriteCurrent?.() === false) return;
     const cacheUpdatedAt = nextCatalogCacheUpdatedAt();
     const transaction = db.transaction(
       [
@@ -1942,6 +1985,7 @@ export async function deleteCachedTopicMessageBuckets(
 export async function deleteCachedStreamMessageBuckets(
   ownerKey: string,
   streamUuid: string,
+  isWriteCurrent?: () => boolean,
 ): Promise<void> {
   if (!isIndexedDBAvailable()) return;
 
@@ -1974,6 +2018,7 @@ export async function deleteCachedStreamMessageBuckets(
       }
     }
 
+    if (isWriteCurrent?.() === false) return;
     const transaction = db.transaction(
       [stores.messages, stores.messageBuckets, stores.messageWindows],
       "readwrite",
@@ -1991,7 +2036,7 @@ export async function deleteCachedStreamMessageBuckets(
       windowStore.delete(cacheRowId(ownerKey, conversationId));
     }
     await transactionDone(transaction);
-    await deleteOwnMessageReactionsForMessages(ownerKey, [...messageUuidsToDelete]);
+    await deleteOwnMessageReactionsForMessages(ownerKey, [...messageUuidsToDelete], isWriteCurrent);
   } catch {
     return;
   }
@@ -2474,6 +2519,7 @@ export async function deleteOwnMessageReactionsForMessage(
 export async function deleteOwnMessageReactionsForMessages(
   ownerKey: string,
   messageUuids: readonly string[],
+  isWriteCurrent?: () => boolean,
 ): Promise<void> {
   if (!isIndexedDBAvailable() || messageUuids.length === 0) return;
 
@@ -2485,7 +2531,7 @@ export async function deleteOwnMessageReactionsForMessages(
       ),
     );
     const ids = rowsByMessage.flat().map((row) => row.id);
-    if (ids.length === 0) return;
+    if (ids.length === 0 || isWriteCurrent?.() === false) return;
 
     const transaction = db.transaction(
       WORKSPACE_MESSENGER_CACHE_STORES.ownMessageReactions,
@@ -2504,14 +2550,17 @@ export async function deleteOwnMessageReactionsForMessages(
 export async function upsertCachedMessages(
   ownerKey: string,
   messages: readonly WorkspaceMessengerCachedMessage[],
+  isWriteCurrent: () => boolean = () => true,
 ): Promise<void> {
   if (!isIndexedDBAvailable() || messages.length === 0) return;
 
   try {
     const db = await openWorkspaceMessengerCacheDb();
+    if (!isWriteCurrent()) return;
     const stores = WORKSPACE_MESSENGER_CACHE_STORES;
     const transaction = db.transaction([stores.messages, stores.readBoundaries], "readwrite");
     await putMessageRows(transaction, ownerKey, messages);
+    if (!isWriteCurrent()) transaction.abort();
     await transactionDone(transaction);
   } catch {
     return;
@@ -3323,6 +3372,7 @@ export async function deleteWorkspaceComposerDraftRecord(
 export async function deleteWorkspaceComposerDraftRecordsForStream(
   ownerKey: string,
   streamUuid: string,
+  isWriteCurrent?: () => boolean,
 ): Promise<void> {
   if (!isIndexedDBAvailable()) return;
 
@@ -3350,7 +3400,7 @@ export async function deleteWorkspaceComposerDraftRecordsForStream(
           row.conversationId === `stream:${streamUuid}` ||
           row.conversationId?.startsWith(`topic:${streamUuid}:`) === true),
     );
-    if (matchingRows.length === 0) return;
+    if (matchingRows.length === 0 || isWriteCurrent?.() === false) return;
     const transaction = db.transaction(
       WORKSPACE_MESSENGER_CACHE_STORES.composerDrafts,
       "readwrite",
@@ -3437,13 +3487,17 @@ export async function deleteExpiredMessengerSearchResults(
   }
 }
 
-export async function deleteMessengerSearchResultsForOwner(ownerKey: string): Promise<void> {
+export async function deleteMessengerSearchResultsForOwner(
+  ownerKey: string,
+  isWriteCurrent?: () => boolean,
+): Promise<void> {
   if (!isIndexedDBAvailable()) return;
 
   try {
     const db = await openWorkspaceMessengerCacheDb();
     const storeName = WORKSPACE_MESSENGER_CACHE_STORES.searchResults;
     const rowIds = await readRowIdsByOwner(db, ownerKey, storeName);
+    if (isWriteCurrent?.() === false) return;
     if (rowIds.length === 0) return;
     const transaction = db.transaction(storeName, "readwrite");
     const store = transaction.objectStore(storeName);

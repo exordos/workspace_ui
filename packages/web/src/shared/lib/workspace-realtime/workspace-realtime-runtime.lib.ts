@@ -12,8 +12,12 @@ import type {
   WorkspaceRealtimeEvent,
 } from "~/shared/api/messenger.types";
 import { isWorkspaceEventsCursorExpiredErrorDto } from "~/shared/api/messenger.types";
-import { getEventsPage as defaultGetEventsPage } from "~/shared/api/workspace-client";
+import {
+  getEpoch as defaultGetEpoch,
+  getEventsPage as defaultGetEventsPage,
+} from "~/shared/api/workspace-client";
 import type { WorkspaceClientOptions } from "~/shared/api/workspace-client";
+import { WorkspaceRealtimeParticipantNotReadyError } from "./workspace-realtime-applier.lib";
 import { catchUpWorkspaceRealtime } from "./workspace-realtime-catch-up.lib";
 import type {
   WorkspaceRealtimeCatchUpApplier,
@@ -117,6 +121,8 @@ export interface WorkspaceRealtimeDiagnostic {
     | WorkspaceRealtimeSkipReason
     | "websocket_error"
     | "catch_up_failed"
+    | "event_apply_failed"
+    | "participant_not_ready"
     | "auth_failed"
     | "auth_refresh_failed"
     | "cursor_expired"
@@ -167,16 +173,25 @@ export interface WorkspaceRealtimeRuntimeOptions {
   webSocketFactory?: WorkspaceRealtimeWebSocketFactory;
   reconnectDelayMs?: (attempt: number) => number;
   refreshSession?: WorkspaceRealtimeSessionRefresh;
-  resetAuthoritativeSnapshots?: (
+  // Return a usable cursor only after preparing the owner projections for this attempt.
+  prepareSnapshots?: (
     context: WorkspaceRealtimeRuntimeContext,
-    error: WorkspaceEventsCursorExpiredErrorDto,
-  ) => Promise<void> | void;
+    preparation: {
+      savedCursor: WorkspaceRealtimeCursor | null;
+      expiry: WorkspaceEventsCursorExpiredErrorDto | null;
+      resetRequired: boolean; // Survives runtime replacement, even without the original expiry frame.
+    },
+  ) => Promise<WorkspaceRealtimeCursor>;
+  prepareParticipant?: (
+    context: WorkspaceRealtimeRuntimeContext,
+    participant: string,
+  ) => Promise<void>; // Repair a projection before replaying from the same confirmed cursor.
   onDiagnostic?: (diagnostic: WorkspaceRealtimeDiagnostic) => unknown;
 }
 
 export interface WorkspaceRealtimeTransportCore {
   start(context: WorkspaceRealtimeRuntimeContext): Promise<void>;
-  stop(reason?: string): Promise<void>;
+  stop(reason?: string, options?: { waitForApplications?: boolean }): Promise<void>;
   catchUp(context: WorkspaceRealtimeRuntimeContext): Promise<void>;
   connect(context: WorkspaceRealtimeRuntimeContext): Promise<void>;
   disconnect(reason?: string): Promise<void>;
@@ -292,20 +307,6 @@ function getWebSocketCloseCode(event: Event): number | null {
   return typeof code === "number" ? code : null;
 }
 
-function isSameRuntimeOwner(
-  left: WorkspaceRealtimeRuntimeOwner,
-  right: WorkspaceRealtimeRuntimeOwner,
-): boolean {
-  return (
-    left.accountId === right.accountId &&
-    left.instanceId === right.instanceId &&
-    left.organizationId === right.organizationId &&
-    left.projectId === right.projectId &&
-    left.userUuid === right.userUuid &&
-    left.runtimeGeneration === right.runtimeGeneration
-  );
-}
-
 export function createWorkspaceRealtimeNoopApplier(): WorkspaceRealtimeEventApplier {
   return {
     applyEvent() {
@@ -339,12 +340,19 @@ export function createWorkspaceRealtimeTransportCore(
   let lastAuthRefreshToken: string | null = null;
   let lastAuthFailure: { reason: string; error?: unknown } | null = null;
   let cursorRecoveryPromise: Promise<void> | null = null;
+  let pendingPreparation: {
+    expiry: WorkspaceEventsCursorExpiredErrorDto | null;
+    resetRequired: boolean;
+  } | null = null;
+  const pendingParticipants = new Set<string>();
+  const applicationsByOwner = new Map<string, Set<Promise<unknown>>>();
   let disposeFrameQueue: (() => void) | null = null;
   let transportMode: WorkspaceRealtimeRuntimeMode = "idle";
   let lastWebSocketFrameAt: number | null = null;
   let epochWatchdogTimer: ReturnType<typeof setTimeout> | null = null;
   let epochLagTimer: ReturnType<typeof setTimeout> | null = null;
   let epochCheckPromise: Promise<void> | null = null;
+  let startVersion = 0;
 
   const reconnectDelayMs = options.reconnectDelayMs ?? defaultReconnectDelayMs;
   const webSocketFactory = options.webSocketFactory ?? defaultWebSocketFactory;
@@ -379,6 +387,14 @@ export function createWorkspaceRealtimeTransportCore(
   function isCurrentRuntime(): boolean {
     if (context == null || stopped) return false;
     return isOwnerCurrent(context.owner, options, activeSignal());
+  }
+
+  // Capture identity as well as owner: a newer attempt may use the same credentials.
+  function isCurrentAttempt(
+    attemptContext: WorkspaceRealtimeRuntimeContext,
+    signal: AbortSignal | undefined,
+  ): boolean {
+    return context === attemptContext && activeSignal() === signal && isCurrentRuntime();
   }
 
   function isEpochWatchdogActive(activeSocket: WorkspaceRealtimeWebSocketLike): boolean {
@@ -432,13 +448,28 @@ export function createWorkspaceRealtimeTransportCore(
     });
   }
 
+  // Keep the failed participant's repair independent of the shared cursor.
+  function recordApplicationFailure(
+    error: unknown,
+    fallback: "event_apply_failed" | "catch_up_failed",
+  ): WorkspaceRealtimeDiagnostic["reason"] {
+    if (error instanceof WorkspaceRealtimeParticipantNotReadyError) {
+      pendingParticipants.add(error.participant);
+      return "participant_not_ready";
+    }
+    return fallback;
+  }
+
   function scheduleAuthRefreshRetry(reason: string, error?: unknown): void {
     if (context == null || stopped || reconnectTimer != null) return;
+    const attemptContext = context;
+    const signal = activeSignal();
     lastAuthFailure = { reason, error };
     reconnectAttempt += 1;
     void emitState("reconnecting", reason, error);
     reconnectTimer = setTimeout(() => {
       reconnectTimer = null;
+      if (!isCurrentAttempt(attemptContext, signal)) return;
       lastAuthRefreshToken = null;
       const failure = lastAuthFailure;
       void refreshSessionAfterAuthFailure(failure?.reason ?? "auth_refresh_retry", failure?.error);
@@ -446,24 +477,41 @@ export function createWorkspaceRealtimeTransportCore(
   }
 
   function refreshSessionAfterAuthFailure(reason: string, error?: unknown): Promise<void> {
+    const attemptContext = context;
+    const signal = activeSignal();
+    if (attemptContext == null || !isCurrentAttempt(attemptContext, signal)) {
+      return Promise.resolve();
+    }
     if (authRefreshPromise != null) return authRefreshPromise;
-    const nextRefreshPromise = runSessionRefreshAfterAuthFailure(reason, error);
+    const nextRefreshPromise = runSessionRefreshAfterAuthFailure(
+      attemptContext,
+      signal,
+      reason,
+      error,
+    );
     authRefreshPromise = nextRefreshPromise;
-    void nextRefreshPromise.finally(() => {
-      if (authRefreshPromise === nextRefreshPromise) {
-        authRefreshPromise = null;
-      }
-    });
+    void nextRefreshPromise
+      .finally(() => {
+        if (authRefreshPromise === nextRefreshPromise) {
+          authRefreshPromise = null;
+        }
+      })
+      .catch(() => undefined);
     return nextRefreshPromise;
   }
 
-  async function runSessionRefreshAfterAuthFailure(reason: string, error?: unknown): Promise<void> {
-    if (context == null || stopped) return;
-
+  // Each transport attempt handles its own result, even when IAM shares the HTTP refresh.
+  async function runSessionRefreshAfterAuthFailure(
+    attemptContext: WorkspaceRealtimeRuntimeContext,
+    refreshSignal: AbortSignal | undefined,
+    reason: string,
+    error?: unknown,
+  ): Promise<void> {
+    const isCurrent = () => isCurrentAttempt(attemptContext, refreshSignal);
     const accessToken = options.clientOptions.accessToken ?? "";
     if (lastAuthRefreshToken === accessToken) {
       await emitState("failed", reason, error);
-      scheduleAuthRefreshRetry("auth_refresh_backoff", error);
+      if (isCurrent()) scheduleAuthRefreshRetry("auth_refresh_backoff", error);
       return;
     }
 
@@ -477,38 +525,20 @@ export function createWorkspaceRealtimeTransportCore(
     lastAuthRefreshToken = accessToken;
     reportDiagnostic("auth_failed", error);
     await emitState("auth_refreshing", reason, error);
-
-    const refreshOwner = context.owner;
-    const refreshSignal = activeSignal();
+    if (!isCurrent()) return;
 
     try {
-      await options.refreshSession(refreshOwner.accountId, {
+      await options.refreshSession(attemptContext.owner.accountId, {
         force: true,
         signal: refreshSignal,
       });
-      if (
-        stopped ||
-        activeSignal() !== refreshSignal ||
-        refreshSignal?.aborted === true ||
-        context == null ||
-        !isSameRuntimeOwner(context.owner, refreshOwner)
-      ) {
-        return;
-      }
+      if (!isCurrent()) return;
       await stop("auth_refreshed");
     } catch (refreshError) {
-      if (
-        stopped ||
-        activeSignal() !== refreshSignal ||
-        refreshSignal?.aborted === true ||
-        context == null ||
-        !isSameRuntimeOwner(context.owner, refreshOwner)
-      ) {
-        return;
-      }
+      if (!isCurrent()) return;
       reportDiagnostic("auth_refresh_failed", refreshError);
       await emitState("failed", reason, refreshError);
-      scheduleAuthRefreshRetry("auth_refresh_failed", refreshError);
+      if (isCurrent()) scheduleAuthRefreshRetry("auth_refresh_failed", refreshError);
     }
   }
 
@@ -539,9 +569,32 @@ export function createWorkspaceRealtimeTransportCore(
     return nextEpochVersion > previousEpochVersion;
   }
 
+  // Count event writes only. A superseded page fetch cannot delay a new attempt.
+  function applyTrackedEvent(
+    event: WorkspaceRealtimeEvent,
+    eventContext: WorkspaceRealtimeEventContext,
+  ): Promise<unknown> {
+    const application = Promise.resolve(options.applier.applyEvent(event, eventContext));
+    const ownerKey = eventContext.ownerKey;
+    const applications = applicationsByOwner.get(ownerKey) ?? new Set<Promise<unknown>>();
+    applications.add(application);
+    applicationsByOwner.set(ownerKey, applications);
+    return application.finally(() => {
+      applications.delete(application);
+      if (applications.size === 0) applicationsByOwner.delete(ownerKey);
+    });
+  }
+
+  // Prefer settling same-owner writes before replay, in both REST and WebSocket paths.
+  async function settleOwnerApplications(ownerKey: string): Promise<void> {
+    const applications = applicationsByOwner.get(ownerKey);
+    if (applications != null) await Promise.allSettled(applications);
+  }
+
   async function handleNormalizedEvent(
     event: WorkspaceRealtimeEvent,
     isFrameCurrent: () => boolean,
+    signal: AbortSignal,
   ): Promise<boolean> {
     if (context == null) return false;
     if (!isCurrentRuntime()) {
@@ -550,7 +603,7 @@ export function createWorkspaceRealtimeTransportCore(
       return false;
     }
 
-    const currentCursor = lastCursor ?? options.cursorStorage.read(context.owner);
+    const currentCursor = lastCursor;
     if (currentCursor != null && event.epoch_version <= currentCursor.epochVersion) {
       await skipEvent(event, "duplicate_epoch", "websocket");
       if (!isFrameCurrent()) return false;
@@ -558,12 +611,13 @@ export function createWorkspaceRealtimeTransportCore(
       return false;
     }
 
-    await options.applier.applyEvent(event, {
+    const eventContext: WorkspaceRealtimeEventContext = {
       ...context,
-      signal: activeSignal(),
+      signal,
       source: "websocket",
       notificationsEnabled,
-    });
+    };
+    await applyTrackedEvent(event, eventContext);
     if (!isFrameCurrent()) return false;
     return advanceCursor(event.epoch_version);
   }
@@ -575,7 +629,7 @@ export function createWorkspaceRealtimeTransportCore(
     if (context == null) return false;
     if ("epoch_version" in frame && typeof frame.epoch_version === "number") {
       const skippedEvent = { epoch_version: frame.epoch_version };
-      const currentCursor = lastCursor ?? options.cursorStorage.read(context.owner);
+      const currentCursor = lastCursor;
       const reason =
         currentCursor != null && frame.epoch_version <= currentCursor.epochVersion
           ? "duplicate_epoch"
@@ -600,6 +654,37 @@ export function createWorkspaceRealtimeTransportCore(
     );
   }
 
+  // A fresh epoch is only durable after the session has installed its authoritative snapshots.
+  async function preparePendingCursor(
+    attemptContext: WorkspaceRealtimeRuntimeContext,
+    signal: AbortSignal | undefined,
+  ): Promise<boolean> {
+    const preparation = pendingPreparation;
+    if (preparation == null) return true;
+    const preparedContext = { ...attemptContext, signal };
+    let cursor: WorkspaceRealtimeCursor;
+    if (options.prepareSnapshots != null) {
+      cursor = await options.prepareSnapshots(preparedContext, {
+        savedCursor: lastCursor,
+        expiry: preparation.expiry,
+        resetRequired: preparation.resetRequired,
+      });
+    } else {
+      const getEpoch = options.getEpoch ?? defaultGetEpoch;
+      const epoch = await getEpoch(withAbortSignal(options.clientOptions, signal));
+      cursor = { epochGeneration: epoch.epoch_generation, epochVersion: epoch.epoch_version };
+    }
+    if (!isCurrentAttempt(attemptContext, signal) || pendingPreparation !== preparation)
+      return false;
+    options.cursorStorage.writeSnapshotBoundary(attemptContext.owner, cursor);
+    lastCursor = cursor;
+    lastEpochVersion = cursor.epochVersion;
+    pendingPreparation = null;
+    pendingParticipants.clear();
+    return true;
+  }
+
+  // Keep the runtime in snapshot recovery until a new boundary can be committed.
   async function recoverFromCursorExpiry(
     error: WorkspaceEventsCursorExpiredErrorDto,
   ): Promise<void> {
@@ -608,23 +693,28 @@ export function createWorkspaceRealtimeTransportCore(
     }
 
     const recovery = (async (): Promise<void> => {
-      if (context == null || stopped) return;
+      const attemptContext = context;
+      const signal = activeSignal();
+      if (attemptContext == null || !isCurrentAttempt(attemptContext, signal)) return;
 
       reportDiagnostic("cursor_expired", error);
       notificationsEnabled = false;
       lastCursor = null;
       lastEpochVersion = null;
-      options.cursorStorage.clear(context.owner);
+      pendingPreparation = { expiry: error, resetRequired: true };
+      options.cursorStorage.requireSnapshotReset(attemptContext.owner);
       await disconnect("cursor_expired");
+      if (!isCurrentAttempt(attemptContext, signal)) return;
 
       try {
-        await options.resetAuthoritativeSnapshots?.(context, error);
+        await preparePendingCursor(attemptContext, signal);
       } catch (snapshotError) {
+        if (!isCurrentAttempt(attemptContext, signal)) return;
         reportDiagnostic("snapshot_recovery_failed", snapshotError);
         await emitState("failed", "snapshot_recovery_failed", snapshotError);
       }
 
-      if (!stopped && isCurrentRuntime()) {
+      if (isCurrentAttempt(attemptContext, signal)) {
         // Recovery is retried through the normal backoff path. A broken snapshot reload
         // must not create a tight reconnect loop around the same pruned cursor.
         scheduleReconnect("cursor_expired");
@@ -813,41 +903,49 @@ export function createWorkspaceRealtimeTransportCore(
     }
   }
 
-  async function handleRawFrame(raw: unknown, isFrameCurrent: () => boolean): Promise<void> {
+  // Parse errors may be skipped. An applier failure must stop the ordered stream.
+  async function handleRawFrame(
+    raw: unknown,
+    isFrameCurrent: () => boolean,
+    signal: AbortSignal,
+  ): Promise<void> {
+    let frame: WorkspaceMessengerWebSocketFrameDto;
+    let event: WorkspaceRealtimeEvent | null;
     try {
-      const frame = parseWorkspaceWebSocketFrame(raw);
-      if ("type" in frame && frame.type === "ready") {
-        await handleReadyFrame(frame);
-        return;
-      }
-      if ("type" in frame && frame.type === "error") {
-        await recoverFromCursorExpiry({
-          ...frame,
-          type: "EventsCursorExpiredError",
-        });
-        return;
-      }
-      const event = normalizeWorkspaceWebSocketFrame(frame);
-      if (event == null) {
-        await handleUnsupportedFrame(frame, isFrameCurrent);
-        return;
-      }
-      await handleNormalizedEvent(event, isFrameCurrent);
+      frame = parseWorkspaceWebSocketFrame(raw);
+      event = normalizeWorkspaceWebSocketFrame(frame);
     } catch (error) {
-      if (!isFrameCurrent()) return;
-      await handleInvalidFrame(error);
+      if (isFrameCurrent()) {
+        try {
+          await handleInvalidFrame(error);
+        } catch (diagnosticError) {
+          if (isFrameCurrent()) reportDiagnostic("websocket_error", diagnosticError);
+        }
+      }
+      return;
+    }
+    if ("type" in frame && frame.type === "ready") {
+      await handleReadyFrame(frame);
+    } else if ("type" in frame && frame.type === "error") {
+      await recoverFromCursorExpiry({ ...frame, type: "EventsCursorExpiredError" });
+    } else if (event == null) {
+      await handleUnsupportedFrame(frame, isFrameCurrent);
+    } else {
+      await handleNormalizedEvent(event, isFrameCurrent, signal);
     }
   }
 
   async function runCatchUp(activeContext: WorkspaceRealtimeRuntimeContext): Promise<boolean> {
-    if (!isCurrentRuntime()) return false;
+    const signal = activeSignal();
+    const isCurrent = () => isCurrentAttempt(activeContext, signal);
+    if (!isCurrent()) return false;
     await emitState("catching_up");
+    if (!isCurrent()) return false;
 
     // Catch-up sends events to the same applier but marks the source for diagnostics.
-    const applyEvents = options.applier.applyEvents;
     const catchUpApplier: WorkspaceRealtimeCatchUpApplier = {
       applyEvent: (event, catchUpContext) =>
-        options.applier.applyEvent(event, {
+        applyTrackedEvent(event, {
           owner: catchUpContext.owner,
           ownerKey: catchUpContext.ownerKey,
           surface: catchUpContext.surface,
@@ -855,18 +953,6 @@ export function createWorkspaceRealtimeTransportCore(
           source: "catch_up",
           notificationsEnabled: false,
         }),
-      ...(applyEvents == null
-        ? {}
-        : {
-            applyEvents: (
-              events: readonly WorkspaceRealtimeEvent[],
-              catchUpContext: Parameters<WorkspaceRealtimeCatchUpApplier["applyEvent"]>[1],
-            ) =>
-              applyEvents(events, {
-                ...catchUpContext,
-                notificationsEnabled: false,
-              }),
-          }),
       skipEvent: (event, reason, catchUpContext) =>
         options.applier.skipEvent(event, reason, {
           owner: catchUpContext.owner,
@@ -882,20 +968,25 @@ export function createWorkspaceRealtimeTransportCore(
       owner: activeContext.owner,
       ownerKey: activeContext.ownerKey,
       surface: activeContext.surface,
-      clientOptions: withAbortSignal(options.clientOptions, activeSignal()),
+      clientOptions: withAbortSignal(options.clientOptions, signal),
       cursorStorage: options.cursorStorage,
       applier: catchUpApplier,
       ...(lastCursor == null ? {} : { startCursor: lastCursor }),
-      isOwnerCurrent: (owner) => isOwnerCurrent(owner, options, activeSignal()),
+      isOwnerCurrent: isCurrent,
+      onCursorCommitted(cursor) {
+        lastCursor = cursor;
+        lastEpochVersion = cursor.epochVersion;
+      },
       pageLimit: options.pageLimit,
       getEpoch: options.getEpoch,
       getEventsPage: options.getEventsPage,
       normalizeRestEvent: options.normalizeRestEvent,
     });
 
+    if (result.isStale || !isCurrent()) return false;
     lastCursor = result.lastCursor;
     lastEpochVersion = result.lastCursor.epochVersion;
-    return !result.isStale && isCurrentRuntime();
+    return true;
   }
 
   function attachExternalAbort(contextSignal: AbortSignal | undefined): void {
@@ -929,6 +1020,7 @@ export function createWorkspaceRealtimeTransportCore(
     const protocols = buildMessengerWebSocketProtocols(options.clientOptions.accessToken ?? "");
     socket = webSocketFactory(url, protocols);
     const activeSocket = socket;
+    const socketController = new AbortController();
     const pendingFrames: { data: unknown; bytes: number }[] = [];
     let pendingBytes = 0;
     let draining = false;
@@ -938,6 +1030,7 @@ export function createWorkspaceRealtimeTransportCore(
     const isFrameCurrent = (): boolean =>
       !disposed && context === activeContext && socket === activeSocket && isCurrentRuntime();
     disposeFrameQueue = () => {
+      socketController.abort();
       disposed = true;
       accepting = false;
       reconnectAfterDrain = false;
@@ -955,9 +1048,15 @@ export function createWorkspaceRealtimeTransportCore(
           if (frame == null) break;
           pendingBytes -= frame.bytes;
           try {
-            await handleRawFrame(frame.data, isFrameCurrent);
+            await handleRawFrame(frame.data, isFrameCurrent, socketController.signal);
           } catch (error) {
-            if (isFrameCurrent()) reportDiagnostic("websocket_error", error);
+            if (isFrameCurrent()) {
+              const reason = recordApplicationFailure(error, "event_apply_failed");
+              reportDiagnostic(reason, error);
+              await disconnect(reason);
+              if (context === activeContext && isCurrentRuntime()) scheduleReconnect(reason);
+            }
+            return;
           }
           processed += 1;
           if (processed === WEBSOCKET_FRAMES_PER_TASK && pendingFrames.length > 0) {
@@ -1053,15 +1152,24 @@ export function createWorkspaceRealtimeTransportCore(
   }
 
   async function runCatchUpAndConnect(reason?: string): Promise<void> {
-    if (context == null || stopped) return;
+    const attemptContext = context;
+    const signal = activeSignal();
+    const isCurrent = () => attemptContext != null && isCurrentAttempt(attemptContext, signal);
+    if (attemptContext == null || !isCurrent()) return;
 
     try {
-      const shouldConnect = await runCatchUp(context);
-      if (!shouldConnect || context == null || stopped) return;
+      if (!(await preparePendingCursor(attemptContext, signal)) || !isCurrent()) return;
+      for (const participant of pendingParticipants) {
+        await options.prepareParticipant?.({ ...attemptContext, signal }, participant);
+        if (!isCurrent()) return;
+        pendingParticipants.delete(participant);
+      }
+      const shouldConnect = await runCatchUp(attemptContext);
+      if (!shouldConnect || !isCurrent()) return;
       await emitState("connecting", reason);
-      openWebSocket(context);
+      if (isCurrent()) openWebSocket(attemptContext);
     } catch (error) {
-      if (stopped || activeSignal()?.aborted === true) return;
+      if (!isCurrent()) return;
       const expiredCursor = cursorExpiredError(error);
       if (expiredCursor != null) {
         await recoverFromCursorExpiry(expiredCursor);
@@ -1071,9 +1179,13 @@ export function createWorkspaceRealtimeTransportCore(
         await refreshSessionAfterAuthFailure("catch_up_auth_failed", error);
         return;
       }
-      reportDiagnostic("catch_up_failed", error);
+      const failureReason =
+        pendingPreparation != null
+          ? "snapshot_recovery_failed"
+          : recordApplicationFailure(error, "catch_up_failed");
+      reportDiagnostic(failureReason, error);
       await emitState("failed", reason, error);
-      scheduleReconnect("catch_up_failed");
+      if (isCurrent()) scheduleReconnect(failureReason);
     }
   }
 
@@ -1087,7 +1199,8 @@ export function createWorkspaceRealtimeTransportCore(
     }, reconnectDelayMs(reconnectAttempt));
   }
 
-  async function disconnect(reason = "disconnect"): Promise<void> {
+  async function disconnect(reason = "disconnect", waitForApplications = true): Promise<void> {
+    const previousOwnerKey = context?.ownerKey;
     clearEpochWatchdogTimers();
     notificationsEnabled = false;
     disposeFrameQueue?.();
@@ -1102,43 +1215,85 @@ export function createWorkspaceRealtimeTransportCore(
       activeSocket.onclose = null;
       activeSocket.close(1000, reason);
     }
+    // A disconnected socket's operation must finish before the same owner replays that event.
+    if (waitForApplications && previousOwnerKey != null)
+      await settleOwnerApplications(previousOwnerKey);
   }
 
-  async function stop(reason = "stop"): Promise<void> {
+  // Invalidate immediately and keep an old stop from releasing the new attempt.
+  async function stopCurrent(reason: string): Promise<void> {
     if (stopped && context == null) return;
+    const previousContext = context;
+    const previousSignal = activeSignal();
     stopped = true;
     clearReconnectTimer();
     clearEpochWatchdogTimers();
     cleanupExternalAbortListener();
     lastAuthFailure = null;
     controller?.abort();
-    await disconnect(reason);
+    await disconnect(reason, false);
+    if (context !== previousContext || activeSignal() !== previousSignal) return;
     await emitState("stopped", reason);
+    if (context !== previousContext || activeSignal() !== previousSignal) return;
     context = null;
     controller = null;
   }
 
+  async function stop(
+    reason = "stop",
+    stopOptions?: { waitForApplications?: boolean },
+  ): Promise<void> {
+    startVersion += 1;
+    await stopCurrent(reason);
+    if (stopOptions?.waitForApplications === true) {
+      // Another start may already have cleared the context while waiting for an old write.
+      await Promise.all([...applicationsByOwner.keys()].map(settleOwnerApplications));
+    }
+  }
+
   async function start(nextContext: WorkspaceRealtimeRuntimeContext): Promise<void> {
-    await stop("restart");
+    const version = ++startVersion;
+    await stopCurrent("restart");
+    await settleOwnerApplications(nextContext.ownerKey);
+    if (version !== startVersion || nextContext.signal?.aborted === true) return;
     context = nextContext;
     controller = new AbortController();
     stopped = false;
     reconnectAttempt = 0;
     lastAuthRefreshToken = null;
     lastAuthFailure = null;
+    authRefreshPromise = null;
     cursorRecoveryPromise = null;
+    reconnectPromise = null;
+    const resetRequired = options.cursorStorage.isSnapshotResetRequired(nextContext.owner);
+    pendingPreparation =
+      resetRequired || (options.prepareSnapshots != null && nextContext.startCursor == null)
+        ? { expiry: null, resetRequired }
+        : null;
+    pendingParticipants.clear();
     epochCheckPromise = null;
     clearEpochWatchdogTimers();
     notificationsEnabled = false;
-    lastCursor = nextContext.startCursor ?? options.cursorStorage.read(nextContext.owner);
+    lastCursor = resetRequired
+      ? null
+      : (nextContext.startCursor ?? options.cursorStorage.read(nextContext.owner));
     lastEpochVersion = lastCursor?.epochVersion ?? null;
     attachExternalAbort(nextContext.signal);
     if (!isCurrentRuntime()) return;
-    if (nextContext.startCursor != null) {
+    if (!resetRequired && nextContext.startCursor != null) {
       options.cursorStorage.write(nextContext.owner, nextContext.startCursor);
     }
-    await emitState("starting");
-    await runCatchUpAndConnect("start");
+    const signal = activeSignal();
+    const operation = (async () => {
+      await emitState("starting");
+      if (isCurrentAttempt(nextContext, signal)) await runCatchUpAndConnect("start");
+    })();
+    reconnectPromise = operation;
+    try {
+      await operation;
+    } finally {
+      if (reconnectPromise === operation) reconnectPromise = null;
+    }
   }
 
   async function catchUp(nextContext: WorkspaceRealtimeRuntimeContext): Promise<void> {
@@ -1159,15 +1314,17 @@ export function createWorkspaceRealtimeTransportCore(
     if (cursorRecoveryPromise != null) return cursorRecoveryPromise;
 
     clearReconnectTimer();
-    const operation = (async (): Promise<void> => {
-      try {
-        await disconnect(reason);
-        await runCatchUpAndConnect(reason);
-      } finally {
-        reconnectPromise = null;
-      }
-    })();
+    const attemptContext = context;
+    const signal = activeSignal();
+    const operation = disconnect(reason).then(async () => {
+      if (isCurrentAttempt(attemptContext, signal)) await runCatchUpAndConnect(reason);
+    });
     reconnectPromise = operation;
+    void operation
+      .finally(() => {
+        if (reconnectPromise === operation) reconnectPromise = null;
+      })
+      .catch(() => undefined);
     return operation;
   }
 

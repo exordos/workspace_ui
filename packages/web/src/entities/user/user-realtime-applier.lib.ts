@@ -1,3 +1,4 @@
+import { WorkspaceRealtimeParticipantNotReadyError } from "~/shared/lib/workspace-realtime/workspace-realtime-applier.lib";
 import type {
   WorkspaceRealtimeEventApplier,
   WorkspaceRealtimeRuntimeOwner,
@@ -10,6 +11,7 @@ import type { UserCacheDeps } from "./user-sync.lib";
 export interface UserRealtimeApplierOptions {
   isOwnerCurrent?: (owner: WorkspaceRealtimeRuntimeOwner) => boolean;
   userCache?: Pick<UserCacheDeps, "upsertUsersCache">;
+  requireActiveProjection?: boolean; // The session cursor waits if the selected users store is unavailable.
 }
 
 function canWriteUserCache(
@@ -31,16 +33,23 @@ export function createUserRealtimeApplier(
       const user = adaptWorkspaceMessengerUserDto(event.user);
       if (context.surface === "background") {
         // Для фонового surface не трогаем живой store: ему нужен только durable кэш для нотификаций.
-        writeUsersToCacheForOwner(context.ownerKey, [user], options.userCache);
+        writeUsersToCacheForOwner(context.ownerKey, [user], options.userCache, () =>
+          canWriteUserCache(context, options),
+        );
         return;
       }
 
       const applied = useUsersStore.getState().upsertUserForOwner(context.ownerKey, user);
       if (!applied) {
+        if (options.requireActiveProjection === true) {
+          throw new WorkspaceRealtimeParticipantNotReadyError("users");
+        }
         return;
       }
 
-      writeUsersToCacheForOwner(context.ownerKey, [user], options.userCache);
+      writeUsersToCacheForOwner(context.ownerKey, [user], options.userCache, () =>
+        canWriteUserCache(context, options),
+      );
     },
     skipEvent() {
       // User store does not keep realtime diagnostics; transport/messenger owns them.

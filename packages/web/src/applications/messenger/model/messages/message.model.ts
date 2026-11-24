@@ -1288,9 +1288,9 @@ export const useWorkspaceMessageStore = create<WorkspaceMessageStoreState>((set,
     removedStreamUuids.delete(streamUuid);
   },
 
-  clear() {
+  clear(options) {
     logStoreAction("workspaceMessage", "clear", {});
-    removedStreamUuids.clear();
+    if (options?.preserveRemovedStreams !== true) removedStreamUuids.clear();
     set((state) => ({ ...createEmptyWorkspaceMessageData(), ownerKey: state.ownerKey }));
   },
 }));

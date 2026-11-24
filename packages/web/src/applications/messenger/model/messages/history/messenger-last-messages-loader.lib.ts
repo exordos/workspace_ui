@@ -42,7 +42,11 @@ export interface MessengerLastMessagesCacheDeps {
     ownerKey: string,
     messageUuids: readonly MessengerUuid[],
   ) => Promise<MessengerMessage[]>;
-  writeMessages?: (ownerKey: string, messages: readonly MessengerMessage[]) => Promise<void>;
+  writeMessages?: (
+    ownerKey: string,
+    messages: readonly MessengerMessage[],
+    isWriteCurrent?: () => boolean,
+  ) => Promise<void>;
 }
 
 export interface MessengerLastMessagesStoreApi {
@@ -176,11 +180,13 @@ export async function primeMessengerLastMessagesFromCache({
   payload,
   cache = {},
   messageStore = useWorkspaceMessageStore,
+  isCurrent = () => true,
 }: {
   ownerKey: string;
   payload: Pick<MessengerBootstrapPayload, "streams" | "topics" | "conversations">;
   cache?: MessengerLastMessagesCacheDeps;
   messageStore?: MessengerLastMessagesMessageStoreApi;
+  isCurrent?: () => boolean; // Reject cache results from a superseded owner or catalog.
 }): Promise<number> {
   const messageUuids = collectMessengerLastMessageUuidsFromPayload(payload);
   if (messageUuids.length === 0) return 0;
@@ -192,7 +198,7 @@ export async function primeMessengerLastMessagesFromCache({
   ).catch((): MessengerMessage[] => []);
 
   const messageStoreState = messageStore.getState();
-  if (messageStoreState.ownerKey !== ownerKey) return 0;
+  if (!isCurrent() || messageStoreState.ownerKey !== ownerKey) return 0;
   let applied = 0;
   for (const message of cachedMessages) {
     if (messageStoreState.upsertMessageBodyFromSnapshot(message, capturedMutationRevision)) {
@@ -293,7 +299,13 @@ export async function loadMessengerLastMessagesForSidebar({
       }
     }
     try {
-      await (cache.writeMessages ?? defaultWriteMessages)(ownerKey, appliedMessages);
+      const isWriteCurrent = () =>
+        !isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, signal);
+      await (cache.writeMessages ?? defaultWriteMessages)(
+        ownerKey,
+        appliedMessages,
+        isWriteCurrent,
+      );
     } catch {
       // Cache write is best-effort; the sidebar state was already updated from the network.
     }

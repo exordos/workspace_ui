@@ -1,5 +1,6 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useWorkspaceNotificationOwners } from "~/app/workspace-session/workspace-session-notifications.hook";
 import type { WorkspaceConversationMetadata } from "~/applications/messenger/model/chats/messenger-conversation-metadata.lib";
 import { useMessengerStore } from "~/applications/messenger/model/chats/messenger.model";
 import { conversationIdForTopic } from "~/applications/messenger/model/messenger-ids.lib";
@@ -22,8 +23,16 @@ import { clearNotifiedMessageIds } from "~/shared/lib/notification-dedup.lib";
 import type { NotificationOptions } from "~/shared/lib/notifications";
 import type { shouldWorkspaceDesktopNotify } from "~/shared/lib/workspace-desktop-notifications.lib";
 import { workspaceMessengerTopicRoute } from "~/shared/lib/workspace-messenger-route.lib";
-import { useLayoutWorkspaceNotifications } from "./layout-workspace-notifications.hook";
+import { useLayoutWorkspaceNotifications as useNotificationEffects } from "./layout-workspace-notifications.hook";
 import { clearNotificationAggregateRegistry } from "./notification-aggregate-registry.lib";
+
+// Exercise the real session-to-shell binding while keeping platform effects mocked.
+function useLayoutWorkspaceNotifications(
+  options: Omit<Parameters<typeof useNotificationEffects>[0], "owners">,
+): void {
+  const owners = useWorkspaceNotificationOwners();
+  useNotificationEffects({ ...options, owners });
+}
 
 /** A route that is not the candidates' conversation, so the on-screen rule never fires. */
 const OTHER_CONVERSATION_PATHNAME = "/org/org/project/project/messenger";

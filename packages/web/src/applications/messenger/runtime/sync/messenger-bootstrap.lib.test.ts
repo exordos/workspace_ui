@@ -13,16 +13,30 @@ import type {
   WorkspaceMessengerStreamBindingDto,
   WorkspaceMessengerStreamDto,
   WorkspaceMessengerTopicDto,
+  WorkspaceMessengerUserDto,
 } from "~/shared/api/messenger.types";
+import { getWorkspaceFileResourceInvalidationVersion } from "~/shared/lib/workspace-file-loader.lib";
+import * as messengerCacheDb from "~/shared/lib/workspace-messenger-cache-db";
 import { selectWorkspaceChatHeaderView } from "../../features/conversation-header/messenger-chat-header.lib";
 import { adaptMessengerBootstrapPayload } from "../../model/chats/messenger-catalog-adapters.lib";
 import {
+  isMessengerStreamRemoved,
+  markMessengerStreamRemoved,
   selectMessengerFolders,
   selectMessengerSidebarConversations,
   useMessengerStore,
 } from "../../model/chats/messenger.model";
 import { adaptMessengerMessage } from "../../model/messages/messenger-message-adapter.lib";
+import {
+  captureMessengerStreamCacheRemovalCheck,
+  markMessengerStreamCacheRemoved,
+} from "../../model/messenger-cache.lib";
 import { bootstrapMessengerStore } from "./messenger-bootstrap.lib";
+import {
+  invalidateMessengerSessionProtectedResources,
+  prepareMessengerSessionSnapshot,
+  restoreMessengerSessionCatalog,
+} from "./messenger-session-snapshot.lib";
 import type { MessengerBootstrapClientDeps } from "./messenger-bootstrap.lib";
 import type { MessengerMessagePayload } from "../../model/messenger.types";
 
@@ -31,10 +45,6 @@ const loadWorkspaceComposerDrafts = vi.hoisted(() => vi.fn());
 vi.mock("~/applications/messenger/model/drafts/composer-draft-loader.lib", () => ({
   loadWorkspaceComposerDrafts,
 }));
-
-type BootstrapUserDto = Awaited<
-  ReturnType<NonNullable<MessengerBootstrapClientDeps["getUsers"]>>
->[number];
 
 // Bootstrap tests protect the first project snapshot and stale-owner behavior.
 const ACCOUNT_A = "account-a";
@@ -217,7 +227,9 @@ function applyFolderSnapshots(
   return adaptedFolders;
 }
 
-function createUserDto(overrides: Partial<BootstrapUserDto> = {}): BootstrapUserDto {
+function createUserDto(
+  overrides: Partial<WorkspaceMessengerUserDto> = {},
+): WorkspaceMessengerUserDto {
   return {
     uuid: USER_A,
     username: "alice",
@@ -236,7 +248,7 @@ function createUserDto(overrides: Partial<BootstrapUserDto> = {}): BootstrapUser
   };
 }
 
-function createUserFromDto(dto: BootstrapUserDto): User {
+function createUserFromDto(dto: WorkspaceMessengerUserDto): User {
   const displayName = [dto.first_name, dto.last_name].filter(Boolean).join(" ").trim();
   return {
     uuid: dto.uuid,
@@ -262,7 +274,6 @@ function createClient(
     getStreams: () => Promise.resolve([createStreamDto()]),
     getTopics: () => Promise.resolve([createTopicDto()]),
     getFolders: () => Promise.resolve([createFolderDto()]),
-    getUsers: () => Promise.resolve([createUserDto()]),
     ...overrides,
   };
 }
@@ -292,25 +303,165 @@ describe("messenger bootstrap store", () => {
     loadWorkspaceComposerDrafts.mockResolvedValue(undefined);
   });
 
-  it.each(["users", "folders"] as const)(
-    "keeps the catalog visible but rejects a strict bootstrap when %s fail",
-    async (resource) => {
-      const runtimeContext = createRuntimeContext();
-      const error = new Error(`${resource} unavailable`);
-      const result = await bootstrapMessengerStore({
+  it("keeps the catalog visible but rejects a strict bootstrap when folders fail", async () => {
+    const runtimeContext = createRuntimeContext();
+    const error = new Error("folders unavailable");
+    const result = await bootstrapMessengerStore({
+      runtimeContext,
+      client: createClient({ getFolders: () => Promise.reject(error) }),
+      requireCompleteSnapshot: true,
+    });
+    expect(result).toMatchObject({ status: "failed", error: error.message });
+    expect(useMessengerStore.getState().streamIds).toHaveLength(1);
+    expect(useMessengerStore.getState().error).toBe(error.message);
+  });
+
+  it("applies an incomplete cached catalog for display without allowing resume", async () => {
+    const runtimeContext = createRuntimeContext();
+    const payload = adaptMessengerBootstrapPayload({
+      streams: [createStreamDto()],
+      topics: [createTopicDto()],
+      folders: [],
+    });
+    await expect(
+      restoreMessengerSessionCatalog({
         runtimeContext,
-        client: createClient({
-          ...(resource === "users"
-            ? { getUsers: () => Promise.reject(error) }
-            : { getFolders: () => Promise.reject(error) }),
-        }),
-        requireCompleteSnapshot: true,
-      });
-      expect(result).toMatchObject({ status: "failed", error: error.message });
-      expect(useMessengerStore.getState().streamIds).toHaveLength(1);
-      expect(useMessengerStore.getState().error).toBe(error.message);
-    },
-  );
+        getRuntimeContext: () => runtimeContext,
+        surface: "active",
+        cache: {
+          readMessengerCatalogPayloadCache: () => Promise.resolve({ payload, epochVersion: 120 }),
+        },
+      }),
+    ).resolves.toBe("missing");
+
+    expect(useMessengerStore.getState().streamsById[STREAM_A]?.name).toBe("Engineering");
+    expect(useWorkspaceMessageStore.getState().ownerKey).toBe(
+      workspaceRuntimeOwnerKey(runtimeContext),
+    );
+    expect(loadWorkspaceComposerDrafts).toHaveBeenCalledOnce();
+  });
+
+  it("refreshes the background catalog without switching active projections", async () => {
+    const active = createRuntimeContext();
+    const activeOwner = workspaceRuntimeOwnerKey(active);
+    await bootstrapMessengerStore({ runtimeContext: active, client: createClient() });
+    const background = createRuntimeContext({ accountId: ACCOUNT_B, instanceId: INSTANCE_B });
+    const backgroundOwner = workspaceRuntimeOwnerKey(background);
+    const writeCache = vi.fn();
+
+    await expect(
+      prepareMessengerSessionSnapshot({
+        runtimeContext: background,
+        getRuntimeContext: () => background,
+        surface: "background",
+        reset: true,
+        client: createClient(),
+        cache: { writeMessengerCatalogPayloadCache: writeCache },
+      }),
+    ).resolves.toEqual({ status: "applied", ownerKey: backgroundOwner });
+    expect(useMessengerStore.getState().ownerKey).toBe(activeOwner);
+    expect(writeCache).toHaveBeenCalledWith(
+      backgroundOwner,
+      expect.objectContaining({
+        streams: [expect.objectContaining({ uuid: STREAM_A })],
+        topics: [expect.objectContaining({ uuid: TOPIC_A })],
+        folders: [expect.objectContaining({ uuid: FOLDER_A })],
+      }),
+      expect.objectContaining({ reconcileFolders: true, completeCatalog: true }),
+    );
+    expect(loadWorkspaceComposerDrafts).toHaveBeenCalledOnce();
+  });
+
+  it("revokes files immediately and resets the active window after the durable purge", async () => {
+    const runtimeContext = createRuntimeContext();
+    const ownerKey = workspaceRuntimeOwnerKey(runtimeContext);
+    const conversationId = `topic:${STREAM_A}:${TOPIC_A}`;
+    const fileUuid = "gap-file";
+    const purge = createDeferred<void>();
+    const getStreams = vi.fn(() => {
+      expect(
+        useWorkspaceMessageStore.getState().conversationWindowsById[conversationId],
+      ).toBeUndefined();
+      return Promise.resolve([createStreamDto()]);
+    });
+    const options = {
+      runtimeContext,
+      getRuntimeContext: () => runtimeContext,
+      surface: "active" as const,
+      client: createClient({ getStreams }),
+    };
+    await bootstrapMessengerStore({ runtimeContext, client: createClient() });
+    useWorkspaceMessageStore.getState().setOwner(ownerKey, false);
+    const messageStore = useWorkspaceMessageStore.getState();
+    const window = messageStore.replaceConversationWindow({
+      conversationId,
+      expectedRevision: null,
+      capturedMutationRevision: messageStore.messageMutationRevision,
+      mode: "tail",
+      anchorMessageUuid: null,
+      messages: [adaptMessengerMessage(createMessageDto())],
+      markers: { beforePageMarker: null, afterPageMarker: null },
+    });
+    const before = getWorkspaceFileResourceInvalidationVersion(ownerKey, fileUuid);
+    const deleteOwnerCache = vi
+      .spyOn(messengerCacheDb, "deleteWorkspaceMessengerOwnerCache")
+      .mockReturnValue(purge.promise);
+
+    try {
+      invalidateMessengerSessionProtectedResources(options);
+      expect(getWorkspaceFileResourceInvalidationVersion(ownerKey, fileUuid)).toBeGreaterThan(
+        before,
+      );
+      const recovery = prepareMessengerSessionSnapshot({ ...options, reset: true });
+
+      expect(window).not.toBeNull();
+      expect(useWorkspaceMessageStore.getState().conversationWindowsById[conversationId]).toBe(
+        window,
+      );
+      expect(useMessengerStore.getState().streamsById[STREAM_A]?.name).toBe("Engineering");
+      expect(deleteOwnerCache).toHaveBeenCalledOnce();
+      expect(getStreams).not.toHaveBeenCalled();
+
+      purge.resolve();
+      await expect(recovery).resolves.toMatchObject({ status: "applied" });
+      expect(getStreams).toHaveBeenCalledOnce();
+    } finally {
+      purge.resolve();
+      deleteOwnerCache.mockRestore();
+    }
+  });
+
+  it("restores pruned membership only for a stream without a newer removal", async () => {
+    const runtimeContext = createRuntimeContext({ accountId: "recovery-background" });
+    const ownerKey = workspaceRuntimeOwnerKey(runtimeContext);
+    markMessengerStreamRemoved(ownerKey, STREAM_A);
+    markMessengerStreamCacheRemoved(ownerKey, STREAM_A);
+    markMessengerStreamRemoved(ownerKey, STREAM_B);
+    markMessengerStreamCacheRemoved(ownerKey, STREAM_B);
+    const checkOriginalCacheFence = captureMessengerStreamCacheRemovalCheck(ownerKey);
+    const streams = createDeferred<WorkspaceMessengerStreamDto[]>();
+    const getStreams = vi.fn(() => streams.promise);
+    const preparation = prepareMessengerSessionSnapshot({
+      runtimeContext,
+      getRuntimeContext: () => runtimeContext,
+      surface: "background",
+      reset: true,
+      client: createClient({ getStreams }),
+      cache: { writeMessengerCatalogPayloadCache: vi.fn() },
+    });
+
+    await vi.waitFor(() => expect(getStreams).toHaveBeenCalledOnce());
+    markMessengerStreamRemoved(ownerKey, STREAM_B);
+    markMessengerStreamCacheRemoved(ownerKey, STREAM_B);
+    const checkNewCacheFence = captureMessengerStreamCacheRemovalCheck(ownerKey);
+    streams.resolve([createStreamDto(), createStreamDto({ uuid: STREAM_B })]);
+    await expect(preparation).resolves.toMatchObject({ status: "applied" });
+
+    expect(isMessengerStreamRemoved(ownerKey, STREAM_A)).toBe(false);
+    expect(checkOriginalCacheFence(STREAM_A)).toBe(false);
+    expect(isMessengerStreamRemoved(ownerKey, STREAM_B)).toBe(true);
+    expect(checkNewCacheFence(STREAM_B)).toBe(true);
+  });
 
   it("applies a successful Workspace payload to domain state", async () => {
     const runtimeContext = createRuntimeContext();
@@ -338,12 +489,6 @@ describe("messenger bootstrap store", () => {
     expect(useWorkspaceMessageStore.getState().messagesById).toEqual({});
     expect(useWorkspaceMessageStore.getState().conversationWindowsById).toEqual({});
     expect(state.foldersById[FOLDER_A]?.title).toBe("Inbox");
-    expect(useUsersStore.getState().getUser(USER_A)).toEqual(
-      expect.objectContaining({
-        username: "alice",
-        firstName: "Alice",
-      }),
-    );
     expect(getStreams).toHaveBeenCalledWith(
       expect.objectContaining({
         accessToken: "access-token-a",
@@ -405,6 +550,7 @@ describe("messenger bootstrap store", () => {
         mode: "reconcile",
         reconcileFence: 42,
         reconcileFolders: false,
+        isWriteCurrent: expect.any(Function),
       },
     );
   });
@@ -617,12 +763,11 @@ describe("messenger bootstrap store", () => {
     });
     const getStreams = vi.fn(() => Promise.resolve([createStreamDto({ name: "Fresh stream" })]));
     const getTopics = vi.fn(() => Promise.resolve([]));
-    const getUsers = vi.fn(() => Promise.resolve([]));
     const getFolders = vi.fn(() => Promise.resolve([]));
     const resultPromise = bootstrapMessengerStore({
       runtimeContext,
       beforeServerRefresh: () => epochRequest.promise,
-      client: createClient({ getStreams, getTopics, getUsers, getFolders }),
+      client: createClient({ getStreams, getTopics, getFolders }),
       cache: {
         readMessengerCatalogPayloadCache: () =>
           Promise.resolve({ payload: cachedPayload, epochVersion: 3 }),
@@ -633,7 +778,6 @@ describe("messenger bootstrap store", () => {
     expect(useMessengerStore.getState().streamsById[STREAM_A]?.name).toBe("Cached stream");
     expect(getStreams).not.toHaveBeenCalled();
     expect(getTopics).not.toHaveBeenCalled();
-    expect(getUsers).not.toHaveBeenCalled();
     expect(getFolders).not.toHaveBeenCalled();
 
     epochRequest.resolve();
@@ -641,7 +785,6 @@ describe("messenger bootstrap store", () => {
     expect(useMessengerStore.getState().streamsById[STREAM_A]?.name).toBe("Fresh stream");
     expect(getStreams).toHaveBeenCalledOnce();
     expect(getTopics).toHaveBeenCalledOnce();
-    expect(getUsers).toHaveBeenCalledOnce();
     expect(getFolders).toHaveBeenCalledOnce();
   });
 
@@ -744,61 +887,6 @@ describe("messenger bootstrap store", () => {
     expect(useMessengerStore.getState().topicsById[TOPIC_A]?.name).toBe("UI");
   });
 
-  it("hydrates cached users before the users network request finishes", async () => {
-    const runtimeContext = createRuntimeContext();
-    const usersRequest = createDeferred<BootstrapUserDto[]>();
-    const readUsersCache = vi.fn(() =>
-      Promise.resolve([
-        {
-          uuid: USER_A,
-          username: "cached-alice",
-          displayName: "Cached Alice",
-          firstName: "Cached",
-          lastName: "Alice",
-          email: "cached-alice@example.test",
-          avatarUrl: null,
-          createdAt: DATE,
-          updatedAt: DATE,
-        },
-      ]),
-    );
-    const replaceUsersCache = vi.fn();
-
-    const bootstrap = bootstrapMessengerStore({
-      runtimeContext,
-      getRuntimeContext: () => runtimeContext,
-      client: createClient({
-        getUsers: () => usersRequest.promise,
-        getFolders: () => Promise.resolve([]),
-      }),
-      userCache: { readUsersCache, replaceUsersCache },
-    });
-    await flushPromises();
-    await flushPromises();
-
-    expect(readUsersCache).toHaveBeenCalledWith(workspaceRuntimeOwnerKey(runtimeContext));
-    expect(useUsersStore.getState().getUser(USER_A)).toEqual(
-      expect.objectContaining({
-        username: "cached-alice",
-        status: "offline",
-      }),
-    );
-    expect(replaceUsersCache).not.toHaveBeenCalled();
-
-    usersRequest.resolve([createUserDto({ username: "fresh-alice", updated_at: DATE_LATER })]);
-    await bootstrap;
-
-    expect(useUsersStore.getState().getUser(USER_A)).toEqual(
-      expect.objectContaining({
-        username: "fresh-alice",
-        status: "active",
-      }),
-    );
-    expect(replaceUsersCache).toHaveBeenCalledWith(workspaceRuntimeOwnerKey(runtimeContext), [
-      expect.objectContaining({ uuid: USER_A, username: "fresh-alice" }),
-    ]);
-  });
-
   it("keeps cached folders while the background folder request is pending", async () => {
     const runtimeContext = createRuntimeContext();
     const ownerKey = workspaceRuntimeOwnerKey(runtimeContext);
@@ -851,9 +939,11 @@ describe("messenger bootstrap store", () => {
     expect(useMessengerStore.getState().folderIds).toEqual([FOLDER_B]);
     expect(useMessengerStore.getState().foldersById[FOLDER_A]).toBeUndefined();
     expect(useMessengerStore.getState().foldersById[FOLDER_B]?.title).toBe("Fresh folders");
-    expect(replaceMessengerFolderSnapshotsCache).toHaveBeenCalledWith(ownerKey, [
-      expect.objectContaining({ uuid: FOLDER_B, title: "Fresh folders" }),
-    ]);
+    expect(replaceMessengerFolderSnapshotsCache).toHaveBeenCalledWith(
+      ownerKey,
+      [expect.objectContaining({ uuid: FOLDER_B, title: "Fresh folders" })],
+      expect.any(Function),
+    );
   });
 
   it("keeps private stream conversations as stream and topic ids", async () => {
@@ -914,10 +1004,9 @@ describe("messenger bootstrap store", () => {
     });
     expect(useMessengerStore.getState().streamIds).toHaveLength(0);
     expect(useMessengerStore.getState().conversationIds).toHaveLength(0);
-    expect(useUsersStore.getState().userIds).toEqual([]);
   });
 
-  it("skips user writes when bootstrap signal is aborted after awaiting client data", async () => {
+  it("skips catalog writes when bootstrap signal is aborted after awaiting client data", async () => {
     const runtimeContext = createRuntimeContext();
     const streamRequest = createDeferred<WorkspaceMessengerStreamDto[]>();
     const controller = new AbortController();
@@ -942,7 +1031,6 @@ describe("messenger bootstrap store", () => {
     expect(useMessengerStore.getState().streamIds).toEqual([]);
     expect(useMessengerStore.getState().isLoading).toBe(false);
     expect(useMessengerStore.getState().error).toBeNull();
-    expect(useUsersStore.getState().userIds).toEqual([]);
   });
 
   it("ignores abort errors from streams bootstrap without showing a sidebar error", async () => {
@@ -966,112 +1054,6 @@ describe("messenger bootstrap store", () => {
     expect(messengerState.streamIds).toEqual([]);
     expect(messengerState.isLoading).toBe(false);
     expect(messengerState.error).toBeNull();
-  });
-
-  it("keeps streams and topics bootstrap when users request fails", async () => {
-    const runtimeContext = createRuntimeContext();
-
-    await expect(
-      bootstrapMessengerStore({
-        runtimeContext,
-        getRuntimeContext: () => runtimeContext,
-        client: createClient({
-          getUsers: () => Promise.reject(new Error("users failed")),
-          getFolders: () => Promise.resolve([]),
-        }),
-      }),
-    ).resolves.toEqual({
-      status: "applied",
-      ownerKey: workspaceRuntimeOwnerKey(runtimeContext),
-    });
-
-    const messengerState = useMessengerStore.getState();
-    const usersState = useUsersStore.getState();
-    expect(messengerState.streamsById[STREAM_A]?.name).toBe("Engineering");
-    expect(messengerState.topicsById[TOPIC_A]?.name).toBe("Releases");
-    expect(usersState.loadStatus).toBe("error");
-    expect(usersState.error).toBe("users failed");
-    expect(usersState.userIds).toEqual([]);
-  });
-
-  it("clears previous owner users when the next owner users request fails", async () => {
-    const runtimeA = createRuntimeContext();
-    const runtimeB = createRuntimeContext({
-      accountId: ACCOUNT_B,
-      instanceId: INSTANCE_B,
-      organizationId: ORGANIZATION_B,
-      projectId: PROJECT_B,
-      userUuid: USER_B,
-      accessToken: "access-token-b",
-      runtimeGeneration: 1,
-    });
-
-    await bootstrapMessengerStore({
-      runtimeContext: runtimeA,
-      getRuntimeContext: () => runtimeA,
-      client: createClient(),
-    });
-    expect(useUsersStore.getState().userIds).toEqual([USER_A]);
-
-    await expect(
-      bootstrapMessengerStore({
-        runtimeContext: runtimeB,
-        getRuntimeContext: () => runtimeB,
-        client: createClient({
-          getStreams: () =>
-            Promise.resolve([
-              createStreamDto({
-                uuid: STREAM_B,
-                project_id: PROJECT_B,
-                owner: USER_B,
-                user_uuid: USER_B,
-              }),
-            ]),
-          getTopics: () => Promise.resolve([]),
-          getFolders: () => Promise.resolve([]),
-          getUsers: () => Promise.reject(new Error("users failed")),
-        }),
-      }),
-    ).resolves.toEqual({
-      status: "applied",
-      ownerKey: workspaceRuntimeOwnerKey(runtimeB),
-    });
-
-    const usersState = useUsersStore.getState();
-    expect(usersState.ownerKey).toBe(workspaceRuntimeOwnerKey(runtimeB));
-    expect(usersState.userIds).toEqual([]);
-    expect(usersState.usersById[USER_A]).toBeUndefined();
-    expect(usersState.loadStatus).toBe("error");
-    expect(usersState.error).toBe("users failed");
-  });
-
-  it("keeps bootstrap users out of both stores when user DTO shape is legacy", async () => {
-    const runtimeContext = createRuntimeContext();
-    const legacyUserDto = {
-      ...createUserDto(),
-      uuid: 123,
-    } as unknown as BootstrapUserDto;
-
-    await expect(
-      bootstrapMessengerStore({
-        runtimeContext,
-        getRuntimeContext: () => runtimeContext,
-        client: createClient({
-          getUsers: () => Promise.resolve([legacyUserDto]),
-          getFolders: () => Promise.resolve([]),
-        }),
-      }),
-    ).resolves.toEqual({
-      status: "applied",
-      ownerKey: workspaceRuntimeOwnerKey(runtimeContext),
-    });
-
-    const messengerState = useMessengerStore.getState();
-    const usersState = useUsersStore.getState();
-    expect(messengerState.streamsById[STREAM_A]?.name).toBe("Engineering");
-    expect(usersState.userIds).toEqual([]);
-    expect(usersState.loadStatus).toBe("error");
-    expect(usersState.error).toBe("Expected at least one valid messenger user");
   });
 
   it("clears old owner data before replacing it with the next owner payload", async () => {
@@ -1111,23 +1093,11 @@ describe("messenger bootstrap store", () => {
             }),
           ]),
         getFolders: () => Promise.resolve([]),
-        getUsers: () =>
-          Promise.resolve([
-            createUserDto({
-              uuid: USER_B,
-              username: "bob",
-              first_name: "Bob",
-              email: "bob@example.test",
-            }),
-          ]),
       }),
     });
 
     expect(useMessengerStore.getState().ownerKey).toBe(workspaceRuntimeOwnerKey(runtimeB));
     expect(useMessengerStore.getState().streamIds).toHaveLength(0);
-    expect(useUsersStore.getState().ownerKey).toBe(workspaceRuntimeOwnerKey(runtimeB));
-    expect(useUsersStore.getState().userIds).toEqual([]);
-    expect(useUsersStore.getState().loadStatus).toBe("loading");
 
     streamRequest.resolve([
       createStreamDto({
@@ -1147,7 +1117,6 @@ describe("messenger bootstrap store", () => {
     expect(state.streamIds).toEqual([STREAM_B]);
     expect(state.streamsById[STREAM_A]).toBeUndefined();
     expect(state.streamsById[STREAM_B]?.name).toBe("Support");
-    expect(useUsersStore.getState().usersById[USER_B]?.username).toBe("bob");
   });
 
   it("returns stable selector arrays while store references do not change", async () => {

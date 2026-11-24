@@ -4,7 +4,11 @@ import {
   deleteMessengerSearchResultsForOwner,
   deleteWorkspaceComposerDraftRecordsForStream,
 } from "~/shared/lib/workspace-messenger-cache-db";
-import { markMessengerStreamRemoved, useMessengerStore } from "../../model/chats/messenger.model";
+import {
+  isMessengerStreamRemoved,
+  markMessengerStreamRemoved,
+  useMessengerStore,
+} from "../../model/chats/messenger.model";
 import {
   deleteMessengerStreamCache,
   markMessengerStreamCacheRemoved,
@@ -26,7 +30,7 @@ export async function removeMessengerStreamProjection({
   streamUuid,
   removeActiveProjection,
   isOwnerCurrent = () => true,
-  deleteCachedStream = deleteMessengerStreamCache,
+  deleteCachedStream,
   clearOwnerSearchCache = true,
 }: RemoveMessengerStreamProjectionOptions): Promise<void> {
   if (!isOwnerCurrent()) return;
@@ -34,11 +38,14 @@ export async function removeMessengerStreamProjection({
   markMessengerStreamRemoved(ownerKey, streamUuid);
   markMessengerStreamCacheRemoved(ownerKey, streamUuid);
   useMessengerBackgroundProjectionStore.getState().removeStreamProjection(ownerKey, streamUuid);
+  const isRemovalCurrent = () => isOwnerCurrent() && isMessengerStreamRemoved(ownerKey, streamUuid);
   let cacheDeletion: Promise<void>;
   try {
-    cacheDeletion = Promise.resolve(deleteCachedStream(ownerKey, streamUuid)).catch(
-      () => undefined,
-    );
+    cacheDeletion = Promise.resolve(
+      deleteCachedStream == null
+        ? deleteMessengerStreamCache(ownerKey, streamUuid, isRemovalCurrent)
+        : deleteCachedStream(ownerKey, streamUuid),
+    ).catch(() => undefined);
   } catch {
     cacheDeletion = Promise.resolve();
   }
@@ -51,10 +58,13 @@ export async function removeMessengerStreamProjection({
   }
 
   await draftCleanup;
+  if (!isRemovalCurrent()) return;
   await Promise.all([
     cacheDeletion,
-    deleteWorkspaceComposerDraftRecordsForStream(ownerKey, streamUuid),
-    clearOwnerSearchCache ? deleteMessengerSearchResultsForOwner(ownerKey) : Promise.resolve(),
+    deleteWorkspaceComposerDraftRecordsForStream(ownerKey, streamUuid, isRemovalCurrent),
+    clearOwnerSearchCache
+      ? deleteMessengerSearchResultsForOwner(ownerKey, isRemovalCurrent)
+      : Promise.resolve(),
   ]);
 }
 
@@ -75,6 +85,6 @@ export async function removeMessengerStreamProjections(
     ),
   );
   if (streamUuids.length > 0) {
-    await deleteMessengerSearchResultsForOwner(options.ownerKey);
+    await deleteMessengerSearchResultsForOwner(options.ownerKey, options.isOwnerCurrent);
   }
 }

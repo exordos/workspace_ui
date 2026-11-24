@@ -57,6 +57,8 @@ export interface LoadExternalAccountsOptions {
   clientOptions?: MessengerRequestOptionsOverrides;
   signal?: AbortSignal;
   store?: ExternalAccountsStoreApi;
+  surface?: "active" | "background"; // Background recovery refreshes only the owner cache.
+  restoreCache?: boolean; // Recovery should not reapply a snapshot from the pruned journal.
 }
 
 function normalizeExternalAccountsError(error: unknown): string {
@@ -77,6 +79,8 @@ export async function loadExternalAccounts({
   clientOptions,
   signal,
   store = useExternalAccountsStore,
+  surface = "active",
+  restoreCache = true,
 }: LoadExternalAccountsOptions): Promise<LoadExternalAccountsResult> {
   const requestContext = captureWorkspaceRuntimeRequestContext(() => runtimeContext);
   if (requestContext == null) {
@@ -88,13 +92,19 @@ export async function loadExternalAccounts({
     return { status: "skipped", ownerKey, reason: invalidatedRequestReason(signal) };
   }
 
-  const loadGeneration = store.getState().startOwnerSync(ownerKey);
-  const cachedAccounts = await readWorkspaceExternalAccountCache(ownerKey);
-  if (isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, signal)) {
-    return { status: "skipped", ownerKey, reason: invalidatedRequestReason(signal) };
-  }
-  if (cachedAccounts.length > 0) {
+  const loadGeneration = surface === "active" ? store.getState().startOwnerSync(ownerKey) : null;
+  const isCurrent = () =>
+    !isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, signal) &&
+    (loadGeneration == null ||
+      (store.getState().ownerKey === ownerKey &&
+        store.getState().loadGeneration === loadGeneration));
+  if (loadGeneration != null && restoreCache) {
+    const cachedAccounts = await readWorkspaceExternalAccountCache(ownerKey);
+    if (!isCurrent()) {
+      return { status: "skipped", ownerKey, reason: invalidatedRequestReason(signal) };
+    }
     if (
+      cachedAccounts.length > 0 &&
       !store
         .getState()
         .replaceAccountsForOwner(
@@ -112,36 +122,35 @@ export async function loadExternalAccounts({
 
   try {
     const dtos = await (client.getExternalAccounts ?? defaultGetExternalAccounts)(requestOptions);
-    if (isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, signal)) {
+    if (!isCurrent()) {
       return { status: "skipped", ownerKey, reason: invalidatedRequestReason(signal) };
     }
 
     const accounts = dtos.map((dto) => adaptWorkspaceExternalAccountDto(dto));
-    if (!store.getState().replaceAccountsForOwner(ownerKey, accounts, Date.now(), loadGeneration)) {
+    if (
+      loadGeneration != null &&
+      !store.getState().replaceAccountsForOwner(ownerKey, accounts, Date.now(), loadGeneration)
+    ) {
       return { status: "skipped", ownerKey, reason: "stale-owner" };
     }
-    if (store.getState().ownerKey === ownerKey) {
-      await replaceWorkspaceExternalAccountCache(
-        ownerKey,
-        accounts.map(toWorkspaceExternalAccountCacheProfile),
-        () =>
-          store.getState().ownerKey === ownerKey &&
-          store.getState().loadGeneration === loadGeneration &&
-          !isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, signal),
-      );
+    await replaceWorkspaceExternalAccountCache(
+      ownerKey,
+      accounts.map(toWorkspaceExternalAccountCacheProfile),
+      isCurrent,
+      surface === "background",
+    );
+    if (!isCurrent()) {
+      return { status: "skipped", ownerKey, reason: invalidatedRequestReason(signal) };
     }
     return { status: "applied", ownerKey };
   } catch (error) {
     const aborted = isAbortError(error) || signal?.aborted === true;
-    if (
-      aborted ||
-      isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, signal)
-    ) {
+    if (aborted || !isCurrent()) {
       return { status: "skipped", ownerKey, reason: aborted ? "aborted" : "stale-owner" };
     }
 
     const message = normalizeExternalAccountsError(error);
-    store.getState().setLoadStatusForOwner(ownerKey, "error", message);
+    if (loadGeneration != null) store.getState().setLoadStatusForOwner(ownerKey, "error", message);
     return { status: "failed", ownerKey, error: message };
   }
 }

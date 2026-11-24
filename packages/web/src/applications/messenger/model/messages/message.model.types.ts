@@ -190,5 +190,5 @@ export interface WorkspaceMessageStoreState extends WorkspaceMessageStoreData {
   setMessagesError: (conversationId: MessengerConversationId, error: string | null) => void;
   removeMessagesForStream: (streamUuid: MessengerUuid) => void;
   restoreMessagesForStream: (streamUuid: MessengerUuid) => void;
-  clear: () => void;
+  clear: (options?: { preserveRemovedStreams?: boolean }) => void;
 }

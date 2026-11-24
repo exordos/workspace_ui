@@ -14,6 +14,7 @@ import {
 import { Layout } from "~/widgets/layout/layout.ui";
 import { resolveProfileShareEntryRoute } from "./app-profile-share-redirect.lib";
 import { WebViewShell } from "./webview-shell";
+import { useWorkspaceNotificationOwners } from "./workspace-session/workspace-session-notifications.hook";
 
 const LoginPage = React.lazy(() =>
   import("~/pages/login/login-page.ui").then((m) => ({ default: m.LoginPage })),
@@ -133,10 +134,25 @@ export const LoginAppRoutes: React.FC = () => (
 
 export interface AuthenticatedAppRoutesProps {
   defaultMessengerRoute: string;
+  retryWorkspaceBootstrap?: () => void; // Forward the shell's retry intent to the session owner.
+}
+
+// Bind session-owned projections to the shell that owns viewport and notification clicks.
+function WorkspaceSessionLayout({
+  retryWorkspaceBootstrap,
+}: Readonly<Pick<AuthenticatedAppRoutesProps, "retryWorkspaceBootstrap">>) {
+  const notificationOwners = useWorkspaceNotificationOwners();
+  return (
+    <Layout
+      retryWorkspaceBootstrap={retryWorkspaceBootstrap}
+      notificationOwners={notificationOwners}
+    />
+  );
 }
 
 export const AuthenticatedAppRoutes: React.FC<AuthenticatedAppRoutesProps> = ({
   defaultMessengerRoute,
+  retryWorkspaceBootstrap,
 }) => {
   const location = useLocation();
   const diagnosticsRouteElement = IS_CONNECTION_DIAGNOSTICS_ENABLED ? (
@@ -155,7 +171,7 @@ export const AuthenticatedAppRoutes: React.FC<AuthenticatedAppRoutesProps> = ({
       <Route path="/org/:orgId" element={<WorkspaceMessengerRootRedirect />} />
       <Route path="/licenses" element={<LicensesPage />} />
       <Route path="/org/:orgId/licenses" element={<LicensesPage />} />
-      <Route element={<Layout />}>
+      <Route element={<WorkspaceSessionLayout retryWorkspaceBootstrap={retryWorkspaceBootstrap} />}>
         <Route path="/calendar" element={<CalendarPage />} />
         <Route path="/mail" element={<MailPage />} />
         <Route path="/call" element={<CallsPage />} />
@@ -166,7 +182,10 @@ export const AuthenticatedAppRoutes: React.FC<AuthenticatedAppRoutesProps> = ({
         <Route path="/services" element={<ServicesPage />} />
         <Route path="/all-services" element={<ServicesPage />} />
       </Route>
-      <Route path="/org/:orgId" element={<Layout />}>
+      <Route
+        path="/org/:orgId"
+        element={<WorkspaceSessionLayout retryWorkspaceBootstrap={retryWorkspaceBootstrap} />}
+      >
         <Route
           path="project/:projectId/messenger"
           element={<WorkspaceMessengerDefaultRedirect />}

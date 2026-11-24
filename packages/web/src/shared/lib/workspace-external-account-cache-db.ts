@@ -151,8 +151,13 @@ export async function replaceWorkspaceExternalAccountCache(
   ownerKey: string,
   accounts: readonly WorkspaceExternalAccountCacheProfile[],
   isOwnerCurrent: () => boolean = () => true,
+  requireWrite = false,
 ): Promise<void> {
-  if (!isIndexedDBAvailable() || !isOwnerCurrent()) return;
+  if (!isOwnerCurrent()) return;
+  if (!isIndexedDBAvailable()) {
+    if (requireWrite) throw new Error("External accounts snapshot storage unavailable");
+    return;
+  }
   try {
     const db = await openWorkspaceExternalAccountCacheDb();
     if (!isOwnerCurrent()) return;
@@ -175,7 +180,8 @@ export async function replaceWorkspaceExternalAccountCache(
       }
     });
     await transactionDone(transaction);
-  } catch {
+  } catch (error) {
+    if (requireWrite && isOwnerCurrent()) throw error;
     // Cache persistence is best-effort.
   }
 }

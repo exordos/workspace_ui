@@ -305,6 +305,42 @@ describe("workspace-messenger-cache-db", () => {
     });
   });
 
+  it("resets a complete owner snapshot after a cursor gap without deleting drafts", async () => {
+    await writeMessengerCatalogCache(
+      OWNER,
+      { streams: [{ uuid: STREAM }], topics: [], folders: [], folderItems: [] },
+      { completeCatalog: true },
+    );
+    await seedLegacyComposerDraft(OWNER, TOPIC_CONVERSATION, {
+      snapshotId: "unsynced-draft",
+      content: { text: "Offline draft" },
+      updatedAt: 100,
+    });
+
+    const invalidated = vi.fn().mockReturnValueOnce(true).mockReturnValue(false);
+    await deleteWorkspaceMessengerOwnerCache(OWNER, {
+      preserveDrafts: true,
+      isWriteCurrent: invalidated,
+    });
+    expect(await readMessengerCatalogCache(OWNER)).toMatchObject({
+      ownerMeta: { hasCompleteCatalog: true },
+      streams: [{ uuid: STREAM }],
+    });
+
+    await deleteWorkspaceMessengerOwnerCache(OWNER, {
+      preserveDrafts: true,
+      isWriteCurrent: () => true,
+      requireWrite: true,
+    });
+    expect(await readMessengerCatalogCache(OWNER)).toMatchObject({
+      ownerMeta: null,
+      streams: [],
+    });
+    await expect(readWorkspaceComposerDraft(OWNER, TOPIC_CONVERSATION)).resolves.toMatchObject({
+      snapshotId: "unsynced-draft",
+    });
+  });
+
   it("writes and reads catalog snapshots without leaking between owners", async () => {
     await writeMessengerCatalogCache(OWNER, {
       streams: [{ uuid: STREAM, color: 0x2563eb, updatedAt: "2026-07-01T08:00:00.000Z" }],

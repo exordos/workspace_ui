@@ -1,20 +1,17 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useRef } from "react";
+import { readActiveChats } from "~/applications/messenger/model/chats/chats";
 import { resolveWorkspaceConversationMetadata } from "~/applications/messenger/model/chats/messenger-conversation-metadata.lib";
 import type { WorkspaceConversationMetadata } from "~/applications/messenger/model/chats/messenger-conversation-metadata.lib";
-import { useMessengerStore } from "~/applications/messenger/model/chats/messenger.model";
 import { selectMessengerConversationFromWorkspaceRoute } from "~/applications/messenger/model/messenger-ids.lib";
 import type {
   MessengerStream,
   MessengerTopic,
 } from "~/applications/messenger/model/messenger.types";
-import {
-  useMessengerBackgroundProjectionStore,
-  type MessengerBackgroundProjection,
-  type MessengerBackgroundNotificationCandidate,
+import type {
+  MessengerBackgroundProjection,
+  MessengerBackgroundNotificationCandidate,
 } from "~/applications/messenger/runtime/sync/messenger-background-projection.model";
 import { resolveCachedWorkspaceUser } from "~/entities/user/user-sync.lib";
-import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
-import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { getDockBounceEnabledForOwner, useSettingsStore } from "~/features/settings/settings.model";
 import { t } from "~/i18n/i18n";
 import { isElectronDarwin } from "~/shared/lib/electron";
@@ -180,13 +177,7 @@ async function resolveCandidateMetadata(
   projection: MessengerBackgroundProjection,
   candidate: MessengerBackgroundNotificationCandidate,
 ): Promise<ReturnType<typeof resolveCurrentCandidate>> {
-  const activeMessengerState = useMessengerStore.getState();
-  const activeMetadata = {
-    ownerKey: activeMessengerState.ownerKey,
-    streamsById: activeMessengerState.streamsById,
-    topicsById: activeMessengerState.topicsById,
-  };
-  const resolved = resolveCurrentCandidate(projection, candidate, activeMetadata);
+  const resolved = resolveCurrentCandidate(projection, candidate, readActiveChats());
   if (resolved.missingMetadata.length === 0) {
     return resolved;
   }
@@ -196,7 +187,7 @@ async function resolveCandidateMetadata(
     streamUuid: candidate.streamUuid,
     topicUuid: candidate.topicUuid,
   });
-  return resolveCurrentCandidate(projection, candidate, activeMetadata, cachedMetadata);
+  return resolveCurrentCandidate(projection, candidate, readActiveChats(), cachedMetadata);
 }
 
 function resolveTitleContext(
@@ -225,25 +216,29 @@ function resolveNotificationConversationRoute(
   return candidate.topicRoute;
 }
 
-interface RouteProjectionSnapshot {
+// The app provides a verified session and its notification projection to the shell.
+export interface WorkspaceNotificationOwner {
   ownerKey: string;
   projection: MessengerBackgroundProjection;
+  accountLabel: string; // Short label displayed while conversation metadata is unavailable.
+  isSelected: boolean; // Only the selected owner can have a conversation in the viewport.
+  isAuthorized: () => boolean; // Recheck after asynchronous metadata and author lookups.
 }
 
-interface NotificationCandidateEntry extends RouteProjectionSnapshot {
+interface NotificationCandidateEntry extends WorkspaceNotificationOwner {
   candidate: MessengerBackgroundNotificationCandidate;
 }
 
 function collectNextNotificationCandidates(
-  routeProjections: RouteProjectionSnapshot[],
+  routeProjections: readonly WorkspaceNotificationOwner[],
   processedCandidates: Set<string>,
 ): NotificationCandidateEntry[] {
   return routeProjections
-    .flatMap(({ ownerKey, projection }) =>
-      [...projection.notificationCandidates]
+    .flatMap((owner) =>
+      [...owner.projection.notificationCandidates]
         // The store keeps new entries first, but stacking should follow natural order.
         .reverse()
-        .map((candidate) => ({ ownerKey, projection, candidate })),
+        .map((candidate) => ({ ...owner, candidate })),
     )
     .filter((candidate) => {
       if (candidate.candidate.ownerKey !== candidate.ownerKey) {
@@ -315,23 +310,6 @@ function logPolicySkip(options: {
   });
 }
 
-function resolveGenericNotificationAccountLabel(ownerKey: string): string {
-  const session = useWorkspaceAuthStore
-    .getState()
-    .sessions.find((entry) => workspaceRuntimeOwnerKey(entry) === ownerKey);
-  if (session == null) return "";
-
-  const username = trimNonEmpty(session.profile.username);
-  let domain: string | null = null;
-  try {
-    const url = new URL(session.organizationOrigin);
-    if (url.protocol === "https:" || url.protocol === "http:") domain = url.hostname;
-  } catch {
-    // An invalid origin must not expose a raw URL or internal identifiers.
-  }
-  return [username, domain].filter((part) => part != null && part !== "").join(" · ");
-}
-
 async function runNotificationEffects(options: {
   candidate: MessengerBackgroundNotificationCandidate;
   messageUuid: string;
@@ -342,6 +320,7 @@ async function runNotificationEffects(options: {
   deferredCandidates: Set<string>;
   isCancelled: () => boolean;
   metadataUnavailable: boolean;
+  accountLabel: string;
 }): Promise<void> {
   const { candidate, messageUuid, scopeKey, trigger, navigate, processedCandidates } = options;
 
@@ -360,7 +339,7 @@ async function runNotificationEffects(options: {
     const senderName = trimNonEmpty(author?.displayName) ?? DEFAULT_NOTIFICATION_SENDER;
     const titleContext = resolveTitleContext(candidate, senderName);
     const body = options.metadataUnavailable
-      ? resolveGenericNotificationAccountLabel(candidate.ownerKey)
+      ? options.accountLabel
       : (trimNonEmpty(candidate.previewText) ?? "");
     const conversationRoute = options.metadataUnavailable
       ? candidate.messageRoute
@@ -436,35 +415,11 @@ async function runNotificationEffects(options: {
 
 export function useLayoutWorkspaceNotifications(options: {
   enabled: boolean;
+  owners: readonly WorkspaceNotificationOwner[];
   navigate: NavigateFunction;
   pathname: string;
 }): void {
-  const { enabled, navigate, pathname } = options;
-  const sessions = useWorkspaceAuthStore((state) => state.sessions);
-  const projectionsByOwnerKey = useMessengerBackgroundProjectionStore(
-    (state) => state.projectionsByOwnerKey,
-  );
-  const routeProjections = useMemo<
-    { ownerKey: string; projection: MessengerBackgroundProjection }[]
-  >(() => {
-    const seenOwnerKeys = new Set<string>();
-    const snapshots: { ownerKey: string; projection: MessengerBackgroundProjection }[] = [];
-
-    for (const session of sessions) {
-      const ownerKey = workspaceRuntimeOwnerKey(session);
-      if (seenOwnerKeys.has(ownerKey)) {
-        continue;
-      }
-
-      seenOwnerKeys.add(ownerKey);
-      const projection = projectionsByOwnerKey[ownerKey];
-      if (projection != null) {
-        snapshots.push({ ownerKey, projection });
-      }
-    }
-
-    return snapshots;
-  }, [projectionsByOwnerKey, sessions]);
+  const { enabled, navigate, pathname, owners: routeProjections } = options;
   const processedCandidatesRef = useRef<Set<string>>(new Set());
   const deferredCandidatesRef = useRef<Set<string>>(new Set());
   const closedMessagesRef = useRef<Set<string>>(new Set());
@@ -474,7 +429,8 @@ export function useLayoutWorkspaceNotifications(options: {
       return;
     }
 
-    for (const { ownerKey, projection } of routeProjections) {
+    for (const { ownerKey, projection, isAuthorized } of routeProjections) {
+      if (!isAuthorized()) continue;
       const messageUuidsToClose = Object.values(projection.messageIdSnapshotsById)
         .filter(
           (snapshot) =>
@@ -547,10 +503,17 @@ export function useLayoutWorkspaceNotifications(options: {
         routeProjections,
         processedCandidatesRef.current,
       );
-      for (const { projection, candidate } of nextCandidates) {
+      for (const {
+        projection,
+        candidate,
+        accountLabel,
+        isSelected,
+        isAuthorized,
+      } of nextCandidates) {
         if (cancelled) {
           return;
         }
+        if (!isAuthorized()) continue;
 
         const messageUuid = trimNonEmpty(candidate.messageUuid);
         if (messageUuid == null) {
@@ -562,6 +525,7 @@ export function useLayoutWorkspaceNotifications(options: {
         if (cancelled) {
           return;
         }
+        if (!isAuthorized()) continue;
 
         const metadataUnavailable = resolvedCandidate.missingMetadata.length > 0;
         if (
@@ -597,7 +561,10 @@ export function useLayoutWorkspaceNotifications(options: {
           continue;
         }
 
-        const viewport = readViewportState(currentCandidate, openConversationId);
+        const viewport = readViewportState(
+          currentCandidate,
+          isSelected ? openConversationId : null,
+        );
         const decision = shouldWorkspaceDesktopNotify({
           metadataUnavailable,
           message: {
@@ -644,7 +611,8 @@ export function useLayoutWorkspaceNotifications(options: {
           navigate,
           processedCandidates: processedCandidatesRef.current,
           deferredCandidates: deferredCandidatesRef.current,
-          isCancelled: () => cancelled,
+          isCancelled: () => cancelled || !isAuthorized(),
+          accountLabel,
         });
       }
 

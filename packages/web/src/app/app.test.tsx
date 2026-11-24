@@ -35,6 +35,10 @@ vi.mock("~/widgets/layout/layout.ui", () => {
   };
 });
 
+vi.mock("./workspace-session/workspace-session.hook", () => ({
+  useWorkspaceSessionRuntime: () => vi.fn(),
+}));
+
 vi.mock("~/shared/lib/updater", () => ({
   useAppUpdate: () => ({
     status: "checked",

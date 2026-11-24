@@ -35,7 +35,7 @@ const EMPTY_IDS: string[] = [];
 const EMPTY_CONVERSATIONS: MessengerConversation[] = [];
 const EMPTY_FOLDERS: MessengerFolder[] = [];
 const EMPTY_SKIPPED_REALTIME_EVENTS: MessengerSkippedRealtimeEvent[] = [];
-const removedStreamUuidsByOwnerKey = new Map<string, Set<MessengerUuid>>();
+const removedStreamUuidsByOwnerKey = new Map<string, Map<MessengerUuid, symbol>>();
 let lastBootstrapRequestVersion = 0;
 type MessengerFreshnessState = Pick<
   MessengerDomainData,
@@ -131,7 +131,7 @@ export interface MessengerStoreState extends MessengerDomainData {
   setRealtimeCursor: (ownerKey: string, epochVersion: number) => void;
   markRealtimeEventSkipped: (ownerKey: string, epochVersion: number, reason: string) => void;
   setBootstrapError: (ownerKey: string, error: string) => void;
-  clear: () => void;
+  clear: (options?: { preserveRemovedStreams?: boolean }) => void;
 }
 
 export interface MessengerFolderItemRemovalOptions {
@@ -157,16 +157,25 @@ function createEmptyMessengerData(): MessengerDomainData {
   };
 }
 
-function removedStreamsForOwner(ownerKey: string): Set<MessengerUuid> {
+function removedStreamsForOwner(ownerKey: string): Map<MessengerUuid, symbol> {
   const existing = removedStreamUuidsByOwnerKey.get(ownerKey);
   if (existing != null) return existing;
-  const created = new Set<MessengerUuid>();
+  const created = new Map<MessengerUuid, symbol>();
   removedStreamUuidsByOwnerKey.set(ownerKey, created);
   return created;
 }
 
 export function markMessengerStreamRemoved(ownerKey: string, streamUuid: MessengerUuid): void {
-  removedStreamsForOwner(ownerKey).add(streamUuid);
+  removedStreamsForOwner(ownerKey).set(streamUuid, Symbol());
+}
+
+// Recovery may release only fences that were in place before the authoritative request.
+export function captureMessengerStreamRemovalCheck(
+  ownerKey: string,
+): (streamUuid: MessengerUuid) => boolean {
+  const captured = new Map(removedStreamUuidsByOwnerKey.get(ownerKey));
+  return (streamUuid) =>
+    removedStreamUuidsByOwnerKey.get(ownerKey)?.get(streamUuid) === captured.get(streamUuid);
 }
 
 export function restoreMessengerStream(ownerKey: string, streamUuid: MessengerUuid): void {
@@ -486,7 +495,7 @@ function rebuildFolderWithItems(
 
 function removeDeletedStreamItemsFromFolder(
   folder: MessengerFolder,
-  removedStreamUuids: ReadonlySet<MessengerUuid> | undefined,
+  removedStreamUuids: Pick<ReadonlySet<MessengerUuid>, "has" | "size"> | undefined,
 ): MessengerFolder {
   if (removedStreamUuids == null || removedStreamUuids.size === 0) return folder;
   const items = folder.items.filter((item) => !removedStreamUuids.has(item.streamUuid));
@@ -1297,11 +1306,12 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
     });
   },
 
-  clear() {
+  clear(options) {
     logStoreAction("messenger", "clear", {});
     set((state) => {
       if (state.ownerKey != null) {
-        removedStreamUuidsByOwnerKey.delete(state.ownerKey);
+        if (options?.preserveRemovedStreams !== true)
+          removedStreamUuidsByOwnerKey.delete(state.ownerKey);
         clearMessengerReadBoundariesForOwner(state.ownerKey);
       }
       return {

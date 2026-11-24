@@ -257,3 +257,9 @@ export const useExternalChatsStore = create<ExternalChatsState>((set) => ({
     }));
   },
 }));
+
+// Invalidate an open dialog snapshot only when it belongs to the recovered session.
+export function invalidateExternalChatsForOwner(ownerKey: string): void {
+  const state = useExternalChatsStore.getState();
+  if (state.scopeKey?.startsWith(`${ownerKey}:external-account:`) === true) state.clear();
+}

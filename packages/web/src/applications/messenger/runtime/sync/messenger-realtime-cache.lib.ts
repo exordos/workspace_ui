@@ -51,7 +51,11 @@ export interface MessengerRealtimeCacheWriter {
     page: MessengerRealtimeCacheConversationPage,
   ) => Promise<void> | void;
   upsertCachedStream: (ownerKey: string, stream: MessengerStream) => Promise<void> | void;
-  deleteCachedStream: (ownerKey: string, streamUuid: MessengerUuid) => Promise<void> | void;
+  deleteCachedStream: (
+    ownerKey: string,
+    streamUuid: MessengerUuid,
+    isWriteCurrent?: () => boolean,
+  ) => Promise<void> | void;
   upsertCachedStreamBindings: (
     ownerKey: string,
     streamBindings: readonly MessengerStreamBinding[],
@@ -145,7 +149,7 @@ async function applyDomainMutation(
       return "applied";
     case "stream":
       if (event.kind === "stream.deleted") {
-        await writer.deleteCachedStream(ownerKey, event.stream.uuid);
+        await writer.deleteCachedStream(ownerKey, event.stream.uuid, isWriteCurrent);
       } else {
         await writer.upsertCachedStream(ownerKey, adaptMessengerStream(event.stream));
       }

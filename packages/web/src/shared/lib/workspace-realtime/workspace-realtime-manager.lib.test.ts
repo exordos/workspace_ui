@@ -63,7 +63,9 @@ function createApplier(applied: string[]): WorkspaceRealtimeEventApplier {
   };
 }
 
-function createHarness() {
+function createHarness(
+  startOwner?: (context: WorkspaceRealtimeRuntimeContext) => Promise<void> | undefined,
+) {
   const runtimeOptions: WorkspaceRealtimeManagerRuntimeFactoryOptions<WorkspaceRealtimeManagerRuntimeContext>[] =
     [];
   const runtimes: WorkspaceRealtimeTransportCore[] = [];
@@ -79,7 +81,7 @@ function createHarness() {
       const runtime: WorkspaceRealtimeTransportCore = {
         start: vi.fn((context: WorkspaceRealtimeRuntimeContext) => {
           startedContexts.push(context);
-          return Promise.resolve();
+          return startOwner?.(context) ?? Promise.resolve();
         }),
         stop: vi.fn(() => Promise.resolve()),
         catchUp: vi.fn(() => Promise.resolve()),
@@ -124,6 +126,36 @@ describe("workspace-realtime runtime manager", () => {
       first.ownerKey,
       second.ownerKey,
     ]);
+  });
+
+  it("starts B and removes A while A's preparation remains pending", async () => {
+    const first = createManagerContext("a");
+    const second = createManagerContext("b");
+    let releaseA: (() => void) | undefined;
+    const pending = new Promise<void>((resolve) => {
+      releaseA = resolve;
+    });
+    const { manager, runtimes, startedContexts } = createHarness((context) =>
+      context.ownerKey === first.ownerKey ? pending : undefined,
+    );
+    const starting = manager.update([first, second], first.ownerKey);
+    try {
+      expect(startedContexts.map(({ ownerKey }) => ownerKey)).toEqual([
+        first.ownerKey,
+        second.ownerKey,
+      ]);
+      await manager.update([second], second.ownerKey);
+      expect(startedContexts[0]?.signal?.aborted).toBe(true);
+      expect(runtimes[0]?.stop).toHaveBeenCalledWith("manager_remove");
+      expect(startedContexts.at(-1)).toMatchObject({
+        surface: "active",
+        ownerKey: second.ownerKey,
+      });
+    } finally {
+      releaseA?.();
+      await starting;
+      await manager.stopAll();
+    }
   });
 
   it("marks active owner as active surface and other owners as background", async () => {
@@ -195,8 +227,37 @@ describe("workspace-realtime runtime manager", () => {
     await manager.update([refreshed], refreshed.ownerKey);
 
     expect(runtimeFactory).toHaveBeenCalledTimes(2);
-    expect(runtimes[0]?.stop).toHaveBeenCalledWith("manager_replace");
+    expect(runtimes[0]?.stop).toHaveBeenCalledWith("manager_replace", {
+      waitForApplications: true,
+    });
     expect(runtimes[1]?.start).toHaveBeenCalledTimes(1);
+  });
+
+  it("waits for the original runtime across multiple credential replacements", async () => {
+    const first = createManagerContext("a", { runtimeKey: "token-a" });
+    const second = { ...first, runtimeKey: "token-b" };
+    const third = { ...first, runtimeKey: "token-c" };
+    const { manager, runtimes } = createHarness();
+    await manager.update([first], first.ownerKey);
+    const original = runtimes[0];
+    if (original == null) throw new Error("Missing first runtime");
+    let releaseOriginal: (() => void) | undefined;
+    vi.mocked(original.stop).mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          releaseOriginal = resolve;
+        }),
+    );
+    const intermediate = manager.update([second], second.ownerKey);
+    const replacement = manager.update([third], third.ownerKey);
+    await Promise.resolve();
+    expect(runtimes[1]?.start).not.toHaveBeenCalled();
+    expect(runtimes[2]?.start).not.toHaveBeenCalled();
+    releaseOriginal?.();
+    await Promise.all([intermediate, replacement]);
+    expect(runtimes[1]?.start).not.toHaveBeenCalled();
+    expect(runtimes[2]?.start).toHaveBeenCalledOnce();
+    await manager.stopAll();
   });
 
   it("routes background events to background applier only", async () => {

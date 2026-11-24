@@ -22,10 +22,14 @@ export interface WorkspaceRealtimeCursor {
 export interface WorkspaceRealtimeDurableCursorStorage {
   read(owner: WorkspaceRealtimeCursorOwner): WorkspaceRealtimeCursor | null;
   write(owner: WorkspaceRealtimeCursorOwner, cursor: WorkspaceRealtimeCursor): void;
+  writeSnapshotBoundary(owner: WorkspaceRealtimeCursorOwner, cursor: WorkspaceRealtimeCursor): void;
+  requireSnapshotReset(owner: WorkspaceRealtimeCursorOwner): void;
+  isSnapshotResetRequired(owner: WorkspaceRealtimeCursorOwner): boolean;
   clear(owner: WorkspaceRealtimeCursorOwner): void;
 }
 
 const CURSOR_KEY_PREFIX = "workspace-realtime:cursor";
+const SNAPSHOT_RESET_REQUIRED = '"snapshot-reset-required"'; // Recovery state in the same owner record.
 
 function encodeCursorKeyPart(value: string): string {
   return encodeURIComponent(value);
@@ -81,10 +85,29 @@ export function workspaceRealtimeCursorKey(owner: WorkspaceRealtimeCursorOwner):
 export function createWorkspaceRealtimeCursorStorage(
   storage: WorkspaceRealtimeCursorStorageLike,
 ): WorkspaceRealtimeDurableCursorStorage {
+  // Only a completed snapshot can replace the owner's recovery record.
+  function writeCursor(
+    owner: WorkspaceRealtimeCursorOwner,
+    cursor: WorkspaceRealtimeCursor,
+    snapshotPrepared: boolean,
+  ): void {
+    const key = workspaceRealtimeCursorKey(owner);
+    const stored = storage.getItem(key);
+    if (stored === SNAPSHOT_RESET_REQUIRED && !snapshotPrepared) return;
+    const current = parseStoredCursor(stored);
+    if (
+      current?.epochGeneration === cursor.epochGeneration &&
+      current.epochVersion >= cursor.epochVersion
+    )
+      return;
+    storage.setItem(key, JSON.stringify(cursor));
+  }
+
   return {
     read(owner) {
       const key = workspaceRealtimeCursorKey(owner);
       const value = storage.getItem(key);
+      if (value === SNAPSHOT_RESET_REQUIRED) return null;
       const cursor = parseStoredCursor(value);
       if (value != null && cursor == null) {
         // Numeric cursors from the old protocol do not contain epoch_generation.
@@ -94,16 +117,16 @@ export function createWorkspaceRealtimeCursorStorage(
       return cursor;
     },
     write(owner, cursor) {
-      const key = workspaceRealtimeCursorKey(owner);
-      const current = parseStoredCursor(storage.getItem(key));
-      if (
-        current?.epochGeneration === cursor.epochGeneration &&
-        current.epochVersion >= cursor.epochVersion
-      ) {
-        // Cursor только растёт. Поздний дубль от старого socket не должен откатить catch-up назад.
-        return;
-      }
-      storage.setItem(key, JSON.stringify(cursor));
+      writeCursor(owner, cursor, false);
+    },
+    writeSnapshotBoundary(owner, cursor) {
+      writeCursor(owner, cursor, true);
+    },
+    requireSnapshotReset(owner) {
+      storage.setItem(workspaceRealtimeCursorKey(owner), SNAPSHOT_RESET_REQUIRED);
+    },
+    isSnapshotResetRequired(owner) {
+      return storage.getItem(workspaceRealtimeCursorKey(owner)) === SNAPSHOT_RESET_REQUIRED;
     },
     clear(owner) {
       storage.removeItem(workspaceRealtimeCursorKey(owner));
@@ -111,7 +134,40 @@ export function createWorkspaceRealtimeCursorStorage(
   };
 }
 
-export function createWorkspaceRealtimeBrowserCursorStorage(): WorkspaceRealtimeDurableCursorStorage | null {
-  if (typeof window === "undefined") return null;
-  return createWorkspaceRealtimeCursorStorage(window.localStorage);
+// A browser that disables durable storage still needs one cursor per running session.
+export function createWorkspaceRealtimeBrowserCursorStorage(): WorkspaceRealtimeDurableCursorStorage {
+  const memory = new Map<string, string>();
+  let browserStorage: Storage | null = null;
+  try {
+    if (typeof window !== "undefined") browserStorage = window.localStorage;
+  } catch {
+    // Security settings can deny access to localStorage entirely.
+  }
+
+  function withBrowserStorage<Result>(operation: (storage: Storage) => Result): Result | undefined {
+    if (browserStorage == null) return undefined;
+    try {
+      return operation(browserStorage);
+    } catch {
+      browserStorage = null;
+      return undefined;
+    }
+  }
+  return createWorkspaceRealtimeCursorStorage({
+    getItem(key) {
+      const durableValue = withBrowserStorage((storage) => storage.getItem(key));
+      if (durableValue === undefined) return memory.get(key) ?? null;
+      if (durableValue == null) memory.delete(key);
+      else memory.set(key, durableValue);
+      return durableValue;
+    },
+    setItem(key, value) {
+      memory.set(key, value);
+      withBrowserStorage((storage) => storage.setItem(key, value));
+    },
+    removeItem(key) {
+      memory.delete(key);
+      withBrowserStorage((storage) => storage.removeItem(key));
+    },
+  });
 }

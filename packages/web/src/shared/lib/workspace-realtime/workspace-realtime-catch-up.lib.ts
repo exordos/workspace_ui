@@ -45,10 +45,6 @@ export interface WorkspaceRealtimeCatchUpSkippedEvent {
 
 export interface WorkspaceRealtimeCatchUpApplier {
   applyEvent(event: WorkspaceRealtimeEvent, context: WorkspaceRealtimeCatchUpContext): unknown;
-  applyEvents?(
-    events: readonly WorkspaceRealtimeEvent[],
-    context: WorkspaceRealtimeCatchUpContext,
-  ): unknown;
   skipEvent(
     event: WorkspaceRealtimeEvent | WorkspaceRealtimeCatchUpSkippedEvent,
     reason: WorkspaceRealtimeCatchUpSkipReason,
@@ -72,6 +68,7 @@ export interface WorkspaceRealtimeCatchUpOptions {
   cursorStorage: WorkspaceRealtimeDurableCursorStorage;
   applier: WorkspaceRealtimeCatchUpApplier;
   startCursor?: WorkspaceRealtimeCursor;
+  onCursorCommitted?: (cursor: WorkspaceRealtimeCursor) => void; // Local confirmed progress, even if a later event fails.
   isOwnerCurrent?: (owner: WorkspaceRealtimeCatchUpOwner) => boolean;
   pageLimit?: number;
   getEpoch?: (options: WorkspaceClientOptions) => Promise<WorkspaceMessengerEpochDto>;
@@ -122,7 +119,7 @@ async function resolveStartCursor(
     epochGeneration: epoch.epoch_generation,
     epochVersion: epoch.epoch_version,
   };
-  options.cursorStorage.write(options.owner, cursor);
+  if (isCatchUpOwnerCurrent(options)) advanceCursor(options, cursor);
   return cursor;
 }
 
@@ -131,6 +128,7 @@ function advanceCursor(
   cursor: WorkspaceRealtimeCursor,
 ): WorkspaceRealtimeCursor {
   options.cursorStorage.write(options.owner, cursor);
+  options.onCursorCommitted?.(cursor);
   // Durable storage is shared across tabs, but this catch-up must advance only
   // through events applied to its own in-memory store.
   return cursor;
@@ -175,9 +173,7 @@ export async function catchUpWorkspaceRealtime(
     });
 
     const items = [...page.items].sort(compareEventsByEpochVersion);
-    for (let index = 0; index < items.length; index += 1) {
-      const eventDto = items[index];
-      if (eventDto == null) continue;
+    for (const eventDto of items) {
       // Сервер может вернуть страницу не в нужном порядке, а cursor должен двигаться строго вперёд.
       if (!isCatchUpOwnerCurrent(options)) {
         return {
@@ -207,38 +203,19 @@ export async function catchUpWorkspaceRealtime(
           "unsupported_event",
           context,
         );
-        skippedCount += 1;
-        lastCursor = advanceCursor(options, {
-          epochGeneration: startCursor.epochGeneration,
-          epochVersion: eventDto.epoch_version,
-        });
-        continue;
-      }
-
-      const events = [event];
-      let lastEpochVersion = event.epoch_version;
-      if (options.applier.applyEvents != null) {
-        while (index + 1 < items.length) {
-          const next = items[index + 1];
-          if (next == null || next.epoch_version <= lastEpochVersion) break;
-          const normalized = normalizeRestEvent(next);
-          if (normalized == null) break;
-          events.push(normalized);
-          lastEpochVersion = next.epoch_version;
-          index += 1;
-        }
-        await options.applier.applyEvents(events, context);
       } else {
         await options.applier.applyEvent(event, context);
       }
-      // A completed batch from an old runtime cannot advance its durable cursor.
+
+      // Neither a completed application nor a deliberate skip can commit for an old runtime.
       if (!isCatchUpOwnerCurrent(options)) {
         return { startedFrom: startCursor, lastCursor, appliedCount, skippedCount, isStale: true };
       }
-      appliedCount += events.length;
+      if (event == null) skippedCount += 1;
+      else appliedCount += 1;
       lastCursor = advanceCursor(options, {
         epochGeneration: startCursor.epochGeneration,
-        epochVersion: lastEpochVersion,
+        epochVersion: eventDto.epoch_version,
       });
     }
 

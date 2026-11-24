@@ -326,18 +326,16 @@ describe("workspace-realtime catch-up", () => {
     expect(cursorStorage.read(cursorOwner)).toEqual(cursor(13));
     expect(result).toMatchObject({ lastCursor: cursor(13), appliedCount: 3 });
   });
-  it("batches sorted events without crossing duplicate or unsupported envelopes", async () => {
+  it("acknowledges sorted events and deliberate skips in order", async () => {
     const cursorStorage = createWorkspaceRealtimeCursorStorage(new MemoryStorage());
     cursorStorage.write(cursorOwner, cursor(5));
-    const { applier } = createApplier();
-    const batches: number[][] = [];
-    applier.applyEvents = vi.fn((events: readonly WorkspaceRealtimeEvent[]) => {
-      batches.push(events.map((event) => event.epoch_version));
-    });
+    const { applier, appliedEpochs } = createApplier();
+    const onCursorCommitted = vi.fn();
     const result = await catchUpWorkspaceRealtime(
       createOptions({
         cursorStorage,
         applier,
+        onCursorCommitted,
         getEventsPage: () =>
           Promise.resolve(
             createPage([
@@ -352,12 +350,12 @@ describe("workspace-realtime catch-up", () => {
           event.epoch_version === 8 ? null : createRealtimeEvent(event.epoch_version),
       }),
     );
-    expect(batches).toEqual([[6], [7], [9]]);
-    expect(applier.applyEvent).not.toHaveBeenCalled();
+    expect(appliedEpochs).toEqual([6, 7, 9]);
+    expect(onCursorCommitted.mock.calls).toEqual([6, 7, 8, 9].map((epoch) => [cursor(epoch)]));
     expect(result).toMatchObject({ appliedCount: 3, skippedCount: 2, lastCursor: cursor(9) });
   });
 
-  it("waits for a batch and rejects its cursor if its owner changes while writing", async () => {
+  it("rejects a pending event's cursor if its owner changes while writing", async () => {
     const cursorStorage = createWorkspaceRealtimeCursorStorage(new MemoryStorage());
     cursorStorage.write(cursorOwner, cursor(5));
     const { applier } = createApplier();
@@ -366,7 +364,7 @@ describe("workspace-realtime catch-up", () => {
     const pending = new Promise<void>((resolve) => {
       release = resolve;
     });
-    applier.applyEvents = vi.fn(() => pending);
+    applier.applyEvent = vi.fn(() => pending);
     const application = catchUpWorkspaceRealtime(
       createOptions({
         cursorStorage,
@@ -375,7 +373,7 @@ describe("workspace-realtime catch-up", () => {
         getEventsPage: () => Promise.resolve(createPage([createEventDto(6), createEventDto(7)])),
       }),
     );
-    await vi.waitFor(() => expect(applier.applyEvents).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(applier.applyEvent).toHaveBeenCalledOnce());
     expect(cursorStorage.read(cursorOwner)).toEqual(cursor(5));
     current = false;
     release?.();

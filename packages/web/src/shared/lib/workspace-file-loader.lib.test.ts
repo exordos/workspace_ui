@@ -4,6 +4,7 @@ import type { MessengerBinaryResult } from "~/shared/api/messenger-transport.int
 import {
   createWorkspaceFileResourceCache,
   invalidateWorkspaceFileResourceCache,
+  invalidateWorkspaceOwnerFileResources,
   loadWorkspaceFile,
   subscribeWorkspaceFileResourceInvalidation,
   type WorkspaceFileLoaderOptions,
@@ -48,8 +49,8 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
-function requestSignal(): AbortSignal {
-  const call = downloadMock.mock.calls[0];
+function requestSignal(index = 0): AbortSignal {
+  const call = downloadMock.mock.calls[index];
   const signal = call?.[0]?.signal;
   if (signal == null) {
     throw new Error("Expected a shared request signal");
@@ -292,6 +293,36 @@ describe("loadWorkspaceFile", () => {
 
     expect(await (await resourceCache.load(options())).blob.text()).toBe("after");
     expect(downloadMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("evicts only the owner whose cursor expired, including in-flight protected bytes", async () => {
+    const cache = createWorkspaceFileResourceCache();
+    const expired = options({ ownerKey: "expired-projection" });
+    const otherOwner = options({ ownerKey: "other-projection" });
+    const pending = deferred<MessengerBinaryResult>();
+    downloadMock
+      .mockResolvedValueOnce(result("old"))
+      .mockResolvedValueOnce(result("other"))
+      .mockReturnValueOnce(pending.promise)
+      .mockResolvedValueOnce(result("fresh"));
+
+    await cache.load(expired);
+    await cache.load(otherOwner);
+    const loading = cache.load({ ...expired, fileUuid: "other-file" });
+    const loadingSignal = requestSignal(2);
+    invalidateWorkspaceOwnerFileResources(expired.ownerKey);
+
+    await expect(loading).rejects.toMatchObject({ name: "AbortError" });
+    expect(loadingSignal.aborted).toBe(true);
+    const otherBytes = await cache.load(otherOwner);
+    const freshBytes = await cache.load(expired);
+    expect(await otherBytes.blob.text()).toBe("other");
+    expect(await freshBytes.blob.text()).toBe("fresh");
+    expect(downloadMock).toHaveBeenCalledTimes(4);
+    expect(downloadMock.mock.calls[3]?.[0].binaryCache).toBe("reload");
+
+    pending.resolve(result("stale"));
+    cache.clear();
   });
 
   it("reloads the browser cache after invalidation until one fresh download succeeds", async () => {

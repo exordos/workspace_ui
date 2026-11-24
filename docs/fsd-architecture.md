@@ -62,7 +62,7 @@ The app router uses the lazy [Messenger route entry](../packages/web/src/applica
 
 Messenger features use the [catalog](../packages/web/src/applications/messenger/model/chats/chats.ts), [messages](../packages/web/src/applications/messenger/model/messages/messages.ts), and [drafts](../packages/web/src/applications/messenger/model/drafts/composer-draft-actions.lib.ts) contracts. Outgoing delivery stays inside `model/messages/outgoing`. Profile, account settings, and the right drawer remain Workspace widgets. The chat details feature uses the existing Workspace profile view for a direct conversation.
 
-Bootstrap and realtime in the Workspace shell still use their current session lifecycle operations. Session cleanup calls the draft owner's disposal operation and the shared IndexedDB cleanup. The local reset registry and DevTools retain their existing store access. The [remaining boundary inventory](plans/messenger-architecture/modules.md#оставшиеся-прямые-обращения) assigns these links to steps 12–14.
+The [Workspace session runtime](../packages/web/src/app/workspace-session/) composes bootstrap and realtime. Its Messenger participant calls operations in the Messenger model and sync adapters. The local reset registry, DevTools and session cleanup still have transitional dependencies. The [remaining boundary inventory](plans/messenger-architecture/modules.md#оставшиеся-прямые-обращения) assigns them to steps 13–14.
 
 ## Workspace data flow
 

@@ -200,12 +200,16 @@ describe("messenger last messages loader", () => {
     expect(
       readMarkdownPayload(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.payload),
     ).toBe("Hello, workspace");
-    expect(writeMessages).toHaveBeenCalledWith(ownerKey, [
-      expect.objectContaining({
-        uuid: MESSAGE_A,
-        payload: { kind: "markdown", content: "Hello, workspace" },
-      }),
-    ]);
+    expect(writeMessages).toHaveBeenCalledWith(
+      ownerKey,
+      [
+        expect.objectContaining({
+          uuid: MESSAGE_A,
+          payload: { kind: "markdown", content: "Hello, workspace" },
+        }),
+      ],
+      expect.any(Function),
+    );
   });
 
   it("applies cached last messages without calling the client", async () => {
@@ -288,12 +292,16 @@ describe("messenger last messages loader", () => {
     expect(
       readMarkdownPayload(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.payload),
     ).toBe("Edited on server");
-    expect(writeMessages).toHaveBeenCalledWith(ownerKey, [
-      expect.objectContaining({
-        uuid: MESSAGE_A,
-        payload: { kind: "markdown", content: "Edited on server" },
-      }),
-    ]);
+    expect(writeMessages).toHaveBeenCalledWith(
+      ownerKey,
+      [
+        expect.objectContaining({
+          uuid: MESSAGE_A,
+          payload: { kind: "markdown", content: "Edited on server" },
+        }),
+      ],
+      expect.any(Function),
+    );
   });
 
   it("preserves a newer realtime edit while cached preview revalidation is pending", async () => {
@@ -339,7 +347,7 @@ describe("messenger last messages loader", () => {
     expect(
       readMarkdownPayload(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.payload),
     ).toBe("Newer realtime edit");
-    expect(writeMessages).toHaveBeenCalledWith(ownerKey, []);
+    expect(writeMessages).toHaveBeenCalledWith(ownerKey, [], expect.any(Function));
   });
 
   it("loads only cache misses from the client", async () => {
@@ -392,12 +400,16 @@ describe("messenger last messages loader", () => {
       },
     });
 
-    expect(writeMessages).toHaveBeenCalledWith(ownerKey, [
-      expect.objectContaining({
-        uuid: MESSAGE_A,
-        payload: { kind: "markdown", content: "Hello, workspace" },
-      }),
-    ]);
+    expect(writeMessages).toHaveBeenCalledWith(
+      ownerKey,
+      [
+        expect.objectContaining({
+          uuid: MESSAGE_A,
+          payload: { kind: "markdown", content: "Hello, workspace" },
+        }),
+      ],
+      expect.any(Function),
+    );
   });
 
   it("checks IndexedDB even when last messages already exist in memory", async () => {

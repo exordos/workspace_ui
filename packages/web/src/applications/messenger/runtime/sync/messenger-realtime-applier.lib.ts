@@ -3,6 +3,7 @@ import { useWorkspaceMessageStore } from "~/applications/messenger/model/message
 import type { WorkspaceRealtimeEvent } from "~/shared/api/messenger.types";
 import { createLogger } from "~/shared/lib/logger";
 import { invalidateWorkspaceFileResourceCache } from "~/shared/lib/workspace-file-loader.lib";
+import { WorkspaceRealtimeParticipantNotReadyError } from "~/shared/lib/workspace-realtime/workspace-realtime-applier.lib";
 import type {
   WorkspaceRealtimeEventApplier,
   WorkspaceRealtimeEventContext,
@@ -130,6 +131,7 @@ export interface MessengerRealtimeActiveCacheWriter extends ConfirmedMessageRead
 
 export interface MessengerRealtimeActiveApplierOptions {
   isOwnerCurrent?: (owner: WorkspaceRealtimeRuntimeOwner) => boolean;
+  requireActiveCatalog?: boolean; // Applied only to Messenger mutations that use the selected catalog.
   cache?: MessengerRealtimeActiveCacheWriter;
   onMessageCreated?: (
     ownerKey: string,
@@ -151,6 +153,7 @@ export interface MessengerRealtimeActiveApplierOptions {
   onMessageReactionAggregateUpdated?: (
     ownerKey: string,
     message: MessengerMessage,
+    context: WorkspaceRealtimeEventContext,
   ) => void | Promise<void>;
   onFileChanged?: (ownerKey: string, event: MessengerFileRealtimeEvent) => void | Promise<void>;
 }
@@ -469,7 +472,7 @@ function applyMessageRealtimeEvent(
       options.onMessageReactionAggregateUpdated != null
     ) {
       void writeRealtimeCacheBestEffort(() =>
-        options.onMessageReactionAggregateUpdated?.(ownerKey, eventMessage),
+        options.onMessageReactionAggregateUpdated?.(ownerKey, eventMessage, context),
       );
     }
     return { cacheWrite, shouldProject, currentRead, currentPollUpdatedAt };
@@ -529,6 +532,7 @@ function applyStreamRealtimeEvent(
   event: MessengerStreamRealtimeEvent,
   ownerKey: string,
   activeCache: MessengerRealtimeActiveCacheWriter,
+  isCurrent: () => boolean,
 ): Promise<void> | void {
   const store = useMessengerStore.getState();
 
@@ -538,6 +542,7 @@ function applyStreamRealtimeEvent(
       streamUuid: event.stream.uuid,
       removeActiveProjection: true,
       deleteCachedStream: activeCache.deleteCachedStream,
+      isOwnerCurrent: isCurrent,
     }).catch(() => undefined);
   }
 
@@ -709,7 +714,9 @@ function applySupportedRealtimeEvent(
     case "messages":
       return applyMessagesRealtimeEvent(event, ownerKey, context, activeCache, options);
     case "stream":
-      return applyStreamRealtimeEvent(event, ownerKey, activeCache);
+      return applyStreamRealtimeEvent(event, ownerKey, activeCache, () =>
+        isActiveCurrentOwner(context, options),
+      );
     case "stream_binding":
       return applyStreamBindingRealtimeEvent(event, ownerKey, activeCache);
     case "topic":
@@ -781,10 +788,27 @@ export function createMessengerRealtimeActiveApplier(
   const activeCache = options.cache ?? messengerRealtimeActiveCache;
   const applier: WorkspaceRealtimeEventApplier = {
     applyEvent(event, context) {
-      if (!isActiveCurrentOwner(context, options)) return;
+      if (isNonMessengerRealtimeEvent(event)) return;
+      if (
+        context.surface !== "active" ||
+        context.signal?.aborted === true ||
+        options.isOwnerCurrent?.(context.owner) === false
+      ) {
+        return;
+      }
 
       const store = useMessengerStore.getState();
-      if (isNonMessengerRealtimeEvent(event)) return;
+      if (
+        options.requireActiveCatalog === true &&
+        isSupportedRealtimeEvent(event) &&
+        event.type !== "file" &&
+        (store.ownerKey !== context.ownerKey ||
+          store.lastLoadedAt == null ||
+          useWorkspaceMessageStore.getState().ownerKey !== context.ownerKey)
+      ) {
+        throw new WorkspaceRealtimeParticipantNotReadyError("messenger");
+      }
+      if (!isActiveCurrentOwner(context, options)) return;
       if (!isSupportedRealtimeEvent(event)) {
         log.warn("Skipped unsupported workspace realtime event", {
           ownerKey: context.ownerKey,
@@ -851,6 +875,7 @@ export function createMessengerRealtimeActiveApplier(
       const writeCreatedMessages = activeCache.writeCreatedMessages;
       const isCurrent = () => isActiveCurrentOwner(context, options);
       if (
+        options.requireActiveCatalog === true ||
         writeCreatedMessages == null ||
         context.source !== "catch_up" ||
         context.notificationsEnabled === true

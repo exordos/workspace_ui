@@ -69,6 +69,7 @@ import type {
 export interface MessengerCatalogCachePayload {
   payload: MessengerBootstrapPayload;
   epochVersion: number | null;
+  hasCompleteCatalog?: boolean; // Older cached projections can still render while a new baseline loads.
 }
 
 export interface MessengerCatalogPayloadCacheWriteOptions extends WorkspaceMessengerCatalogCacheWriteOptions {
@@ -117,7 +118,7 @@ function normalizeCachedMessages(
   });
 }
 
-const removedStreamCacheKeys = new Set<string>();
+const removedStreamCacheKeys = new Map<string, symbol>();
 
 function streamCacheKey(ownerKey: string, streamUuid: MessengerUuid): string {
   return `${ownerKey}\0${streamUuid}`;
@@ -128,7 +129,18 @@ function isStreamCacheRemoved(ownerKey: string, streamUuid: MessengerUuid): bool
 }
 
 export function markMessengerStreamCacheRemoved(ownerKey: string, streamUuid: MessengerUuid): void {
-  removedStreamCacheKeys.add(streamCacheKey(ownerKey, streamUuid));
+  removedStreamCacheKeys.set(streamCacheKey(ownerKey, streamUuid), Symbol());
+}
+
+// Compare the cache fence with the one observed before loading the snapshot.
+export function captureMessengerStreamCacheRemovalCheck(
+  ownerKey: string,
+): (streamUuid: MessengerUuid) => boolean {
+  const captured = new Map(removedStreamCacheKeys);
+  return (streamUuid) => {
+    const key = streamCacheKey(ownerKey, streamUuid);
+    return removedStreamCacheKeys.get(key) === captured.get(key);
+  };
 }
 
 export function restoreMessengerStreamCache(ownerKey: string, streamUuid: MessengerUuid): void {
@@ -145,15 +157,19 @@ function keepCachedMessage(
 async function purgeRemovedStreamCaches(
   ownerKey: string,
   streamUuids: readonly MessengerUuid[],
+  isWriteCurrent: () => boolean = () => true,
 ): Promise<void> {
   const removedStreamUuids = [...new Set(streamUuids)].filter((streamUuid) =>
     isStreamCacheRemoved(ownerKey, streamUuid),
   );
   await Promise.all(
-    removedStreamUuids.flatMap((streamUuid) => [
-      deleteMessengerStreamCatalogCache(ownerKey, streamUuid),
-      deleteCachedStreamMessageBuckets(ownerKey, streamUuid),
-    ]),
+    removedStreamUuids.flatMap((streamUuid) => {
+      const isRemovalCurrent = () => isWriteCurrent() && isStreamCacheRemoved(ownerKey, streamUuid);
+      return [
+        deleteMessengerStreamCatalogCache(ownerKey, streamUuid, isRemovalCurrent),
+        deleteCachedStreamMessageBuckets(ownerKey, streamUuid, isRemovalCurrent),
+      ];
+    }),
   );
 }
 
@@ -275,11 +291,13 @@ export async function readMessengerCatalogPayloadCache(
   ownerKey: string,
 ): Promise<MessengerCatalogCachePayload | null> {
   const snapshot = await readMessengerCatalogCache(ownerKey);
-  if (!hasCatalogData(snapshot)) return null;
+  const hasCompleteCatalog = snapshot.ownerMeta?.hasCompleteCatalog === true;
+  if (!hasCompleteCatalog && !hasCatalogData(snapshot)) return null;
 
   return {
     payload: snapshotPayload(snapshot),
     epochVersion: snapshot.realtimeCursor?.epochVersion ?? null,
+    hasCompleteCatalog,
   };
 }
 
@@ -300,9 +318,11 @@ export async function writeMessengerCatalogPayloadCache(
     folders: payload.folders.map((folder) => withoutRemovedCachedFolderItems(ownerKey, folder)),
   };
   await writeMessengerCatalogCache(ownerKey, catalogWriteSnapshot(safePayload, options), options);
+  if (options.isWriteCurrent?.() === false) return;
   await purgeRemovedStreamCaches(
     ownerKey,
     payload.streams.map((stream) => stream.uuid),
+    options.isWriteCurrent,
   );
 }
 
@@ -370,6 +390,7 @@ export async function writeMessengerFolderSnapshotCache(
 export async function replaceMessengerFolderSnapshotsCache(
   ownerKey: string,
   folders: MessengerFolder[],
+  isWriteCurrent?: () => boolean,
 ): Promise<void> {
   const safeFolders = folders.map((folder) => withoutRemovedCachedFolderItems(ownerKey, folder));
   await writeMessengerCatalogCache(
@@ -378,11 +399,13 @@ export async function replaceMessengerFolderSnapshotsCache(
       folders: safeFolders,
       folderItems: safeFolders.flatMap((folder) => folder.items),
     },
-    { mode: "reconcile" },
+    { mode: "reconcile", isWriteCurrent },
   );
+  if (isWriteCurrent?.() === false) return;
   await purgeRemovedStreamCaches(
     ownerKey,
     folders.flatMap((folder) => folder.items.map((item) => item.streamUuid)),
+    isWriteCurrent,
   );
 }
 
@@ -430,13 +453,19 @@ export async function upsertMessengerStreamCache(
 export async function deleteMessengerStreamCache(
   ownerKey: string,
   streamUuid: MessengerUuid,
+  isWriteCurrent: () => boolean = () => true,
 ): Promise<void> {
+  if (!isWriteCurrent()) return;
   markMessengerStreamCacheRemoved(ownerKey, streamUuid);
+  const key = streamCacheKey(ownerKey, streamUuid);
+  const removal = removedStreamCacheKeys.get(key);
+  const isRemovalCurrent = () => isWriteCurrent() && removedStreamCacheKeys.get(key) === removal;
   await Promise.all([
-    deleteMessengerStreamCatalogCache(ownerKey, streamUuid),
-    deleteCachedStreamMessageBuckets(ownerKey, streamUuid),
+    deleteMessengerStreamCatalogCache(ownerKey, streamUuid, isRemovalCurrent),
+    deleteCachedStreamMessageBuckets(ownerKey, streamUuid, isRemovalCurrent),
   ]);
   const snapshot = await readMessengerCatalogCache(ownerKey);
+  if (!isRemovalCurrent()) return;
   const cachedFolders = snapshot.folders as unknown as MessengerFolder[];
   const recalculatedFolders = cachedFolders.map(recalculateCachedFolderUnread);
   const changedFolders = recalculatedFolders.filter(
@@ -447,6 +476,7 @@ export async function deleteMessengerStreamCache(
       ownerKey,
       changedFolders,
       changedFolders.flatMap((folder) => folder.items),
+      { shouldApply: isRemovalCurrent },
     );
   }
 }
@@ -544,16 +574,20 @@ export async function readMessengerMessageBodyCache(
 export async function writeMessengerMessageBodyCache(
   ownerKey: string,
   messages: readonly MessengerMessage[],
+  isWriteCurrent?: () => boolean,
 ): Promise<void> {
   await upsertCachedMessages(
     ownerKey,
     messages
       .filter((message) => keepCachedMessage(ownerKey, message))
       .map(withoutRuntimeReactionState),
+    isWriteCurrent,
   );
+  if (isWriteCurrent?.() === false) return;
   await purgeRemovedStreamCaches(
     ownerKey,
     messages.map((message) => message.streamUuid),
+    isWriteCurrent,
   );
 }
 

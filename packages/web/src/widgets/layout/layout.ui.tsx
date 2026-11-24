@@ -1,4 +1,4 @@
-// Root app layout: shell, store orchestration, background syncs for the active instance.
+// Root app layout: window state and presentation for the selected Workspace session.
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import type { EncryptedChatInfoScreen } from "~/applications/messenger/features/chat-details/encrypted-chat-info/encrypted-chat-info.types";
@@ -49,9 +49,10 @@ import { resolveLayoutTopBannerKind } from "./layout-top-banner.lib";
 import { useLayoutUnreadMentionsBootstrap } from "./layout-unread-mentions-bootstrap.hook";
 import { useLayoutWindowBranding } from "./layout-window-branding.hook";
 import { useLayoutWorkspaceIamCapabilities } from "./layout-workspace-iam-capabilities.hook";
-import { useLayoutWorkspaceMessengerBootstrap } from "./layout-workspace-messenger-bootstrap.hook";
-import { useLayoutWorkspaceNotifications } from "./layout-workspace-notifications.hook";
-import { useLayoutWorkspaceRealtime } from "./layout-workspace-realtime.hook";
+import {
+  useLayoutWorkspaceNotifications,
+  type WorkspaceNotificationOwner,
+} from "./layout-workspace-notifications.hook";
 import { useZulipRateLimitCountdownSeconds } from "./layout-zulip-rate-limit-banner.hook";
 
 const EMPTY_LEGACY_STREAMS: StreamWithLast[] = [];
@@ -59,8 +60,17 @@ const EMPTY_LEGACY_DMS: SidebarChat[] = [];
 const EMPTY_LEGACY_STREAMS_MAP = new Map<number, StreamEntryInternal>();
 const EMPTY_LEGACY_MUTED_STREAM_IDS = new Set<number>();
 const EMPTY_USERS_MAP_FOR_RIGHT_DRAWER = new Map<number, { full_name?: string; email?: string }>();
+const noBootstrapRetry = () => undefined;
+const EMPTY_NOTIFICATION_OWNERS: readonly WorkspaceNotificationOwner[] = [];
 
-export const Layout: React.FC = () => {
+// The app runtime owns retries. The shell only forwards the user's action.
+export const Layout: React.FC<{
+  retryWorkspaceBootstrap?: () => void;
+  notificationOwners?: readonly WorkspaceNotificationOwner[];
+}> = ({
+  retryWorkspaceBootstrap = noBootstrapRetry,
+  notificationOwners = EMPTY_NOTIFICATION_OWNERS,
+}) => {
   const location = useLocation();
   const navigate = useNavigate();
   const {
@@ -90,7 +100,6 @@ export const Layout: React.FC = () => {
   const unreadMentionsCount = useActivityStore((state) => state.unreadMentionsCount);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const sidebarSearchRef = useRef<SidebarSearchHandle>(null);
-  const [bootstrapRetryNonce, setBootstrapRetryNonce] = useState(0);
   const rightDrawerOpen = useRightDrawerStore((s) => s.open);
   const setRightDrawerOpen = useRightDrawerStore((s) => s.setOpen);
   const closeCurrentRightDrawer = useRightDrawerStore((s) => s.closeCurrent);
@@ -153,15 +162,6 @@ export const Layout: React.FC = () => {
 
   useLayoutUnreadMentionsBootstrap(currentWorkspaceRuntimeContext);
   useLayoutWorkspaceIamCapabilities(currentWorkspaceRuntimeContext);
-  const bootstrapBoundary = useLayoutWorkspaceMessengerBootstrap({
-    enabled: true,
-    retryNonce: bootstrapRetryNonce,
-  });
-  useLayoutWorkspaceRealtime({
-    enabled: workspaceMessengerActive,
-    pathname: location.pathname,
-    bootstrapBoundary,
-  });
 
   useLayoutWindowBranding({
     unreadCount: unreadCountForCurrentInstance,
@@ -198,6 +198,7 @@ export const Layout: React.FC = () => {
 
   useLayoutWorkspaceNotifications({
     enabled: workspaceRouteReady,
+    owners: notificationOwners,
     navigate,
     pathname: location.pathname,
   });
@@ -306,9 +307,6 @@ export const Layout: React.FC = () => {
     [rightDrawerChatScope, openRightDrawerChatScreen],
   );
 
-  const handleRetryBootstrap = useCallback(() => {
-    setBootstrapRetryNonce((value) => value + 1);
-  }, []);
   const topBannerKind = useMemo(
     () => resolveLayoutTopBannerKind(connectionBannerMessage, notificationPermission.visible),
     [connectionBannerMessage, notificationPermission.visible],
@@ -325,7 +323,7 @@ export const Layout: React.FC = () => {
       ) : null}
       <LayoutBootstrapErrorBanner
         error={shouldShowChatShell ? bootstrapError : null}
-        onRetry={handleRetryBootstrap}
+        onRetry={retryWorkspaceBootstrap}
       />
       {topBannerKind === "notification-permission" ? (
         <LayoutNotificationPermissionBanner

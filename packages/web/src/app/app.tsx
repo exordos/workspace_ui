@@ -46,6 +46,7 @@ import { AuthenticatedAppRoutes, LoginAppRoutes, WebViewAppRoutes } from "./app-
 import { AppShortcutsHelpModal } from "./app-shortcuts-help-modal.ui";
 import { buildShortcutHelpSections } from "./app-shortcuts-help.lib";
 import { resolveGlobalNavigationRoute } from "./app-shortcuts.lib";
+import { useWorkspaceSessionRuntime } from "./workspace-session/workspace-session.hook";
 
 configureWorkspaceI18nStorageScope();
 
@@ -63,6 +64,8 @@ const AppContent: React.FC = () => {
     () => sessions.find((session) => session.accountId === currentAccountId) ?? null,
     [sessions, currentAccountId],
   );
+  const webView = isWebView();
+  const retryWorkspaceBootstrap = useWorkspaceSessionRuntime(sessions, currentSession, !webView);
   const currentOrgRouteId = currentSession?.organizationId ?? null;
   const defaultMessengerRoute = useMemo(
     () =>
@@ -240,7 +243,7 @@ const AppContent: React.FC = () => {
     { edgeOnly: true, edgeWidth: 24, threshold: 60 },
   );
 
-  if (isWebView()) {
+  if (webView) {
     return <WebViewAppRoutes />;
   }
 
@@ -282,7 +285,10 @@ const AppContent: React.FC = () => {
       )}
       <ErrorBoundary fallback={(api) => <PageErrorFallback onRetry={api.resetErrorBoundary} />}>
         <Suspense fallback={<PageLoader />}>
-          <AuthenticatedAppRoutes defaultMessengerRoute={defaultMessengerRoute} />
+          <AuthenticatedAppRoutes
+            defaultMessengerRoute={defaultMessengerRoute}
+            retryWorkspaceBootstrap={retryWorkspaceBootstrap}
+          />
         </Suspense>
       </ErrorBoundary>
     </div>

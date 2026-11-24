@@ -6,6 +6,7 @@ import {
 } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContextGetter } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type {
+  WorkspaceRealtimeSurface,
   WorkspaceRuntimeContext,
   WorkspaceRuntimeRequestContext,
 } from "~/entities/workspace-runtime/workspace-runtime.types";
@@ -19,6 +20,7 @@ import type { WorkspaceClientOptions } from "~/shared/api/workspace-client";
 import {
   readWorkspaceUserCache as defaultReadWorkspaceUserCache,
   readWorkspaceUserCacheProfile as defaultReadWorkspaceUserCacheProfile,
+  readWorkspaceUserCacheSnapshot,
   replaceWorkspaceUserCache as defaultReplaceWorkspaceUserCache,
   upsertWorkspaceUserCache as defaultUpsertWorkspaceUserCache,
 } from "~/shared/lib/workspace-user-cache-db";
@@ -77,6 +79,7 @@ export interface UserCacheDeps {
   upsertUsersCache?: (
     ownerKey: string,
     users: readonly WorkspaceUserCacheProfile[],
+    isWriteCurrent?: () => boolean,
   ) => Promise<void> | void;
 }
 
@@ -253,11 +256,110 @@ export function writeUsersToCacheForOwner(
   ownerKey: string,
   users: readonly User[],
   cache?: Pick<UserCacheDeps, "upsertUsersCache">,
+  isWriteCurrent?: () => boolean,
 ): void {
   const profiles = users.map(toWorkspaceUserCacheProfile);
   writeUsersCacheBestEffort(() =>
-    (cache?.upsertUsersCache ?? defaultUpsertWorkspaceUserCache)(ownerKey, profiles),
+    (cache?.upsertUsersCache ?? defaultUpsertWorkspaceUserCache)(
+      ownerKey,
+      profiles,
+      isWriteCurrent,
+    ),
   );
+}
+
+// Active users write the visible store. Background users write their own durable projection.
+export interface WorkspaceSessionUsersOptions extends Pick<
+  RefreshUsersOptions,
+  "runtimeContext" | "signal" | "client" | "clientOptions"
+> {
+  getRuntimeContext: WorkspaceRuntimeContextGetter;
+  surface: WorkspaceRealtimeSurface;
+  reset?: boolean; // Replace the previous projection after an expired cursor.
+}
+
+// Clear the visible users store when no session is selected.
+export function clearActiveWorkspaceSessionUsers(): void {
+  useUsersStore.getState().clear();
+}
+
+// Restore cached profiles for display and separately report full snapshot validity.
+export async function restoreWorkspaceSessionUsers(
+  options: WorkspaceSessionUsersOptions,
+): Promise<UserCacheHydrateResult> {
+  if (isUserSyncInvalidated(options)) return { status: "skipped", reason: "stale-owner" };
+  const ownerKey = workspaceRuntimeOwnerKey(options.runtimeContext);
+  const active = options.surface === "active";
+  if (active && useUsersStore.getState().ownerKey !== ownerKey) {
+    useUsersStore.getState().startOwnerSync(ownerKey);
+  }
+  const before = useUsersStore.getState();
+  const snapshot = await readWorkspaceUserCacheSnapshot(ownerKey);
+  if (isUserSyncInvalidated(options)) return { status: "skipped", reason: "stale-owner" };
+  if (active) {
+    const current = useUsersStore.getState();
+    if (current.ownerKey !== ownerKey) return { status: "skipped", reason: "stale-owner" };
+    if (current.usersById === before.usersById && current.lastLoadedAt == null) {
+      const users = snapshot.profiles.map(fromWorkspaceUserCacheProfile);
+      if (snapshot.complete && current.loadStatus !== "error") {
+        current.replaceUsersForOwner(ownerKey, users);
+      } else if (users.length > 0) {
+        current.upsertUsersForOwner(ownerKey, users);
+      }
+    }
+  }
+  return snapshot.complete ? { status: "applied" } : { status: "empty" };
+}
+
+// Load the full users catalogue independently from the Messenger snapshot.
+export async function refreshWorkspaceSessionUsers(
+  options: WorkspaceSessionUsersOptions,
+): Promise<UserSyncResult> {
+  const { runtimeContext, client, clientOptions, signal, reset } = options;
+  const isWriteCurrent = () => !isUserSyncInvalidated(options);
+  const skipped = { status: "skipped", reason: "stale-owner" } as const;
+  if (!isWriteCurrent()) return skipped;
+  const ownerKey = workspaceRuntimeOwnerKey(runtimeContext);
+  const active = options.surface === "active";
+  if (active) useUsersStore.getState().startOwnerSync(ownerKey);
+
+  try {
+    const dtos = await (client?.getUsers ?? defaultGetUsers)(
+      buildUserRequestOptions(runtimeContext, clientOptions, signal),
+    );
+    if (!isWriteCurrent()) return skipped;
+    const validDtos = filterWorkspaceMessengerUsersDto(dtos);
+    if (dtos.length > 0 && validDtos.length === 0) {
+      throw new TypeError("Expected at least one valid messenger user");
+    }
+    const users = validDtos.map(adaptWorkspaceMessengerUserDto);
+    if (active) {
+      if (reset) {
+        useUsersStore.getState().clear();
+        if (!isWriteCurrent()) return skipped;
+        useUsersStore.getState().startOwnerSync(ownerKey);
+      }
+      if (!useUsersStore.getState().replaceUsersForOwner(ownerKey, users)) return skipped;
+    }
+    if (!isWriteCurrent()) return skipped;
+
+    const cacheWrite = defaultReplaceWorkspaceUserCache(
+      ownerKey,
+      users.map(toWorkspaceUserCacheProfile),
+      {
+        complete: true,
+        isWriteCurrent,
+        requireWrite: !active,
+        reset,
+      },
+    );
+    if (!active) await cacheWrite;
+    return isWriteCurrent() ? { status: "applied" } : skipped;
+  } catch (error) {
+    if (!isWriteCurrent()) return skipped;
+    if (active) return markUsersSyncError(error, { ...options, ownerKey });
+    return { status: "failed", error: normalizeUserSyncError(error) };
+  }
 }
 
 export async function resolveCachedWorkspaceUser(
@@ -456,7 +558,12 @@ export async function loadUserByUuid(
     if (!state.upsertUserForOwner(ownerKey, user)) {
       return { status: "skipped", reason: "stale-owner" };
     }
-    writeUsersToCacheForOwner(ownerKey, [user], options.cache);
+    writeUsersToCacheForOwner(
+      ownerKey,
+      [user],
+      options.cache,
+      () => !isUserSyncInvalidated({ ...options, requestContext }),
+    );
     if (!store.getState().setLoadStatusForOwner(ownerKey, "ready")) {
       return { status: "skipped", reason: "stale-owner" };
     }

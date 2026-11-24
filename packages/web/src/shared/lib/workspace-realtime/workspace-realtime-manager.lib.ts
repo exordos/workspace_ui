@@ -45,7 +45,11 @@ export interface WorkspaceRealtimeManagerOptions<
   backgroundApplierFactory?: (
     options: WorkspaceRealtimeManagerApplierFactoryOptions,
   ) => WorkspaceRealtimeEventApplier;
-  isOwnerCurrent?: (owner: WorkspaceRealtimeRuntimeOwner) => boolean;
+  isOwnerCurrent?: (
+    owner: WorkspaceRealtimeRuntimeOwner,
+    surface: WorkspaceRealtimeSurface,
+    context: TContext,
+  ) => boolean;
   onDiagnostic?: (diagnostic: WorkspaceRealtimeDiagnostic) => void;
 }
 
@@ -67,6 +71,7 @@ export interface WorkspaceRealtimeRuntimeManager<
 > {
   update(contexts: TContext[], activeOwnerKey: string | null): Promise<void>;
   reconnectAll(reason?: string): Promise<void>;
+  restartOwner(ownerKey: string): Promise<void>;
   stopAll(reason?: string): Promise<void>;
   getSnapshot(): WorkspaceRealtimeManagerSnapshot;
 }
@@ -76,6 +81,7 @@ interface RuntimeEntry<TContext extends WorkspaceRealtimeManagerRuntimeContext> 
   runtime: WorkspaceRealtimeTransportCore;
   managerContext: TContext;
   controller: AbortController;
+  previousStop?: Promise<void>; // Replacement waits only for the previous runtime of the same owner.
   surface: WorkspaceRealtimeSurface;
   activeApplier: WorkspaceRealtimeEventApplier;
   backgroundApplier: WorkspaceRealtimeEventApplier;
@@ -152,15 +158,17 @@ export function createWorkspaceRealtimeRuntimeManager<
 >(options: WorkspaceRealtimeManagerOptions<TContext>): WorkspaceRealtimeRuntimeManager<TContext> {
   const entries = new Map<string, RuntimeEntry<TContext>>();
   let activeOwnerKey: string | null = null;
-  let operationQueue = Promise.resolve();
 
-  function isOwnerCurrent(owner: WorkspaceRealtimeRuntimeOwner): boolean {
-    const entry = [...entries.values()].find((candidate) =>
-      isSameOwner(candidate.managerContext.owner, owner),
-    );
-    if (entry == null || entry.controller.signal.aborted) return false;
+  // Keep the predicate tied to its entry even if the same owner replaces it.
+  function isEntryOwnerCurrent(
+    entry: RuntimeEntry<TContext>,
+    owner: WorkspaceRealtimeRuntimeOwner,
+  ): boolean {
+    if (entries.get(entry.managerContext.ownerKey) !== entry || entry.controller.signal.aborted) {
+      return false;
+    }
     if (!isSameRuntimeOwner(entry.managerContext.owner, owner)) return false;
-    return options.isOwnerCurrent?.(owner) ?? true;
+    return options.isOwnerCurrent?.(owner, entry.surface, entry.managerContext) ?? true;
   }
 
   function recordDiagnostic(diagnostic: WorkspaceRealtimeDiagnostic): void {
@@ -177,6 +185,8 @@ export function createWorkspaceRealtimeRuntimeManager<
   ): RuntimeEntry<TContext> {
     const controller = new AbortController();
     let entry: RuntimeEntry<TContext> | null = null;
+    const isOwnerCurrent = (owner: WorkspaceRealtimeRuntimeOwner) =>
+      entry != null && isEntryOwnerCurrent(entry, owner);
     const activeApplier = options.activeApplierFactory({ isOwnerCurrent });
     // Фон сейчас не пишет в messengerStore: он только даёт transport-у принять событие и сдвинуть cursor.
     const backgroundApplier =
@@ -231,16 +241,27 @@ export function createWorkspaceRealtimeRuntimeManager<
     managerContext: TContext,
     surface: WorkspaceRealtimeSurface,
   ): Promise<void> {
+    entry.controller.abort();
+    const controller = new AbortController();
+    entry.controller = controller;
     entry.managerContext = managerContext;
     entry.surface = surface;
-    await entry.runtime.start(
-      buildRuntimeContext(managerContext, surface, entry.controller.signal),
-    );
+    if (entry.previousStop != null) {
+      await entry.previousStop;
+    }
+    if (controller.signal.aborted) return;
+    await entry.runtime.start(buildRuntimeContext(managerContext, surface, controller.signal));
   }
 
   async function stopEntry(entry: RuntimeEntry<TContext>, reason: string): Promise<void> {
+    const previousStop = entry.previousStop;
+    // Capture an active predecessor before aborting the entry's selection scope.
+    const stopping =
+      reason === "manager_replace"
+        ? entry.runtime.stop(reason, { waitForApplications: true })
+        : entry.runtime.stop(reason);
     entry.controller.abort();
-    await entry.runtime.stop(reason);
+    await Promise.all([previousStop, stopping]);
   }
 
   async function applyUpdate(
@@ -249,11 +270,12 @@ export function createWorkspaceRealtimeRuntimeManager<
   ): Promise<void> {
     activeOwnerKey = nextActiveOwnerKey;
     const nextOwnerKeys = new Set(contexts.map((context) => context.ownerKey));
+    const transitions: Promise<void>[] = [];
 
     for (const [ownerKey, entry] of entries) {
       if (nextOwnerKeys.has(ownerKey)) continue;
       entries.delete(ownerKey);
-      await stopEntry(entry, "manager_remove");
+      transitions.push(stopEntry(entry, "manager_remove"));
     }
 
     for (const managerContext of contexts) {
@@ -263,53 +285,46 @@ export function createWorkspaceRealtimeRuntimeManager<
       if (existing == null) {
         const entry = createEntry(managerContext, surface);
         entries.set(managerContext.ownerKey, entry);
-        await startEntry(entry, managerContext, surface);
+        transitions.push(startEntry(entry, managerContext, surface));
         continue;
       }
 
       if (shouldReplaceRuntime(existing, managerContext)) {
-        await stopEntry(existing, "manager_replace");
         const entry = createEntry(managerContext, surface);
         entries.set(managerContext.ownerKey, entry);
-        await startEntry(entry, managerContext, surface);
+        entry.previousStop = stopEntry(existing, "manager_replace");
+        transitions.push(startEntry(entry, managerContext, surface));
         continue;
       }
 
       if (shouldRestartRuntime(existing, managerContext, surface)) {
-        await startEntry(existing, managerContext, surface);
+        transitions.push(startEntry(existing, managerContext, surface));
         continue;
       }
 
       existing.managerContext = managerContext;
     }
-  }
-
-  function enqueue(operation: () => Promise<void>): Promise<void> {
-    // React effects могут прийти подряд: start/stop/update выполняем строго по очереди,
-    // чтобы поздний stop не закрыл только что созданный socket.
-    const nextOperation = operationQueue.then(operation, operation);
-    operationQueue = nextOperation.catch(() => undefined);
-    return nextOperation;
+    await Promise.all(transitions);
   }
 
   return {
     update(contexts, nextActiveOwnerKey) {
-      return enqueue(() => applyUpdate(contexts, nextActiveOwnerKey));
+      // Reconcile synchronously, then wait for owner-specific work. Slow A cannot delay B or removal.
+      return applyUpdate(contexts, nextActiveOwnerKey);
     },
-    reconnectAll(reason = "manager_reconnect") {
-      return enqueue(async () => {
-        await Promise.all([...entries.values()].map((entry) => entry.runtime.reconnect(reason)));
-      });
+    async reconnectAll(reason = "manager_reconnect") {
+      await Promise.all([...entries.values()].map((entry) => entry.runtime.reconnect(reason)));
     },
-    stopAll(reason = "manager_stop") {
-      return enqueue(async () => {
-        activeOwnerKey = null;
-        const currentEntries = [...entries.values()];
-        entries.clear();
-        for (const entry of currentEntries) {
-          await stopEntry(entry, reason);
-        }
-      });
+    async restartOwner(ownerKey) {
+      const entry = entries.get(ownerKey);
+      if (entry == null) return;
+      await startEntry(entry, entry.managerContext, entry.surface);
+    },
+    async stopAll(reason = "manager_stop") {
+      activeOwnerKey = null;
+      const currentEntries = [...entries.values()];
+      entries.clear();
+      await Promise.all(currentEntries.map((entry) => stopEntry(entry, reason)));
     },
     getSnapshot() {
       return {

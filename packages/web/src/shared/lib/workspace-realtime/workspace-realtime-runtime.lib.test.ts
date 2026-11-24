@@ -8,6 +8,10 @@ import type {
   WorkspaceRealtimeEvent,
 } from "~/shared/api/messenger.types";
 import type { WorkspaceCollectionPage } from "~/shared/api/workspace-client";
+import {
+  composeWorkspaceRealtimeAppliers,
+  WorkspaceRealtimeParticipantNotReadyError,
+} from "./workspace-realtime-applier.lib";
 import { createWorkspaceRealtimeCursorStorage } from "./workspace-realtime-cursor.lib";
 import { createWorkspaceRealtimeTransportCore } from "./workspace-realtime-runtime.lib";
 import type {
@@ -17,6 +21,7 @@ import type {
 import type {
   WorkspaceRealtimeEventApplier,
   WorkspaceRealtimeRuntimeContext,
+  WorkspaceRealtimeRuntimeOptions,
   WorkspaceRealtimeRuntimeOwner,
   WorkspaceRealtimeSkipReason,
   WorkspaceRealtimeWebSocketLike,
@@ -561,7 +566,7 @@ describe("workspace-realtime transport runtime", () => {
     await flushAsyncHandlers();
 
     expect(appliedEpochs).toEqual([11]);
-    expect(cursorStorage.read(cursorOwner)).toEqual(cursor(11));
+    await vi.waitFor(() => expect(cursorStorage.read(cursorOwner)).toEqual(cursor(11)));
     expect(sockets[0]?.sent).toEqual([]);
   });
 
@@ -609,7 +614,9 @@ describe("workspace-realtime transport runtime", () => {
     const cursorStorage = createWorkspaceRealtimeCursorStorage(new MemoryStorage());
     cursorStorage.write(cursorOwner, cursor(10));
     const { applier } = createApplier();
-    const resetAuthoritativeSnapshots = vi.fn(() => Promise.resolve());
+    const prepareSnapshots = vi.fn<
+      NonNullable<WorkspaceRealtimeRuntimeOptions["prepareSnapshots"]>
+    >((_context, { savedCursor }) => Promise.resolve(savedCursor ?? cursor(20)));
     const runtime = createWorkspaceRealtimeTransportCore({
       clientOptions: { accessToken: "access-token", projectId: PROJECT_UUID },
       cursorStorage,
@@ -627,16 +634,23 @@ describe("workspace-realtime transport runtime", () => {
             minimum_epoch_version: 11,
           }),
         ),
-      resetAuthoritativeSnapshots,
+      prepareSnapshots,
       reconnectDelayMs: () => 10,
     });
 
     await runtime.start(context);
 
-    expect(cursorStorage.read(cursorOwner)).toBeNull();
-    expect(resetAuthoritativeSnapshots).toHaveBeenCalledWith(
-      context,
-      expect.objectContaining({ error: "epoch_pruned", epoch_generation: EPOCH_GENERATION }),
+    expect(cursorStorage.read(cursorOwner)).toEqual(cursor(20));
+    expect(prepareSnapshots).toHaveBeenLastCalledWith(
+      expect.objectContaining({ owner: context.owner, signal: expect.any(AbortSignal) }),
+      {
+        savedCursor: null,
+        expiry: expect.objectContaining({
+          error: "epoch_pruned",
+          epoch_generation: EPOCH_GENERATION,
+        }),
+        resetRequired: true,
+      },
     );
     await runtime.stop();
     vi.useRealTimers();
@@ -647,13 +661,15 @@ describe("workspace-realtime transport runtime", () => {
     const cursorStorage = createWorkspaceRealtimeCursorStorage(new MemoryStorage());
     cursorStorage.write(cursorOwner, cursor(10));
     const { applier } = createApplier();
-    const resetAuthoritativeSnapshots = vi.fn(() => Promise.resolve());
+    const prepareSnapshots = vi.fn<
+      NonNullable<WorkspaceRealtimeRuntimeOptions["prepareSnapshots"]>
+    >((_context, { savedCursor }) => Promise.resolve(savedCursor ?? cursor(20)));
     const runtime = createWorkspaceRealtimeTransportCore({
       clientOptions: { accessToken: "access-token", projectId: PROJECT_UUID },
       cursorStorage,
       applier,
       getEventsPage: () => Promise.resolve(createPage([])),
-      resetAuthoritativeSnapshots,
+      prepareSnapshots,
       webSocketFactory: (url, protocols) => {
         const socket = new FakeWebSocket(url, protocols);
         sockets.push(socket);
@@ -663,10 +679,9 @@ describe("workspace-realtime transport runtime", () => {
 
     await runtime.start(context);
     sockets[0]?.networkClose(4410);
-    await flushAsyncHandlers();
-
-    expect(cursorStorage.read(cursorOwner)).toBeNull();
-    expect(resetAuthoritativeSnapshots).toHaveBeenCalledOnce();
+    await vi.waitFor(() => expect(cursorStorage.read(cursorOwner)).toEqual(cursor(20)));
+    expect(prepareSnapshots).toHaveBeenCalledTimes(2);
+    await runtime.stop();
   });
 
   it("serializes websocket frames before applying the next epoch", async () => {
@@ -894,7 +909,9 @@ describe("workspace-realtime transport runtime", () => {
     const cursorStorage = createWorkspaceRealtimeCursorStorage(new MemoryStorage());
     cursorStorage.write(cursorOwner, cursor(10));
     const { applier } = createApplier();
-    const resetAuthoritativeSnapshots = vi.fn(() => Promise.resolve());
+    const prepareSnapshots = vi.fn<
+      NonNullable<WorkspaceRealtimeRuntimeOptions["prepareSnapshots"]>
+    >((_context, { savedCursor }) => Promise.resolve(savedCursor ?? cursor(20)));
     let rejectProbe = (_error: unknown): void => {
       throw new Error("Visible-events probe was not started");
     };
@@ -908,7 +925,7 @@ describe("workspace-realtime transport runtime", () => {
               rejectProbe = reject;
             })
           : Promise.resolve(createPage([])),
-      resetAuthoritativeSnapshots,
+      prepareSnapshots,
       webSocketFactory: (url, protocols) => {
         const socket = new FakeWebSocket(url, protocols);
         sockets.push(socket);
@@ -938,7 +955,7 @@ describe("workspace-realtime transport runtime", () => {
     );
     await flushAsyncHandlers();
 
-    expect(resetAuthoritativeSnapshots).not.toHaveBeenCalled();
+    expect(prepareSnapshots).toHaveBeenCalledOnce();
     expect(sockets).toHaveLength(1);
     expect(sockets[0]?.closed).toBe(false);
     expect(cursorStorage.read(cursorOwner)).toEqual(cursor(11));
@@ -1042,7 +1059,11 @@ describe("workspace-realtime transport runtime", () => {
     const cursorStorage = createWorkspaceRealtimeCursorStorage(new MemoryStorage());
     cursorStorage.write(cursorOwner, cursor(10));
     const { applier } = createApplier();
-    const resetAuthoritativeSnapshots = vi.fn(() => Promise.resolve());
+    const prepareSnapshots = vi.fn<
+      NonNullable<WorkspaceRealtimeRuntimeOptions["prepareSnapshots"]>
+    >((_context, { savedCursor }) =>
+      Promise.resolve(savedCursor ?? { epochGeneration: "generation-b", epochVersion: 20 }),
+    );
     let probeShouldExpire = false;
     const runtime = createWorkspaceRealtimeTransportCore({
       clientOptions: { accessToken: "access-token", projectId: PROJECT_UUID },
@@ -1063,7 +1084,7 @@ describe("workspace-realtime transport runtime", () => {
               }),
             )
           : Promise.resolve(createPage([])),
-      resetAuthoritativeSnapshots,
+      prepareSnapshots,
       webSocketFactory: (url, protocols) => {
         const socket = new FakeWebSocket(url, protocols);
         sockets.push(socket);
@@ -1080,13 +1101,20 @@ describe("workspace-realtime transport runtime", () => {
     await vi.advanceTimersByTimeAsync(60_000);
     await flushAsyncHandlers();
 
-    expect(cursorStorage.read(cursorOwner)).toBeNull();
-    expect(resetAuthoritativeSnapshots).toHaveBeenCalledWith(
-      context,
-      expect.objectContaining({
-        reason: "epoch_pruned",
-        epoch_generation: "generation-b",
-      }),
+    expect(cursorStorage.read(cursorOwner)).toEqual({
+      epochGeneration: "generation-b",
+      epochVersion: 20,
+    });
+    expect(prepareSnapshots).toHaveBeenLastCalledWith(
+      expect.objectContaining({ owner: context.owner, signal: expect.any(AbortSignal) }),
+      {
+        savedCursor: null,
+        expiry: expect.objectContaining({
+          reason: "epoch_pruned",
+          epoch_generation: "generation-b",
+        }),
+        resetRequired: true,
+      },
     );
     await runtime.stop();
     vi.useRealTimers();
@@ -1658,15 +1686,148 @@ describe("workspace-realtime transport runtime", () => {
       expect.objectContaining({ force: true, signal: expect.any(AbortSignal) }),
     );
   });
-  it("awaits catch-up batches before opening a socket and advances only the completed cursor", async () => {
+  it.each([
+    ["catch_up", true],
+    ["catch_up", false],
+    ["websocket", true],
+    ["websocket", false],
+  ] as const)(
+    "holds 120 while 121 fails over %s (participant not ready: %s) and replays before applying 122",
+    async (source, notReady) => {
+      const cursorStorage = createWorkspaceRealtimeCursorStorage(new MemoryStorage());
+      cursorStorage.write(cursorOwner, cursor(source === "catch_up" ? 119 : 120));
+      const first = createApplier().applier;
+      const second = createApplier().applier;
+      const appliedOnce = new Set<number>();
+      const liveEffects: number[] = [];
+      const handled: number[] = [];
+      const replayQueries: number[] = [];
+      let failed = false;
+      let releaseFirst: (() => void) | undefined;
+      const pending = new Promise<void>((resolve) => {
+        releaseFirst = resolve;
+      });
+      first.applyEvent = vi.fn(async (event, eventContext) => {
+        if (event.epoch_version === 121 && !appliedOnce.has(121)) await pending;
+        if (eventContext.notificationsEnabled) liveEffects.push(event.epoch_version);
+        appliedOnce.add(event.epoch_version);
+      });
+      second.applyEvent = vi.fn((event) => {
+        if (event.epoch_version === 121 && !failed) {
+          failed = true;
+          throw notReady
+            ? new WorkspaceRealtimeParticipantNotReadyError("messenger")
+            : new Error("required write failed");
+        }
+        handled.push(event.epoch_version);
+      });
+      const prepareParticipant = vi.fn(() => Promise.resolve());
+      const onDiagnostic = vi.fn();
+      const sockets: FakeWebSocket[] = [];
+      const runtime = createWorkspaceRealtimeTransportCore({
+        clientOptions: { accessToken: "access-token", projectId: PROJECT_UUID },
+        cursorStorage,
+        applier: composeWorkspaceRealtimeAppliers([first, second]),
+        prepareParticipant,
+        onDiagnostic,
+        reconnectDelayMs: () => 10_000,
+        webSocketFactory: (url, protocols) => {
+          const socket = new FakeWebSocket(url, protocols);
+          sockets.push(socket);
+          return socket;
+        },
+        getEventsPage: (_options, query) => {
+          const after = query.afterEpochVersion ?? 0;
+          replayQueries.push(after);
+          if (source === "websocket" && replayQueries.length === 1) {
+            return Promise.resolve(createPage([]));
+          }
+          const events = [120, 121, 122].filter((epoch) => epoch > after);
+          return Promise.resolve(createPage(events.map(createRestEventDto)));
+        },
+      });
+      const starting = runtime.start(context);
+      const expectedFailure = notReady
+        ? "participant_not_ready"
+        : source === "catch_up"
+          ? "catch_up_failed"
+          : "event_apply_failed";
+      try {
+        if (source === "websocket") {
+          await starting;
+          sockets[0]?.message(
+            JSON.stringify({
+              type: "ready",
+              epoch_generation: EPOCH_GENERATION,
+              epoch_version: 120,
+            }),
+          );
+          sockets[0]?.message(JSON.stringify(createRestEventDto(121)));
+          sockets[0]?.message(JSON.stringify(createRestEventDto(122)));
+        }
+        await vi.waitFor(() => expect(failed).toBe(true));
+        expect(onDiagnostic).not.toHaveBeenCalledWith(
+          expect.objectContaining({ reason: expectedFailure }),
+        );
+        expect(cursorStorage.read(cursorOwner)).toEqual(cursor(120));
+        expect(handled).not.toContain(122);
+        expect(appliedOnce.has(122)).toBe(false);
+        releaseFirst?.();
+        await starting;
+        await vi.waitFor(() =>
+          expect(onDiagnostic).toHaveBeenCalledWith(
+            expect.objectContaining({ reason: expectedFailure }),
+          ),
+        );
+        expect(cursorStorage.read(cursorOwner)).toEqual(cursor(120));
+        expect(handled).not.toContain(122);
+
+        await runtime.reconnect("test_replay");
+        if (notReady) {
+          expect(prepareParticipant).toHaveBeenCalledWith(
+            expect.objectContaining({ owner: context.owner }),
+            "messenger",
+          );
+        } else {
+          expect(prepareParticipant).not.toHaveBeenCalled();
+        }
+        expect(replayQueries.at(-1)).toBe(120);
+        expect(handled.slice(-2)).toEqual([121, 122]);
+        expect(appliedOnce.has(121)).toBe(true);
+        expect(first.applyEvent).toHaveBeenCalledTimes(source === "catch_up" ? 4 : 3);
+        expect(liveEffects).toEqual(source === "websocket" ? [121] : []);
+        expect(cursorStorage.read(cursorOwner)).toEqual(cursor(122));
+      } finally {
+        releaseFirst?.();
+        await runtime.stop();
+      }
+    },
+  );
+
+  it("retries a failed expiry snapshot before issuing any new catch-up request", async () => {
+    vi.useFakeTimers();
     const cursorStorage = createWorkspaceRealtimeCursorStorage(new MemoryStorage());
     cursorStorage.write(cursorOwner, cursor(10));
     const { applier } = createApplier();
-    let release: (() => void) | undefined;
-    const pending = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    applier.applyEvents = vi.fn(() => pending);
+    const prepareSnapshots = vi.fn<
+      NonNullable<WorkspaceRealtimeRuntimeOptions["prepareSnapshots"]>
+    >((_context, { savedCursor }) => Promise.resolve(savedCursor ?? cursor(30)));
+    prepareSnapshots
+      .mockResolvedValueOnce(cursor(10))
+      .mockRejectedValueOnce(new Error("snapshot HTTP failed"));
+    const getEventsPage = vi.fn(() => Promise.resolve(createPage([])));
+    getEventsPage.mockRejectedValueOnce(
+      new MessengerApiError("cursor expired", 410, {
+        type: "EventsCursorExpiredError",
+        code: 410,
+        error: "epoch_pruned",
+        message: "The saved events cursor is outside the retained event journal",
+        reason: "epoch_pruned",
+        epoch_generation: EPOCH_GENERATION,
+        current_epoch_version: 20,
+        minimum_epoch_version: 11,
+      }),
+    );
     const webSocketFactory = vi.fn(
       (url: string, protocols: string[]) => new FakeWebSocket(url, protocols),
     );
@@ -1674,25 +1835,178 @@ describe("workspace-realtime transport runtime", () => {
       clientOptions: { accessToken: "access-token", projectId: PROJECT_UUID },
       cursorStorage,
       applier,
+      prepareSnapshots,
+      getEventsPage,
       webSocketFactory,
-      getEventsPage: () =>
-        Promise.resolve(createPage([createRestEventDto(12), createRestEventDto(11)])),
+      reconnectDelayMs: () => 10,
+    });
+    try {
+      await runtime.start(context);
+      expect(prepareSnapshots).toHaveBeenCalledTimes(2);
+      expect(getEventsPage).toHaveBeenCalledOnce();
+      expect(webSocketFactory).not.toHaveBeenCalled();
+      expect(cursorStorage.read(cursorOwner)).toBeNull();
+      await vi.advanceTimersByTimeAsync(10);
+      expect(prepareSnapshots).toHaveBeenCalledTimes(3);
+      expect(getEventsPage).toHaveBeenLastCalledWith(
+        expect.anything(),
+        expect.objectContaining({ afterEpochVersion: 30 }),
+      );
+      expect(cursorStorage.read(cursorOwner)).toEqual(cursor(30));
+      expect(webSocketFactory).toHaveBeenCalledOnce();
+    } finally {
+      await runtime.stop();
+      vi.useRealTimers();
+    }
+  });
+
+  it("retains expiry-only recovery when a surface restart replaces a failed attempt", async () => {
+    const cursorStorage = createWorkspaceRealtimeCursorStorage(new MemoryStorage());
+    cursorStorage.write(cursorOwner, cursor(10));
+    const { applier } = createApplier();
+    const prepareSnapshots = vi.fn<
+      NonNullable<WorkspaceRealtimeRuntimeOptions["prepareSnapshots"]>
+    >((_context, { savedCursor }) => Promise.resolve(savedCursor ?? cursor(30)));
+    prepareSnapshots
+      .mockResolvedValueOnce(cursor(10))
+      .mockRejectedValueOnce(new Error("epoch HTTP failed"));
+    const getEventsPage = vi.fn(() => Promise.resolve(createPage([])));
+    getEventsPage.mockRejectedValueOnce(
+      new MessengerApiError("cursor expired", 410, {
+        type: "EventsCursorExpiredError",
+        code: 410,
+        error: "epoch_pruned",
+        message: "The saved events cursor is outside the retained event journal",
+        reason: "epoch_pruned",
+        epoch_generation: EPOCH_GENERATION,
+        current_epoch_version: 20,
+        minimum_epoch_version: 11,
+      }),
+    );
+    const options: WorkspaceRealtimeRuntimeOptions = {
+      clientOptions: { accessToken: "access-token", projectId: PROJECT_UUID },
+      cursorStorage,
+      applier,
+      prepareSnapshots,
+      getEventsPage,
+      webSocketFactory: (url, protocols) => new FakeWebSocket(url, protocols),
+    };
+    const previous = createWorkspaceRealtimeTransportCore(options);
+    const replacement = createWorkspaceRealtimeTransportCore(options);
+    try {
+      await previous.start(context);
+      expect(cursorStorage.isSnapshotResetRequired(cursorOwner)).toBe(true);
+      await previous.stop("token_rotated");
+      await replacement.start({ ...context, surface: "background" });
+      expect(prepareSnapshots).toHaveBeenLastCalledWith(
+        expect.objectContaining({ surface: "background" }),
+        { expiry: null, savedCursor: null, resetRequired: true },
+      );
+      expect(getEventsPage).toHaveBeenLastCalledWith(
+        expect.anything(),
+        expect.objectContaining({ afterEpochVersion: 30 }),
+      );
+      expect(cursorStorage.isSnapshotResetRequired(cursorOwner)).toBe(false);
+    } finally {
+      await previous.stop();
+      await replacement.stop();
+    }
+  });
+
+  it("retries new-attempt auth recovery even when the previous surface shared the refresh", async () => {
+    vi.useFakeTimers();
+    const cursorStorage = createWorkspaceRealtimeCursorStorage(new MemoryStorage());
+    cursorStorage.write(cursorOwner, cursor(10));
+    const sockets: FakeWebSocket[] = [];
+    const { applier } = createApplier();
+    let failRefresh: ((error: Error) => void) | undefined;
+    const pending = new Promise<void>((_resolve, reject) => {
+      failRefresh = reject;
+    });
+    const refreshSession = vi
+      .fn<NonNullable<WorkspaceRealtimeRuntimeOptions["refreshSession"]>>()
+      .mockReturnValueOnce(pending)
+      .mockReturnValueOnce(pending)
+      .mockResolvedValue(undefined);
+    const getEventsPage = vi
+      .fn()
+      .mockResolvedValueOnce(createPage([]))
+      .mockRejectedValue(new MessengerApiError("unauthorized", 401, {}));
+    const runtime = createWorkspaceRealtimeTransportCore({
+      clientOptions: { accessToken: "access-token", projectId: PROJECT_UUID },
+      cursorStorage,
+      applier,
+      getEventsPage,
+      refreshSession,
+      reconnectDelayMs: () => 10,
+      webSocketFactory: (url, protocols) => {
+        const socket = new FakeWebSocket(url, protocols);
+        sockets.push(socket);
+        return socket;
+      },
+    });
+    try {
+      await runtime.start(context);
+      sockets[0]?.networkClose(4401);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(refreshSession).toHaveBeenCalledOnce();
+      const restarted = runtime.start({ ...context, surface: "background" });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(refreshSession).toHaveBeenCalledTimes(2);
+      expect(refreshSession.mock.calls[0]?.[1].signal?.aborted).toBe(true);
+      expect(refreshSession.mock.calls[1]?.[1].signal?.aborted).toBe(false);
+      failRefresh?.(new Error("temporary refresh error"));
+      await restarted;
+      await vi.advanceTimersByTimeAsync(10);
+      expect(refreshSession).toHaveBeenCalledTimes(3);
+    } finally {
+      await runtime.stop();
+      vi.useRealTimers();
+    }
+  });
+
+  it("waits for an old same-owner REST application before replay on the new surface", async () => {
+    const cursorStorage = createWorkspaceRealtimeCursorStorage(new MemoryStorage());
+    cursorStorage.write(cursorOwner, cursor(120));
+    const events = createPage([createRestEventDto(121), createRestEventDto(122)]);
+    const getEventsPage = vi.fn(() => Promise.resolve(events));
+    const { applier } = createApplier();
+    let release: (() => void) | undefined;
+    const pending = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    applier.applyEvent = vi.fn().mockReturnValueOnce(pending);
+    const runtime = createWorkspaceRealtimeTransportCore({
+      clientOptions: { accessToken: "access-token", projectId: PROJECT_UUID },
+      cursorStorage,
+      getEventsPage,
+      applier,
+      webSocketFactory: (url, protocols) => new FakeWebSocket(url, protocols),
     });
     const starting = runtime.start(context);
-    await vi.waitFor(() => expect(applier.applyEvents).toHaveBeenCalledOnce());
-    expect(webSocketFactory).not.toHaveBeenCalled();
-    expect(cursorStorage.read(cursorOwner)).toEqual(cursor(10));
-    release?.();
-    await starting;
-    expect(cursorStorage.read(cursorOwner)).toEqual(cursor(12));
-    expect(webSocketFactory).toHaveBeenCalledOnce();
-    expect(applier.applyEvents).toHaveBeenCalledWith(
-      expect.arrayContaining([
-        expect.objectContaining({ epoch_version: 11 }),
-        expect.objectContaining({ epoch_version: 12 }),
-      ]),
-      expect.objectContaining({ source: "catch_up", notificationsEnabled: false }),
-    );
-    await runtime.stop();
+    try {
+      await vi.waitFor(() => expect(applier.applyEvent).toHaveBeenCalledOnce());
+      const restarted = runtime.start({ ...context, surface: "background" });
+      await flushAsyncHandlers();
+      expect(getEventsPage).toHaveBeenCalledOnce();
+      expect(cursorStorage.read(cursorOwner)).toEqual(cursor(120));
+      release?.();
+      await Promise.all([starting, restarted]);
+      expect(applier.applyEvent).toHaveBeenCalledTimes(3);
+      expect(applier.applyEvent).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({ epoch_version: 121 }),
+        expect.objectContaining({ surface: "background" }),
+      );
+      expect(applier.applyEvent).toHaveBeenNthCalledWith(
+        3,
+        expect.objectContaining({ epoch_version: 122 }),
+        expect.objectContaining({ surface: "background" }),
+      );
+      expect(cursorStorage.read(cursorOwner)).toEqual(cursor(122));
+    } finally {
+      release?.();
+      await runtime.stop();
+    }
   });
 });

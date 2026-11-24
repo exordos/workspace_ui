@@ -1,5 +1,4 @@
 import { expect, it, vi } from "vitest";
-import type { WorkspaceRealtimeEvent } from "~/shared/api/messenger.types";
 import { composeWorkspaceRealtimeAppliers } from "./workspace-realtime-applier.lib";
 import type { WorkspaceRealtimeEventApplier } from "./workspace-realtime-runtime.lib";
 
@@ -58,7 +57,7 @@ it("waits for every composed applier before resolving event application", async 
   expect(settled).toBe(true);
 });
 
-it("composes a batch-capable applier with a sequential applier in epoch order", async () => {
+it("accepts a batch input while awaiting each event across participants", async () => {
   const epochs: number[] = [];
   const first: WorkspaceRealtimeEventApplier = {
     applyEvent: vi.fn(),
@@ -86,12 +85,12 @@ it("composes a batch-capable applier with a sequential applier in epoch order", 
     surface: "active" as const,
   };
   await composeWorkspaceRealtimeAppliers([first, second]).applyEvents?.(events, context);
-  expect(first.applyEvents).toHaveBeenCalledWith(events, context);
-  expect(first.applyEvent).not.toHaveBeenCalled();
+  expect(first.applyEvent).toHaveBeenCalledTimes(3);
+  expect(first.applyEvents).not.toHaveBeenCalled();
   expect(epochs).toEqual([1, 2, 3]);
 });
 
-it("preserves mutation-kind barriers between slow and fast composed appliers", async () => {
+it("waits for other participants after a failure and does not apply the next event", async () => {
   const order: string[] = [];
   let release: (() => void) | undefined;
   const pending = new Promise<void>((resolve) => {
@@ -106,9 +105,9 @@ it("preserves mutation-kind barriers between slow and fast composed appliers", a
     onTransportStateChange: vi.fn(),
   };
   const fast: WorkspaceRealtimeEventApplier = {
-    applyEvent: vi.fn(),
-    applyEvents: vi.fn((events: readonly WorkspaceRealtimeEvent[]) => {
-      order.push(`fast:${events.map((event) => event.epoch_version).join(",")}`);
+    applyEvent: vi.fn((event) => {
+      order.push(`fast:${event.epoch_version}`);
+      throw new Error("apply failed");
     }),
     skipEvent: vi.fn(),
     onTransportStateChange: vi.fn(),
@@ -119,21 +118,20 @@ it("preserves mutation-kind barriers between slow and fast composed appliers", a
     epoch_version: 1,
     message: { uuid: "message-a", stream_uuid: "stream-a", topic_uuid: "topic-a" },
   };
-  const next = {
-    type: "messages" as const,
-    kind: "messages.read" as const,
-    messageUuids: [],
-    epoch_version: 2,
-  };
+  const next = { ...first, epoch_version: 2 };
   const application = composeWorkspaceRealtimeAppliers([slow, fast]).applyEvents?.([first, next], {
     owner: OWNER,
     ownerKey: "owner",
     source: "catch_up",
     surface: "active",
   });
-  await vi.waitFor(() => expect(slow.applyEvent).toHaveBeenCalledOnce());
+  const rejected = vi.fn();
+  const handled = Promise.resolve(application).catch(rejected);
+  await Promise.resolve();
   expect(order).toEqual(["slow:1", "fast:1"]);
+  expect(rejected).not.toHaveBeenCalled();
   release?.();
-  await application;
-  expect(order).toEqual(["slow:1", "fast:1", "slow:2", "fast:2"]);
+  await handled;
+  expect(rejected).toHaveBeenCalledWith(new Error("apply failed"));
+  expect(order).toEqual(["slow:1", "fast:1"]);
 });

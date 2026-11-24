@@ -24,6 +24,7 @@ import {
   hydrateUsersFromCache,
   loadUserByUuid,
   refreshUsers,
+  refreshWorkspaceSessionUsers,
   resolveCachedWorkspaceUser,
 } from "./user-sync.lib";
 import { startWorkspacePresenceReporter } from "./user-workspace-presence-reporter.lib";
@@ -373,6 +374,41 @@ describe("user sync", () => {
   beforeEach(resetStore);
   afterEach(resetStore);
 
+  it("keeps foreground users ready when a background snapshot cannot be persisted", async () => {
+    const active = createRuntimeContext();
+    const background = createRuntimeContext({ accountId: "background" });
+    const client = { getUsers: () => Promise.resolve([createUserDto()]) };
+    vi.stubGlobal("indexedDB", undefined);
+
+    try {
+      const results = await Promise.all([
+        refreshWorkspaceSessionUsers({
+          runtimeContext: active,
+          getRuntimeContext: () => active,
+          surface: "active",
+          client,
+        }),
+        refreshWorkspaceSessionUsers({
+          runtimeContext: background,
+          getRuntimeContext: () => background,
+          surface: "background",
+          client,
+        }),
+      ]);
+      expect(results).toEqual([
+        { status: "applied" },
+        { status: "failed", error: "Workspace users cache is unavailable" },
+      ]);
+      expect(useUsersStore.getState()).toMatchObject({
+        ownerKey: workspaceRuntimeOwnerKey(active),
+        loadStatus: "ready",
+        userIds: [USER_A_UUID],
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("refreshes users through the Workspace users endpoint", async () => {
     const runtimeContext = createRuntimeContext();
     const getUsers = vi.fn(() =>
@@ -703,13 +739,17 @@ describe("user sync", () => {
       ),
     ).resolves.toEqual({ status: "applied" });
 
-    expect(upsertUsersCache).toHaveBeenCalledWith(ownerKey, [
-      expect.objectContaining({
-        uuid: USER_B_UUID,
-        username: "bob",
-        displayName: "Bob Smith",
-      }),
-    ]);
+    expect(upsertUsersCache).toHaveBeenCalledWith(
+      ownerKey,
+      [
+        expect.objectContaining({
+          uuid: USER_B_UUID,
+          username: "bob",
+          displayName: "Bob Smith",
+        }),
+      ],
+      expect.any(Function),
+    );
   });
 
   it("resolves one cached Workspace user without using users store", async () => {
@@ -794,13 +834,17 @@ describe("user realtime applier", () => {
     );
 
     expect(useUsersStore.getState().getUser(USER_A_UUID)?.username).toBe("realtime-alice");
-    expect(upsertUsersCache).toHaveBeenCalledWith(ownerKey, [
-      expect.objectContaining({
-        uuid: USER_A_UUID,
-        username: "realtime-alice",
-        updatedAt: DATE_3,
-      }),
-    ]);
+    expect(upsertUsersCache).toHaveBeenCalledWith(
+      ownerKey,
+      [
+        expect.objectContaining({
+          uuid: USER_A_UUID,
+          username: "realtime-alice",
+          updatedAt: DATE_3,
+        }),
+      ],
+      expect.any(Function),
+    );
   });
 
   it("skips user.updated when owner is stale or signal is aborted", () => {
@@ -885,13 +929,17 @@ describe("user realtime applier", () => {
     );
 
     expect(useUsersStore.getState().userIds).toEqual([]);
-    expect(upsertUsersCache).toHaveBeenCalledWith(ownerKey, [
-      expect.objectContaining({
-        uuid: USER_B_UUID,
-        username: "background-user",
-        displayName: "Bob Smith",
-      }),
-    ]);
+    expect(upsertUsersCache).toHaveBeenCalledWith(
+      ownerKey,
+      [
+        expect.objectContaining({
+          uuid: USER_B_UUID,
+          username: "background-user",
+          displayName: "Bob Smith",
+        }),
+      ],
+      expect.any(Function),
+    );
   });
 
   it("skips active user.updated events for a stale owner key", () => {

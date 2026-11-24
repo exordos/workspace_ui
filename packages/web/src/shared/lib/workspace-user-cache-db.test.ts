@@ -6,6 +6,7 @@ import {
   openWorkspaceUserCacheDb,
   readWorkspaceUserCache,
   readWorkspaceUserCacheProfile,
+  readWorkspaceUserCacheSnapshot,
   replaceWorkspaceUserCache,
   resetWorkspaceUserCacheDbSingletonForTests,
   upsertWorkspaceUserCache,
@@ -52,10 +53,77 @@ describe("workspace-user-cache-db", () => {
 
     expect(db.name).toBe(WORKSPACE_USER_CACHE_DB_NAME);
     expect(db.version).toBe(WORKSPACE_USER_CACHE_DB_VERSION);
-    expect([...db.objectStoreNames]).toEqual(["users"]);
+    expect([...db.objectStoreNames]).toEqual(["snapshots", "users"]);
     expect([...db.transaction("users", "readonly").objectStore("users").indexNames]).toEqual([
       "byOwner",
     ]);
+  });
+
+  it("only accepts a committed full users snapshot as a resume baseline", async () => {
+    const profile = cachedUser("user-a");
+    await upsertWorkspaceUserCache(OWNER_A, [profile]);
+    await expect(readWorkspaceUserCacheSnapshot(OWNER_A)).resolves.toEqual({
+      profiles: [profile],
+      complete: false,
+    });
+
+    await replaceWorkspaceUserCache(OWNER_A, [], { complete: true, isWriteCurrent: () => false });
+    await expect(readWorkspaceUserCacheSnapshot(OWNER_A)).resolves.toEqual({
+      profiles: [profile],
+      complete: false,
+    });
+
+    await replaceWorkspaceUserCache(OWNER_A, [], { complete: true });
+    await expect(readWorkspaceUserCacheSnapshot(OWNER_A)).resolves.toEqual({
+      profiles: [],
+      complete: true,
+    });
+    await expect(readWorkspaceUserCacheSnapshot(OWNER_B)).resolves.toEqual({
+      profiles: [],
+      complete: false,
+    });
+    await deleteWorkspaceUserOwnerCache(OWNER_A);
+    await expect(readWorkspaceUserCacheSnapshot(OWNER_A)).resolves.toEqual({
+      profiles: [],
+      complete: false,
+    });
+  });
+
+  it("falls back when the v1 cache is blocked and opens after the old connection closes", async () => {
+    const old = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open(WORKSPACE_USER_CACHE_DB_NAME, 1);
+      request.onupgradeneeded = () => {
+        request.result
+          .createObjectStore("users", { keyPath: "id" })
+          .createIndex("byOwner", "ownerKey");
+      };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error ?? new Error("Cannot seed v1 users cache"));
+    });
+
+    try {
+      await expect(readWorkspaceUserCacheSnapshot(OWNER_A)).resolves.toEqual({
+        profiles: [],
+        complete: false,
+      });
+    } finally {
+      old.close();
+    }
+
+    const db = await openWorkspaceUserCacheDb();
+    expect(db.version).toBe(WORKSPACE_USER_CACHE_DB_VERSION);
+  });
+
+  it("keeps a newer full snapshot over older catch-up upserts until an epoch reset", async () => {
+    const older = cachedUser("user-a", { updatedAt: "2026-07-01T10:00:00Z" });
+    const newer = cachedUser("user-a", { updatedAt: "2026-07-01T11:00:00Z" });
+    await replaceWorkspaceUserCache(OWNER_A, [newer], { complete: true });
+
+    await upsertWorkspaceUserCache(OWNER_A, [older]);
+    await expect(readWorkspaceUserCache(OWNER_A)).resolves.toEqual([newer]);
+
+    await replaceWorkspaceUserCache(OWNER_A, [older], { complete: true, reset: true });
+    await expect(readWorkspaceUserCache(OWNER_A)).resolves.toEqual([older]);
   });
 
   it("isolates users by owner key", async () => {
