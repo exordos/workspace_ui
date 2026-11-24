@@ -5,11 +5,11 @@ import { useWorkspaceForwardMessageStore } from "~/applications/messenger/featur
 import { useMessengerStore } from "~/applications/messenger/model/chats/messenger.model";
 import type { MessengerMessage } from "~/applications/messenger/model/messenger.types";
 import { useFeedStore } from "~/entities/feed/feed.model";
-import { useUsersStore } from "~/entities/user/user.model";
-import type { User } from "~/entities/user/user.types";
 import type { WorkspaceAuthSession } from "~/entities/workspace-auth/workspace-auth.model";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
+import { useUsersStore } from "~/modules/users/user.model";
+import type { User } from "~/modules/users/users-types";
 import { FeedPage } from "./feed-page.ui";
 import type * as ReactRouterDom from "react-router-dom";
 

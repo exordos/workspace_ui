@@ -10,12 +10,12 @@ import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { MESSENGER_ALL_CHATS_FOLDER_UUID } from "../applications/messenger/model/chats/messenger-folder-system-type.lib";
 import { useMessengerStore } from "../applications/messenger/model/chats/messenger.model";
 import { useThemeStore } from "../entities/theme/theme.model";
-import { readActiveUser } from "../entities/user/users";
 import {
   useWorkspaceAuthStore,
   type WorkspaceAuthProfile,
 } from "../entities/workspace-auth/workspace-auth.model";
 import { workspaceRuntimeOwnerKey } from "../entities/workspace-runtime/workspace-runtime.lib";
+import { readActiveUser } from "../modules/users/users";
 import { createUser } from "../test/factories";
 import {
   installAiContext,
@@ -24,7 +24,7 @@ import {
   type AiContextBridge,
 } from "./ai-context";
 
-vi.mock("../entities/user/users", () => ({
+vi.mock("../modules/users/users", () => ({
   readActiveUser: vi.fn(),
 }));
 vi.mock("../entities/theme/theme.model", () => ({

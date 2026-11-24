@@ -27,7 +27,7 @@ vi.mock("./workspace-session.lib", () => ({
 vi.mock("~/entities/workspace-auth/workspace-auth.lib", () => ({
   fetchWorkspaceServerSettingsForOrganization: mocks.fetchSettings,
 }));
-vi.mock("~/entities/user/users-runtime", () => ({
+vi.mock("~/modules/users/users-runtime", () => ({
   reconcileUsersSessions: vi.fn(),
   useHasUserForOwner: mocks.useHasUserForOwner,
 }));

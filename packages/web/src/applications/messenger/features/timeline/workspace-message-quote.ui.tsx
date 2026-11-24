@@ -9,10 +9,10 @@ import {
 } from "~/applications/messenger/features/decrypted-message/message-presentation.hook";
 import { summarizeMessengerPoll } from "~/applications/messenger/model/messages/polls/messenger-poll-text.lib";
 import type { MessengerMessage } from "~/applications/messenger/model/messenger.types";
-import { selectUserDisplayName } from "~/entities/user/user-selectors.lib";
-import type { User } from "~/entities/user/user.types";
-import { useUserById } from "~/entities/user/users";
 import { t } from "~/i18n/i18n";
+import { useUserById } from "~/modules/users/users";
+import { selectUserDisplayName } from "~/modules/users/users-selectors";
+import type { User } from "~/modules/users/users-types";
 import { formatMessageTimeWithDate } from "~/shared/lib/datetime.lib";
 import type { WorkspaceMessageBodyQuoteSegment } from "~/shared/lib/workspace-message-render/workspace-message-document.types";
 import { parseWorkspaceMessageBody } from "~/shared/lib/workspace-message-render/workspace-message-parse.lib";

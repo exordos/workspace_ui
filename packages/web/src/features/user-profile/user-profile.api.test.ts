@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useUsersStore } from "~/entities/user/user.model";
 import {
   useWorkspaceAuthStore,
   type WorkspaceAuthSession,
 } from "~/entities/workspace-auth/workspace-auth.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
+import { useUsersStore } from "~/modules/users/user.model";
 import { MessengerApiError } from "~/shared/api/messenger-transport.internal";
 import type { WorkspaceMessengerUserDto } from "~/shared/api/messenger.types";
 import type { OwnProfile, OwnProfileApi } from "~/shared/api/own-profile.types";
@@ -22,7 +22,7 @@ vi.mock("~/shared/api/workspace-client", () => ({
   resetUserAvatar: (...args: unknown[]) => resetUserAvatarMock(...args),
 }));
 
-vi.mock("~/entities/user/user-sync.lib", () => ({
+vi.mock("~/modules/users/user-sync.lib", () => ({
   writeUsersToCacheForOwner: (...args: unknown[]) => writeUsersToCacheForOwnerMock(...args),
 }));
 

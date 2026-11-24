@@ -5,12 +5,6 @@ import type { EncryptedChannelCreationAttempt } from "~/applications/messenger/m
 import { MessengerChannelCreationError } from "~/applications/messenger/model/crypto/chat-initial-key-bootstrap.lib";
 import type { MessengerStream } from "~/applications/messenger/model/messenger.types";
 import {
-  selectSelectableWorkspaceUsers,
-  selectUserDisplayName,
-} from "~/entities/user/user-selectors.lib";
-import type { User } from "~/entities/user/user.types";
-import { useUserIds, useUsersById, useUsersOwnerKey } from "~/entities/user/users";
-import {
   selectCurrentWorkspaceRuntimeContext,
   useWorkspaceAuthStore,
 } from "~/entities/workspace-auth/workspace-auth.model";
@@ -20,6 +14,12 @@ import {
   workspaceRuntimeOwnerKey,
 } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeRequestContext } from "~/entities/workspace-runtime/workspace-runtime.types";
+import { useUserIds, useUsersById, useUsersOwnerKey } from "~/modules/users/users";
+import {
+  selectSelectableWorkspaceUsers,
+  selectUserDisplayName,
+} from "~/modules/users/users-selectors";
+import type { User } from "~/modules/users/users-types";
 import { createLogger } from "~/shared/lib/logger";
 import {
   matchesUserPickerQuery,

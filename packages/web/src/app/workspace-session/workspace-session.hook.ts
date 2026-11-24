@@ -3,7 +3,6 @@ import {
   reconcileMessengerSessionModels,
   releaseMessengerSessionProjections,
 } from "~/applications/messenger/runtime/sync/messenger-session-snapshot.lib";
-import { reconcileUsersSessions, useHasUserForOwner } from "~/entities/user/users-runtime";
 import { fetchWorkspaceServerSettingsForOrganization } from "~/entities/workspace-auth/workspace-auth.lib";
 import {
   useWorkspaceAuthStore,
@@ -12,6 +11,7 @@ import {
 } from "~/entities/workspace-auth/workspace-auth.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { useWorkspaceJitsiSettingsStore } from "~/features/jitsi-call/jitsi-call-settings.model";
+import { reconcileUsersSessions, useHasUserForOwner } from "~/modules/users/users-runtime";
 import { onPowerResume } from "~/shared/lib/power";
 import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
 import { createWorkspaceRealtimeBrowserCursorStorage } from "~/shared/lib/workspace-realtime/workspace-realtime-cursor.lib";

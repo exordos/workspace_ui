@@ -12,13 +12,13 @@ value reaches the server nothing distinguishes "the auto-timeout set idle" from
 
 ## Who owns what
 
-| Concern                                                      | Where                                                                                                              |
-| ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------ |
-| Measuring local activity (mouse, keys, scroll, idle timeout) | `shared/lib/presence.ts`                                                                                           |
-| Remembering what the user deliberately chose                 | `entities/user/user-manual-status.lib.ts`                                                                          |
-| Deciding what may be claimed                                 | `entities/user/user-presence-status.lib.ts`                                                                        |
-| Sending it, on a cadence                                     | `entities/user/user-workspace-presence-reporter.lib.ts`                                                            |
-| The user setting a status                                    | `entities/user/user-workspace-status-actions.lib.ts`, dialog in `widgets/right-panel/right-panel-user-menu.ui.tsx` |
+| Concern                                                      | Where                                                                                          |
+| ------------------------------------------------------------ | ---------------------------------------------------------------------------------------------- |
+| Measuring local activity (mouse, keys, scroll, idle timeout) | `shared/lib/presence.ts`                                                                       |
+| Remembering what the user deliberately chose                 | `modules/users/user-manual-status.lib.ts`                                                      |
+| Deciding what may be claimed                                 | `modules/users/user-presence-status.lib.ts`                                                    |
+| Sending it, on a cadence                                     | `modules/users/user-workspace-presence-reporter.lib.ts`                                        |
+| The user setting a status                                    | `modules/users/users-profile.ts`, dialog in `widgets/right-panel/right-panel-user-menu.ui.tsx` |
 
 `presence.ts` only measures — it sends nothing. The heartbeat subscribes to it
 through `onLocalPresenceChange()` so a transition reaches the server when it

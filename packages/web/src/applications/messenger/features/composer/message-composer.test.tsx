@@ -8,12 +8,12 @@ import type {
   MessengerStreamBinding,
   MessengerTopic,
 } from "~/applications/messenger/model/messenger.types";
-import { useUsersStore } from "~/entities/user/user.model";
-import type { User } from "~/entities/user/user.types";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { useMentionSuggestStore } from "~/features/mention-suggest/mention-suggest.model";
 import { useSettingsStore } from "~/features/settings/settings.model";
+import { useUsersStore } from "~/modules/users/user.model";
+import type { User } from "~/modules/users/users-types";
 import { computeFloatingPickerPosition } from "~/shared/lib/floating-panel-position.lib";
 import { HotkeysProvider, type HotkeyOverrides } from "~/shared/lib/hotkeys";
 import { renderWithProviders } from "~/test/render";

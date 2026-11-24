@@ -22,9 +22,9 @@
 import { selectMessengerSidebarActivityCounts } from "~/applications/messenger/features/sidebar/messenger-sidebar.lib";
 import { readActiveChats } from "~/applications/messenger/model/chats/chats";
 import { useThemeStore } from "~/entities/theme/theme.model";
-import { readActiveUser } from "~/entities/user/users";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { getLocale } from "~/i18n/i18n";
+import { readActiveUser } from "~/modules/users/users";
 import { createLogger } from "~/shared/lib/logger";
 
 const log = createLogger("ai-context");

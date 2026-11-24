@@ -13,7 +13,6 @@ import type {
   MessengerMessage,
   MessengerUuid,
 } from "~/applications/messenger/model/messenger.types";
-import { useUsersById, useUsersOwnerKey } from "~/entities/user/users";
 import {
   selectCurrentWorkspaceRuntimeContext,
   useWorkspaceAuthStore,
@@ -21,6 +20,7 @@ import {
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { useSettingsStore } from "~/features/settings/settings.model";
 import { t } from "~/i18n/i18n";
+import { useUsersById, useUsersOwnerKey } from "~/modules/users/users";
 import type { WorkspaceMessengerRouteMatch } from "~/shared/lib/workspace-messenger-route.lib";
 import type { StreamEntryInternal } from "~/shared/types/sidebar-chat";
 import type { RightDrawerMode } from "~/widgets/right-panel/right-drawer.model";

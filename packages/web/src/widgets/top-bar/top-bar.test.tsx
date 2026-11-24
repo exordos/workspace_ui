@@ -5,13 +5,13 @@ import { installWorkspaceSessionCleanup } from "~/app/workspace-session/workspac
 import { useMessengerStore } from "~/applications/messenger/model/chats/messenger.model";
 import type { MessengerStream } from "~/applications/messenger/model/messenger.types";
 import { useDownloadStore } from "~/entities/download/download.model";
-import { useUsersStore } from "~/entities/user/user.model";
 import {
   useWorkspaceAuthStore,
   type WorkspaceAuthSession,
 } from "~/entities/workspace-auth/workspace-auth.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { t } from "~/i18n/i18n";
+import { useUsersStore } from "~/modules/users/user.model";
 import { ELECTRON_MAC_TITLEBAR_STRIP_CLASS } from "~/shared/lib/electron-title-bar.lib";
 import { setCurrentOrgRouteIdResolver } from "~/shared/lib/org-route";
 import * as messengerCacheDb from "~/shared/lib/workspace-messenger-cache-db";

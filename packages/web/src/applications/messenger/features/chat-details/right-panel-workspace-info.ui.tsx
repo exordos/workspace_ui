@@ -14,13 +14,6 @@ import {
 } from "~/applications/messenger/model/chats/messenger-topic-summary-permissions.lib";
 import type { MessengerTopic, MessengerUuid } from "~/applications/messenger/model/messenger.types";
 import {
-  isSelectableWorkspaceUser,
-  resolveUserPresenceVisual,
-  selectUserDisplayName,
-} from "~/entities/user/user-selectors.lib";
-import type { User, UsersById } from "~/entities/user/user.types";
-import { useUsersById } from "~/entities/user/users";
-import {
   selectCurrentWorkspaceRuntimeContext,
   useWorkspaceAuthStore,
 } from "~/entities/workspace-auth/workspace-auth.model";
@@ -32,6 +25,13 @@ import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import { WorkspaceAvatar } from "~/features/workspace-avatar/workspace-avatar.ui";
 import { t } from "~/i18n/i18n";
+import { useUsersById } from "~/modules/users/users";
+import {
+  isSelectableWorkspaceUser,
+  resolveUserPresenceVisual,
+  selectUserDisplayName,
+} from "~/modules/users/users-selectors";
+import type { User, UsersById } from "~/modules/users/users-types";
 import { resolveAvatarBackgroundColor } from "~/shared/lib/avatar-color.lib";
 import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
 import {

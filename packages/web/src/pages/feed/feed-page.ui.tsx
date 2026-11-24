@@ -6,8 +6,6 @@ import { useWorkspaceForwardMessageStore } from "~/applications/messenger/featur
 import { useChatsCatalog } from "~/applications/messenger/model/chats/chats";
 import { fetchFeedMessages, hydrateFeedMessagesFromCache } from "~/entities/feed/feed.api";
 import { useFeedStore } from "~/entities/feed/feed.model";
-import { selectUserDisplayName } from "~/entities/user/user-selectors.lib";
-import { useUserById } from "~/entities/user/users";
 import {
   selectCurrentWorkspaceRuntimeContext,
   useWorkspaceAuthStore,
@@ -18,6 +16,8 @@ import {
 } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import { t } from "~/i18n/i18n";
+import { useUserById } from "~/modules/users/users";
+import { selectUserDisplayName } from "~/modules/users/users-selectors";
 import { useOpenSearch } from "~/shared/contexts/open-search";
 import { formatMessageTimeWithDate } from "~/shared/lib/datetime.lib";
 import { createLogger } from "~/shared/lib/logger";

@@ -1,13 +1,13 @@
 import { useCallback, useLayoutEffect, useMemo, useRef } from "react";
 import { readActiveChats, useChatsCatalog } from "~/applications/messenger/model/chats/chats";
 import { useMessageIndex } from "~/applications/messenger/model/messages/messages-consumers";
-import { useUsersById, useUsersOwnerKey } from "~/entities/user/users";
 import {
   selectCurrentWorkspaceRuntimeContext,
   useWorkspaceAuthStore,
 } from "~/entities/workspace-auth/workspace-auth.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { t } from "~/i18n/i18n";
+import { useUsersById, useUsersOwnerKey } from "~/modules/users/users";
 import { writeText } from "~/shared/lib/clipboard";
 import { toast } from "~/shared/lib/toast/toast";
 import { selectEncryptedChatInfo } from "./encrypted-chat-info-selector.lib";

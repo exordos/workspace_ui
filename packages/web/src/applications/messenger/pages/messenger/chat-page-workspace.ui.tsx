@@ -133,9 +133,6 @@ import type {
   MessengerTopic,
   MessengerUuid,
 } from "~/applications/messenger/model/messenger.types";
-import { selectUserDisplayName } from "~/entities/user/user-selectors.lib";
-import type { UsersById } from "~/entities/user/user.types";
-import { useUsersById } from "~/entities/user/users";
 import {
   selectCurrentWorkspaceRuntimeContext,
   useWorkspaceAuthStore,
@@ -153,6 +150,9 @@ import {
   startWorkspaceFileDownload,
 } from "~/features/workspace-file-download/workspace-file-download.lib";
 import { t } from "~/i18n/i18n";
+import { useUsersById } from "~/modules/users/users";
+import { selectUserDisplayName } from "~/modules/users/users-selectors";
+import type { UsersById } from "~/modules/users/users-types";
 import { useOpenSearch } from "~/shared/contexts/open-search";
 import { useRightDrawer } from "~/shared/contexts/right-drawer";
 import type { RightDrawerContextValue } from "~/shared/contexts/right-drawer.types";

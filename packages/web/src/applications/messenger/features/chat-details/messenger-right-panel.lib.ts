@@ -1,8 +1,5 @@
-import {
-  resolveUserPresenceVisual,
-  selectUserDisplayName,
-} from "~/entities/user/user-selectors.lib";
-import type { User, UsersById } from "~/entities/user/user.types";
+import { resolveUserPresenceVisual, selectUserDisplayName } from "~/modules/users/users-selectors";
+import type { User, UsersById } from "~/modules/users/users-types";
 import type { WorkspaceMessengerStreamNotificationMode } from "~/shared/api/messenger.types";
 import { formatDateJoined } from "~/shared/lib/datetime.lib";
 import type { WorkspaceMessengerRouteMatch } from "~/shared/lib/workspace-messenger-route.lib";

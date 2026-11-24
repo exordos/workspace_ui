@@ -2,12 +2,12 @@ import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useMessengerStore } from "~/applications/messenger/model/chats/messenger.model";
 import type { MessengerBootstrapPayload } from "~/applications/messenger/model/messenger.types";
-import { getUsersStoreForOwner, useUsersStore } from "~/entities/user/user.model";
 import {
   useWorkspaceAuthStore,
   type WorkspaceAuthSession,
 } from "~/entities/workspace-auth/workspace-auth.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
+import { getUsersStoreForOwner, useUsersStore } from "~/modules/users/user.model";
 import { createUser } from "~/test/factories";
 import { useLayoutRightPanelShell } from "./layout-right-panel-shell.hook";
 import type { UseLayoutRightPanelShellParams } from "./layout-right-panel-shell.hook";

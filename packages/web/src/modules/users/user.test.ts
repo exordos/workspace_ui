@@ -1,4 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  useWorkspaceAuthStore,
+  type WorkspaceAuthSession,
+} from "~/entities/workspace-auth/workspace-auth.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import type { WorkspaceMessengerUserDto } from "~/shared/api/messenger.types";
@@ -7,6 +11,7 @@ import type {
   WorkspaceRealtimeRuntimeOwner,
 } from "~/shared/lib/workspace-realtime/workspace-realtime-runtime.lib";
 import { adaptWorkspaceMessengerUserDto } from "./user-adapters.lib";
+import { readManualStatus } from "./user-manual-status.lib";
 import { createUserRealtimeApplier } from "./user-realtime-applier.lib";
 import {
   isSelectableWorkspaceUser,
@@ -32,7 +37,8 @@ import {
   buildWorkspaceOwnStatusBody,
   updateWorkspaceOwnStatus,
 } from "./user-workspace-status-actions.lib";
-import { useUsersStore } from "./user.model";
+import { getUsersStoreForOwner, useUsersStore } from "./user.model";
+import { readActiveUser, readActiveUsers } from "./users";
 import type { User, UserUuid } from "./user.types";
 
 const USER_A_UUID = "11111111-1111-4111-8111-111111111111";
@@ -87,6 +93,12 @@ function createUser(overrides: Partial<User> & { uuid?: UserUuid } = {}): User {
     updatedAt: DATE_1,
     ...overrides,
   };
+}
+
+function createAuthSession(overrides: Partial<WorkspaceRuntimeContext> = {}): WorkspaceAuthSession {
+  const runtime = createRuntimeContext(overrides);
+  const { uuid, username, firstName, lastName, email } = createUser({ uuid: runtime.userUuid });
+  return { ...runtime, login: username, profile: { uuid, username, firstName, lastName, email } };
 }
 
 function createUserDto(
@@ -281,6 +293,40 @@ describe("useUsersStore", () => {
     expect(useUsersStore.getState().ownerKey).toBe(OWNER_B_KEY);
     expect(useUsersStore.getState().userIds).toEqual([]);
   });
+});
+
+it("reads the corresponding warm directory through A → B → A with the same user UUID", () => {
+  const userA = createUser({ displayName: "Alice in A" });
+  const userB = createUser({ displayName: "Alice in B" });
+  const sessionA = createAuthSession();
+  const sessionB = createAuthSession({
+    accountId: "account-b",
+    organizationId: "organization-b",
+    organizationOrigin: "https://org-b.example.test",
+  });
+  const ownerA = workspaceRuntimeOwnerKey(sessionA);
+  const ownerB = workspaceRuntimeOwnerKey(sessionB);
+  const auth = useWorkspaceAuthStore.getState();
+  useWorkspaceAuthStore.setState({
+    sessions: [sessionA, sessionB],
+    currentAccountId: sessionA.accountId,
+  });
+  try {
+    getUsersStoreForOwner(ownerA)?.getState().replaceUsers([userA]);
+    getUsersStoreForOwner(ownerB)?.getState().replaceUsers([userB]);
+    const activeA = readActiveUsers();
+    expect(readActiveUser(USER_A_UUID, ownerA)).toBe(userA);
+
+    auth.setCurrentAccountId(sessionB.accountId);
+    expect(readActiveUser(USER_A_UUID, ownerB)).toBe(userB);
+    expect(readActiveUser(USER_A_UUID, ownerA)).toBeUndefined();
+
+    auth.setCurrentAccountId(sessionA.accountId);
+    expect(readActiveUser(USER_A_UUID, ownerA)).toBe(userA);
+    expect(readActiveUsers().usersById).toBe(activeA.usersById);
+  } finally {
+    auth.clear();
+  }
 });
 
 describe("user adapters", () => {
@@ -969,8 +1015,16 @@ describe("user realtime applier", () => {
 });
 
 describe("Workspace own status actions", () => {
-  beforeEach(resetStore);
-  afterEach(resetStore);
+  let runtimeContext: WorkspaceRuntimeContext;
+
+  beforeEach(() => {
+    const auth = useWorkspaceAuthStore.getState();
+    auth.setSession(createAuthSession());
+    const context = auth.getCurrentRuntimeContext();
+    if (context == null) throw new Error("Missing test runtime");
+    runtimeContext = context;
+  });
+  afterEach(() => useWorkspaceAuthStore.getState().clear());
 
   it("builds presence body with Workspace null clearing semantics", () => {
     expect(
@@ -999,9 +1053,6 @@ describe("Workspace own status actions", () => {
   });
 
   it("writes Workspace status and applies returned user to current owner store", async () => {
-    const runtimeContext = createRuntimeContext();
-    const ownerKey = workspaceRuntimeOwnerKey(runtimeContext);
-    useUsersStore.getState().startOwnerSync(ownerKey);
     const invokePresence = vi.fn().mockResolvedValue(
       createUserDto({
         status: "idle",
@@ -1049,7 +1100,57 @@ describe("Workspace own status actions", () => {
         statusText: "Focus",
       }),
     );
+    expect(readManualStatus(USER_A_UUID)).toBe("idle");
   });
+
+  it("applies a confirmed Workspace status after the selected account renews its credentials", async () => {
+    const response = createDeferred<WorkspaceMessengerUserDto>();
+    const request = updateWorkspaceOwnStatus({
+      runtimeContext,
+      statusText: "Focus",
+      statusEmoji: null,
+      away: true,
+      invokePresence: () => response.promise,
+    });
+
+    useWorkspaceAuthStore.getState().updateTokens(runtimeContext.accountId, {
+      accessToken: "renewed-access-token",
+    });
+    response.resolve(createUserDto({ status: "idle", status_text: "Focus" }));
+
+    await expect(request).resolves.toMatchObject({ ok: true });
+    expect(readActiveUser(USER_A_UUID)).toMatchObject({ status: "idle", statusText: "Focus" });
+    expect(readManualStatus(USER_A_UUID)).toBe("idle");
+  });
+
+  it.each(["logout", "logout and sign-in to the same account"])(
+    "discards a late Workspace status response after %s",
+    async (transition) => {
+      const ownerStore = getUsersStoreForOwner(workspaceRuntimeOwnerKey(runtimeContext));
+      const response = createDeferred<WorkspaceMessengerUserDto>();
+      const invokePresence = vi.fn(() => response.promise);
+      const request = updateWorkspaceOwnStatus({
+        runtimeContext,
+        statusText: "Focus",
+        statusEmoji: null,
+        away: true,
+        invokePresence,
+      });
+      expect(invokePresence).toHaveBeenCalledOnce();
+
+      const auth = useWorkspaceAuthStore.getState();
+      auth.removeSession(runtimeContext.accountId);
+      if (transition === "logout and sign-in to the same account") {
+        auth.setSession(createAuthSession());
+      }
+      response.resolve(createUserDto({ status: "idle", status_text: "Focus" }));
+
+      await expect(request).resolves.toEqual({ ok: false, kind: "stale" });
+      expect(ownerStore?.getState().getUser(USER_A_UUID)).toBeUndefined();
+      expect(readActiveUser(USER_A_UUID)).toBeUndefined();
+      expect(readManualStatus(USER_A_UUID)).toBeNull();
+    },
+  );
 });
 
 describe("workspace presence reporter", () => {

@@ -2,15 +2,17 @@ import { Theme, type EmojiClickData } from "emoji-picker-react";
 import React, { useCallback, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useThemeStore } from "~/entities/theme/theme.model";
-import { readManualStatus } from "~/entities/user/user-manual-status.lib";
-import { selectUserStatusLabel } from "~/entities/user/user-selectors.lib";
-import { updateWorkspaceOwnStatus } from "~/entities/user/user-workspace-status-actions.lib";
-import { useUserById } from "~/entities/user/users";
 import { removeWorkspaceSession } from "~/entities/workspace-auth/workspace-auth.lib";
-import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
+import {
+  selectCurrentWorkspaceRuntimeContext,
+  useWorkspaceAuthStore,
+} from "~/entities/workspace-auth/workspace-auth.model";
 import { resolveWorkspacePostLogoutRoute } from "~/entities/workspace-auth/workspace-post-logout-route.lib";
 import { ManageExternalProviderEntry } from "~/features/manage-external-provider/manage-external-provider-entry.ui";
 import { useTranslation } from "~/i18n/i18n";
+import { useUserById } from "~/modules/users/users";
+import { readManualStatus, updateWorkspaceOwnStatus } from "~/modules/users/users-profile";
+import { selectUserStatusLabel } from "~/modules/users/users-selectors";
 import { IS_CONNECTION_DIAGNOSTICS_ENABLED } from "~/shared/config/constants";
 import { useRightDrawer } from "~/shared/contexts/right-drawer";
 import { performApplicationColdStart } from "~/shared/lib/local-reset";
@@ -66,6 +68,7 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
       : undefined;
   });
   const getCurrentWorkspaceSession = useWorkspaceAuthStore((s) => s.getCurrentSession);
+  const currentWorkspaceRuntime = useWorkspaceAuthStore(selectCurrentWorkspaceRuntimeContext);
   const currentWorkspaceUser = useUserById(currentWorkspaceSession?.userUuid);
   const currentThemeMode = useThemeStore((s) => s.mode);
   const [externalAccountsOpen, setExternalAccountsOpen] = useState(false);
@@ -150,27 +153,27 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
   }, []);
 
   const handleSaveStatus = useCallback(async () => {
-    if (currentWorkspaceSession == null) {
+    if (currentWorkspaceRuntime == null) {
       toast.error(t("settings.statusUpdateError"));
       return;
     }
     setStatusSubmitting(true);
     try {
       const result = await updateWorkspaceOwnStatus({
-        runtimeContext: currentWorkspaceSession,
+        runtimeContext: currentWorkspaceRuntime,
         statusText: statusTextDraft,
         statusEmoji: statusEmojiDraft,
         away: statusAwayDraft,
       });
       if (!result.ok) {
-        toast.error(t("settings.statusUpdateError"));
+        if (result.kind === "transient") toast.error(t("settings.statusUpdateError"));
         return;
       }
       setStatusDialogOpen(false);
     } finally {
       setStatusSubmitting(false);
     }
-  }, [currentWorkspaceSession, statusAwayDraft, statusEmojiDraft, statusTextDraft, t]);
+  }, [currentWorkspaceRuntime, statusAwayDraft, statusEmojiDraft, statusTextDraft, t]);
 
   const openPersonalInfo = useCallback(() => {
     onOpenPersonalInfo?.();

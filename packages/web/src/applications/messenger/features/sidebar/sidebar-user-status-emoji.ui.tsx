@@ -1,5 +1,5 @@
 import React from "react";
-import { resolveWorkspaceStatusEmojiDisplay } from "~/entities/user/user-selectors.lib";
+import { resolveWorkspaceStatusEmojiDisplay } from "~/modules/users/users-selectors";
 
 export interface SidebarUserStatusEmojiProps {
   statusEmoji: string | null | undefined;

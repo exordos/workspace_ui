@@ -1,15 +1,15 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import React, { useCallback, useEffect, useMemo, useRef } from "react";
+import { t } from "~/i18n/i18n";
+import { useUserIds, useUsersById } from "~/modules/users/users";
 import {
   resolveUserPresenceVisual,
   selectSelectableWorkspaceUsers,
   selectUserDisplayName,
   selectUserStatusLabel,
   selectUsersByIds,
-} from "~/entities/user/user-selectors.lib";
-import type { User } from "~/entities/user/user.types";
-import { useUserIds, useUsersById } from "~/entities/user/users";
-import { t } from "~/i18n/i18n";
+} from "~/modules/users/users-selectors";
+import type { User } from "~/modules/users/users-types";
 import { AppDialogShell, APP_DIALOG_CONTENT_BASE_CLASS } from "~/shared/ui/app-dialog";
 import { ScrollArea } from "~/shared/ui/scroll-area";
 import { SearchInput } from "~/shared/ui/search-input";

@@ -4,9 +4,9 @@ import type {
   MessengerStream,
   MessengerTopic,
 } from "~/applications/messenger/model/messenger.types";
-import { selectUserDisplayName } from "~/entities/user/user-selectors.lib";
-import { useUserById } from "~/entities/user/users";
 import { t } from "~/i18n/i18n";
+import { useUserById } from "~/modules/users/users";
+import { selectUserDisplayName } from "~/modules/users/users-selectors";
 import { formatActivityItemTime } from "~/shared/lib/datetime.lib";
 import type { WorkspaceMessageSummaryOptions } from "~/shared/lib/workspace-message-render/workspace-message-document.types";
 import { summarizeWorkspaceMessageMarkdown } from "~/shared/lib/workspace-message-render/workspace-message-summary.lib";

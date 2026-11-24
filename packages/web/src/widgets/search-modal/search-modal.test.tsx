@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { useUsersStore } from "~/entities/user/user.model";
 import { t } from "~/i18n/i18n";
+import { useUsersStore } from "~/modules/users/user.model";
 import { createUser } from "~/test/factories";
 import { useSearchModalStore } from "./search-modal.model";
 import { SearchModal } from "./search-modal.ui";

@@ -11,8 +11,6 @@ import type {
   MessengerMessage,
   MessengerUuid,
 } from "~/applications/messenger/model/messenger.types";
-import { selectUserDisplayName } from "~/entities/user/user-selectors.lib";
-import { readActiveUser } from "~/entities/user/users";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import {
   captureWorkspaceRuntimeRequestContext,
@@ -20,6 +18,8 @@ import {
 } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContextGetter } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
+import { readActiveUser } from "~/modules/users/users";
+import { selectUserDisplayName } from "~/modules/users/users-selectors";
 import { parseWorkspaceMessageBody } from "~/shared/lib/workspace-message-render/workspace-message-parse.lib";
 import {
   restoreWorkspaceReplySessionFromMarkdown,

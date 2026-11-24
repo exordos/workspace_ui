@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { MessengerMessage } from "~/applications/messenger/model/messenger.types";
-import { useUsersStore } from "~/entities/user/user.model";
+import { useUsersStore } from "~/modules/users/user.model";
 import { WorkspaceMessageQuote } from "./workspace-message-quote.ui";
 import type { ResolvedMessengerQuoteMessage } from "../../model/messages/messenger-quote-resolver.hook";
 

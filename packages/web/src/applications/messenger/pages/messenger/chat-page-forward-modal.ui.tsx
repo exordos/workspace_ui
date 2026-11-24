@@ -1,11 +1,11 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import React, { useMemo, useState } from "react";
+import { t } from "~/i18n/i18n";
+import { useUserIds, useUsersById } from "~/modules/users/users";
 import {
   selectSelectableWorkspaceUsers,
   selectUserDisplayName,
-} from "~/entities/user/user-selectors.lib";
-import { useUserIds, useUsersById } from "~/entities/user/users";
-import { t } from "~/i18n/i18n";
+} from "~/modules/users/users-selectors";
 import { resolveTopicDisplayInfo } from "~/shared/lib/topic-display.lib";
 import { DialogPrimaryButton } from "~/shared/ui/app-dialog";
 import { Icon } from "~/shared/ui/icon";

@@ -8,16 +8,16 @@ import { useActivityStore } from "~/entities/activity/activity.model";
 import { loadExternalAccounts } from "~/entities/external-account/external-account-loader.lib";
 import { invalidateExternalChatsForOwner } from "~/entities/external-chat/external-chat.model";
 import {
-  refreshWorkspaceSessionUsers,
-  restoreWorkspaceSessionUsers,
-} from "~/entities/user/users-runtime";
-import {
   buildWorkspaceRequestOptions,
   ensureFreshWorkspaceSession,
 } from "~/entities/workspace-auth/workspace-auth.lib";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { isWorkspaceRuntimeRequestContextCurrent } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
+import {
+  refreshWorkspaceSessionUsers,
+  restoreWorkspaceSessionUsers,
+} from "~/modules/users/users-runtime";
 import { getEpoch } from "~/shared/api/workspace-client";
 import type { WorkspaceRealtimeCursor } from "~/shared/lib/workspace-realtime/workspace-realtime-cursor.lib";
 import type {

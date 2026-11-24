@@ -4,14 +4,14 @@ import {
   type MessagesPollAction,
 } from "~/applications/messenger/model/messages/messages";
 import type { MessengerMessage } from "~/applications/messenger/model/messenger.types";
-import { selectUserDisplayName } from "~/entities/user/user-selectors.lib";
-import type { UsersById } from "~/entities/user/user.types";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import {
   captureWorkspaceRuntimeRequestContext,
   isWorkspaceRuntimeRequestInvalidated,
 } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { t } from "~/i18n/i18n";
+import { selectUserDisplayName } from "~/modules/users/users-selectors";
+import type { UsersById } from "~/modules/users/users-types";
 import { toWorkspacePoll, visiblePollVoterQuestions } from "./workspace-message-poll-adapter.lib";
 import { WorkspaceMessagePoll } from "./workspace-message-poll.ui";
 import { PollCloseDialog, PollSettingsDialog } from "./workspace-poll-management-dialogs.ui";

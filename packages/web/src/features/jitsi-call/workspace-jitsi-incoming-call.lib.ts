@@ -2,8 +2,8 @@ import type {
   MessengerMessage,
   MessengerStream,
 } from "~/applications/messenger/model/messenger.types";
-import { selectUserDisplayName } from "~/entities/user/user-selectors.lib";
-import type { UsersById } from "~/entities/user/user.types";
+import { selectUserDisplayName } from "~/modules/users/users-selectors";
+import type { UsersById } from "~/modules/users/users-types";
 import { getJitsiMeetingUrl } from "~/shared/lib/jitsi";
 import type { IncomingDmCallInvite } from "./jitsi-call.model";
 

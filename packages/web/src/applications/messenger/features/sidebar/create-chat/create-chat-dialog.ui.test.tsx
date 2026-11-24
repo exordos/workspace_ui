@@ -3,10 +3,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runWorkspaceStreamUnarchive } from "~/applications/messenger/model/chats/messenger-sidebar-actions.lib";
 import { useMessengerStore } from "~/applications/messenger/model/chats/messenger.model";
 import type { MessengerStream } from "~/applications/messenger/model/messenger.types";
-import { useUsersStore } from "~/entities/user/user.model";
-import type { User } from "~/entities/user/user.types";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
+import { useUsersStore } from "~/modules/users/user.model";
+import type { User } from "~/modules/users/users-types";
 import { CreateChatDialog } from "./create-chat-dialog.ui";
 import type { CreateChatDialogProps } from "./create-chat-dialog.types";
 

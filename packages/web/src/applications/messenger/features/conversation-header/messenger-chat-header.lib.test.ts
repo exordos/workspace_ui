@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { User, UsersById } from "~/entities/user/user.types";
+import type { User, UsersById } from "~/modules/users/users-types";
 import { useMessengerStore } from "../../model/chats/messenger.model";
 import { selectWorkspaceChatHeaderView } from "./messenger-chat-header.lib";
 import type { MessengerBootstrapPayload } from "../../model/messenger.types";

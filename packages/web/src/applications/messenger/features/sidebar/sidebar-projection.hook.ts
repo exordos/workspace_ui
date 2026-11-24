@@ -8,14 +8,14 @@ import {
   createMessagesIndexSource,
   type MessagesIndexSnapshot,
 } from "~/applications/messenger/model/messages/messages-consumers";
-import type { UsersById } from "~/entities/user/user.types";
-import { readActiveUsers, subscribeActiveUsers } from "~/entities/user/users";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import {
   isWorkspaceRuntimeRequestContextCurrent,
   workspaceRuntimeOwnerKey,
 } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
+import { readActiveUsers, subscribeActiveUsers } from "~/modules/users/users";
+import type { UsersById } from "~/modules/users/users-types";
 import { isTabVisible, onVisibilityChange } from "~/shared/lib/visibility";
 
 const PROJECTION_INTERVAL_MS = 100;

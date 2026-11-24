@@ -15,6 +15,14 @@ const messengerDirections = {
   model: [],
   runtime: ["model"],
 };
+const users = "modules/users/";
+const usersPublicEntries = new Set([
+  "users.ts",
+  "users-profile.ts",
+  "users-runtime.ts",
+  "users-selectors.ts",
+  "users-types.ts",
+]);
 
 // Only explicitly private Messenger stores and delivery/history implementations are checked here.
 const privateFiles = [
@@ -34,6 +42,8 @@ const rules = {
   "messenger-private":
     "Consume Messenger stores and workflows through their owning model's public operations.",
   "messenger-lazy-entry": "Load the Messenger route entry dynamically from app.",
+  "users-direction": "The users module cannot depend on applications.",
+  "users-public-entry": "Consume the users module through its public entries.",
   "shared-public-entry": "Use the shared module index from outside and concrete files from inside.",
   "static-value-cycle": "Static value imports and re-exports must be acyclic.",
 };
@@ -88,6 +98,17 @@ function violatesSharedPublicEntry(from, to, files) {
   if (!files.has(index)) return false;
   const internal = from.startsWith(moduleDirectory);
   return internal ? to === index : to !== index;
+}
+
+// Users boundaries also apply when production code imports an excluded source or declaration.
+function usersBoundaryRule(from, to) {
+  if (from.startsWith(users)) {
+    return to.startsWith("applications/") ? "users-direction" : null;
+  }
+  if (to.startsWith(users) && !usersPublicEntries.has(to.slice(users.length))) {
+    return "users-public-entry";
+  }
+  return null;
 }
 
 function boundaryRules(from, to, kind, files) {
@@ -205,6 +226,8 @@ export function collectArchitectureViolations(configPath) {
   }
 
   const sourceRoot = resolve(directory, "src");
+  const canonicalSourceRoot = ts.sys.realpath(sourceRoot);
+  const lowercaseSourceRoot = sourceRoot.toLowerCase();
   const files = new Map();
   for (const path of parsed.fileNames) {
     const file = relative(sourceRoot, path).split(sep).join("/");
@@ -238,14 +261,28 @@ export function collectArchitectureViolations(configPath) {
         ts.sys,
         cache,
       );
-      const to = files.get(resolvedModule?.resolvedFileName);
-      if (to == null) continue;
+      const targetPath = resolvedModule?.resolvedFileName;
+      if (targetPath == null) continue;
+      const productionTarget = files.get(targetPath);
+      let to = productionTarget;
+      // On case-insensitive filesystems, the resolver may retain the casing from the import.
+      if (to == null) {
+        const candidate = relative(lowercaseSourceRoot, targetPath.toLowerCase())
+          .split(sep)
+          .join("/");
+        if (!/^(?:modules\/users|applications)\//.test(candidate)) continue;
+        to = relative(canonicalSourceRoot, ts.sys.realpath(targetPath)).split(sep).join("/");
+      }
+      const usersRule = usersBoundaryRule(from, to);
+      if (productionTarget == null && usersRule == null) continue;
 
       const edge = {
         from,
         to,
         line: source.getLineAndCharacterOfPosition(specifier.getStart(source)).line + 1,
       };
+      if (usersRule != null) record(usersRule, edge);
+      if (productionTarget == null) continue;
       for (const rule of boundaryRules(from, to, kind, graph)) record(rule, edge);
       if (kind === "static-value" && !graph.get(from).has(to)) graph.get(from).set(to, edge);
     }

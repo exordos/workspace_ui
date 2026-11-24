@@ -1,9 +1,6 @@
-import {
-  resolveUserPresenceVisual,
-  selectUserDisplayName,
-} from "~/entities/user/user-selectors.lib";
-import type { User, UsersById } from "~/entities/user/user.types";
 import { getLocale, type Locale } from "~/i18n/i18n";
+import { resolveUserPresenceVisual, selectUserDisplayName } from "~/modules/users/users-selectors";
+import type { User, UsersById } from "~/modules/users/users-types";
 import { workspaceMessengerStreamRoute } from "~/shared/lib/workspace-messenger-route.lib";
 import { subscribeChatsBootstrapChange, type ChatsCatalogSnapshot } from "../../model/chats/chats";
 import {

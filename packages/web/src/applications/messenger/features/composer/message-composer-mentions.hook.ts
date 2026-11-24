@@ -1,15 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  selectSelectableWorkspaceUsers,
-  selectUserDisplayName,
-} from "~/entities/user/user-selectors.lib";
-import { useUserIds, useUsersById } from "~/entities/user/users";
-import {
   MENTION_SUGGESTION_LIMIT,
   rankMentionSuggestions,
 } from "~/features/mention-suggest/mention-suggest.lib";
 import { useMentionSuggestStore } from "~/features/mention-suggest/mention-suggest.model";
 import type { MentionSuggestion } from "~/features/mention-suggest/mention-suggest.types";
+import { useUserIds, useUsersById } from "~/modules/users/users";
+import {
+  selectSelectableWorkspaceUsers,
+  selectUserDisplayName,
+} from "~/modules/users/users-selectors";
 import { useComposerMentionContext } from "./message-composer-mention-context.hook";
 import type { ComposerMentionContextInput } from "./message-composer.types";
 

@@ -17,7 +17,7 @@ vi.mock("../applications/messenger/model/chats/chats", () => ({
 vi.mock("../applications/messenger/model/messages/messages-consumers", () => ({
   readActiveMessageIndex: () => mockMessageIndex,
 }));
-vi.mock("../entities/user/users", () => ({
+vi.mock("../modules/users/users", () => ({
   readActiveUsers: () => mockUsersSnapshot,
 }));
 vi.mock("../entities/workspace-auth/workspace-auth.model", () => ({

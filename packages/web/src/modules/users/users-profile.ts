@@ -12,6 +12,10 @@ import { resolveCachedWorkspaceUser, writeUsersToCacheForOwner } from "./user-sy
 import { getSelectedUsersStore } from "./user.model";
 import type { User, UserUuid } from "./user.types";
 
+// Read and update the selected user's manually chosen presence status.
+export { readManualStatus } from "./user-manual-status.lib";
+export { updateWorkspaceOwnStatus } from "./user-workspace-status-actions.lib";
+
 const getRuntimeContext = () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
 
 // Apply a confirmed own profile or avatar response to the selected catalog and its cache.

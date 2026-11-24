@@ -2,7 +2,7 @@ import type {
   MessengerMessage,
   MessengerUuid,
 } from "~/applications/messenger/model/messenger.types";
-import type { UsersById } from "~/entities/user/user.types";
+import type { UsersById } from "~/modules/users/users-types";
 import type { WorkspaceMessageMentionResolver } from "~/shared/lib/workspace-message-render/workspace-message-document.types";
 import type { WorkspaceMessageBubbleQuickActionsConfig } from "./workspace-message-bubble-quick-actions.ui";
 import type {

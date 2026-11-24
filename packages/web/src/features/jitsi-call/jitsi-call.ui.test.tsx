@@ -5,11 +5,11 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import React, { useEffect } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useUsersStore } from "~/entities/user/user.model";
 import {
   useWorkspaceAuthStore,
   type WorkspaceAuthSession,
 } from "~/entities/workspace-auth/workspace-auth.model";
+import { useUsersStore } from "~/modules/users/user.model";
 import { createUser } from "~/test/factories";
 import { JitsiCallModal } from "./jitsi-call.ui";
 

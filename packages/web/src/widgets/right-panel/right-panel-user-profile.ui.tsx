@@ -4,11 +4,6 @@ import { useChatDmCallBridgeStore } from "~/applications/messenger/features/chat
 import { chatCommands } from "~/applications/messenger/model/chats/chat-commands";
 import { readActiveChats } from "~/applications/messenger/model/chats/chats";
 import {
-  resolveUserPresenceVisual,
-  selectUserStatusLabel,
-} from "~/entities/user/user-selectors.lib";
-import { useUserById } from "~/entities/user/users";
-import {
   selectCurrentWorkspaceRuntimeContext,
   useWorkspaceAuthStore,
 } from "~/entities/workspace-auth/workspace-auth.model";
@@ -26,6 +21,8 @@ import {
 } from "~/features/user-profile/user-profile.api";
 import { WorkspaceAvatar } from "~/features/workspace-avatar/workspace-avatar.ui";
 import { t } from "~/i18n/i18n";
+import { useUserById } from "~/modules/users/users";
+import { resolveUserPresenceVisual, selectUserStatusLabel } from "~/modules/users/users-selectors";
 import { writeText } from "~/shared/lib/clipboard";
 import { createLogger } from "~/shared/lib/logger";
 import { validateFileUpload } from "~/shared/lib/validation";

@@ -1,7 +1,7 @@
 import React from "react";
-import { resolveUserPresenceVisual } from "~/entities/user/user-selectors.lib";
 import { WorkspaceAvatar } from "~/features/workspace-avatar/workspace-avatar.ui";
 import { t } from "~/i18n/i18n";
+import { resolveUserPresenceVisual } from "~/modules/users/users-selectors";
 import { getWorkspaceComposerReferenceLabel } from "./message-composer-reference.lib";
 import type { ComposerMentionDropdownProps } from "./message-composer-mention-dropdown.types";
 

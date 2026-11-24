@@ -13,9 +13,9 @@ import { readChatCatalogDiagnostics } from "~/applications/messenger/model/chats
 import { readActiveMessageIndex } from "~/applications/messenger/model/messages/messages-consumers";
 import { useCallParticipantsStore } from "~/entities/call/call.model";
 import { useThemeStore } from "~/entities/theme/theme.model";
-import { readActiveUsers } from "~/entities/user/users";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { t, setLocale, getLocale, getSupportedLocales } from "~/i18n/i18n";
+import { readActiveUsers } from "~/modules/users/users";
 import { initConsoleCapture } from "~/shared/lib/console-capture.lib";
 import { env } from "~/shared/lib/env";
 import {

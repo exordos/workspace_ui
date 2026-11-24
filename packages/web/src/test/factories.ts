@@ -1,4 +1,4 @@
-import type { UserPresenceStatus } from "~/entities/user/user.types";
+import type { UserPresenceStatus } from "~/modules/users/users-types";
 
 /**
  * Test data factories — typed builders for domain objects.

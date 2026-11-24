@@ -2,7 +2,7 @@
  * Types for chat page UI subcomponents.
  */
 import type { MessengerUuid } from "~/applications/messenger/model/messenger.types";
-import type { UserUuid } from "~/entities/user/user.types";
+import type { UserUuid } from "~/modules/users/users-types";
 
 export interface ForwardWorkspaceStreamOption {
   streamUuid: MessengerUuid;

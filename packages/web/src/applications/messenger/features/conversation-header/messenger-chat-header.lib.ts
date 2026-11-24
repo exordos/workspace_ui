@@ -2,8 +2,8 @@ import {
   resolveUserPresenceVisual,
   selectOnlineUserCount,
   selectUserDisplayName,
-} from "~/entities/user/user-selectors.lib";
-import type { UsersById } from "~/entities/user/user.types";
+} from "~/modules/users/users-selectors";
+import type { UsersById } from "~/modules/users/users-types";
 import type { WorkspaceMessengerRouteMatch } from "~/shared/lib/workspace-messenger-route.lib";
 import type { PresenceVisual } from "~/shared/ui/presence-indicator";
 import { resolveWorkspaceDirectPartnerUuid } from "../../model/chats/messenger-direct-partner.lib";

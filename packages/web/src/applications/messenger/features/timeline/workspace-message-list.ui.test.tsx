@@ -10,12 +10,12 @@ import { useWorkspaceMessageStore } from "~/applications/messenger/model/message
 import type { MessengerOutgoingMessage } from "~/applications/messenger/model/messages/outgoing/messenger-outbox.types";
 import type { MessengerMessage } from "~/applications/messenger/model/messenger.types";
 import { useDownloadStore } from "~/entities/download/download.model";
-import { useUsersStore } from "~/entities/user/user.model";
-import type { User } from "~/entities/user/user.types";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import { setLocale } from "~/i18n/i18n";
+import { useUsersStore } from "~/modules/users/user.model";
+import type { User } from "~/modules/users/users-types";
 import { AUTH_IMAGE_PLACEHOLDER_SRC } from "~/shared/lib/media-display-url.lib";
 import { buildWorkspaceForwardUrn } from "~/shared/lib/workspace-reference-urn.lib";
 import { WorkspaceMessageListWithPreparation as WorkspaceMessageList } from "./workspace-message-list-with-preparation.ui";

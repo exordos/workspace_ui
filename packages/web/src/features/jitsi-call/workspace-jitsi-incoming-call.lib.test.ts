@@ -3,7 +3,7 @@ import type {
   MessengerMessage,
   MessengerStream,
 } from "~/applications/messenger/model/messenger.types";
-import type { UsersById } from "~/entities/user/user.types";
+import type { UsersById } from "~/modules/users/users-types";
 import { buildWorkspaceIncomingDmCallInvite } from "./workspace-jitsi-incoming-call.lib";
 
 const OWNER_KEY = "account-a:instance-a:org-a:project-a:user-a";

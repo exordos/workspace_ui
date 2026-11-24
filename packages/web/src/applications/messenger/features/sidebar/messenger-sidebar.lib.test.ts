@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useWorkspaceMessageStore } from "~/applications/messenger/model/messages/message.model";
-import type { User, UsersById } from "~/entities/user/user.types";
 import { getLocale, setLocale, t } from "~/i18n/i18n";
+import type { User, UsersById } from "~/modules/users/users-types";
 import * as messageSummary from "~/shared/lib/workspace-message-render/workspace-message-summary.lib";
 import {
   workspaceMessengerRootRoute,

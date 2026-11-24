@@ -16,17 +16,17 @@ import type {
   MessengerUuid,
 } from "~/applications/messenger/model/messenger.types";
 import {
-  selectSelectableWorkspaceUsers,
-  selectUserDisplayName,
-} from "~/entities/user/user-selectors.lib";
-import { readActiveUser, useUserIds, useUsersById } from "~/entities/user/users";
-import {
   selectCurrentWorkspaceRuntimeContext,
   useWorkspaceAuthStore,
 } from "~/entities/workspace-auth/workspace-auth.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import { t } from "~/i18n/i18n";
+import { readActiveUser, useUserIds, useUsersById } from "~/modules/users/users";
+import {
+  selectSelectableWorkspaceUsers,
+  selectUserDisplayName,
+} from "~/modules/users/users-selectors";
 import { createLogger } from "~/shared/lib/logger";
 import { resolveTopicDisplayInfo } from "~/shared/lib/topic-display.lib";
 import { isWorkspaceMessageWithinLimit } from "~/shared/lib/workspace-message-limits.lib";

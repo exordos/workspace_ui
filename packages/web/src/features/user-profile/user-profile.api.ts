@@ -5,7 +5,6 @@
  * uuid-based user store cutover.
  */
 
-import { applyOwnUserProjection } from "~/entities/user/users-profile";
 import { buildWorkspaceRequestOptions } from "~/entities/workspace-auth/workspace-auth.lib";
 import {
   selectCurrentWorkspaceRuntimeContext,
@@ -16,6 +15,7 @@ import {
   isWorkspaceRuntimeRequestInvalidated,
 } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
+import { applyOwnUserProjection } from "~/modules/users/users-profile";
 import { MessengerApiError } from "~/shared/api/messenger-transport.internal";
 import type { WorkspaceMessengerUserDto } from "~/shared/api/messenger.types";
 import type { OwnProfile, OwnProfileApi, OwnProfilePatch } from "~/shared/api/own-profile.types";

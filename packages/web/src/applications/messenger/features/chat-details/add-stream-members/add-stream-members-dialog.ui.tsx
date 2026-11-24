@@ -4,16 +4,13 @@ import { chatCommands } from "~/applications/messenger/model/chats/chat-commands
 import { useChatsCatalog } from "~/applications/messenger/model/chats/chats";
 import type { MessengerUuid } from "~/applications/messenger/model/messenger.types";
 import {
-  isSelectableWorkspaceUser,
-  selectUserDisplayName,
-} from "~/entities/user/user-selectors.lib";
-import type { User } from "~/entities/user/user.types";
-import { useUsersById } from "~/entities/user/users";
-import {
   selectCurrentWorkspaceRuntimeContext,
   useWorkspaceAuthStore,
 } from "~/entities/workspace-auth/workspace-auth.model";
 import { t } from "~/i18n/i18n";
+import { useUsersById } from "~/modules/users/users";
+import { isSelectableWorkspaceUser, selectUserDisplayName } from "~/modules/users/users-selectors";
+import type { User } from "~/modules/users/users-types";
 import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
 import {
   buildUserPickerOptions,

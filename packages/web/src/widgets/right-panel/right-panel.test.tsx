@@ -3,13 +3,14 @@ import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { installWorkspaceSessionCleanup } from "~/app/workspace-session/workspace-session-cleanup.lib";
-import { useUsersStore } from "~/entities/user/user.model";
 import {
   useWorkspaceAuthStore,
   type WorkspaceAuthSession,
 } from "~/entities/workspace-auth/workspace-auth.model";
 import { useSettingsStore } from "~/features/settings/settings.model";
 import { setLocale, t } from "~/i18n/i18n";
+import { useUsersStore } from "~/modules/users/user.model";
+import type * as UsersProfileModule from "~/modules/users/users-profile";
 import * as messengerCacheDb from "~/shared/lib/workspace-messenger-cache-db";
 import { renderWithProviders } from "~/test/render";
 import { RightPanelShell as ProductionRightPanelShell } from "./right-panel-shell.ui";
@@ -55,7 +56,8 @@ vi.mock("~/features/manage-external-provider/manage-external-provider-entry.ui",
   ),
 }));
 
-vi.mock("~/entities/user/user-workspace-status-actions.lib", () => ({
+vi.mock("~/modules/users/users-profile", async (importOriginal) => ({
+  ...(await importOriginal<typeof UsersProfileModule>()),
   updateWorkspaceOwnStatus: (...args: unknown[]) => updateWorkspaceOwnStatusMock(...args),
 }));
 
@@ -92,8 +94,8 @@ describe("RightPanelShell", () => {
     };
   }
 
-  function setWorkspaceUserMenuSession() {
-    const session = createWorkspaceUserMenuSession();
+  function setWorkspaceUserMenuSession(overrides?: Partial<WorkspaceAuthSession>) {
+    const session = createWorkspaceUserMenuSession(overrides);
     useWorkspaceAuthStore.setState({
       currentAccountId: session.accountId,
       runtimeGeneration: 1,
@@ -339,7 +341,7 @@ describe("RightPanelShell", () => {
   });
 
   it("saves Workspace status from the user menu", async () => {
-    setWorkspaceUserMenuSession();
+    setWorkspaceUserMenuSession({ screenGeneration: 7 });
     renderWithProviders(<RightPanelShell mode="user-menu" title="Profile" />);
 
     fireEvent.click(screen.getByRole("button", { name: /^status/i }));
@@ -353,6 +355,7 @@ describe("RightPanelShell", () => {
     await waitFor(() => {
       expect(updateWorkspaceOwnStatusMock).toHaveBeenCalledWith(
         expect.objectContaining({
+          runtimeContext: expect.objectContaining({ runtimeGeneration: 7 }),
           statusText: "Booting",
           away: true,
         }),

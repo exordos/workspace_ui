@@ -3,12 +3,9 @@ import type {
   MessengerStream,
   MessengerStreamBinding,
 } from "~/applications/messenger/model/messenger.types";
-import {
-  selectUserDisplayName,
-  resolveUserPresenceVisual,
-} from "~/entities/user/user-selectors.lib";
-import type { User, UsersById } from "~/entities/user/user.types";
 import { t } from "~/i18n/i18n";
+import { selectUserDisplayName, resolveUserPresenceVisual } from "~/modules/users/users-selectors";
+import type { User, UsersById } from "~/modules/users/users-types";
 import { selectWorkspaceStreamMembers } from "../messenger-right-panel.lib";
 import type {
   EncryptedChatKeyRequestView,

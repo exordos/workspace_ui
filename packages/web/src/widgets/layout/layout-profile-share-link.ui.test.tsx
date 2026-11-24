@@ -1,14 +1,14 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, useLocation, useNavigate } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { adaptWorkspaceMessengerUserDto } from "~/entities/user/user-adapters.lib";
-import { toWorkspaceUserCacheProfile } from "~/entities/user/user-sync.lib";
-import { getSelectedUsersStore, useUsersStore } from "~/entities/user/user.model";
 import {
   useWorkspaceAuthStore,
   type WorkspaceAuthSession,
 } from "~/entities/workspace-auth/workspace-auth.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
+import { adaptWorkspaceMessengerUserDto } from "~/modules/users/user-adapters.lib";
+import { toWorkspaceUserCacheProfile } from "~/modules/users/user-sync.lib";
+import { getSelectedUsersStore, useUsersStore } from "~/modules/users/user.model";
 import type { WorkspaceMessengerUserDto } from "~/shared/api/messenger.types";
 import type * as WorkspaceUserCacheModule from "~/shared/lib/workspace-user-cache-db";
 import { useRightDrawerStore } from "~/widgets/right-panel/right-drawer.model";
@@ -434,43 +434,41 @@ describe("LayoutProfileShareLink", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
-  it.each(["unmount", "account change"])(
-    "aborts a cached profile's refresh on %s",
-    async (reason) => {
-      const ownerStore = getSelectedUsersStore();
-      useUsersStore
-        .getState()
-        .upsertUserForOwner(workspaceRuntimeOwnerKey(SESSION), adaptWorkspaceMessengerUserDto(DTO));
-      let resolve!: (value: typeof DTO) => void;
-      getUser.mockImplementation(
-        () =>
-          new Promise((done) => {
-            resolve = done;
-          }),
-      );
-      const view = render(
-        <MemoryRouter initialEntries={[`/org/org-a/project/project-a/inbox#user/${USER}`]}>
-          <ActiveAccountLink />
-          <Probe />
-        </MemoryRouter>,
-      );
-      await waitFor(() => expect(getUser).toHaveBeenCalledTimes(1));
-      const signal = getUser.mock.calls[0]?.[0].signal as AbortSignal;
-      expect(screen.getByTestId("hash")).toBeEmptyDOMElement();
-      expect(signal.aborted).toBe(false);
-      if (reason === "unmount") view.unmount();
-      else act(() => useWorkspaceAuthStore.setState({ sessions: [], currentAccountId: null }));
-      expect(signal.aborted).toBe(true);
-      await act(() => {
-        resolve({ ...DTO, first_name: "Stale", updated_at: "2026-09-02T10:00:00Z" });
-        return Promise.resolve();
-      });
-      expect(ownerStore.getState().usersById[USER]?.displayName).toBe("Alice Smith");
-      if (reason === "account change") {
-        expect(useUsersStore.getState().usersById[USER]).toBeUndefined();
-      }
-    },
-  );
+  it.each(["unmount", "logout"])("aborts a cached profile's refresh on %s", async (reason) => {
+    const ownerStore = getSelectedUsersStore();
+    useUsersStore
+      .getState()
+      .upsertUserForOwner(workspaceRuntimeOwnerKey(SESSION), adaptWorkspaceMessengerUserDto(DTO));
+    let resolve!: (value: typeof DTO) => void;
+    getUser.mockImplementation(
+      () =>
+        new Promise((done) => {
+          resolve = done;
+        }),
+    );
+    const view = render(
+      <MemoryRouter initialEntries={[`/org/org-a/project/project-a/inbox#user/${USER}`]}>
+        <ActiveAccountLink />
+        <Probe />
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(getUser).toHaveBeenCalledTimes(1));
+    const signal = getUser.mock.calls[0]?.[0].signal as AbortSignal;
+    expect(screen.getByTestId("hash")).toBeEmptyDOMElement();
+    expect(signal.aborted).toBe(false);
+    if (reason === "unmount") view.unmount();
+    else act(() => useWorkspaceAuthStore.getState().removeSession(SESSION.accountId));
+    expect(signal.aborted).toBe(true);
+    await act(() => {
+      resolve({ ...DTO, first_name: "Stale", updated_at: "2026-09-02T10:00:00Z" });
+      return Promise.resolve();
+    });
+    expect(ownerStore.getState().usersById[USER]?.displayName).toBe("Alice Smith");
+    expect(upsertWorkspaceUserCache).not.toHaveBeenCalled();
+    if (reason === "logout") {
+      expect(useUsersStore.getState().usersById[USER]).toBeUndefined();
+    }
+  });
 
   it("cancels the cached refresh when a new profile link arrives", async () => {
     useUsersStore

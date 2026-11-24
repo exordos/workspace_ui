@@ -8,14 +8,6 @@ import { removeMessengerStreamProjection } from "~/applications/messenger/runtim
 import { createActivityRealtimeApplier } from "~/entities/activity/activity-realtime-applier.lib";
 import { createExternalAccountRealtimeApplier } from "~/entities/external-account/external-account-realtime-applier.lib";
 import { createExternalChatRealtimeApplier } from "~/entities/external-chat/external-chat-realtime-applier.lib";
-import { selectUserDisplayName } from "~/entities/user/user-selectors.lib";
-import type { UsersById } from "~/entities/user/user.types";
-import { readActiveUser, readActiveUsers } from "~/entities/user/users";
-import {
-  createUserRealtimeApplier,
-  startWorkspacePresenceReporter,
-  workspaceStatusDecoration,
-} from "~/entities/user/users-runtime";
 import {
   buildWorkspaceRequestOptions,
   ensureFreshWorkspaceSession,
@@ -30,6 +22,14 @@ import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/works
 import { useWorkspaceJitsiSettingsStore } from "~/features/jitsi-call/jitsi-call-settings.model";
 import { useJitsiCallStore } from "~/features/jitsi-call/jitsi-call.model";
 import { buildWorkspaceIncomingDmCallInvite } from "~/features/jitsi-call/workspace-jitsi-incoming-call.lib";
+import { readActiveUser, readActiveUsers } from "~/modules/users/users";
+import {
+  createUserRealtimeApplier,
+  startWorkspacePresenceReporter,
+  workspaceStatusDecoration,
+} from "~/modules/users/users-runtime";
+import { selectUserDisplayName } from "~/modules/users/users-selectors";
+import type { UsersById } from "~/modules/users/users-types";
 import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
 import { composeWorkspaceRealtimeAppliers } from "~/shared/lib/workspace-realtime/workspace-realtime-applier.lib";
 import type { WorkspaceRealtimeDurableCursorStorage } from "~/shared/lib/workspace-realtime/workspace-realtime-cursor.lib";

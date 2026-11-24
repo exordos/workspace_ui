@@ -12,7 +12,7 @@
  * The module integrates with visibility tracking: hidden tab → idle → offline.
  *
  * This module only measures. Sending presence to the server belongs to the
- * heartbeat in `entities/user/user-workspace-presence-reporter.lib.ts`, which
+ * heartbeat in `modules/users/user-workspace-presence-reporter.lib.ts`, which
  * subscribes through `onLocalPresenceChange` and decides what may be claimed —
  * a measured status must never overwrite one the user deliberately chose.
  *

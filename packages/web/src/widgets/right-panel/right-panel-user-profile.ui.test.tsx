@@ -2,13 +2,14 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useChatDmCallBridgeStore } from "~/applications/messenger/features/chat-details/call-bridge/chat-dm-call-bridge.model";
-import { useUsersStore } from "~/entities/user/user.model";
 import {
   useWorkspaceAuthStore,
   type WorkspaceAuthSession,
 } from "~/entities/workspace-auth/workspace-auth.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { t } from "~/i18n/i18n";
+import { useUsersStore } from "~/modules/users/user.model";
+import type * as UsersProfileModule from "~/modules/users/users-profile";
 import * as messengerStreamsApi from "~/shared/api/messenger-streams.api";
 import { renderWithProviders } from "~/test/render";
 import { RightPanelShell as ProductionRightPanelShell } from "./right-panel-shell.ui";
@@ -59,7 +60,8 @@ vi.mock("~/features/manage-external-provider/manage-external-provider-entry.ui",
   ManageExternalProviderEntry: () => null,
 }));
 
-vi.mock("~/entities/user/user-workspace-status-actions.lib", () => ({
+vi.mock("~/modules/users/users-profile", async (importOriginal) => ({
+  ...(await importOriginal<typeof UsersProfileModule>()),
   updateWorkspaceOwnStatus: vi.fn().mockResolvedValue({ ok: true, user: null }),
 }));
 

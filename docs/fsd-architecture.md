@@ -14,6 +14,7 @@ Workspace still uses the existing FSD layers for the shell and other application
 | `widgets`      | Shell and composite UI, lifecycle wiring                    |
 | `features`     | User scenarios such as forwarding or downloading a file     |
 | `entities`     | Domain state, adapters, actions and domain lifecycle        |
+| `modules`      | Business domains shared across Workspace applications       |
 | `shared`       | Domain-independent UI, utilities and transport primitives   |
 
 In the legacy tree, dependencies flow `app -> pages -> widgets -> features -> entities -> shared`. Shared code must not reach upward into domain stores; inject callbacks or data at the composition boundary.
@@ -46,7 +47,6 @@ Import according to the boundary:
 
 ```ts
 import { useKnownMessage } from "~/applications/messenger/model/messages/messages-consumers";
-import { useUserById } from "~/entities/user/users";
 import { writeText } from "~/shared/lib/clipboard";
 ```
 
@@ -63,6 +63,18 @@ The app router uses the lazy [Messenger route entry](../packages/web/src/applica
 Messenger features use the [catalog](../packages/web/src/applications/messenger/model/chats/chats.ts), [messages](../packages/web/src/applications/messenger/model/messages/messages.ts), and [drafts](../packages/web/src/applications/messenger/model/drafts/composer-draft-actions.lib.ts) contracts. Outgoing delivery stays inside `model/messages/outgoing`. Profile, account settings, and the right drawer remain Workspace widgets. The chat details feature uses the existing Workspace profile view for a direct conversation.
 
 The [Workspace session runtime](../packages/web/src/app/workspace-session/) composes bootstrap and realtime. Its Messenger participant calls operations in the Messenger model and sync adapters. The session host and model contracts own account cleanup and diagnostics. The [boundary inventory](plans/messenger-architecture/modules.md#оставшиеся-прямые-обращения) links the platform entrypoints.
+
+### Workspace users imports
+
+The [users module](../packages/web/src/modules/users/) owns user records, profile projection, and presence by runtime owner. Production consumers use one of its public entries.
+
+- [`users.ts`](../packages/web/src/modules/users/users.ts) for reads and subscriptions
+- [`users-profile.ts`](../packages/web/src/modules/users/users-profile.ts) for profile and own status operations
+- [`users-runtime.ts`](../packages/web/src/modules/users/users-runtime.ts) for session lifecycle, cache hydration, realtime, and presence
+- [`users-selectors.ts`](../packages/web/src/modules/users/users-selectors.ts) for pure selectors
+- [`users-types.ts`](../packages/web/src/modules/users/users-types.ts) for shared domain types
+
+`npm run arch:check` enforces these public entries for external production imports and forbids dependencies from `modules/users` on `applications/*`. The module uses the existing Workspace auth, runtime, and shared infrastructure. [Users contract](plans/messenger-architecture/scenarios/users-contract.md)
 
 ## Workspace data flow
 

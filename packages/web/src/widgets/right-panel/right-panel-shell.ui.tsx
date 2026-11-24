@@ -1,11 +1,11 @@
 import React, { useCallback, useMemo } from "react";
 import { createWorkspaceRightPanelUserProfileView } from "~/applications/messenger/features/chat-details/messenger-right-panel.lib";
-import { useUsersById } from "~/entities/user/users";
 import {
   selectCurrentWorkspaceRuntimeContext,
   useWorkspaceAuthStore,
 } from "~/entities/workspace-auth/workspace-auth.model";
 import { t } from "~/i18n/i18n";
+import { useUsersById } from "~/modules/users/users";
 import { RightPanelWorkspaceInfo } from "../../applications/messenger/features/chat-details/right-panel-workspace-info.ui";
 import { RightPanelAbout } from "./right-panel-about.ui";
 import { RightPanelUserMenu } from "./right-panel-user-menu.ui";

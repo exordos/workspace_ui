@@ -12,12 +12,12 @@ import type {
   MessengerSidebarStreamItem,
   MessengerSidebarTopicItem,
 } from "~/applications/messenger/model/messenger.types";
-import { useUsersById } from "~/entities/user/users";
 import {
   selectCurrentWorkspaceRuntimeContext,
   useWorkspaceAuthStore,
 } from "~/entities/workspace-auth/workspace-auth.model";
 import { t } from "~/i18n/i18n";
+import { useUsersById } from "~/modules/users/users";
 import { useOpenSearch } from "~/shared/contexts/open-search";
 import { formatCount, UNREAD_COUNT_DISPLAY_LIMIT } from "~/shared/lib/count-format.lib";
 import { formatMessageTimeShort } from "~/shared/lib/datetime.lib";

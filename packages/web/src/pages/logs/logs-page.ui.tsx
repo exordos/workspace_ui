@@ -3,7 +3,6 @@ import { useLocation } from "react-router-dom";
 import { useChatsCatalog } from "~/applications/messenger/model/chats/chats";
 import { useMessageIndex } from "~/applications/messenger/model/messages/messages-consumers";
 import { useThemeStore } from "~/entities/theme/theme.model";
-import { useUserCount } from "~/entities/user/users";
 import {
   selectCurrentWorkspaceRuntimeContext,
   useWorkspaceAuthStore,
@@ -14,6 +13,7 @@ import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/works
 import { authIdleTimeoutToMs } from "~/features/settings/auth-idle-timeout.lib";
 import { useSettingsStore } from "~/features/settings/settings.model";
 import { t } from "~/i18n/i18n";
+import { useUserCount } from "~/modules/users/users";
 import { SCROLL_AREA_CLASS } from "~/shared/config/constants";
 import { getSessionRemainingMs } from "~/shared/lib/auth-guard";
 import { writeText } from "~/shared/lib/clipboard";

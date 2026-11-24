@@ -1,6 +1,6 @@
-import { selectUserDisplayName } from "~/entities/user/user-selectors.lib";
-import type { User, UsersById } from "~/entities/user/user.types";
 import { getLocale, t, type Locale } from "~/i18n/i18n";
+import { selectUserDisplayName } from "~/modules/users/users-selectors";
+import type { User, UsersById } from "~/modules/users/users-types";
 import { summarizeWorkspaceMessageMarkdown } from "~/shared/lib/workspace-message-render/workspace-message-summary.lib";
 import { workspaceMessengerTopicRoute } from "~/shared/lib/workspace-messenger-route.lib";
 import {

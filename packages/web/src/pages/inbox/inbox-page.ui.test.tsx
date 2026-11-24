@@ -6,10 +6,10 @@ import type {
   MessengerStream,
   MessengerTopic,
 } from "~/applications/messenger/model/messenger.types";
-import { useUsersStore } from "~/entities/user/user.model";
-import type { User } from "~/entities/user/user.types";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
+import { useUsersStore } from "~/modules/users/user.model";
+import type { User } from "~/modules/users/users-types";
 import {
   workspaceInboxRoute,
   workspaceMessengerStreamRoute,

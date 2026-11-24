@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
@@ -31,7 +31,7 @@ function fixture(t, files) {
     writeFileSync(path, contents);
   };
   for (const [file, contents] of Object.entries(files)) write(file, contents);
-  return { write, scan: () => collectArchitectureViolations(config) };
+  return { root, write, scan: () => collectArchitectureViolations(config) };
 }
 
 test("checks layer and private boundaries across type imports, lazy imports, and re-exports", (t) => {
@@ -111,6 +111,110 @@ test("enforces established shared indexes across alias and relative imports", (t
       rule: "shared-public-entry",
       from: "shared/ui/button/helper.ts",
       to: "shared/ui/button/index.ts",
+      line: 1,
+    },
+  ]);
+});
+
+test("enforces the users public entries and keeps users independent of applications", (t) => {
+  const { scan } = fixture(t, {
+    "app/consumer.ts": [
+      'export { readUser } from "~/modules/users/users";',
+      'export { updateUser } from "../modules/users/users-profile";',
+      'export const loadUsersRuntime = () => import("~/modules/users/users-runtime");',
+      'export { selectUser } from "~/modules/users/users-selectors";',
+      'export type { User } from "../modules/users/users-types";',
+      'export { store } from "~/modules/users/user.model";',
+      'export type { User as PrivateUser } from "../modules/users/user.types.js";',
+      'export const loadPrivate = () => import("~/modules/users/internal/users");',
+      'export type { Private } from "../modules/users/private-declaration";',
+      'import "../modules/users/private.test";',
+    ].join("\n"),
+    "app/consumer.test.ts": 'import "~/modules/users/user.model";',
+    "modules/users/user.model.ts":
+      'import type { User } from "./user.types"; export const store: User[] = [];',
+    "modules/users/user.types.ts": "export type User = { id: string };",
+    "modules/users/users.ts":
+      'import { store } from "./user.model"; export const readUser = () => store[0];',
+    "modules/users/users-profile.ts": "export const updateUser = () => {};",
+    "modules/users/users-runtime.ts": [
+      'export const loadMessenger = () => import("~/applications/messenger/model/chats/chats");',
+      'export type { CalendarEvent } from "../../applications/calendar/events";',
+      'import "~/applications/calendar/events.stories";',
+    ].join("\n"),
+    "modules/users/users-selectors.ts": "export const selectUser = () => {};",
+    "modules/users/users-types.ts": 'export type { User } from "./user.types";',
+    "modules/users/internal/users.ts": "export {};",
+    "modules/users/private-declaration.d.ts": "export type Private = string;",
+    "modules/users/private.test.ts": "export {};",
+    "modules/users-extra/consumer.ts": 'import "../users/user.model";',
+    "applications/calendar/events.ts": "export type CalendarEvent = { id: string };",
+    "applications/calendar/events.stories.ts": "export {};",
+    "applications/messenger/model/chats/chats.ts": "export {};",
+    "shared/lib/excluded-target.ts": 'import "~/app/consumer.test";',
+  });
+
+  assert.deepEqual(
+    scan().violations.map(({ rule, from, to, line }) => [rule, from, to, line]),
+    [
+      [
+        "users-direction",
+        "modules/users/users-runtime.ts",
+        "applications/calendar/events.stories.ts",
+        3,
+      ],
+      ["users-direction", "modules/users/users-runtime.ts", "applications/calendar/events.ts", 2],
+      [
+        "users-direction",
+        "modules/users/users-runtime.ts",
+        "applications/messenger/model/chats/chats.ts",
+        1,
+      ],
+      ["users-public-entry", "app/consumer.ts", "modules/users/internal/users.ts", 8],
+      ["users-public-entry", "app/consumer.ts", "modules/users/private-declaration.d.ts", 9],
+      ["users-public-entry", "app/consumer.ts", "modules/users/private.test.ts", 10],
+      ["users-public-entry", "app/consumer.ts", "modules/users/user.model.ts", 6],
+      ["users-public-entry", "app/consumer.ts", "modules/users/user.types.ts", 7],
+      ["users-public-entry", "modules/users-extra/consumer.ts", "modules/users/user.model.ts", 1],
+    ],
+  );
+});
+
+test("enforces users boundaries with the filesystem's path casing", (t) => {
+  const { root, scan } = fixture(t, {
+    "app/consumer.ts": [
+      'import "~/MODULES/USERS/USER.MODEL";',
+      'export { readUser } from "../MODULES/users/USERS";',
+      'export type { Private } from "../../SRC/MODULES/USERS/Private";',
+    ].join("\n"),
+    "modules/users/private.d.ts": "export type Private = string;",
+    "modules/users/user.model.ts": "export {};",
+    "modules/users/users.ts": "export const readUser = () => {};",
+    "modules/users/users-runtime.ts": 'import "~/APPLICATIONS/CALENDAR/EVENTS";',
+    "applications/calendar/events.ts": "export {};",
+  });
+  if (!existsSync(join(root, "src/MODULES/USERS/USER.MODEL.ts"))) {
+    t.skip("The fixture filesystem is case-sensitive.");
+    return;
+  }
+
+  assert.deepEqual(scan().violations, [
+    {
+      rule: "users-direction",
+      from: "modules/users/users-runtime.ts",
+      to: "applications/calendar/events.ts",
+      line: 1,
+    },
+    {
+      rule: "users-public-entry",
+      from: "app/consumer.ts",
+      to: "modules/users/private.d.ts",
+      line: 3,
+    },
+    {
+      rule: "users-public-entry",
+      from: "app/consumer.ts",
+      to: "modules/users/user.model.ts",
       line: 1,
     },
   ]);

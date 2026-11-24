@@ -3,10 +3,10 @@ import {
   selectWorkspaceMessagesForConversation,
   useWorkspaceMessageStore,
 } from "~/applications/messenger/model/messages/message.model";
-import { useUsersStore } from "~/entities/user/user.model";
-import type { User } from "~/entities/user/user.types";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
+import { useUsersStore } from "~/modules/users/user.model";
+import type { User } from "~/modules/users/users-types";
 import type {
   WorkspaceMessengerFolderDto,
   WorkspaceMessengerMessageDto,

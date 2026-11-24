@@ -1,7 +1,7 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useUsersStore } from "~/entities/user/user.model";
+import { useUsersStore } from "~/modules/users/user.model";
 import { createUser } from "~/test/factories";
 import { ForwardMessageModalBody } from "./chat-page-forward-modal.ui";
 

@@ -97,7 +97,7 @@ vi.mock("~/applications/messenger/model/chats/messenger-conversation-metadata.li
   ) => resolveConversationMetadataMock(...args),
 }));
 
-vi.mock("~/entities/user/users-runtime", () => ({
+vi.mock("~/modules/users/users-runtime", () => ({
   resolveCachedWorkspaceUser: (...args: Parameters<typeof resolveCachedWorkspaceUserMock>) =>
     resolveCachedWorkspaceUserMock(...args),
 }));

@@ -4,10 +4,10 @@ import type {
   MessengerMessage,
   MessengerUuid,
 } from "~/applications/messenger/model/messenger.types";
-import { selectUserDisplayName } from "~/entities/user/user-selectors.lib";
-import type { UsersById } from "~/entities/user/user.types";
 import { WorkspaceAvatar } from "~/features/workspace-avatar/workspace-avatar.ui";
 import { t } from "~/i18n/i18n";
+import { selectUserDisplayName } from "~/modules/users/users-selectors";
+import type { UsersById } from "~/modules/users/users-types";
 import { invariant } from "~/shared/lib/guards";
 import { getJitsiMeetingUrl, type JitsiLinkOptions } from "~/shared/lib/jitsi";
 import type {

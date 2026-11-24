@@ -24,7 +24,7 @@ All paths below are relative to `packages/web/src`.
 | Messenger route and Favorites           | [messenger.ts](../packages/web/src/applications/messenger/messenger.ts)                                                |
 | Catalogs, conversations, domain actions | [model/chats](../packages/web/src/applications/messenger/model/chats/)                                                 |
 | Workspace message store                 | [message.model.ts](../packages/web/src/applications/messenger/model/messages/message.model.ts)                         |
-| Users and presence                      | [entities/user](../packages/web/src/entities/user/)                                                                    |
+| Users and presence                      | [modules/users](../packages/web/src/modules/users/)                                                                    |
 | Messenger REST                          | [messenger-client.ts](../packages/web/src/shared/api/messenger-client.ts) and adjacent `messenger-*.api.ts`            |
 | Common Workspace REST                   | [workspace-client.ts](../packages/web/src/shared/api/workspace-client.ts)                                              |
 | IAM token requests                      | [workspace-iam-auth.ts](../packages/web/src/shared/api/workspace-iam-auth.ts)                                          |

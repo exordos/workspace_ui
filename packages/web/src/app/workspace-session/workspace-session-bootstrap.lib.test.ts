@@ -6,10 +6,6 @@ import {
   restoreMessengerSessionCatalog,
 } from "~/applications/messenger/runtime/sync/messenger-session-snapshot.lib";
 import { loadExternalAccounts } from "~/entities/external-account/external-account-loader.lib";
-import {
-  refreshWorkspaceSessionUsers,
-  restoreWorkspaceSessionUsers,
-} from "~/entities/user/users-runtime";
 import type * as WorkspaceAuthModule from "~/entities/workspace-auth/workspace-auth.lib";
 import { ensureFreshWorkspaceSession } from "~/entities/workspace-auth/workspace-auth.lib";
 import {
@@ -17,6 +13,10 @@ import {
   type WorkspaceAuthSession,
 } from "~/entities/workspace-auth/workspace-auth.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
+import {
+  refreshWorkspaceSessionUsers,
+  restoreWorkspaceSessionUsers,
+} from "~/modules/users/users-runtime";
 import type { WorkspaceMessengerEpochDto } from "~/shared/api/messenger.types";
 import { getEpoch } from "~/shared/api/workspace-client";
 import type { WorkspaceRealtimeRuntimeContext } from "~/shared/lib/workspace-realtime/workspace-realtime-runtime.lib";
@@ -31,7 +31,7 @@ vi.mock("~/applications/messenger/runtime/sync/messenger-session-snapshot.lib", 
 vi.mock("~/entities/external-account/external-account-loader.lib", () => ({
   loadExternalAccounts: vi.fn(),
 }));
-vi.mock("~/entities/user/users-runtime", () => ({
+vi.mock("~/modules/users/users-runtime", () => ({
   refreshWorkspaceSessionUsers: vi.fn(),
   restoreWorkspaceSessionUsers: vi.fn(),
 }));

@@ -15,12 +15,12 @@ import type {
   MessengerTopic,
 } from "~/applications/messenger/model/messenger.types";
 import { useActivityStore } from "~/entities/activity/activity.model";
-import { useUsersStore } from "~/entities/user/user.model";
 import {
   type WorkspaceAuthSession,
   useWorkspaceAuthStore,
 } from "~/entities/workspace-auth/workspace-auth.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
+import { useUsersStore } from "~/modules/users/user.model";
 import type { WorkspaceMessengerMessageDto } from "~/shared/api/messenger.types";
 import { ActivityPage } from "./activity-page.ui";
 import type * as ReactRouterDom from "react-router-dom";

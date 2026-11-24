@@ -1,13 +1,10 @@
 import React, { useEffect, useState } from "react";
 import type { MessengerUuid } from "~/applications/messenger/model/messenger.types";
 import type { WorkspaceMessageAnchorPreviewPresentation } from "~/applications/messenger/pages/messenger/anchor-navigation/workspace-message-anchor-navigation.types";
-import {
-  resolveUserPresenceVisual,
-  selectUserDisplayName,
-} from "~/entities/user/user-selectors.lib";
-import type { UsersById } from "~/entities/user/user.types";
 import { WorkspaceAvatar } from "~/features/workspace-avatar/workspace-avatar.ui";
 import { t } from "~/i18n/i18n";
+import { resolveUserPresenceVisual, selectUserDisplayName } from "~/modules/users/users-selectors";
+import type { UsersById } from "~/modules/users/users-types";
 import type { WorkspaceMessageMentionResolver } from "~/shared/lib/workspace-message-render/workspace-message-document.types";
 import { FloatingScrollToBottomButton } from "~/shared/ui/floating-scroll-to-bottom-button";
 import { WorkspaceMessageBubbleSkeleton } from "./workspace-message-bubble-skeleton.ui";

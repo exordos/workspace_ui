@@ -1,17 +1,17 @@
 import React, { useCallback } from "react";
 import {
-  resolveUserPresenceVisual,
-  selectUserDisplayName,
-  selectUserStatusLabel,
-} from "~/entities/user/user-selectors.lib";
-import type { User } from "~/entities/user/user.types";
-import { useUserById } from "~/entities/user/users";
-import {
   useWorkspaceAuthStore,
   type WorkspaceAuthProfile,
 } from "~/entities/workspace-auth/workspace-auth.model";
 import { WorkspaceAvatar } from "~/features/workspace-avatar/workspace-avatar.ui";
 import { t } from "~/i18n/i18n";
+import { useUserById } from "~/modules/users/users";
+import {
+  resolveUserPresenceVisual,
+  selectUserDisplayName,
+  selectUserStatusLabel,
+} from "~/modules/users/users-selectors";
+import type { User } from "~/modules/users/users-types";
 import { Icon } from "~/shared/ui/icon";
 import { useRightDrawerStore } from "~/widgets/right-panel/right-drawer.model";
 import {

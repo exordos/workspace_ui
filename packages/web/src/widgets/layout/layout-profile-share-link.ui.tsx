@@ -1,11 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { readActiveUser, readActiveUsers, useUsersOwnerKey } from "~/entities/user/users";
-import {
-  prepareSharedUserProfile,
-  refreshSharedUserProfile,
-  restoreSharedUserProfile,
-} from "~/entities/user/users-profile";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import {
   captureWorkspaceRuntimeRequestContext,
@@ -14,6 +8,12 @@ import {
 } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import { t } from "~/i18n/i18n";
+import { readActiveUser, readActiveUsers, useUsersOwnerKey } from "~/modules/users/users";
+import {
+  prepareSharedUserProfile,
+  refreshSharedUserProfile,
+  restoreSharedUserProfile,
+} from "~/modules/users/users-profile";
 import { parseWorkspaceProfileShareHash } from "~/shared/lib/workspace-profile-link.lib";
 import { Button } from "~/shared/ui/button";
 import { useRightDrawerStore } from "~/widgets/right-panel/right-drawer.model";
