@@ -153,11 +153,11 @@ import { t } from "~/i18n/i18n";
 import { useUsersById } from "~/modules/users/users";
 import { selectUserDisplayName } from "~/modules/users/users-selectors";
 import type { UsersById } from "~/modules/users/users-types";
+import { writeText } from "~/platform/desktop/clipboard";
 import { useOpenSearch } from "~/shared/contexts/open-search";
 import { useRightDrawer } from "~/shared/contexts/right-drawer";
 import type { RightDrawerContextValue } from "~/shared/contexts/right-drawer.types";
 import { chatBottomNoticeBarClassName } from "~/shared/lib/chat-bottom-notice-bar.lib";
-import { writeText } from "~/shared/lib/clipboard";
 import { createLogger } from "~/shared/lib/logger";
 import { toast } from "~/shared/lib/toast/toast";
 import {

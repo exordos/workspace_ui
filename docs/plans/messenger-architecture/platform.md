@@ -2,7 +2,7 @@
 
 [Карта заметок](README.md) · [Дерево src](source-structure.md#дерево) · [Направление зависимостей](dependencies.md#направление-зависимостей)
 
-В плане рефакторинга `packages/web/src/platform` предоставляет инфраструктуру для мессенджера, календаря, почты и общих модулей. Названия публичных операций в примерах условные.
+В целевой структуре `packages/web/src/platform` предоставляет инфраструктуру для мессенджера, календаря, почты и общих модулей. Первый реализованный вход — [буфер обмена](#буфер-обмена-и-мост-electron).
 
 | Часть           | Ответственность                                                                                       |
 | --------------- | ----------------------------------------------------------------------------------------------------- |
@@ -30,21 +30,21 @@
 
 ## Буфер обмена и мост Electron
 
-В планируемой структуре вызов из приложения может выглядеть так:
+Приложения используют операции `writeText(text)`, `writeImage(image)` и `readText()` из [адаптера буфера обмена](../../../packages/web/src/platform/desktop/clipboard.ts). Запись принимает значение или промис и возвращает `Promise<boolean>`. Чтение возвращает `Promise<string | null>`.
 
 ```ts
-const copied = await desktop.clipboard.writeText(messageLink);
+import { writeText } from "~/platform/desktop/clipboard";
+
+const copied = await writeText(messageLink);
 ```
 
 ```text
-Код в web → platform/desktop → window.electronAPI.clipboard.writeText
+Код в web → platform/desktop/clipboard → window.electronAPI.clipboard.writeText
          → preload → IPC clipboard:writeText → Electron main → буфер обмена ОС
 ```
 
-У вызова уже есть рабочая реализация, на которой можно построить этот интерфейс.
+В браузере адаптер использует `navigator.clipboard`. Для асинхронно подготовленного текста запись через `ClipboardItem` начинается во время пользовательского действия. Браузерная ветка подготавливает PNG для записи изображения.
 
-1. В текущем web-адаптере `writeText` выбирает `window.electronAPI.clipboard.writeText` в Electron и `navigator.clipboard` в браузере, если API доступно. При рефакторинге эта обвязка получает явное место внутри `packages/web/src/platform/desktop`. [Текущий адаптер web](../../../packages/web/src/shared/lib/clipboard.ts#L76)
-2. В отдельном пакете `packages/electron` файл `preload.ts` публикует `window.electronAPI` через `contextBridge`. Метод буфера обмена вызывает `ipcRenderer.invoke("clipboard:writeText", text)`. [Метод preload](../../../packages/electron/src/preload.ts#L49) · [Публикация моста](../../../packages/electron/src/preload.ts#L229)
-3. В `main.ts` обработчик проверяет аргумент, вызывает Electron Clipboard API для записи в системный буфер и возвращает результат. [Обработчик IPC](../../../packages/electron/src/main.ts#L1076)
+В Electron адаптер обращается к существующему `window.electronAPI.clipboard`. Пакет Electron публикует мост через `contextBridge`, выполняет чтение и запись в системном буфере и возвращает результат через IPC. [Методы preload](../../../packages/electron/src/preload.ts#L49) · [Обработчики IPC](../../../packages/electron/src/main.ts#L1076)
 
-Electron остаётся отдельным пакетом рядом с web и владеет системными операциями. Приложения внутри web получают публичные операции платформы, а адаптер использует существующий контракт моста.
+`Copyable` вызывает переданный `onCopy` при нажатии и отображает результат. Код профиля и медиапросмотр передают операции копирования текста и изображения. `deeplink.share(data, copyText)` использует переданную функцию, когда Web Share API недоступен. [Copyable](../../../packages/web/src/shared/ui/copyable/index.ts) · [Общий помощник ссылок](../../../packages/web/src/shared/lib/deeplinks.ts)

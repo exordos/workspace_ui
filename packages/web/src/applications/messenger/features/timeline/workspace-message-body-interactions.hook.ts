@@ -8,9 +8,9 @@ import {
   type RefObject,
 } from "react";
 import { t } from "~/i18n/i18n";
+import { writeText } from "~/platform/desktop/clipboard";
 import CheckIconRaw from "~/shared/assets/icons/check.svg?raw";
 import CopyIconRaw from "~/shared/assets/icons/copy.svg?raw";
-import { writeText } from "~/shared/lib/clipboard";
 import { createLogger } from "~/shared/lib/logger";
 import { isValidUrl } from "~/shared/lib/validation";
 import {

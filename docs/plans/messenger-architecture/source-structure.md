@@ -51,6 +51,7 @@ src/
     realtime/
     storage/
     desktop/
+      clipboard.ts
     notifications/
 
   shared/

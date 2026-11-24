@@ -15,6 +15,7 @@ Workspace still uses the existing FSD layers for the shell and other application
 | `features`     | User scenarios such as forwarding or downloading a file     |
 | `entities`     | Domain state, adapters, actions and domain lifecycle        |
 | `modules`      | Business domains shared across Workspace applications       |
+| `platform`     | Runtime capabilities such as clipboard access               |
 | `shared`       | Domain-independent UI, utilities and transport primitives   |
 
 In the legacy tree, dependencies flow `app -> pages -> widgets -> features -> entities -> shared`. Shared code must not reach upward into domain stores; inject callbacks or data at the composition boundary.
@@ -47,7 +48,6 @@ Import according to the boundary:
 
 ```ts
 import { useKnownMessage } from "~/applications/messenger/model/messages/messages-consumers";
-import { writeText } from "~/shared/lib/clipboard";
 ```
 
 `~/` resolves to `packages/web/src/`. Indexes are optional: do not create one for every helper or folder, scaffold module trees, or retroactively migrate working imports merely for consistency. Existing indexes with real implementation may remain natural entrypoints. An index alone does not enforce encapsulation; the module contract and FSD rules still apply.
@@ -75,6 +75,10 @@ The [users module](../packages/web/src/modules/users/) owns user records, profil
 - [`users-types.ts`](../packages/web/src/modules/users/users-types.ts) for shared domain types
 
 `npm run arch:check` enforces these public entries for external production imports and forbids dependencies from `modules/users` on `applications/*`. The module uses the existing Workspace auth, runtime, and shared infrastructure. [Users contract](plans/messenger-architecture/scenarios/users-contract.md)
+
+### Platform imports
+
+For imports within `src`, `npm run arch:check` limits production dependencies from `platform` to `platform` and `shared`, and forbids `shared` from importing `platform`. Callers import [the clipboard operations](../packages/web/src/platform/desktop/clipboard.ts) and pass a copy action to shared controls such as `Copyable`. [Clipboard and Electron bridge](plans/messenger-architecture/platform.md#буфер-обмена-и-мост-electron)
 
 ## Workspace data flow
 

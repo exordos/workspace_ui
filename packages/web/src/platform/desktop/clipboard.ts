@@ -1,5 +1,5 @@
-import { getElectronAPI, isElectron } from "./electron";
-import { createLogger } from "./logger";
+import { getElectronAPI, isElectron } from "~/shared/lib/electron";
+import { createLogger } from "~/shared/lib/logger";
 
 const log = createLogger("clipboard");
 
@@ -36,6 +36,7 @@ async function convertImageToPng(image: Blob): Promise<Blob> {
   }
 }
 
+// Write an image through the native bridge or the browser clipboard.
 export async function writeImage(image: Blob | Promise<Blob>): Promise<boolean> {
   if (isElectron()) {
     const write = getElectronAPI()?.clipboard?.writeImage;
@@ -73,6 +74,7 @@ export async function writeImage(image: Blob | Promise<Blob>): Promise<boolean> 
   }
 }
 
+// Start a clipboard write during the user action, even when text is still being prepared.
 export async function writeText(text: string | Promise<string>): Promise<boolean> {
   const pendingText = typeof text === "string" ? null : text;
   // Permissions or missing APIs can fail before the text settles.
@@ -111,6 +113,7 @@ export async function writeText(text: string | Promise<string>): Promise<boolean
   }
 }
 
+// Return clipboard text, or null when the clipboard is unavailable.
 export async function readText(): Promise<string | null> {
   if (isElectron()) {
     const read = getElectronAPI()?.clipboard?.readText;

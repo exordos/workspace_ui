@@ -8,14 +8,13 @@
  * - Internal: react-router paths
  *
  * Usage:
- *   import { deeplink } from "~/lib/deeplinks";
+ *   import { deeplink } from "~/shared/lib/deeplinks";
  *
  *   deeplink.toActivity("starred", { orgId, projectId });
  *
- *   await deeplink.share({ title: "#general", url: shareUrl });
+ *   await deeplink.share({ title: "#general", url: shareUrl }, copyText);
  */
 
-import { writeText } from "./clipboard";
 import { isElectron } from "./electron";
 import { createLogger } from "./logger";
 import { extractOrgRouteFromPathname, withCurrentOrgRoute, withOrgRoutePrefix } from "./org-route";
@@ -245,7 +244,11 @@ export function parse(url: string): ParsedDeepLink {
 // Web Share API
 // ---------------------------------------------------------------------------
 
-export async function share(data: { title: string; url: string; text?: string }): Promise<boolean> {
+// Prefer native sharing and use the caller's clipboard operation when sharing is unavailable.
+export async function share(
+  data: { title: string; url: string; text?: string },
+  copyText: (text: string) => Promise<boolean>,
+): Promise<boolean> {
   if (typeof navigator !== "undefined" && navigator.share) {
     try {
       await navigator.share(data);
@@ -257,7 +260,7 @@ export async function share(data: { title: string; url: string; text?: string })
   }
 
   try {
-    const copied = await writeText(data.url);
+    const copied = await copyText(data.url);
     if (!copied) return false;
     log.info("Copied link to clipboard", { url: data.url });
     return true;

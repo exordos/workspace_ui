@@ -23,7 +23,7 @@ import { WorkspaceAvatar } from "~/features/workspace-avatar/workspace-avatar.ui
 import { t } from "~/i18n/i18n";
 import { useUserById } from "~/modules/users/users";
 import { resolveUserPresenceVisual, selectUserStatusLabel } from "~/modules/users/users-selectors";
-import { writeText } from "~/shared/lib/clipboard";
+import { writeText } from "~/platform/desktop/clipboard";
 import { createLogger } from "~/shared/lib/logger";
 import { validateFileUpload } from "~/shared/lib/validation";
 import { buildWorkspaceDefaultAvatarUrn } from "~/shared/lib/workspace-avatar-urn.lib";

@@ -8,7 +8,7 @@ import {
   isWorkspaceRuntimeRequestContextCurrent,
 } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { t } from "~/i18n/i18n";
-import { writeImage, writeText } from "~/shared/lib/clipboard";
+import { writeImage, writeText } from "~/platform/desktop/clipboard";
 import type { WorkspaceMessageFileReference } from "~/shared/lib/workspace-message-render/workspace-message-document.types";
 import { formatWorkspaceMessageTimesForCopy } from "~/shared/lib/workspace-message-render/workspace-message-marked.lib";
 import { DropdownMenu, type DropdownMenuItem } from "~/shared/ui/dropdown-menu";

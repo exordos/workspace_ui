@@ -20,7 +20,7 @@ import { RightPanelWorkspaceInfo } from "./right-panel-workspace-info.ui";
 import type { WorkspaceRightPanelInfoView } from "../../../../widgets/right-panel/right-panel.types";
 
 const writeTextMock = vi.hoisted(() => vi.fn());
-vi.mock("~/shared/lib/clipboard", () => ({
+vi.mock("~/platform/desktop/clipboard", () => ({
   writeText: (...args: unknown[]) => writeTextMock(...args),
 }));
 

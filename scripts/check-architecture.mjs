@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { dirname, relative, resolve, sep } from "node:path";
+import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
 
@@ -23,6 +23,7 @@ const usersPublicEntries = new Set([
   "users-selectors.ts",
   "users-types.ts",
 ]);
+const platform = "platform/";
 
 // Only explicitly private Messenger stores and delivery/history implementations are checked here.
 const privateFiles = [
@@ -44,6 +45,8 @@ const rules = {
   "messenger-lazy-entry": "Load the Messenger route entry dynamically from app.",
   "users-direction": "The users module cannot depend on applications.",
   "users-public-entry": "Consume the users module through its public entries.",
+  "platform-direction":
+    "Platform dependencies stay within platform and shared, and shared stays independent of platform.",
   "shared-public-entry": "Use the shared module index from outside and concrete files from inside.",
   "static-value-cycle": "Static value imports and re-exports must be acyclic.",
 };
@@ -109,6 +112,13 @@ function usersBoundaryRule(from, to) {
     return "users-public-entry";
   }
   return null;
+}
+
+// Platform can use shared primitives, and shared consumers receive platform operations from callers.
+function violatesPlatformDirection(from, to) {
+  const toPlatform = to.startsWith(platform);
+  if (from.startsWith(platform)) return !toPlatform && !to.startsWith("shared/");
+  return from.startsWith("shared/") && toPlatform;
 }
 
 function boundaryRules(from, to, kind, files) {
@@ -265,16 +275,24 @@ export function collectArchitectureViolations(configPath) {
       if (targetPath == null) continue;
       const productionTarget = files.get(targetPath);
       let to = productionTarget;
-      // On case-insensitive filesystems, the resolver may retain the casing from the import.
+      // Check users and platform boundaries even for declarations and mixed-case paths.
       if (to == null) {
         const candidate = relative(lowercaseSourceRoot, targetPath.toLowerCase())
           .split(sep)
           .join("/");
-        if (!/^(?:modules\/users|applications)\//.test(candidate)) continue;
+        if (candidate.startsWith("../") || isAbsolute(candidate)) continue;
+        if (
+          !from.startsWith(platform) &&
+          !/^(?:modules\/users|applications|platform)\//.test(candidate)
+        ) {
+          continue;
+        }
         to = relative(canonicalSourceRoot, ts.sys.realpath(targetPath)).split(sep).join("/");
+        if (to.startsWith("../") || isAbsolute(to)) continue;
       }
       const usersRule = usersBoundaryRule(from, to);
-      if (productionTarget == null && usersRule == null) continue;
+      const violatesPlatform = violatesPlatformDirection(from, to);
+      if (productionTarget == null && usersRule == null && !violatesPlatform) continue;
 
       const edge = {
         from,
@@ -282,6 +300,7 @@ export function collectArchitectureViolations(configPath) {
         line: source.getLineAndCharacterOfPosition(specifier.getStart(source)).line + 1,
       };
       if (usersRule != null) record(usersRule, edge);
+      if (violatesPlatform) record("platform-direction", edge);
       if (productionTarget == null) continue;
       for (const rule of boundaryRules(from, to, kind, graph)) record(rule, edge);
       if (kind === "static-value" && !graph.get(from).has(to)) graph.get(from).set(to, edge);

@@ -8,6 +8,7 @@
  */
 
 import { describe, expect, it, vi, afterEach } from "vitest";
+import { writeText } from "~/platform/desktop/clipboard";
 import { deeplink } from "./deeplinks";
 import { setCurrentOrgRouteIdResolver } from "./org-route";
 
@@ -272,7 +273,7 @@ describe("share", () => {
       writable: true,
     });
 
-    const result = await deeplink.share({ title: "Test", url: "https://example.com" });
+    const result = await deeplink.share({ title: "Test", url: "https://example.com" }, writeText);
     expect(result).toBe(true);
     expect(shareMock).toHaveBeenCalledWith({
       title: "Test",
@@ -288,7 +289,7 @@ describe("share", () => {
       writable: true,
     });
 
-    const result = await deeplink.share({ title: "Test", url: "https://example.com" });
+    const result = await deeplink.share({ title: "Test", url: "https://example.com" }, writeText);
     expect(result).toBe(false);
   });
 
@@ -301,7 +302,7 @@ describe("share", () => {
       writable: true,
     });
 
-    const result = await deeplink.share({ title: "Test", url: "https://example.com" });
+    const result = await deeplink.share({ title: "Test", url: "https://example.com" }, writeText);
     expect(result).toBe(true);
     expect(writeTextMock).toHaveBeenCalledWith("https://example.com");
   });
@@ -314,7 +315,7 @@ describe("share", () => {
       writable: true,
     });
 
-    const result = await deeplink.share({ title: "Test", url: "https://example.com" });
+    const result = await deeplink.share({ title: "Test", url: "https://example.com" }, writeText);
     expect(result).toBe(false);
   });
 });

@@ -4,7 +4,7 @@
  * Uses resolved display URLs (blob or public) — never raw protected URLs without auth.
  */
 
-import { writeImage } from "~/shared/lib/clipboard";
+import { writeImage } from "~/platform/desktop/clipboard";
 import { guard } from "~/shared/lib/guards";
 import { AUTH_IMAGE_PLACEHOLDER_SRC } from "~/shared/lib/media-display-url.lib";
 import { isValidUrl, sanitizeFilename } from "~/shared/lib/validation";

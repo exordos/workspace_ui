@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { t } from "~/i18n/i18n";
-import { writeText } from "~/shared/lib/clipboard";
 import { Icon } from "~/shared/ui/icon";
 import type { CopyableProps } from "./copyable.types";
 
@@ -11,7 +10,6 @@ const joinClasses = (...classes: (string | false | null | undefined)[]): string 
   classes.filter(Boolean).join(" ");
 
 export const Copyable: React.FC<CopyableProps> = React.memo(function Copyable({
-  value,
   onCopy,
   disabled = false,
   children,
@@ -41,7 +39,7 @@ export const Copyable: React.FC<CopyableProps> = React.memo(function Copyable({
 
       const attempt = ++attemptRef.current;
       window.clearTimeout(timerRef.current);
-      void (onCopy != null ? onCopy() : writeText(value ?? ""))
+      void onCopy()
         .catch(() => false)
         .then((ok) => {
           if (attempt !== attemptRef.current) return;
@@ -49,7 +47,7 @@ export const Copyable: React.FC<CopyableProps> = React.memo(function Copyable({
           timerRef.current = window.setTimeout(() => setCopyState("idle"), RESET_STATE_TIMEOUT_MS);
         });
     },
-    [onCopy, value],
+    [onCopy],
   );
 
   useEffect(

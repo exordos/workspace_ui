@@ -1,18 +1,26 @@
 import { t } from "~/i18n/i18n";
+import { writeText } from "~/platform/desktop/clipboard";
 import { Copyable } from "./copyable";
 import type { Meta, StoryObj } from "@storybook/react-vite";
+
+const DEFAULT_VALUE = "design@example.test";
+const LONG_VALUE = "workspace-design-system-review@example.test";
 
 const meta = {
   title: "Shared/Actions/Copyable",
   component: Copyable,
-  args: { value: "design@example.test", children: "design@example.test", showOnHover: false },
+  args: {
+    onCopy: () => writeText(DEFAULT_VALUE),
+    children: DEFAULT_VALUE,
+    showOnHover: false,
+  },
   render: (args) => <Copyable {...args} copyAriaLabel={t("message.copy")} />,
-  argTypes: { copyAriaLabel: { control: false } },
+  argTypes: { copyAriaLabel: { control: false }, onCopy: { control: false } },
   parameters: {
     docs: {
       description: {
         component:
-          "Copy affordance using the application clipboard wrapper. Clicking writes the synthetic value to your clipboard. Stories do not automatically copy or assert browser/Electron clipboard integration.",
+          "Copy affordance with a caller-provided copy action and feedback. In the text examples, clicking writes the synthetic value to your clipboard.",
       },
     },
   },
@@ -29,8 +37,8 @@ export const CustomCopyAction: Story = {
 };
 export const LongValue: Story = {
   args: {
-    value: "workspace-design-system-review@example.test",
-    children: "workspace-design-system-review@example.test",
+    onCopy: () => writeText(LONG_VALUE),
+    children: LONG_VALUE,
     contentClassName: "truncate",
     className: "max-w-64",
     iconSize: 18,

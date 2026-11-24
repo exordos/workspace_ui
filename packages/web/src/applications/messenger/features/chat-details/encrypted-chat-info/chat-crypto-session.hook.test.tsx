@@ -10,7 +10,7 @@ import type {
 } from "~/applications/messenger/model/messenger.types";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
-import { writeText } from "~/shared/lib/clipboard";
+import { writeText } from "~/platform/desktop/clipboard";
 import { toast } from "~/shared/lib/toast/toast";
 import { useChatCryptoSession } from "./chat-crypto-session.hook";
 import { useEncryptedChatInfo } from "./encrypted-chat-info.hook";
@@ -20,7 +20,7 @@ vi.mock("~/applications/messenger/model/crypto/chat-crypto-runtime.lib", () => (
   openRealChatSession: open,
 }));
 vi.mock("~/shared/lib/toast/toast", () => ({ toast: { error: vi.fn() } }));
-vi.mock("~/shared/lib/clipboard", () => ({ writeText: vi.fn().mockResolvedValue(true) }));
+vi.mock("~/platform/desktop/clipboard", () => ({ writeText: vi.fn().mockResolvedValue(true) }));
 const streamUuid = "11111111-1111-4111-8111-111111111111";
 function seed() {
   useWorkspaceAuthStore.getState().setSession({

@@ -47,7 +47,7 @@ const avatarCapabilitiesMock = vi.hoisted(() => vi.fn());
 const removeOwnAvatarMock = vi.hoisted(() => vi.fn());
 const uploadOwnAvatarMock = vi.hoisted(() => vi.fn());
 
-vi.mock("~/shared/lib/clipboard", () => ({
+vi.mock("~/platform/desktop/clipboard", () => ({
   writeText: (...args: unknown[]) => writeTextMock(...args),
 }));
 

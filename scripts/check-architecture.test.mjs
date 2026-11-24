@@ -180,7 +180,71 @@ test("enforces the users public entries and keeps users independent of applicati
   );
 });
 
-test("enforces users boundaries with the filesystem's path casing", (t) => {
+test("enforces the platform and shared dependency direction", (t) => {
+  const { scan } = fixture(t, {
+    "app/compose.ts": 'import "~/platform/desktop/clipboard";',
+    "app/model.ts": "export {};",
+    "applications/calendar/edit.ts": 'import "~/platform/desktop/clipboard";',
+    "modules/users/users.ts": 'import "~/platform/desktop/clipboard";',
+    "features/copy/action.ts": 'import "~/platform/desktop/clipboard";',
+    "platform/desktop/clipboard.ts": [
+      'import "~/shared/lib/primitive";',
+      'import "./internal";',
+      'import "../../app/model";',
+      'export const edit = () => import("../../applications/calendar/events");',
+      'export type { CachedEvent } from "~/modules/calendar/event-cache";',
+      'export type Root = import("../../root").Root;',
+    ].join("\n"),
+    "platform/desktop/internal.ts": "export {};",
+    "platform/desktop/clipboard-config.d.ts": "export type ClipboardConfig = {};",
+    "platform/desktop/clipboard.test.ts": 'import "../../app/model";',
+    "applications/calendar/events.ts": "export {};",
+    "modules/calendar/event-cache.d.ts": "export type CachedEvent = {};",
+    "root.ts": "export type Root = {};",
+    "shared/lib/primitive.ts": "export {};",
+    "shared/lib/wrong-way.ts": [
+      'export * from "../../platform/desktop/clipboard";',
+      'import type { ClipboardConfig } from "~/platform/desktop/clipboard-config";',
+    ].join("\n"),
+    "shared/lib/clipboard.test.ts": 'import "~/platform/desktop/clipboard";',
+  });
+
+  assert.deepEqual(scan().violations, [
+    {
+      rule: "platform-direction",
+      from: "platform/desktop/clipboard.ts",
+      to: "app/model.ts",
+      line: 3,
+    },
+    {
+      rule: "platform-direction",
+      from: "platform/desktop/clipboard.ts",
+      to: "applications/calendar/events.ts",
+      line: 4,
+    },
+    {
+      rule: "platform-direction",
+      from: "platform/desktop/clipboard.ts",
+      to: "modules/calendar/event-cache.d.ts",
+      line: 5,
+    },
+    { rule: "platform-direction", from: "platform/desktop/clipboard.ts", to: "root.ts", line: 6 },
+    {
+      rule: "platform-direction",
+      from: "shared/lib/wrong-way.ts",
+      to: "platform/desktop/clipboard-config.d.ts",
+      line: 2,
+    },
+    {
+      rule: "platform-direction",
+      from: "shared/lib/wrong-way.ts",
+      to: "platform/desktop/clipboard.ts",
+      line: 1,
+    },
+  ]);
+});
+
+test("enforces users and platform boundaries with the filesystem's path casing", (t) => {
   const { root, scan } = fixture(t, {
     "app/consumer.ts": [
       'import "~/MODULES/USERS/USER.MODEL";',
@@ -192,6 +256,9 @@ test("enforces users boundaries with the filesystem's path casing", (t) => {
     "modules/users/users.ts": "export const readUser = () => {};",
     "modules/users/users-runtime.ts": 'import "~/APPLICATIONS/CALENDAR/EVENTS";',
     "applications/calendar/events.ts": "export {};",
+    "platform/desktop/clipboard.ts": 'import "~/APP/COMPOSE";',
+    "app/compose.ts": "export {};",
+    "shared/lib/primitive.ts": 'import "~/PLATFORM/DESKTOP/CLIPBOARD";',
   });
   if (!existsSync(join(root, "src/MODULES/USERS/USER.MODEL.ts"))) {
     t.skip("The fixture filesystem is case-sensitive.");
@@ -199,6 +266,18 @@ test("enforces users boundaries with the filesystem's path casing", (t) => {
   }
 
   assert.deepEqual(scan().violations, [
+    {
+      rule: "platform-direction",
+      from: "platform/desktop/clipboard.ts",
+      to: "app/compose.ts",
+      line: 1,
+    },
+    {
+      rule: "platform-direction",
+      from: "shared/lib/primitive.ts",
+      to: "platform/desktop/clipboard.ts",
+      line: 1,
+    },
     {
       rule: "users-direction",
       from: "modules/users/users-runtime.ts",
