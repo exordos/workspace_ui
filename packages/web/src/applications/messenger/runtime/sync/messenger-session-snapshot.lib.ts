@@ -1,3 +1,4 @@
+import type { WorkspaceAuthSession } from "~/entities/workspace-auth/workspace-auth.model";
 import {
   isWorkspaceRuntimeRequestInvalidated,
   workspaceRuntimeOwnerKey,
@@ -15,6 +16,7 @@ import {
   captureMessengerStreamRemovalCheck,
   getMessengerStoreForOwner,
   getSelectedMessengerStore,
+  reconcileMessengerStores,
   releaseMessengerStreamRemovalFences,
   restoreMessengerStream,
 } from "../../model/chats/messenger.model";
@@ -24,6 +26,7 @@ import { loadMessengerLastMessagesForSidebar } from "../../model/messages/histor
 import {
   getSelectedWorkspaceMessageStore,
   getWorkspaceMessageStoreForOwner,
+  reconcileWorkspaceMessageStores,
 } from "../../model/messages/message.model";
 import { clearMessengerReadBoundariesForOwner } from "../../model/messages/messenger-read-boundary.lib";
 import {
@@ -42,6 +45,12 @@ import type {
   MessengerBootstrapResult,
 } from "./messenger-bootstrap.lib";
 import type { MessengerStream } from "../../model/messenger.types";
+
+// Attach catalog and message models for the same set of authorized incarnations.
+export function reconcileMessengerSessionModels(sessions: readonly WorkspaceAuthSession[]): void {
+  reconcileMessengerStores(sessions);
+  reconcileWorkspaceMessageStores(sessions);
+}
 
 // Each preparation is valid only for its owner, surface and runtime attempt.
 export interface MessengerSessionCatalogOptions extends Pick<
@@ -98,22 +107,10 @@ function prepareSessionModelOwners(options: MessengerSessionCatalogOptions) {
   return { catalog, messages };
 }
 
-// Make the selected owner available to route loaders before their passive effects.
-export function prepareActiveMessengerSession(options: MessengerSessionCatalogOptions): void {
-  if (options.surface !== "active" || !isSessionCatalogCurrent(options)) return;
-  prepareSessionModelOwners(options);
-}
-
 function sessionCatalogError(error: unknown): string {
   return error instanceof Error && error.message.trim()
     ? error.message
     : "Messenger bootstrap failed";
-}
-
-// Reset the active singleton when there is no selected runtime.
-export function clearActiveMessengerSession(): void {
-  getSelectedMessengerStore().getState().clear();
-  getSelectedWorkspaceMessageStore().getState().setOwner(null, false);
 }
 
 // Report failures before catalog HTTP starts, such as a failure to read the epoch.

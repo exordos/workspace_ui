@@ -3,11 +3,13 @@ import ReactDOM from "react-dom/client";
 import { installAiContext } from "~/app/ai-context";
 import { installDevTools } from "~/app/devtools";
 import { createWorkspacePluginDataProvider } from "~/app/workspace-plugin-data-provider.lib";
-import { useMessengerStore } from "~/applications/messenger/model/chats/messenger.model";
+import { prepareWorkspaceColdStart } from "~/app/workspace-session/workspace-session-reset.lib";
+import { clearSelectedChatCatalogForLegacyLogout } from "~/applications/messenger/model/chats/chats";
 import { initAnalytics } from "~/shared/lib/analytics/setup";
 import { setStoreWiper } from "~/shared/lib/auth-guard";
 import { brand } from "~/shared/lib/brand";
 import { initConnectionHealth } from "~/shared/lib/connection-health";
+import { setApplicationColdStartPreparation } from "~/shared/lib/local-reset";
 import { createLogger } from "~/shared/lib/logger";
 import { initNetworkTracking } from "~/shared/lib/network";
 import { attachNotificationAudioUnlock } from "~/shared/lib/notification-sound";
@@ -26,9 +28,8 @@ import { AppRoot } from "./app/app-root";
 import "./app/app.styles.css";
 import "./app/focus-outline.styles.css";
 
-setStoreWiper(() => {
-  useMessengerStore.getState().clear();
-});
+setStoreWiper(clearSelectedChatCatalogForLegacyLogout);
+setApplicationColdStartPreparation(prepareWorkspaceColdStart);
 
 setPluginDataProvider(createWorkspacePluginDataProvider());
 

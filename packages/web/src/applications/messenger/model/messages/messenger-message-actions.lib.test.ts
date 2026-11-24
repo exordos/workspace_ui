@@ -18,7 +18,7 @@ import {
 } from "~/shared/lib/workspace-messenger-cache-db";
 import { selectMessengerSidebarStreams } from "../../features/sidebar/messenger-sidebar.lib";
 import { useMessengerBackgroundProjectionStore } from "../../runtime/sync/messenger-background-projection.model";
-import { createMessengerRealtimeActiveApplier } from "../../runtime/sync/messenger-realtime-applier.lib";
+import { createMessengerRealtimeApplier } from "../../runtime/sync/messenger-realtime-applier.lib";
 import {
   adaptMessengerStream,
   adaptMessengerTopic,
@@ -338,7 +338,7 @@ describe("messenger message actions", () => {
     expect(
       useMessengerOutboxStore.getState().outgoingMessagesByPlacementUuid[outgoing.placementUuid],
     ).toBeUndefined();
-    await createMessengerRealtimeActiveApplier({ cache: {} }).applyEvent(
+    await createMessengerRealtimeApplier({ requireOwnerCatalog: false, cache: {} }).applyEvent(
       { type: "message", kind: "message.created", epoch_version: 1, message: receipt },
       { owner: runtimeContext, ownerKey, surface: "active", source: "websocket" },
     );
@@ -424,7 +424,8 @@ describe("messenger message actions", () => {
 
         const writeCreatedMessages = vi.fn();
         const writeRealtimeCursor = vi.fn();
-        const applier = createMessengerRealtimeActiveApplier({
+        const applier = createMessengerRealtimeApplier({
+          requireOwnerCatalog: false,
           cache: { writeCreatedMessages, writeRealtimeCursor },
         });
         const stale = {
@@ -804,7 +805,7 @@ describe("messenger message actions", () => {
           hasMore: false,
         });
         await seedMessageWindow(ownerKey, neighbor);
-        const applier = createMessengerRealtimeActiveApplier();
+        const applier = createMessengerRealtimeApplier({ requireOwnerCatalog: false });
         const context = {
           owner: runtimeContext,
           ownerKey,
@@ -920,7 +921,7 @@ describe("messenger message actions", () => {
           surface: "active",
           source: "websocket",
         } as const;
-        const applier = createMessengerRealtimeActiveApplier();
+        const applier = createMessengerRealtimeApplier({ requireOwnerCatalog: false });
         await applier.applyEvent(
           { type: "message", kind: "message.updated", epoch_version: 1, message: moved },
           context,
@@ -997,7 +998,8 @@ describe("messenger message actions", () => {
           };
         };
         const writeRealtimeCursor = vi.fn();
-        const applier = createMessengerRealtimeActiveApplier({
+        const applier = createMessengerRealtimeApplier({
+          requireOwnerCatalog: false,
           isOwnerCurrent: (owner) => owner.runtimeGeneration === currentGeneration,
           cache: {
             advanceReadBoundary: (boundary, canWrite) =>
@@ -1085,7 +1087,7 @@ describe("messenger message actions", () => {
           surface: "active",
           source: "websocket",
         } as const;
-        const applier = createMessengerRealtimeActiveApplier();
+        const applier = createMessengerRealtimeApplier({ requireOwnerCatalog: false });
         await applier.applyEvent(
           { type: "message", kind: "message.updated", epoch_version: 1, message: moved },
           context,
@@ -1165,7 +1167,8 @@ describe("messenger message actions", () => {
       const older = createMessageDto({ uuid: MESSAGE_B, created_at: "2026-06-22T10:05:00Z" });
       const completedRepair = vi.fn();
       const writeRealtimeCursor = vi.fn();
-      const applier = createMessengerRealtimeActiveApplier({
+      const applier = createMessengerRealtimeApplier({
+        requireOwnerCatalog: false,
         cache: {
           deleteCachedMessage: async (...args) => {
             await releaseDelete.promise;
@@ -1290,7 +1293,7 @@ describe("messenger message actions", () => {
           client: { deleteMessage: () => Promise.resolve(), getMessagesPage: requestReplacement },
         });
         await vi.waitFor(() => expect(requestReplacement).toHaveBeenCalledTimes(2));
-        const applier = createMessengerRealtimeActiveApplier();
+        const applier = createMessengerRealtimeApplier({ requireOwnerCatalog: false });
         const context = {
           owner: runtimeContext,
           ownerKey,
@@ -1372,7 +1375,8 @@ describe("messenger message actions", () => {
             }),
           ).resolves.toMatchObject({ status: "applied" });
         } else {
-          const applier = createMessengerRealtimeActiveApplier({
+          const applier = createMessengerRealtimeApplier({
+            requireOwnerCatalog: false,
             isOwnerCurrent: (owner) => owner.runtimeGeneration === currentGeneration,
             cache: { writeRealtimeCursor, deleteCachedMessage: patchCache },
           });
@@ -1433,7 +1437,7 @@ describe("messenger message actions", () => {
         surface: "active",
         source: "websocket",
       } as const;
-      const applier = createMessengerRealtimeActiveApplier();
+      const applier = createMessengerRealtimeApplier({ requireOwnerCatalog: false });
       await applier.applyEvent(event, context);
       response.resolve(
         createMessageDto({ payload: { kind: "markdown", content: "Delayed edit" } }),
@@ -1499,7 +1503,8 @@ describe("messenger message actions", () => {
           surface: "active",
           source: "websocket",
         } as const;
-        const applier = createMessengerRealtimeActiveApplier({
+        const applier = createMessengerRealtimeApplier({
+          requireOwnerCatalog: false,
           cache: {
             patchCachedMessage: patchCache,
             markCachedMessagesRead: markMessengerCachedMessagesRead,
@@ -1572,7 +1577,8 @@ describe("messenger message actions", () => {
         let currentGeneration = runtimeContext.runtimeGeneration;
         let calls = 0;
         const writeRealtimeCursor = vi.fn();
-        const applier = createMessengerRealtimeActiveApplier({
+        const applier = createMessengerRealtimeApplier({
+          requireOwnerCatalog: false,
           isOwnerCurrent: (owner) => owner.runtimeGeneration === currentGeneration,
           cache: {
             writeRealtimeCursor,
@@ -2691,7 +2697,7 @@ describe("encrypted payload local dispatch guards", () => {
       canonicalMessageUuid: outgoing.canonicalMessageUuid,
     });
     expect(f.createMessage).toHaveBeenCalledOnce();
-    const applier = createMessengerRealtimeActiveApplier({ cache: {} });
+    const applier = createMessengerRealtimeApplier({ requireOwnerCatalog: false, cache: {} });
     const context = {
       owner: f.runtimeContext,
       ownerKey: f.ownerKey,

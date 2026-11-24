@@ -995,7 +995,7 @@ export const messengerMessageActionCache = {
   writeCreatedMessages: writeMessengerRealtimeMessagesCache,
 };
 
-export const messengerRealtimeActiveCache = {
+export const messengerRealtimeCache = {
   advanceReadBoundary: advanceMessengerCachedReadBoundary,
   markCachedMessagesRead: markMessengerCachedMessagesRead,
   patchCachedMessage: patchMessengerCachedMessage,
@@ -1013,8 +1013,4 @@ export const messengerRealtimeActiveCache = {
   deleteCachedFolder: deleteMessengerFolderCache,
   deleteCachedFolderItem: deleteMessengerFolderItemCache,
   writeRealtimeCursor: writeMessengerRealtimeCursorCache,
-};
-
-export const messengerRealtimeBackgroundCache = {
-  ...messengerRealtimeActiveCache,
 };

@@ -278,11 +278,6 @@ export interface WorkspaceSessionUsersOptions extends Pick<
   reset?: boolean; // Replace the previous projection after an expired cursor.
 }
 
-// Clear the visible users store when no session is selected.
-export function clearActiveWorkspaceSessionUsers(): void {
-  useUsersStore.getState().clear();
-}
-
 const completeUserStores = new WeakSet<ReturnType<typeof getSelectedUsersStore>>();
 
 // Restore cached profiles for display and separately report full snapshot validity.

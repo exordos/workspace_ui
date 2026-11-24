@@ -1,8 +1,5 @@
 import { restoreWorkspaceComposerDraftsForStream } from "~/applications/messenger/model/drafts/composer-draft.model";
-import {
-  getSelectedWorkspaceMessageStore,
-  getWorkspaceMessageStoreForOwner,
-} from "~/applications/messenger/model/messages/message.model";
+import { getWorkspaceMessageStoreForOwner } from "~/applications/messenger/model/messages/message.model";
 import type { WorkspaceRealtimeEvent } from "~/shared/api/messenger.types";
 import { createLogger } from "~/shared/lib/logger";
 import { invalidateWorkspaceFileResourceCache } from "~/shared/lib/workspace-file-loader.lib";
@@ -24,7 +21,6 @@ import {
 import { preserveConfirmedStreamKeySharing } from "../../model/chats/messenger-stream-key-sharing.lib";
 import {
   getMessengerStoreForOwner,
-  getSelectedMessengerStore,
   restoreMessengerStream,
 } from "../../model/chats/messenger.model";
 import { acceptMessageDeletion } from "../../model/messages/messages-accept-deletion.lib";
@@ -35,24 +31,15 @@ import {
 import { acceptServerMessages } from "../../model/messages/messages-accept-server.lib";
 import { acceptMessageUpdate } from "../../model/messages/messages-accept-update.lib";
 import { adaptMessengerMessage } from "../../model/messages/messenger-message-adapter.lib";
+import { applyMessengerReadBoundary } from "../../model/messages/messenger-read-boundary.lib";
 import {
-  advanceMessengerReadBoundary,
-  applyMessengerReadBoundary,
-} from "../../model/messages/messenger-read-boundary.lib";
-import { settleMessengerOutgoingMessage } from "../../model/messages/outgoing/messenger-outbox.model";
-import {
-  messengerRealtimeActiveCache,
-  messengerRealtimeBackgroundCache,
+  messengerRealtimeCache,
   restoreMessengerStreamCache,
   type MessengerMessageCacheDeletion,
 } from "../../model/messenger-cache.lib";
 import { conversationIdForStream, conversationIdForTopic } from "../../model/messenger-ids.lib";
 import { useMessengerBackgroundProjectionStore } from "./messenger-background-projection.model";
 import { resolveMessengerMessageLiveEffectPolicy } from "./messenger-live-effects.lib";
-import {
-  applyMessengerRealtimeEventToCache,
-  type MessengerRealtimeCacheWriter,
-} from "./messenger-realtime-cache.lib";
 import { removeMessengerStreamProjection } from "./messenger-stream-projection-cleanup.lib";
 import type { DeletedMessagePointerRepairPlan } from "../../model/chats/messenger-deleted-message-pointer-repair.lib";
 import type {
@@ -87,14 +74,14 @@ interface GuardedRealtimeApplication {
   currentPollUpdatedAt?: () => string | undefined; // Timestamp of the latest poll metadata.
 }
 
-type ActiveRealtimeApplication = Promise<void> | void | false | GuardedRealtimeApplication;
+type RealtimeApplication = Promise<void> | void | false | GuardedRealtimeApplication;
 
 export interface MessengerRealtimeCacheConversationPage {
   messages: readonly MessengerMessage[];
   source: "realtime";
 }
 
-export interface MessengerRealtimeActiveCacheWriter extends ConfirmedMessageReadCache {
+export interface MessengerRealtimeCacheWriter extends ConfirmedMessageReadCache {
   writeCreatedMessages?: (
     ownerKey: string,
     messages: readonly MessengerMessage[],
@@ -161,11 +148,11 @@ export interface MessengerRealtimeActiveCacheWriter extends ConfirmedMessageRead
   ) => Promise<void> | void;
 }
 
-export interface MessengerRealtimeActiveApplierOptions {
+export interface MessengerRealtimeApplierOptions {
   isOwnerCurrent?: (owner: WorkspaceRealtimeRuntimeOwner) => boolean;
-  applyToBothSurfaces?: boolean; // Both surfaces have a warm owner store.
-  requireActiveCatalog?: boolean; // Applied only to Messenger mutations that use the selected catalog.
-  cache?: MessengerRealtimeActiveCacheWriter;
+  getModel?: (ownerKey: string) => MessengerRealtimeOwnerModel | null;
+  requireOwnerCatalog?: boolean; // Reject Messenger mutations until this owner has its mandatory catalog.
+  cache?: MessengerRealtimeCacheWriter;
   onMessageCreated?: (
     ownerKey: string,
     message: MessengerMessage,
@@ -191,45 +178,38 @@ export interface MessengerRealtimeActiveApplierOptions {
   onFileChanged?: (ownerKey: string, event: MessengerFileRealtimeEvent) => void | Promise<void>;
 }
 
-export interface MessengerRealtimeBackgroundApplierOptions {
-  isOwnerCurrent?: (owner: WorkspaceRealtimeRuntimeOwner) => boolean;
-  removeProjection?: typeof removeMessengerStreamProjection;
-  cache?: MessengerRealtimeBackgroundCacheWriter;
+// Each application call retains the two stores of one authorized incarnation.
+interface MessengerRealtimeOwnerModel {
+  catalog: NonNullable<ReturnType<typeof getMessengerStoreForOwner>>;
+  messages: NonNullable<ReturnType<typeof getWorkspaceMessageStoreForOwner>>;
 }
-
-export type MessengerRealtimeBackgroundCacheWriter = Partial<MessengerRealtimeCacheWriter>;
 
 const log = createLogger("realtime:workspace-messenger");
 // Bound transactions even when a caller requests larger REST pages.
 const MAX_CREATED_MESSAGES_PER_BATCH = 100;
 
-const getCatalogStore = (ownerKey: string) =>
-  getMessengerStoreForOwner(ownerKey) ?? getSelectedMessengerStore();
-const getMessageStore = (ownerKey: string) =>
-  getWorkspaceMessageStoreForOwner(ownerKey) ?? getSelectedWorkspaceMessageStore();
-
-function isActiveCurrentOwner(
-  context: WorkspaceRealtimeRuntimeContext,
-  options: MessengerRealtimeActiveApplierOptions,
-): boolean {
-  if (context.surface !== "active" && options.applyToBothSurfaces !== true) return false;
-  if (context.signal?.aborted === true) return false;
-  const messageStoreOwnerKey = getMessageStore(context.ownerKey).getState().ownerKey;
-  if (messageStoreOwnerKey != null && messageStoreOwnerKey !== context.ownerKey) return false;
-
-  // ownerKey does not include runtimeGeneration, so check stale sockets before any store write.
-  return options.isOwnerCurrent?.(context.owner) ?? true;
+function readOwnerModel(ownerKey: string): MessengerRealtimeOwnerModel | null {
+  const catalog = getMessengerStoreForOwner(ownerKey);
+  const messages = getWorkspaceMessageStoreForOwner(ownerKey);
+  return catalog == null || messages == null ? null : { catalog, messages };
 }
 
-function isBackgroundCurrentOwner(
-  context: WorkspaceRealtimeEventContext,
-  options: MessengerRealtimeBackgroundApplierOptions,
+function isOwnerContextCurrent(
+  context: WorkspaceRealtimeRuntimeContext,
+  options: MessengerRealtimeApplierOptions,
 ): boolean {
-  if (context.surface !== "background") return false;
-  if (context.signal?.aborted === true) return false;
+  // The key does not include credentials or incarnation. Both are fenced by the runtime.
+  return context.signal?.aborted !== true && (options.isOwnerCurrent?.(context.owner) ?? true);
+}
 
-  // Background runtime can live for several org/projects, so owner checks stay equally strict.
-  return options.isOwnerCurrent?.(context.owner) ?? true;
+function isOwnerModelCurrent(
+  context: WorkspaceRealtimeRuntimeContext,
+  options: MessengerRealtimeApplierOptions,
+  model: MessengerRealtimeOwnerModel,
+): boolean {
+  if (!isOwnerContextCurrent(context, options)) return false;
+  const messageOwnerKey = model.messages.getState().ownerKey;
+  return messageOwnerKey == null || messageOwnerKey === context.ownerKey;
 }
 
 function eventKind(event: { type?: unknown; kind?: unknown }): string {
@@ -263,9 +243,8 @@ function isNonMessengerRealtimeEvent(event: WorkspaceRealtimeEvent): boolean {
   );
 }
 
-function isBackgroundLightweightEvent(event: WorkspaceRealtimeEvent): boolean {
-  // Membership and file bytes have no safe background projection. They are applied
-  // by the active runtime, where their scoped stores and caches are available.
+function isNotificationProjectionEvent(event: WorkspaceRealtimeEvent): boolean {
+  // Bindings and protected file resources have no role in the notification projection.
   return event.type !== "stream_binding" && event.type !== "file";
 }
 
@@ -318,7 +297,7 @@ function settleRealtimeCacheWrites(
 }
 
 function writeRealtimeMessagePageCache(
-  cache: MessengerRealtimeActiveCacheWriter | undefined,
+  cache: MessengerRealtimeCacheWriter | undefined,
   ownerKey: string,
   message: MessengerMessage,
   isWriteCurrent: () => boolean,
@@ -348,7 +327,7 @@ function writeRealtimeMessagePageCache(
 }
 
 function writeRealtimeCursorCache(
-  cache: MessengerRealtimeActiveCacheWriter | undefined,
+  cache: MessengerRealtimeCacheWriter | undefined,
   ownerKey: string,
   epochVersion: number,
   isWriteCurrent: () => boolean,
@@ -361,13 +340,14 @@ function writeRealtimeCursorCache(
 
 // Reentrant publications can reach a newer epoch before a read's cache writes complete.
 function writeConfirmedReadCursor(
-  cache: MessengerRealtimeActiveCacheWriter,
+  model: MessengerRealtimeOwnerModel,
+  cache: MessengerRealtimeCacheWriter,
   ownerKey: string,
   epochVersion: number,
   isCurrent: () => boolean,
 ): Promise<void> | void {
   const canWrite = () =>
-    isCurrent() && (getCatalogStore(ownerKey).getState().lastEpochVersion ?? 0) <= epochVersion;
+    isCurrent() && (model.catalog.getState().lastEpochVersion ?? 0) <= epochVersion;
   if (!canWrite()) return;
   return writeRealtimeCacheBestEffort(() =>
     cache.writeRealtimeCursor?.(ownerKey, epochVersion, canWrite),
@@ -380,7 +360,7 @@ async function writeCurrentCreatedBatch(
   epochVersion: number,
   currentMessages: () => readonly MessengerMessage[],
   isCurrent: () => boolean,
-  writeCreatedMessages: NonNullable<MessengerRealtimeActiveCacheWriter["writeCreatedMessages"]>,
+  writeCreatedMessages: NonNullable<MessengerRealtimeCacheWriter["writeCreatedMessages"]>,
 ): Promise<void> {
   let remaining = currentMessages();
   while (isCurrent()) {
@@ -402,7 +382,7 @@ async function writeCurrentCreatedBatch(
 }
 
 function deleteRealtimeCachedMessage(
-  cache: MessengerRealtimeActiveCacheWriter,
+  cache: MessengerRealtimeCacheWriter,
   ownerKey: string,
   message: MessengerDeletedMessage,
   isWriteCurrent: () => boolean,
@@ -420,11 +400,11 @@ function deleteRealtimeCachedMessage(
 }
 
 function removeTopicMessagesFromWorkspaceStore(
-  ownerKey: string,
+  messages: MessengerRealtimeOwnerModel["messages"],
   streamUuid: string,
   topicUuid: string,
 ): MessengerDeletedMessage[] {
-  const messageStore = getMessageStore(ownerKey).getState();
+  const messageStore = messages.getState();
   const removedMessages: MessengerDeletedMessage[] = [];
   for (const message of Object.values(messageStore.messagesById)) {
     if (message.streamUuid !== streamUuid || message.topicUuid !== topicUuid) continue;
@@ -440,12 +420,13 @@ function removeTopicMessagesFromWorkspaceStore(
 
 // Realtime waits for cache cleanup but starts catalog repair independently of the cursor.
 function applyMessageDeletedRealtimeEvent(
+  model: MessengerRealtimeOwnerModel,
   event: Extract<MessengerMessageRealtimeEvent, { kind: "message.deleted" }>,
   ownerKey: string,
   context: WorkspaceRealtimeEventContext,
-  activeCache: MessengerRealtimeActiveCacheWriter,
-  options: MessengerRealtimeActiveApplierOptions,
-): ActiveRealtimeApplication {
+  cache: MessengerRealtimeCacheWriter,
+  options: MessengerRealtimeApplierOptions,
+): RealtimeApplication {
   const accepted = acceptMessageDeletion({
     ownerKey,
     reported: {
@@ -453,9 +434,9 @@ function applyMessageDeletedRealtimeEvent(
       streamUuid: event.message.stream_uuid,
       topicUuid: event.message.topic_uuid,
     },
-    isCurrent: () => isActiveCurrentOwner(context, options),
-    store: getMessageStore(ownerKey),
-    deleteCache: activeCache.deleteCachedMessage,
+    isCurrent: () => isOwnerModelCurrent(context, options, model),
+    store: model.messages,
+    deleteCache: cache.deleteCachedMessage,
   });
   if (accepted.status === "stale-owner") return false;
   for (const plan of accepted.plans) {
@@ -469,14 +450,15 @@ function applyMessageDeletedRealtimeEvent(
 
 // Applies a message event and tracks active projection work for its cursor.
 function applyMessageRealtimeEvent(
+  model: MessengerRealtimeOwnerModel,
   event: MessengerMessageRealtimeEvent,
   ownerKey: string,
   context: WorkspaceRealtimeEventContext,
-  activeCache: MessengerRealtimeActiveCacheWriter,
-  options: MessengerRealtimeActiveApplierOptions,
-): ActiveRealtimeApplication {
+  cache: MessengerRealtimeCacheWriter,
+  options: MessengerRealtimeApplierOptions,
+): RealtimeApplication {
   if (event.kind === "message.deleted")
-    return applyMessageDeletedRealtimeEvent(event, ownerKey, context, activeCache, options);
+    return applyMessageDeletedRealtimeEvent(model, event, ownerKey, context, cache, options);
 
   if (event.kind === "message.read") {
     const accepted = acceptMessageRead({
@@ -489,26 +471,26 @@ function applyMessageRealtimeEvent(
         messageUuid: event.message.uuid,
         epochVersion: event.epoch_version,
       },
-      store: getMessageStore(ownerKey),
-      cache: activeCache,
-      isCurrent: () => isActiveCurrentOwner(context, options),
+      store: model.messages,
+      cache: cache,
+      isCurrent: () => isOwnerModelCurrent(context, options, model),
     });
     return accepted.status === "stale-owner"
       ? false
       : { cacheWrite: accepted.cacheWrite, shouldProject: accepted.isCurrent };
   }
 
-  const store = getCatalogStore(ownerKey).getState();
+  const store = model.catalog.getState();
   const message = applyMessengerReadBoundary(adaptMessengerMessage(event.message), ownerKey);
   const stream = store.streamsById[message.streamUuid] ?? null;
   if (event.kind === "message.updated") {
     const accepted = acceptMessageUpdate({
       source: "realtime",
       ownerKey,
-      isCurrent: () => isActiveCurrentOwner(context, options),
+      isCurrent: () => isOwnerModelCurrent(context, options, model),
       message,
-      store: getMessageStore(ownerKey),
-      patchCache: activeCache.patchCachedMessage,
+      store: model.messages,
+      patchCache: cache.patchCachedMessage,
     });
     if (accepted.status === "stale-owner") return false;
     const { eventMessage, previous, shouldProject, cacheWrite, currentRead, currentPollUpdatedAt } =
@@ -527,14 +509,14 @@ function applyMessageRealtimeEvent(
     return { cacheWrite, shouldProject, currentRead, currentPollUpdatedAt };
   }
 
-  const isCurrent = () => isActiveCurrentOwner(context, options);
+  const isCurrent = () => isOwnerModelCurrent(context, options, model);
   const accepted = acceptServerMessages({
     source: "realtime",
     ownerKey,
     isCurrent,
     mode: "single",
     messages: [message],
-    store: getMessageStore(ownerKey),
+    store: model.messages,
     updatePointers: ([currentMessage], messagesById) => {
       if (currentMessage != null) store.applyMessagePointer(ownerKey, currentMessage, messagesById);
     },
@@ -543,7 +525,7 @@ function applyMessageRealtimeEvent(
   const shouldProject = () => isCurrent() && accepted.currentMessages().length > 0;
   if (!shouldProject()) return { cacheWrite: undefined, shouldProject };
 
-  const cacheWrite = writeRealtimeMessagePageCache(activeCache, ownerKey, message, shouldProject);
+  const cacheWrite = writeRealtimeMessagePageCache(cache, ownerKey, message, shouldProject);
   if (
     shouldProject() &&
     context.notificationsEnabled === true &&
@@ -559,19 +541,20 @@ function applyMessageRealtimeEvent(
 
 // A batch confirms exact UUIDs and never opens a topic read boundary.
 function applyMessagesRealtimeEvent(
+  model: MessengerRealtimeOwnerModel,
   event: MessengerMessagesRealtimeEvent,
   ownerKey: string,
   context: WorkspaceRealtimeEventContext,
-  activeCache: MessengerRealtimeActiveCacheWriter,
-  options: MessengerRealtimeActiveApplierOptions,
-): ActiveRealtimeApplication {
+  cache: MessengerRealtimeCacheWriter,
+  options: MessengerRealtimeApplierOptions,
+): RealtimeApplication {
   const accepted = acceptMessageRead({
     kind: "exact",
     ownerKey,
     messageUuids: event.messageUuids,
-    store: getMessageStore(ownerKey),
-    cache: activeCache,
-    isCurrent: () => isActiveCurrentOwner(context, options),
+    store: model.messages,
+    cache: cache,
+    isCurrent: () => isOwnerModelCurrent(context, options, model),
   });
   return accepted.status === "stale-owner"
     ? false
@@ -579,26 +562,26 @@ function applyMessagesRealtimeEvent(
 }
 
 function applyStreamRealtimeEvent(
+  model: MessengerRealtimeOwnerModel,
   event: MessengerStreamRealtimeEvent,
   ownerKey: string,
-  activeCache: MessengerRealtimeActiveCacheWriter,
+  cache: MessengerRealtimeCacheWriter,
   isCurrent: () => boolean,
 ): Promise<void> | void {
-  const store = getCatalogStore(ownerKey).getState();
+  const store = model.catalog.getState();
 
   if (event.kind === "stream.deleted") {
     return removeMessengerStreamProjection({
       ownerKey,
       streamUuid: event.stream.uuid,
-      removeActiveProjection: true,
-      deleteCachedStream: activeCache.deleteCachedStream,
+      deleteCachedStream: cache.deleteCachedStream,
       isOwnerCurrent: isCurrent,
     }).catch(() => undefined);
   }
 
   if (event.kind === "stream.created") {
     restoreMessengerStream(ownerKey, event.stream.uuid);
-    getMessageStore(ownerKey).getState().restoreMessagesForStream(event.stream.uuid);
+    model.messages.getState().restoreMessagesForStream(event.stream.uuid);
     restoreMessengerStreamCache(ownerKey, event.stream.uuid);
     restoreWorkspaceComposerDraftsForStream(ownerKey, event.stream.uuid);
   }
@@ -610,21 +593,21 @@ function applyStreamRealtimeEvent(
   const previousFoldersById = store.foldersById;
   store.upsertStream(ownerKey, stream);
   const writes: (Promise<void> | void)[] = [];
-  if (activeCache.upsertCachedStream != null) {
+  if (cache.upsertCachedStream != null) {
     writes.push(
       writeRealtimeCacheBestEffort(() =>
-        activeCache.upsertCachedStream?.(ownerKey, stream, { shouldApply: isCurrent }),
+        cache.upsertCachedStream?.(ownerKey, stream, { shouldApply: isCurrent }),
       ),
     );
   }
-  if (activeCache.upsertCachedFolder != null) {
-    const nextStore = getCatalogStore(ownerKey).getState();
+  if (cache.upsertCachedFolder != null) {
+    const nextStore = model.catalog.getState();
     for (const folderUuid of nextStore.folderIds) {
       const folder = nextStore.foldersById[folderUuid];
       if (folder == null || folder === previousFoldersById[folderUuid]) continue;
       writes.push(
         writeRealtimeCacheBestEffort(() =>
-          activeCache.upsertCachedFolder?.(ownerKey, folder, { shouldApply: isCurrent }),
+          cache.upsertCachedFolder?.(ownerKey, folder, { shouldApply: isCurrent }),
         ),
       );
     }
@@ -633,19 +616,20 @@ function applyStreamRealtimeEvent(
 }
 
 function applyStreamBindingRealtimeEvent(
+  model: MessengerRealtimeOwnerModel,
   event: MessengerStreamBindingRealtimeEvent,
   ownerKey: string,
-  activeCache: MessengerRealtimeActiveCacheWriter,
+  cache: MessengerRealtimeCacheWriter,
   isCurrent: () => boolean,
 ): Promise<void> | void {
   if (event.kind === "stream_binding.deleted") {
-    getCatalogStore(ownerKey).getState().removeStreamBinding(ownerKey, {
+    model.catalog.getState().removeStreamBinding(ownerKey, {
       uuid: event.stream_binding.uuid,
       streamUuid: event.stream_binding.stream_uuid,
     });
-    if (activeCache.deleteCachedStreamBinding != null) {
+    if (cache.deleteCachedStreamBinding != null) {
       return writeRealtimeCacheBestEffort(() =>
-        activeCache.deleteCachedStreamBinding?.(ownerKey, event.stream_binding.uuid, isCurrent),
+        cache.deleteCachedStreamBinding?.(ownerKey, event.stream_binding.uuid, isCurrent),
       );
     }
     return;
@@ -655,10 +639,10 @@ function applyStreamBindingRealtimeEvent(
     event.kind === "stream_binding.updated"
       ? [adaptMessengerStreamBinding(event.stream_binding)]
       : event.stream_bindings.map(adaptMessengerStreamBinding);
-  getCatalogStore(ownerKey).getState().upsertStreamBindings(ownerKey, bindings);
-  if (activeCache.upsertCachedStreamBindings != null) {
+  model.catalog.getState().upsertStreamBindings(ownerKey, bindings);
+  if (cache.upsertCachedStreamBindings != null) {
     return writeRealtimeCacheBestEffort(() =>
-      activeCache.upsertCachedStreamBindings?.(ownerKey, bindings, { shouldApply: isCurrent }),
+      cache.upsertCachedStreamBindings?.(ownerKey, bindings, { shouldApply: isCurrent }),
     );
   }
 }
@@ -666,7 +650,7 @@ function applyStreamBindingRealtimeEvent(
 function applyFileRealtimeEvent(
   event: MessengerFileRealtimeEvent,
   ownerKey: string,
-  options: MessengerRealtimeActiveApplierOptions,
+  options: MessengerRealtimeApplierOptions,
 ): void {
   invalidateWorkspaceFileResourceCache(ownerKey, event.file.uuid, {
     notify: event.kind !== "file.deleted",
@@ -677,16 +661,17 @@ function applyFileRealtimeEvent(
 }
 
 function applyTopicRealtimeEvent(
+  model: MessengerRealtimeOwnerModel,
   event: MessengerTopicRealtimeEvent,
   ownerKey: string,
-  activeCache: MessengerRealtimeActiveCacheWriter,
+  cache: MessengerRealtimeCacheWriter,
   isCurrent: () => boolean,
 ): Promise<void> | void {
-  const store = getCatalogStore(ownerKey).getState();
+  const store = model.catalog.getState();
 
   if (event.kind === "topic.deleted") {
     const deletedMessages = removeTopicMessagesFromWorkspaceStore(
-      ownerKey,
+      model.messages,
       event.topic.stream_uuid,
       event.topic.uuid,
     );
@@ -695,17 +680,12 @@ function applyTopicRealtimeEvent(
       streamUuid: event.topic.stream_uuid,
     });
     const writes = deletedMessages.map((deletedMessage) =>
-      deleteRealtimeCachedMessage(activeCache, ownerKey, deletedMessage, isCurrent),
+      deleteRealtimeCachedMessage(cache, ownerKey, deletedMessage, isCurrent),
     );
-    if (activeCache.deleteCachedTopic != null) {
+    if (cache.deleteCachedTopic != null) {
       writes.push(
         writeRealtimeCacheBestEffort(() =>
-          activeCache.deleteCachedTopic?.(
-            ownerKey,
-            event.topic.uuid,
-            event.topic.stream_uuid,
-            isCurrent,
-          ),
+          cache.deleteCachedTopic?.(ownerKey, event.topic.uuid, event.topic.stream_uuid, isCurrent),
         ),
       );
     }
@@ -714,26 +694,27 @@ function applyTopicRealtimeEvent(
 
   const topic = adaptMessengerTopic(event.topic);
   store.upsertTopic(ownerKey, topic);
-  if (activeCache.upsertCachedTopic != null) {
+  if (cache.upsertCachedTopic != null) {
     return writeRealtimeCacheBestEffort(() =>
-      activeCache.upsertCachedTopic?.(ownerKey, topic, { shouldApply: isCurrent }),
+      cache.upsertCachedTopic?.(ownerKey, topic, { shouldApply: isCurrent }),
     );
   }
 }
 
 function applyFolderRealtimeEvent(
+  model: MessengerRealtimeOwnerModel,
   event: MessengerFolderRealtimeEvent,
   ownerKey: string,
-  activeCache: MessengerRealtimeActiveCacheWriter,
+  cache: MessengerRealtimeCacheWriter,
   isCurrent: () => boolean,
 ): Promise<void> | void {
-  const store = getCatalogStore(ownerKey).getState();
+  const store = model.catalog.getState();
 
   if (event.kind === "folder.deleted") {
     store.removeFolder(ownerKey, { uuid: event.folder.uuid });
-    if (activeCache.deleteCachedFolder != null) {
+    if (cache.deleteCachedFolder != null) {
       return writeRealtimeCacheBestEffort(() =>
-        activeCache.deleteCachedFolder?.(ownerKey, event.folder.uuid, isCurrent),
+        cache.deleteCachedFolder?.(ownerKey, event.folder.uuid, isCurrent),
       );
     }
     return;
@@ -741,57 +722,59 @@ function applyFolderRealtimeEvent(
 
   const folder = adaptMessengerFolder(event.folder);
   store.applyFolderSnapshot(ownerKey, folder);
-  if (activeCache.upsertCachedFolder != null) {
+  if (cache.upsertCachedFolder != null) {
     return writeRealtimeCacheBestEffort(() =>
-      activeCache.upsertCachedFolder?.(ownerKey, folder, { shouldApply: isCurrent }),
+      cache.upsertCachedFolder?.(ownerKey, folder, { shouldApply: isCurrent }),
     );
   }
 }
 
 function applyFolderItemRealtimeEvent(
+  model: MessengerRealtimeOwnerModel,
   event: MessengerFolderItemRealtimeEvent,
   ownerKey: string,
-  activeCache: MessengerRealtimeActiveCacheWriter,
+  cache: MessengerRealtimeCacheWriter,
   isCurrent: () => boolean,
 ): Promise<void> | void {
-  getCatalogStore(ownerKey)
+  model.catalog
     .getState()
     .removeFolderItem(
       ownerKey,
       { uuid: event.folder_item.uuid },
       { preserveFolderUnreadCount: true },
     );
-  if (activeCache.deleteCachedFolderItem != null) {
+  if (cache.deleteCachedFolderItem != null) {
     return writeRealtimeCacheBestEffort(() =>
-      activeCache.deleteCachedFolderItem?.(ownerKey, event.folder_item.uuid, isCurrent),
+      cache.deleteCachedFolderItem?.(ownerKey, event.folder_item.uuid, isCurrent),
     );
   }
 }
 
 // Направляет событие в его доменный обработчик и передаёт результат для завершения.
 function applySupportedRealtimeEvent(
+  model: MessengerRealtimeOwnerModel,
   event: MessengerRealtimeEvent,
   ownerKey: string,
   context: WorkspaceRealtimeEventContext,
-  activeCache: MessengerRealtimeActiveCacheWriter,
-  options: MessengerRealtimeActiveApplierOptions,
-): ActiveRealtimeApplication {
-  const isCurrent = () => isActiveCurrentOwner(context, options);
+  cache: MessengerRealtimeCacheWriter,
+  options: MessengerRealtimeApplierOptions,
+): RealtimeApplication {
+  const isCurrent = () => isOwnerModelCurrent(context, options, model);
   switch (event.type) {
     case "message":
-      return applyMessageRealtimeEvent(event, ownerKey, context, activeCache, options);
+      return applyMessageRealtimeEvent(model, event, ownerKey, context, cache, options);
     case "messages":
-      return applyMessagesRealtimeEvent(event, ownerKey, context, activeCache, options);
+      return applyMessagesRealtimeEvent(model, event, ownerKey, context, cache, options);
     case "stream":
-      return applyStreamRealtimeEvent(event, ownerKey, activeCache, isCurrent);
+      return applyStreamRealtimeEvent(model, event, ownerKey, cache, isCurrent);
     case "stream_binding":
-      return applyStreamBindingRealtimeEvent(event, ownerKey, activeCache, isCurrent);
+      return applyStreamBindingRealtimeEvent(model, event, ownerKey, cache, isCurrent);
     case "topic":
-      return applyTopicRealtimeEvent(event, ownerKey, activeCache, isCurrent);
+      return applyTopicRealtimeEvent(model, event, ownerKey, cache, isCurrent);
     case "folder":
-      return applyFolderRealtimeEvent(event, ownerKey, activeCache, isCurrent);
+      return applyFolderRealtimeEvent(model, event, ownerKey, cache, isCurrent);
     case "folder_item":
-      return applyFolderItemRealtimeEvent(event, ownerKey, activeCache, isCurrent);
+      return applyFolderItemRealtimeEvent(model, event, ownerKey, cache, isCurrent);
     case "file":
       applyFileRealtimeEvent(event, ownerKey, options);
       break;
@@ -799,16 +782,17 @@ function applySupportedRealtimeEvent(
 }
 
 function applyLightweightProjectionEvent(
+  model: MessengerRealtimeOwnerModel,
   event: MessengerRealtimeEvent,
   context: WorkspaceRealtimeEventContext,
 ): void {
-  if (!isBackgroundLightweightEvent(event)) {
+  if (!isNotificationProjectionEvent(event)) {
     return;
   }
 
   const projection = useMessengerBackgroundProjectionStore.getState();
   if (event.kind === "message.read") {
-    const state = getMessageStore(context.ownerKey).getState();
+    const state = model.messages.getState();
     const uuid = event.message.uuid;
     const anchor = state.deletedMessageRevisionById[uuid] == null ? state.messagesById[uuid] : null;
     projection.recordAppliedEvent(context.ownerKey, event, context, anchor);
@@ -849,57 +833,54 @@ async function applyRealtimeEventBatch(
   await flush();
 }
 
-export function createMessengerRealtimeActiveApplier(
-  options: MessengerRealtimeActiveApplierOptions = {},
+export function createMessengerRealtimeApplier(
+  options: MessengerRealtimeApplierOptions = {},
 ): WorkspaceRealtimeEventApplier {
-  const activeCache = options.cache ?? messengerRealtimeActiveCache;
+  const cache = options.cache ?? messengerRealtimeCache;
+  const getModel = options.getModel ?? readOwnerModel;
+  const requireOwnerCatalog = options.requireOwnerCatalog ?? true;
   const applier: WorkspaceRealtimeEventApplier = {
     applyEvent(event, context) {
       const { ownerKey } = context;
-      if (isNonMessengerRealtimeEvent(event)) return;
-      if (
-        (context.surface !== "active" && options.applyToBothSurfaces !== true) ||
-        context.signal?.aborted === true ||
-        options.isOwnerCurrent?.(context.owner) === false
-      ) {
-        return;
-      }
+      if (isNonMessengerRealtimeEvent(event) || !isOwnerContextCurrent(context, options)) return;
 
-      const store = getCatalogStore(ownerKey).getState();
+      const model = getModel(ownerKey);
+      const store = model?.catalog.getState();
       if (
-        options.requireActiveCatalog === true &&
+        requireOwnerCatalog &&
         isSupportedRealtimeEvent(event) &&
         event.type !== "file" &&
-        (store.ownerKey !== context.ownerKey ||
+        (store?.ownerKey !== ownerKey ||
           store.lastLoadedAt == null ||
-          getMessageStore(ownerKey).getState().ownerKey !== context.ownerKey)
+          model?.messages.getState().ownerKey !== ownerKey)
       ) {
         throw new WorkspaceRealtimeParticipantNotReadyError("messenger");
       }
-      if (!isActiveCurrentOwner(context, options)) return;
+      if (model == null || store == null || !isOwnerModelCurrent(context, options, model)) return;
       if (!isSupportedRealtimeEvent(event)) {
         log.warn("Skipped unsupported workspace realtime event", {
           ownerKey: context.ownerKey,
           kind: eventKind(event),
           epochVersion: event.epoch_version,
         });
-        // Unknown events also move the visible realtime cursor; the durable cursor is moved by transport.
+        // The catalog tracks skips for its owner. Transport commits the durable cursor.
         store.markRealtimeEventSkipped(context.ownerKey, event.epoch_version, "unsupported_event");
         return;
       }
 
       const applied = applySupportedRealtimeEvent(
+        model,
         event,
         context.ownerKey,
         context,
-        activeCache,
+        cache,
         options,
       );
       if (applied === false) return;
       const guarded = applied instanceof Promise ? undefined : applied;
       const isConfirmedRead = event.kind === "message.read" || event.kind === "messages.read";
       const isProjectionCurrent = () =>
-        isActiveCurrentOwner(context, options) &&
+        isOwnerModelCurrent(context, options, model) &&
         (!isConfirmedRead || guarded?.shouldProject() !== false);
       const finishApplication = (): Promise<void> | void => {
         if (!isProjectionCurrent()) return;
@@ -912,9 +893,9 @@ export function createMessengerRealtimeActiveApplier(
               read === event.message.read && updatedAt === event.message.updated_at
                 ? event
                 : { ...event, message: { ...event.message, read, updated_at: updatedAt } };
-            applyLightweightProjectionEvent(projected, context);
+            applyLightweightProjectionEvent(model, projected, context);
           } else {
-            applyLightweightProjectionEvent(event, context);
+            applyLightweightProjectionEvent(model, event, context);
           }
         }
         if (guarded != null && !isProjectionCurrent()) return;
@@ -922,17 +903,18 @@ export function createMessengerRealtimeActiveApplier(
         if (guarded != null && !isProjectionCurrent()) return;
         if (isConfirmedRead)
           return writeConfirmedReadCursor(
-            activeCache,
+            model,
+            cache,
             context.ownerKey,
             event.epoch_version,
             isProjectionCurrent,
           );
         if (isMessageUpdate || (event.type === "message" && event.kind === "message.deleted")) {
-          const latestEpoch = getCatalogStore(ownerKey).getState().lastEpochVersion;
+          const latestEpoch = model.catalog.getState().lastEpochVersion;
           if (latestEpoch != null && latestEpoch > event.epoch_version) return;
         }
         return writeRealtimeCursorCache(
-          activeCache,
+          cache,
           context.ownerKey,
           event.epoch_version,
           isProjectionCurrent,
@@ -946,20 +928,22 @@ export function createMessengerRealtimeActiveApplier(
 
     async applyEvents(events, context) {
       const { ownerKey } = context;
-      const writeCreatedMessages = activeCache.writeCreatedMessages;
-      const isCurrent = () => isActiveCurrentOwner(context, options);
+      const writeCreatedMessages = cache.writeCreatedMessages;
+      const model = getModel(ownerKey);
       if (
-        options.requireActiveCatalog === true ||
+        requireOwnerCatalog ||
+        model == null ||
         writeCreatedMessages == null ||
         context.source !== "catch_up" ||
         context.notificationsEnabled === true
       ) {
         for (const event of events) {
-          if (!isActiveCurrentOwner(context, options)) return;
+          if (!isOwnerContextCurrent(context, options)) return;
           await applier.applyEvent(event, context);
         }
         return;
       }
+      const isCurrent = () => isOwnerModelCurrent(context, options, model);
       await applyRealtimeEventBatch(
         applier,
         events,
@@ -974,9 +958,9 @@ export function createMessengerRealtimeActiveApplier(
             isCurrent,
             mode: "batch",
             messages,
-            store: getMessageStore(ownerKey),
+            store: model.messages,
             updatePointers: (messages, messagesById) =>
-              getCatalogStore(ownerKey)
+              model.catalog
                 .getState()
                 .applyMessagePointers(context.ownerKey, messages, messagesById),
           });
@@ -989,15 +973,15 @@ export function createMessengerRealtimeActiveApplier(
             isCurrent,
             writeCreatedMessages,
           );
-          if (!isActiveCurrentOwner(context, options)) return;
+          if (!isOwnerModelCurrent(context, options, model)) return;
           const currentMessages = new Set(accepted.currentMessages());
           for (const [index, event] of created.entries()) {
             const message = messages[index];
             if (message == null || !currentMessages.has(message)) continue;
-            applyLightweightProjectionEvent(event, context);
+            applyLightweightProjectionEvent(model, event, context);
             if (!isCurrent()) return;
           }
-          getCatalogStore(ownerKey).getState().setRealtimeCursor(context.ownerKey, epochVersion);
+          model.catalog.getState().setRealtimeCursor(context.ownerKey, epochVersion);
         },
         isCurrent,
       );
@@ -1005,7 +989,8 @@ export function createMessengerRealtimeActiveApplier(
 
     skipEvent(event, reason: WorkspaceRealtimeSkipReason, context) {
       const { ownerKey } = context;
-      if (!isActiveCurrentOwner(context, options)) return;
+      const model = getModel(ownerKey);
+      if (model == null || !isOwnerModelCurrent(context, options, model)) return;
 
       if (reason === "unsupported_event") {
         log.warn("Skipped unsupported workspace realtime event", {
@@ -1014,14 +999,15 @@ export function createMessengerRealtimeActiveApplier(
         });
       }
 
-      getCatalogStore(ownerKey)
+      model.catalog
         .getState()
         .markRealtimeEventSkipped(context.ownerKey, skippedEpoch(event), reason);
     },
 
     onTransportStateChange(state, context) {
       const { ownerKey } = context;
-      if (!isActiveCurrentOwner(context, options)) return;
+      const model = getModel(ownerKey);
+      if (model == null || !isOwnerModelCurrent(context, options, model)) return;
 
       if (
         state.mode === "starting" ||
@@ -1032,7 +1018,7 @@ export function createMessengerRealtimeActiveApplier(
         state.mode === "stopped" ||
         (state.mode === "reconnecting" && state.reason !== "catch_up_failed")
       ) {
-        getCatalogStore(ownerKey)
+        model.catalog
           .getState()
           .setRealtimeInitialSyncReady(context.ownerKey, context.owner.runtimeGeneration, false);
         return;
@@ -1041,137 +1027,10 @@ export function createMessengerRealtimeActiveApplier(
       if (state.mode === "connected" || state.mode === "failed") {
         // "connected" starts only after the socket has applied events up to its ready frame.
         // A failed catch-up stays fail-open during its backoff, then blocks again when retry starts.
-        getCatalogStore(ownerKey)
+        model.catalog
           .getState()
           .setRealtimeInitialSyncReady(context.ownerKey, context.owner.runtimeGeneration, true);
       }
-    },
-  };
-  return applier;
-}
-
-export function createMessengerRealtimeBackgroundApplier(
-  options: MessengerRealtimeBackgroundApplierOptions = {},
-): WorkspaceRealtimeEventApplier {
-  const backgroundCache: MessengerRealtimeCacheWriter = {
-    ...messengerRealtimeBackgroundCache,
-    ...options.cache,
-    writeCreatedMessages:
-      options.cache == null
-        ? messengerRealtimeBackgroundCache.writeCreatedMessages
-        : options.cache.writeCreatedMessages,
-  };
-  const applier: WorkspaceRealtimeEventApplier = {
-    async applyEvent(event, context) {
-      if (!isBackgroundCurrentOwner(context, options)) return;
-
-      const store = useMessengerBackgroundProjectionStore.getState();
-      if (isNonMessengerRealtimeEvent(event)) return;
-      if (!isSupportedRealtimeEvent(event)) {
-        store.recordSkippedEvent(context.ownerKey, event, "unsupported_event", context);
-        return;
-      }
-
-      if (event.type === "message" && event.kind === "message.read") {
-        const message = adaptMessengerMessage(event.message);
-        advanceMessengerReadBoundary({
-          ownerKey: context.ownerKey,
-          streamUuid: message.streamUuid,
-          topicUuid: message.topicUuid,
-          createdAt: message.createdAt,
-          messageUuid: message.uuid,
-          epochVersion: event.epoch_version,
-        });
-      }
-
-      if (event.type === "stream" && event.kind === "stream.created") {
-        restoreMessengerStream(context.ownerKey, event.stream.uuid);
-        restoreMessengerStreamCache(context.ownerKey, event.stream.uuid);
-        restoreWorkspaceComposerDraftsForStream(context.ownerKey, event.stream.uuid);
-      }
-
-      const cacheStatus = await applyMessengerRealtimeEventToCache({
-        event,
-        ownerKey: context.ownerKey,
-        writer: backgroundCache,
-        isWriteCurrent: () => isBackgroundCurrentOwner(context, options),
-      });
-      if (!isBackgroundCurrentOwner(context, options)) return;
-
-      if (cacheStatus === "deferred") {
-        if (event.type === "file") {
-          store.recordSkippedEvent(context.ownerKey, event, "background_apply_deferred", context);
-        }
-        return;
-      }
-
-      if (event.type === "message" && event.kind === "message.created") {
-        settleMessengerOutgoingMessage(context.ownerKey, adaptMessengerMessage(event.message));
-      }
-
-      if (event.type === "stream" && event.kind === "stream.deleted") {
-        await (options.removeProjection ?? removeMessengerStreamProjection)({
-          ownerKey: context.ownerKey,
-          streamUuid: event.stream.uuid,
-          removeActiveProjection: false,
-          isOwnerCurrent: () => isBackgroundCurrentOwner(context, options),
-          deleteCachedStream: () => undefined,
-        });
-        if (!isBackgroundCurrentOwner(context, options)) return;
-      }
-
-      // Background state keeps notification data without writing into active messenger stores.
-      if (isBackgroundLightweightEvent(event)) {
-        store.recordAppliedEvent(context.ownerKey, event, context);
-      }
-    },
-
-    async applyEvents(events, context) {
-      const writeCreatedMessages = backgroundCache.writeCreatedMessages;
-      if (writeCreatedMessages == null) {
-        for (const event of events) {
-          if (!isBackgroundCurrentOwner(context, options)) return;
-          await applier.applyEvent(event, context);
-        }
-        return;
-      }
-      await applyRealtimeEventBatch(
-        applier,
-        events,
-        context,
-        async (created, epochVersion) => {
-          const messages = created.map((event) =>
-            applyMessengerReadBoundary(adaptMessengerMessage(event.message), context.ownerKey),
-          );
-          await writeCreatedMessages(context.ownerKey, messages, epochVersion, () =>
-            isBackgroundCurrentOwner(context, options),
-          );
-          if (!isBackgroundCurrentOwner(context, options)) return;
-          for (const event of created) {
-            settleMessengerOutgoingMessage(context.ownerKey, adaptMessengerMessage(event.message));
-            useMessengerBackgroundProjectionStore
-              .getState()
-              .recordAppliedEvent(context.ownerKey, event, context);
-          }
-        },
-        () => isBackgroundCurrentOwner(context, options),
-      );
-    },
-
-    skipEvent(event, reason, context) {
-      if (!isBackgroundCurrentOwner(context, options)) return;
-
-      useMessengerBackgroundProjectionStore
-        .getState()
-        .recordSkippedEvent(context.ownerKey, event, reason, context);
-    },
-
-    onTransportStateChange(state, context) {
-      if (context.surface !== "background") return;
-      if (context.signal?.aborted === true) return;
-      if (!(options.isOwnerCurrent?.(context.owner) ?? true)) return;
-
-      useMessengerBackgroundProjectionStore.getState().recordTransportState(state);
     },
   };
   return applier;

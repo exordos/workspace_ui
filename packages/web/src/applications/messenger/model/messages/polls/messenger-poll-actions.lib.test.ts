@@ -8,7 +8,7 @@ import {
   openWorkspaceMessengerCacheDb,
   resetWorkspaceMessengerCacheDbSingletonForTests,
 } from "~/shared/lib/workspace-messenger-cache-db";
-import { createMessengerRealtimeActiveApplier } from "../../../runtime/sync/messenger-realtime-applier.lib";
+import { createMessengerRealtimeApplier } from "../../../runtime/sync/messenger-realtime-applier.lib";
 import { useMessengerStore } from "../../chats/messenger.model";
 import {
   messengerMessageActionCache,
@@ -282,7 +282,7 @@ describe("confirmed poll snapshots", () => {
   });
 
   function applyUpdate(
-    applier: ReturnType<typeof createMessengerRealtimeActiveApplier>,
+    applier: ReturnType<typeof createMessengerRealtimeApplier>,
     message: WorkspaceMessengerMessageDto,
     epoch = 1,
   ) {
@@ -300,9 +300,10 @@ describe("confirmed poll snapshots", () => {
       const gate = new Promise<void>((resolve) => {
         release = resolve;
       });
-      const applier = createMessengerRealtimeActiveApplier(
+      const applier = createMessengerRealtimeApplier(
         order === "realtime cache still writing"
           ? {
+              requireOwnerCatalog: false,
               cache: {
                 async patchCachedMessage(owner, message, guard) {
                   if (message.pollState?.revision === 2) await gate;
@@ -310,7 +311,7 @@ describe("confirmed poll snapshots", () => {
                 },
               },
             }
-          : undefined,
+          : { requireOwnerCatalog: false },
       );
       let resolveHttp!: (value: WorkspaceMessengerMessageDto) => void;
       vi.mocked(invokePollAction).mockReturnValue(
@@ -353,7 +354,7 @@ describe("confirmed poll snapshots", () => {
 
   it("preserves equal-revision close and the inserted poll pair after a lower HTTP receipt", async () => {
     await writeMessengerMessageBodyCache(ownerKey, [original]);
-    const applier = createMessengerRealtimeActiveApplier();
+    const applier = createMessengerRealtimeApplier({ requireOwnerCatalog: false });
     const closed = {
       ...httpSnapshot,
       poll_state: { ...httpSnapshot.poll_state, is_closed: true },
@@ -408,7 +409,7 @@ describe("confirmed poll snapshots", () => {
   it.each(["during publication", "at cache commit"] as const)(
     "keeps an exact read %s when there is no previous cached poll body",
     async (timing) => {
-      const applier = createMessengerRealtimeActiveApplier();
+      const applier = createMessengerRealtimeApplier({ requireOwnerCatalog: false });
       let read: ReturnType<typeof applier.applyEvent>;
       const markRead = () => {
         read = applier.applyEvent(
@@ -464,7 +465,7 @@ describe("confirmed poll snapshots", () => {
       }),
     );
     const http = messages.polls.mutate({ messageUuid: dto.uuid, action: { kind: "close" } });
-    const applier = createMessengerRealtimeActiveApplier();
+    const applier = createMessengerRealtimeApplier({ requireOwnerCatalog: false });
     await applyUpdate(applier, { ...dto, topic_uuid: "a1b71764-7147-4e8f-ba83-f95648cd6630" });
     await applyUpdate(applier, dto, 2);
     resolveHttp(httpSnapshot);

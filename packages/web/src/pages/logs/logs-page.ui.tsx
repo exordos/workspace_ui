@@ -4,8 +4,13 @@ import { useChatsCatalog } from "~/applications/messenger/model/chats/chats";
 import { useMessageIndex } from "~/applications/messenger/model/messages/messages-consumers";
 import { useThemeStore } from "~/entities/theme/theme.model";
 import { useUsersStore } from "~/entities/user/user.model";
-import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
+import {
+  selectCurrentWorkspaceRuntimeContext,
+  useWorkspaceAuthStore,
+} from "~/entities/workspace-auth/workspace-auth.model";
 import { getWorkspaceSessionStorageScopeFromAuthState } from "~/entities/workspace-auth/workspace-session-storage-scope.lib";
+import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
+import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import { authIdleTimeoutToMs } from "~/features/settings/auth-idle-timeout.lib";
 import { useSettingsStore } from "~/features/settings/settings.model";
 import { t } from "~/i18n/i18n";
@@ -16,8 +21,6 @@ import {
   getConnectionHealthSnapshot,
   subscribeConnectionHealth,
 } from "~/shared/lib/connection-health";
-import type { DiagnosticIdbSnapshot } from "~/shared/lib/diagnostics-idb.lib";
-import { estimateDiagnosticsIdbFootprint } from "~/shared/lib/diagnostics-idb.lib";
 import type { DiagnosticsMemorySnapshot } from "~/shared/lib/diagnostics-memory.lib";
 import { getDiagnosticRealtimeStats } from "~/shared/lib/diagnostics-realtime.lib";
 import { getDiagnosticVitalsSnapshot } from "~/shared/lib/diagnostics-vitals.lib";
@@ -28,6 +31,10 @@ import {
   type LogEntry,
 } from "~/shared/lib/logger";
 import { probeApiTransportWithLatency } from "~/shared/lib/network-transport-probe.lib";
+import {
+  readWorkspaceMessengerCacheDiagnostics,
+  type WorkspaceMessengerCacheDiagnostics,
+} from "~/shared/lib/workspace-messenger-cache-db";
 import { getZulipRateLimitBlockedUntil } from "~/shared/lib/zulip-rate-limit-gate";
 import {
   buildConnectionReportSnapshot,
@@ -52,7 +59,10 @@ export const LogsPage: React.FC = () => {
   const [memorySnapshot, setMemorySnapshot] = useState<DiagnosticsMemorySnapshot | null>(null);
   const [memoryRefreshToken, setMemoryRefreshToken] = useState(0);
   const [connectionHealth, setConnectionHealth] = useState(getConnectionHealthSnapshot);
-  const [cacheSnapshot, setCacheSnapshot] = useState<DiagnosticIdbSnapshot | null>(null);
+  const [cacheResult, setCacheResult] = useState<{
+    runtime: WorkspaceRuntimeContext;
+    snapshot: WorkspaceMessengerCacheDiagnostics | null;
+  } | null>(null);
   const [pingState, setPingState] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [pingLatencyMs, setPingLatencyMs] = useState<number | null>(null);
   const [dashboardTick, setDashboardTick] = useState(0);
@@ -68,6 +78,8 @@ export const LogsPage: React.FC = () => {
   const workspaceOwnerKey = useWorkspaceAuthStore(
     (s) => getWorkspaceSessionStorageScopeFromAuthState(s).ownerKey,
   );
+  const runtime = useWorkspaceAuthStore(selectCurrentWorkspaceRuntimeContext);
+  const cacheSnapshot = cacheResult?.runtime === runtime ? cacheResult.snapshot : null;
   const streamsCount = useChatsCatalog((s) => s.streamIds.length);
   const conversationsCount = useChatsCatalog((s) => s.conversationIds.length);
   const foldersCount = useChatsCatalog((s) => s.folderIds.length);
@@ -102,14 +114,19 @@ export const LogsPage: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    if (runtime == null) return undefined;
     let cancelled = false;
-    void estimateDiagnosticsIdbFootprint(workspaceOwnerKey).then((snapshot) => {
-      if (!cancelled) setCacheSnapshot(snapshot);
-    });
+    void readWorkspaceMessengerCacheDiagnostics(workspaceRuntimeOwnerKey(runtime)).then(
+      (snapshot) => {
+        if (!cancelled && useWorkspaceAuthStore.getState().getCurrentRuntimeContext() === runtime) {
+          setCacheResult({ runtime, snapshot });
+        }
+      },
+    );
     return () => {
       cancelled = true;
     };
-  }, [workspaceOwnerKey, dashboardTick]);
+  }, [runtime, dashboardTick]);
 
   const clearLogs = useCallback(() => {
     clearLogHistory();

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
-import { reconcileMessengerStores } from "~/applications/messenger/model/chats/messenger.model";
-import { reconcileWorkspaceMessageStores } from "~/applications/messenger/model/messages/message.model";
-import { releaseMessengerSessionProjections } from "~/applications/messenger/runtime/sync/messenger-session-snapshot.lib";
+import {
+  reconcileMessengerSessionModels,
+  releaseMessengerSessionProjections,
+} from "~/applications/messenger/runtime/sync/messenger-session-snapshot.lib";
 import { reconcileUsersStores, useUsersStore } from "~/entities/user/user.model";
 import { fetchWorkspaceServerSettingsForOrganization } from "~/entities/workspace-auth/workspace-auth.lib";
 import {
@@ -15,6 +16,7 @@ import { onPowerResume } from "~/shared/lib/power";
 import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
 import { createWorkspaceRealtimeBrowserCursorStorage } from "~/shared/lib/workspace-realtime/workspace-realtime-cursor.lib";
 import { readWorkspaceSession } from "./workspace-session-bootstrap.lib";
+import { registerWorkspaceColdStartStopper } from "./workspace-session-reset.lib";
 import {
   createWorkspaceSessionRuntimeManager,
   startWorkspaceSessionPresence,
@@ -57,30 +59,34 @@ export function useWorkspaceSessionRuntime(
       releaseMessengerSessionProjections(ownerKey);
     }
     previousSessions.current = currentSessions;
-    reconcileMessengerStores(sessions);
-    reconcileWorkspaceMessageStores(sessions);
+    reconcileMessengerSessionModels(sessions);
     reconcileUsersStores(sessions);
   }, [enabled, sessions]);
 
   useEffect(() => {
     if (!enabled) return undefined;
+    const stopManager = (reason: string) => {
+      const current = manager.current;
+      manager.current = null;
+      void current?.stopAll(reason).catch((error) => {
+        reportUnexpectedError("workspace-realtime:stop", error);
+      });
+    };
+    const unregister = registerWorkspaceColdStartStopper(() => stopManager("workspace_cold_start"));
     const unsubscribe = onPowerResume(() => {
       void manager.current?.reconnectAll("power_resume").catch((error) => {
         reportUnexpectedError("workspace-realtime:resume", error);
       });
     });
     return () => {
+      unregister();
       unsubscribe();
-      const current = manager.current;
-      manager.current = null;
-      void current?.stopAll("workspace_session_cleanup").catch((error) => {
-        reportUnexpectedError("workspace-realtime:stop", error);
-      });
+      stopManager("workspace_session_cleanup");
     };
   }, [enabled]);
 
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled || useWorkspaceAuthStore.getState().runtimeSuspended) return;
     if (manager.current == null && sessions.length > 0 && cursorStorage.current != null) {
       manager.current = createWorkspaceSessionRuntimeManager(cursorStorage.current);
     }
@@ -92,13 +98,35 @@ export function useWorkspaceSessionRuntime(
   }, [activeOwnerKey, enabled, sessions]);
 
   useEffect(() => {
-    if (!enabled || activeSession == null || !canReportPresence) return undefined;
-    return startWorkspaceSessionPresence(activeSession);
+    if (
+      !enabled ||
+      activeSession == null ||
+      !canReportPresence ||
+      useWorkspaceAuthStore.getState().runtimeSuspended
+    )
+      return undefined;
+    const stopPresence = startWorkspaceSessionPresence(activeSession);
+    let stopped = false;
+    const stop = () => {
+      if (stopped) return;
+      stopped = true;
+      unregister();
+      stopPresence();
+    };
+    const unregister = registerWorkspaceColdStartStopper(stop);
+    return stop;
   }, [activeSession, canReportPresence, enabled]);
 
   useEffect(() => {
-    if (!enabled || activeSession == null || activeOwnerKey == null) return undefined;
+    if (
+      !enabled ||
+      activeSession == null ||
+      activeOwnerKey == null ||
+      useWorkspaceAuthStore.getState().runtimeSuspended
+    )
+      return undefined;
     const controller = new AbortController();
+    const unregister = registerWorkspaceColdStartStopper(() => controller.abort());
     void fetchWorkspaceServerSettingsForOrganization(activeSession.organizationOrigin, {
       signal: controller.signal,
     })
@@ -111,7 +139,10 @@ export function useWorkspaceSessionRuntime(
         if (!controller.signal.aborted)
           reportUnexpectedError("workspace-jitsi:server-settings", error);
       });
-    return () => controller.abort();
+    return () => {
+      unregister();
+      controller.abort();
+    };
   }, [activeOwnerKey, activeSession, enabled]);
 
   return useCallback(() => {

@@ -49,6 +49,7 @@ export interface WorkspaceAuthState {
   runtimeGenerationSequence: number; // Sequence shared by credential and selection changes.
   // Unlike runtimeGeneration, this does not change during token refresh.
   sessionSelectionGeneration: number;
+  runtimeSuspended: boolean; // Revokes this document's owner contexts until a cold reload.
   setSession: (session: NewWorkspaceAuthSession) => void;
   updateProfileForRuntime: (
     runtime: WorkspaceRuntimeContext,
@@ -217,6 +218,7 @@ export const useWorkspaceAuthStore = create<WorkspaceAuthState>((set, get) => ({
   runtimeGeneration: selectCurrentWorkspaceRuntimeContext(initialState)?.runtimeGeneration ?? 0,
   runtimeGenerationSequence: latestSessionGeneration(initialState.sessions),
   sessionSelectionGeneration: 0,
+  runtimeSuspended: false,
 
   setSession: (session) => {
     set((state) => {
@@ -398,14 +400,23 @@ export const useWorkspaceAuthStore = create<WorkspaceAuthState>((set, get) => ({
   },
 
   getRuntimeContextForOwner: (owner) => {
+    const state = get();
+    if (state.runtimeSuspended) return null;
     const key = workspaceRuntimeOwnerKey(owner);
-    return get().sessions.find((session) => workspaceRuntimeOwnerKey(session) === key) ?? null;
+    return state.sessions.find((session) => workspaceRuntimeOwnerKey(session) === key) ?? null;
   },
 }));
 
+// Revoke all request contexts without persisting any change to the IAM sessions.
+export function suspendWorkspaceRuntimeForColdStart(): void {
+  useWorkspaceAuthStore.setState({ runtimeSuspended: true });
+}
+
 export function selectCurrentWorkspaceRuntimeContext(
-  state: Pick<WorkspaceAuthState, "sessions" | "currentAccountId">,
+  state: Pick<WorkspaceAuthState, "sessions" | "currentAccountId"> &
+    Partial<Pick<WorkspaceAuthState, "runtimeSuspended">>,
 ): WorkspaceRuntimeContext | null {
+  if (state.runtimeSuspended) return null;
   const session = state.sessions.find((item) => item.accountId === state.currentAccountId) ?? null;
   if (session == null) return null;
   const cached = selectedRuntimeContexts.get(session);

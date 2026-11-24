@@ -47,11 +47,11 @@ export function readWorkspaceSession(
   owner: WorkspaceRealtimeRuntimeOwner,
   surface?: WorkspaceRealtimeRuntimeContext["surface"],
 ): WorkspaceRuntimeContext | null {
-  const { sessions, currentAccountId } = useWorkspaceAuthStore.getState();
+  const { getRuntimeContextForOwner, currentAccountId } = useWorkspaceAuthStore.getState();
   if (surface != null && (owner.accountId === currentAccountId) !== (surface === "active")) {
     return null;
   }
-  const session = sessions.find((candidate) => candidate.accountId === owner.accountId) ?? null;
+  const session = getRuntimeContextForOwner(owner);
   return isWorkspaceRuntimeRequestContextCurrent(owner, () => session) ? session : null;
 }
 

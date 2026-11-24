@@ -111,6 +111,15 @@ export function resetMessengerRuntimeMutations(): void {
   abortActiveMutations();
 }
 
+// Revoke transient Messenger work while the cold-start reset deletes its local storage.
+export function quiesceMessengerOwnerWorkForColdStart(): void {
+  abortActiveMutations();
+  for (const session of useWorkspaceAuthStore.getState().sessions) {
+    // The database reset closes both the existing connection and access to new connections.
+    void disposeMessengerOwnerWork(workspaceRuntimeOwnerKey(session)).catch(() => undefined);
+  }
+}
+
 const unsubscribeAuth = useWorkspaceAuthStore.subscribe((state, previous) => {
   synchronizeRuntime();
   if (state.sessions === previous.sessions) return;

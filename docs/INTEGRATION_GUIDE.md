@@ -22,7 +22,7 @@ Use narrow selectors and keep derived values stable. Do not introduce a second s
 
 ## 3. Connect realtime only when the feature needs it
 
-Inspect the [Workspace session composition](../packages/web/src/app/workspace-session/workspace-session.lib.ts), [event API](../packages/web/src/shared/api/messenger-realtime.api.ts), [event applier](../packages/web/src/applications/messenger/runtime/sync/messenger-realtime-applier.lib.ts) and [cache application](../packages/web/src/applications/messenger/runtime/sync/messenger-realtime-cache.lib.ts). Extend the existing event path instead of adding the legacy Zulip event loop.
+Inspect the [Workspace session composition](../packages/web/src/app/workspace-session/workspace-session.lib.ts), [event API](../packages/web/src/shared/api/messenger-realtime.api.ts), [owner event applier](../packages/web/src/applications/messenger/runtime/sync/messenger-realtime-applier.lib.ts) and [cache operations](../packages/web/src/applications/messenger/model/messenger-cache.lib.ts). Extend the existing Workspace event path.
 
 Preserve REST catch-up ordering, epoch generation/version cursor semantics, deduplication, active conversation updates and background projections. Bind listeners and cleanup to the runtime that created them. A newly visible message must not bypass existing unread/read or notification policy.
 

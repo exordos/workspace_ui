@@ -10,7 +10,7 @@ import {
   prepareWorkspaceProjectLogin,
   removeWorkspaceSession,
 } from "./workspace-auth.lib";
-import { useWorkspaceAuthStore } from "./workspace-auth.model";
+import { suspendWorkspaceRuntimeForColdStart, useWorkspaceAuthStore } from "./workspace-auth.model";
 import { readWorkspaceOrganizationHistory } from "./workspace-organization-history.lib";
 import type { WorkspaceAuthSession } from "./workspace-auth.model";
 
@@ -85,6 +85,7 @@ function resetStore(): void {
     runtimeGeneration: 0,
     runtimeGenerationSequence: 0,
     sessionSelectionGeneration: 0,
+    runtimeSuspended: false,
   });
 }
 
@@ -512,6 +513,23 @@ describe("workspace-auth flow", () => {
     expect(readWorkspaceOrganizationHistory()).toEqual([]);
   });
 
+  it("discards a pending login that resolves during cold start", async () => {
+    const saved = storeWorkspaceSession(createWorkspaceSession({ accountId: "saved" }));
+    const persistedBeforeReset = localStorage.getItem("workspace-auth-sessions");
+    const profile = createDeferredValue<unknown>();
+    getWorkspaceMessengerAuthProfile.mockReturnValueOnce(profile.promise);
+    const pending = loginAndGetCurrentSession();
+    await vi.waitFor(() => expect(getWorkspaceMessengerAuthProfile).toHaveBeenCalled());
+
+    suspendWorkspaceRuntimeForColdStart();
+    profile.resolve({ uuid: USER_UUID });
+
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    expect(useWorkspaceAuthStore.getState().getCurrentSession()).toEqual(saved);
+    expect(localStorage.getItem("workspace-auth-sessions")).toBe(persistedBeforeReset);
+    expect(readWorkspaceOrganizationHistory()).toEqual([]);
+  });
+
   describe.each(["password", "project"] as const)("pending %s login", (flow) => {
     function startLogin() {
       const params = {
@@ -768,6 +786,38 @@ describe("workspace-auth flow", () => {
       refreshToken: "refresh-token-next",
     });
   });
+
+  it.each(["success", "failure"] as const)(
+    "discards a pending shared IAM refresh %s during cold start",
+    async (result) => {
+      const session = storeWorkspaceSession(createWorkspaceSession());
+      const persistedBeforeReset = localStorage.getItem("workspace-auth-sessions");
+      const deferred = createDeferredValue<WorkspaceIamAuthModule.WorkspaceIamTokenResponse>();
+      refreshWorkspaceIamToken.mockReturnValueOnce(deferred.promise);
+      const first = ensureFreshWorkspaceSession(session.accountId, { force: true });
+      const second = ensureFreshWorkspaceSession(session.accountId, { force: true });
+
+      suspendWorkspaceRuntimeForColdStart();
+      if (result === "success") {
+        deferred.resolve({
+          accessToken: tokenWithClaims({ user_uuid: USER_UUID, project_id: PROJECT_ID }),
+          refreshToken: "rotated",
+          raw: {},
+        });
+      } else {
+        deferred.reject(new Error("IAM unavailable"));
+      }
+
+      await expect(first).rejects.toMatchObject({ name: "AbortError" });
+      await expect(second).rejects.toMatchObject({ name: "AbortError" });
+      expect(useWorkspaceAuthStore.getState().getCurrentSession()).toEqual(session);
+      expect(localStorage.getItem("workspace-auth-sessions")).toBe(persistedBeforeReset);
+      await expect(
+        ensureFreshWorkspaceSession(session.accountId, { force: true }),
+      ).rejects.toMatchObject({ name: "AbortError" });
+      expect(refreshWorkspaceIamToken).toHaveBeenCalledOnce();
+    },
+  );
 
   it("keeps shared refresh alive when one waiting caller is aborted", async () => {
     const session = await loginAndGetCurrentSession();

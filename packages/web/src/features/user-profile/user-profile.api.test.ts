@@ -142,9 +142,12 @@ describe("Workspace own avatar API", () => {
       runtime.runtimeGeneration,
     );
     expect(useUsersStore.getState().usersById[USER_UUID]?.displayName).toBe("Alicia");
-    expect(writeUsersToCacheForOwnerMock).toHaveBeenCalledWith(workspaceRuntimeOwnerKey(runtime), [
-      expect.objectContaining({ firstName: "Alicia" }),
-    ]);
+    expect(writeUsersToCacheForOwnerMock).toHaveBeenCalledWith(
+      workspaceRuntimeOwnerKey(runtime),
+      [expect.objectContaining({ firstName: "Alicia" })],
+      undefined,
+      expect.any(Function),
+    );
   });
 
   it("reports saved-but-not-refreshed when Workspace is unavailable or returns old identity", async () => {
@@ -204,9 +207,12 @@ describe("Workspace own avatar API", () => {
       file,
     );
     expect(useUsersStore.getState().usersById[USER_UUID]?.avatarUrl).toBe(avatar);
-    expect(writeUsersToCacheForOwnerMock).toHaveBeenCalledWith(workspaceRuntimeOwnerKey(runtime), [
-      expect.objectContaining({ uuid: USER_UUID, avatarUrl: avatar }),
-    ]);
+    expect(writeUsersToCacheForOwnerMock).toHaveBeenCalledWith(
+      workspaceRuntimeOwnerKey(runtime),
+      [expect.objectContaining({ uuid: USER_UUID, avatarUrl: avatar })],
+      undefined,
+      expect.any(Function),
+    );
   });
 
   it("keeps the default avatar returned by reset instead of clearing it locally", async () => {

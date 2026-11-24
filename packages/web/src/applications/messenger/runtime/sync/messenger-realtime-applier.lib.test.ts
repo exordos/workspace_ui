@@ -1,8 +1,14 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  getSelectedWorkspaceMessageStore,
+  getWorkspaceMessageStoreForOwner,
   selectWorkspaceMessagesForConversation,
   useWorkspaceMessageStore,
 } from "~/applications/messenger/model/messages/message.model";
+import {
+  useWorkspaceAuthStore,
+  type WorkspaceAuthSession,
+} from "~/entities/workspace-auth/workspace-auth.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { isWorkspaceMessengerMessageDto } from "~/shared/api/messenger.types";
 import type {
@@ -25,6 +31,8 @@ import {
 import { repairDeletedMessagePointers } from "../../model/chats/messenger-deleted-message-pointer-repair.lib";
 import { MESSENGER_ALL_CHATS_FOLDER_UUID } from "../../model/chats/messenger-folder-system-type.lib";
 import {
+  getMessengerStoreForOwner,
+  getSelectedMessengerStore,
   selectMessengerFolders,
   selectMessengerSidebarConversations,
   useMessengerStore,
@@ -39,10 +47,9 @@ import {
 import { useMessengerOutboxStore } from "../../model/messages/outgoing/messenger-outbox.model";
 import { useMessengerBackgroundProjectionStore } from "./messenger-background-projection.model";
 import {
-  createMessengerRealtimeActiveApplier,
-  createMessengerRealtimeBackgroundApplier,
+  createMessengerRealtimeApplier,
+  type MessengerRealtimeApplierOptions,
 } from "./messenger-realtime-applier.lib";
-import type { RemoveMessengerStreamProjectionOptions } from "./messenger-stream-projection-cleanup.lib";
 import type { MessengerMessage } from "../../model/messenger.types";
 
 const ACCOUNT_A = "account-a";
@@ -77,6 +84,47 @@ function createOwner(overrides: Partial<WorkspaceRealtimeRuntimeOwner> = {}) {
     runtimeGeneration: 1,
     ...overrides,
   };
+}
+
+// These selected-store fixtures predate auth. The background cases use authorized owner stores.
+function createSelectedModelApplier(options: MessengerRealtimeApplierOptions = {}) {
+  return createMessengerRealtimeApplier({
+    requireOwnerCatalog: false,
+    getModel: () => ({
+      catalog: getSelectedMessengerStore(),
+      messages: getSelectedWorkspaceMessageStore(),
+    }),
+    ...options,
+  });
+}
+
+function authorizeBackgroundModel(owner: WorkspaceRealtimeRuntimeOwner) {
+  const session: WorkspaceAuthSession = {
+    ...owner,
+    organizationOrigin: "https://background.example.invalid",
+    accessToken: "test-token",
+    login: "tester",
+    profile: {
+      uuid: owner.userUuid,
+      username: "tester",
+      firstName: null,
+      lastName: null,
+      email: null,
+    },
+  };
+  useWorkspaceAuthStore.setState(({ sessions }) => ({ sessions: [...sessions, session] }));
+  const ownerKey = workspaceRuntimeOwnerKey(owner);
+  const catalog = getMessengerStoreForOwner(ownerKey);
+  const messages = getWorkspaceMessageStoreForOwner(ownerKey);
+  if (catalog == null || messages == null) throw new Error("Missing authorized test model");
+  catalog.getState().replaceBootstrapState(ownerKey, {
+    streams: [],
+    topics: [],
+    streamBindings: [],
+    folders: [],
+    conversations: [],
+  });
+  return { catalog, messages };
 }
 
 function createContext(
@@ -238,7 +286,7 @@ function createFolderDto(
 }
 
 async function applyStreamAndTopicSnapshot(
-  applier: ReturnType<typeof createMessengerRealtimeActiveApplier>,
+  applier: ReturnType<typeof createSelectedModelApplier>,
   context: WorkspaceRealtimeEventContext,
   options: {
     stream?: Partial<WorkspaceMessengerStreamDto>;
@@ -267,7 +315,11 @@ async function applyStreamAndTopicSnapshot(
   );
 }
 
-describe("messenger realtime active applier", () => {
+describe("messenger realtime owner applier", () => {
+  afterEach(() => {
+    useWorkspaceAuthStore.setState({ sessions: [], currentAccountId: null });
+  });
+
   beforeEach(() => {
     clearMessengerReadBoundariesForOwner(createContext().ownerKey);
     useMessengerStore.getState().clear();
@@ -282,7 +334,7 @@ describe("messenger realtime active applier", () => {
     const store = useMessengerStore.getState();
     store.startBootstrap(context.ownerKey);
     const upsertCachedStream = vi.fn();
-    const applier = createMessengerRealtimeActiveApplier({ cache: { upsertCachedStream } });
+    const applier = createSelectedModelApplier({ cache: { upsertCachedStream } });
     for (const [index, checked, timestamp, expected] of [
       [10, false, "2026-06-22T10:10:00.000002Z", false],
       [11, true, "2026-06-22T10:10:00.000001Z", false],
@@ -326,7 +378,7 @@ describe("messenger realtime active applier", () => {
       status: "sending",
       includeStreamConversation: false,
     });
-    const applier = createMessengerRealtimeActiveApplier({
+    const applier = createSelectedModelApplier({
       cache: { writeConversationMessagePage: vi.fn(), writeRealtimeCursor: vi.fn() },
     });
 
@@ -366,7 +418,7 @@ describe("messenger realtime active applier", () => {
       });
       const writeCreatedMessages = vi.fn(() => messagesWritten);
       const writeRealtimeCursor = vi.fn();
-      const applier = createMessengerRealtimeActiveApplier({
+      const applier = createSelectedModelApplier({
         cache: { writeCreatedMessages, writeRealtimeCursor },
       });
       await applyStreamAndTopicSnapshot(applier, context);
@@ -476,7 +528,7 @@ describe("messenger realtime active applier", () => {
       const writeCreatedMessages = vi.fn();
       const writeRealtimeCursor = vi.fn();
       const onMessageCreated = vi.fn();
-      const applier = createMessengerRealtimeActiveApplier({
+      const applier = createSelectedModelApplier({
         cache: { writeCreatedMessages, writeRealtimeCursor },
         onMessageCreated,
       });
@@ -575,7 +627,7 @@ describe("messenger realtime active applier", () => {
         cacheCommit(isCurrent());
       },
     );
-    const applier = createMessengerRealtimeActiveApplier({ cache: { writeCreatedMessages } });
+    const applier = createSelectedModelApplier({ cache: { writeCreatedMessages } });
     const old = createMessageDto();
     const fresh = createMessageDto({ uuid: MESSAGE_B, created_at: DATE_LATER });
     const application = applier.applyEvents?.(
@@ -621,7 +673,7 @@ describe("messenger realtime active applier", () => {
       writeRealtimeCursor: vi.fn(),
     };
     const onMessageCreated = vi.fn();
-    const applier = createMessengerRealtimeActiveApplier({ cache, onMessageCreated });
+    const applier = createSelectedModelApplier({ cache, onMessageCreated });
     useMessengerStore.getState().startBootstrap(context.ownerKey);
 
     for (const [uuid, createdAt] of [
@@ -701,7 +753,7 @@ describe("messenger realtime active applier", () => {
       writeConversationMessagePage: vi.fn(() => messages),
       writeRealtimeCursor: vi.fn(() => cursor),
     };
-    const applier = createMessengerRealtimeActiveApplier({ cache });
+    const applier = createSelectedModelApplier({ cache });
     useMessengerStore.getState().startBootstrap(context.ownerKey);
     let completed = false;
     const application = Promise.resolve(
@@ -750,7 +802,7 @@ describe("messenger realtime active applier", () => {
         writeConversationMessagePage: vi.fn(() => cacheWrite),
         writeRealtimeCursor: vi.fn(),
       };
-      const applier = createMessengerRealtimeActiveApplier({
+      const applier = createSelectedModelApplier({
         cache,
         isOwnerCurrent: () => current,
       });
@@ -782,7 +834,7 @@ describe("messenger realtime active applier", () => {
       writeConversationMessagePage: vi.fn(() => Promise.reject(new Error("cache unavailable"))),
       writeRealtimeCursor: vi.fn(() => Promise.reject(new Error("cursor unavailable"))),
     };
-    const applier = createMessengerRealtimeActiveApplier({ cache });
+    const applier = createSelectedModelApplier({ cache });
     useMessengerStore.getState().startBootstrap(context.ownerKey);
     await applier.applyEvent(
       {
@@ -807,7 +859,7 @@ describe("messenger realtime active applier", () => {
     const boundaryWrite = new Promise<void>((resolve) => {
       releaseBoundaryWrite = resolve;
     });
-    const applier = createMessengerRealtimeActiveApplier({
+    const applier = createSelectedModelApplier({
       cache: {
         advanceReadBoundary: vi.fn(() => boundaryWrite),
         patchCachedMessage: vi.fn(),
@@ -846,7 +898,7 @@ describe("messenger realtime active applier", () => {
   it("applies messages.read as an exact batch without advancing a boundary", () => {
     const context = createContext();
     const cache = { markCachedMessagesRead: vi.fn(), writeRealtimeCursor: vi.fn() };
-    const applier = createMessengerRealtimeActiveApplier({ cache });
+    const applier = createSelectedModelApplier({ cache });
     useMessengerStore.getState().startBootstrap(context.ownerKey);
     applier.applyEvent(
       {
@@ -887,7 +939,7 @@ describe("messenger realtime active applier", () => {
     const context = createContext();
     useMessengerStore.getState().startBootstrap(context.ownerKey);
     const writeRealtimeCursor = vi.fn();
-    const applier = createMessengerRealtimeActiveApplier({ cache: { writeRealtimeCursor } });
+    const applier = createSelectedModelApplier({ cache: { writeRealtimeCursor } });
     const unsubscribe = useMessengerBackgroundProjectionStore.subscribe((state) => {
       if (state.projectionsByOwnerKey[context.ownerKey]?.lastEpochVersion !== 12) return;
       applier.applyEvent(
@@ -918,8 +970,9 @@ describe("messenger realtime active applier", () => {
 
   it("persists a background message.read boundary without touching the active message store", async () => {
     const context = createContext(createOwner(), { surface: "background" });
+    authorizeBackgroundModel(context.owner);
     const cache = { advanceReadBoundary: vi.fn(), markCachedMessagesRead: vi.fn() };
-    const applier = createMessengerRealtimeBackgroundApplier({ cache });
+    const applier = createMessengerRealtimeApplier({ cache });
 
     await applier.applyEvent(
       {
@@ -944,11 +997,13 @@ describe("messenger realtime active applier", () => {
     );
     expect(cache.advanceReadBoundary).toHaveBeenCalledWith(
       expect.objectContaining({ messageUuid: MESSAGE_B, epochVersion: 14 }),
+      expect.any(Function),
     );
   });
 
-  it("settles an outgoing message after its background created event is cached", async () => {
+  it("settles the owner outbox when a background create is accepted", async () => {
     const context = createContext(createOwner(), { surface: "background" });
+    authorizeBackgroundModel(context.owner);
     const outgoing = useMessengerOutboxStore.getState().enqueueOutgoingMessage({
       ownerKey: context.ownerKey,
       conversationId: `topic:${STREAM_A}:${TOPIC_A}`,
@@ -960,7 +1015,7 @@ describe("messenger realtime active applier", () => {
       status: "sending",
       includeStreamConversation: false,
     });
-    const applier = createMessengerRealtimeBackgroundApplier({
+    const applier = createMessengerRealtimeApplier({
       cache: { writeConversationMessagePage: vi.fn(), writeRealtimeCursor: vi.fn() },
     });
 
@@ -987,11 +1042,12 @@ describe("messenger realtime active applier", () => {
 
   it("keeps background message.read application pending until the boundary is durable", async () => {
     const context = createContext(createOwner(), { surface: "background" });
+    authorizeBackgroundModel(context.owner);
     let releaseBoundaryWrite: (() => void) | undefined;
     const boundaryWrite = new Promise<void>((resolve) => {
       releaseBoundaryWrite = resolve;
     });
-    const applier = createMessengerRealtimeBackgroundApplier({
+    const applier = createMessengerRealtimeApplier({
       cache: { advanceReadBoundary: vi.fn(() => boundaryWrite) },
     });
 
@@ -1029,6 +1085,7 @@ describe("messenger realtime active applier", () => {
 
   it("awaits a background message cache write before publishing its lightweight projection", async () => {
     const context = createContext(createOwner(), { surface: "background" });
+    authorizeBackgroundModel(context.owner);
     let releaseMessageWrite: (() => void) | undefined;
     const messageWrite = new Promise<void>((resolve) => {
       releaseMessageWrite = resolve;
@@ -1037,7 +1094,7 @@ describe("messenger realtime active applier", () => {
       writeConversationMessagePage: vi.fn(() => messageWrite),
       writeRealtimeCursor: vi.fn(),
     };
-    const applier = createMessengerRealtimeBackgroundApplier({ cache });
+    const applier = createMessengerRealtimeApplier({ cache });
 
     const application = Promise.resolve(
       applier.applyEvent(
@@ -1056,7 +1113,7 @@ describe("messenger realtime active applier", () => {
       ),
     );
 
-    await vi.waitFor(() => expect(cache.writeConversationMessagePage).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(cache.writeConversationMessagePage).toHaveBeenCalledTimes(2));
     expect(
       useMessengerBackgroundProjectionStore.getState().projectionsByOwnerKey[context.ownerKey],
     ).toBeUndefined();
@@ -1066,7 +1123,11 @@ describe("messenger realtime active applier", () => {
     releaseMessageWrite?.();
     await application;
 
-    expect(cache.writeRealtimeCursor).toHaveBeenCalledWith(context.ownerKey, 15);
+    expect(cache.writeRealtimeCursor).toHaveBeenCalledWith(
+      context.ownerKey,
+      15,
+      expect.any(Function),
+    );
     expect(
       useMessengerBackgroundProjectionStore.getState().projectionsByOwnerKey[context.ownerKey]
         ?.messageIdSnapshotsById[MESSAGE_C],
@@ -1076,11 +1137,12 @@ describe("messenger realtime active applier", () => {
 
   it("does not start background cache work for an initially stale owner", async () => {
     const context = createContext(createOwner(), { surface: "background" });
+    authorizeBackgroundModel(context.owner);
     const cache = {
       writeConversationMessagePage: vi.fn(),
       writeRealtimeCursor: vi.fn(),
     };
-    const applier = createMessengerRealtimeBackgroundApplier({
+    const applier = createMessengerRealtimeApplier({
       cache,
       isOwnerCurrent: () => false,
     });
@@ -1109,11 +1171,12 @@ describe("messenger realtime active applier", () => {
       surface: "background",
       signal: abortController.signal,
     });
+    authorizeBackgroundModel(context.owner);
     const cache = {
       writeConversationMessagePage: vi.fn(),
       writeRealtimeCursor: vi.fn(),
     };
-    const applier = createMessengerRealtimeBackgroundApplier({ cache });
+    const applier = createMessengerRealtimeApplier({ cache });
 
     await applier.applyEvent(
       {
@@ -1134,6 +1197,7 @@ describe("messenger realtime active applier", () => {
 
   it("does not publish a cursor or projection when the owner becomes stale during a cache write", async () => {
     const context = createContext(createOwner(), { surface: "background" });
+    authorizeBackgroundModel(context.owner);
     let isCurrent = true;
     let releaseMessageWrite: (() => void) | undefined;
     const messageWrite = new Promise<void>((resolve) => {
@@ -1143,7 +1207,7 @@ describe("messenger realtime active applier", () => {
       writeConversationMessagePage: vi.fn(() => messageWrite),
       writeRealtimeCursor: vi.fn(),
     };
-    const applier = createMessengerRealtimeBackgroundApplier({
+    const applier = createMessengerRealtimeApplier({
       cache,
       isOwnerCurrent: () => isCurrent,
     });
@@ -1159,7 +1223,7 @@ describe("messenger realtime active applier", () => {
         context,
       ),
     );
-    await vi.waitFor(() => expect(cache.writeConversationMessagePage).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(cache.writeConversationMessagePage).toHaveBeenCalledTimes(2));
 
     isCurrent = false;
     releaseMessageWrite?.();
@@ -1177,6 +1241,7 @@ describe("messenger realtime active applier", () => {
       surface: "background",
       signal: abortController.signal,
     });
+    authorizeBackgroundModel(context.owner);
     let releaseMessageWrite: (() => void) | undefined;
     const messageWrite = new Promise<void>((resolve) => {
       releaseMessageWrite = resolve;
@@ -1185,7 +1250,7 @@ describe("messenger realtime active applier", () => {
       writeConversationMessagePage: vi.fn(() => messageWrite),
       writeRealtimeCursor: vi.fn(),
     };
-    const applier = createMessengerRealtimeBackgroundApplier({ cache });
+    const applier = createMessengerRealtimeApplier({ cache });
 
     const application = Promise.resolve(
       applier.applyEvent(
@@ -1198,7 +1263,7 @@ describe("messenger realtime active applier", () => {
         context,
       ),
     );
-    await vi.waitFor(() => expect(cache.writeConversationMessagePage).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(cache.writeConversationMessagePage).toHaveBeenCalledTimes(2));
 
     abortController.abort();
     releaseMessageWrite?.();
@@ -1212,7 +1277,7 @@ describe("messenger realtime active applier", () => {
 
   it("publishes initial sync readiness only after active catch-up finishes", () => {
     const context = createContext();
-    const applier = createMessengerRealtimeActiveApplier();
+    const applier = createSelectedModelApplier();
     useMessengerStore.getState().startBootstrap(context.ownerKey);
     const transportState = (
       mode: "catching_up" | "connecting" | "connected" | "reconnecting" | "failed",
@@ -1264,7 +1329,7 @@ describe("messenger realtime active applier", () => {
       deleteCachedMessage: vi.fn(),
       writeRealtimeCursor: vi.fn(),
     };
-    const applier = createMessengerRealtimeActiveApplier({ cache });
+    const applier = createSelectedModelApplier({ cache });
     useMessengerStore.getState().startBootstrap(ownerKey);
 
     applier.applyEvent(
@@ -1400,7 +1465,7 @@ describe("messenger realtime active applier", () => {
     expect(initial.messages[0]?.uuid).toBe(visible.uuid);
     const listener = vi.fn(readVisible);
     const unsubscribe = facade.subscribeWindow(visible.conversationId, listener);
-    const applier = createMessengerRealtimeActiveApplier({
+    const applier = createSelectedModelApplier({
       cache: { patchCachedMessage: vi.fn() },
     });
     const edit = (epochVersion: number, message: MessengerMessage) =>
@@ -1456,7 +1521,7 @@ describe("messenger realtime active applier", () => {
     const getMessagesPage = vi.fn(() =>
       Promise.resolve({ items: [previousDto], nextPageMarker: null, pageLimit: 1 }),
     );
-    const applier = createMessengerRealtimeActiveApplier({
+    const applier = createSelectedModelApplier({
       onMessageDeleted: (_ownerKey, _message, plan) =>
         repairDeletedMessagePointers({
           runtimeContext,
@@ -1519,7 +1584,7 @@ describe("messenger realtime active applier", () => {
     });
     const cache = { writeRealtimeCursor: vi.fn() };
     const onMessageDeleted = vi.fn(() => repair);
-    const applier = createMessengerRealtimeActiveApplier({ cache, onMessageDeleted });
+    const applier = createSelectedModelApplier({ cache, onMessageDeleted });
     useMessengerStore.getState().startBootstrap(context.ownerKey);
 
     const application = applier.applyEvent(
@@ -1549,7 +1614,7 @@ describe("messenger realtime active applier", () => {
     const context = createContext();
     const cache = { writeRealtimeCursor: vi.fn() };
     const onMessageDeleted = vi.fn(() => Promise.reject(new Error("repair unavailable")));
-    const applier = createMessengerRealtimeActiveApplier({ cache, onMessageDeleted });
+    const applier = createSelectedModelApplier({ cache, onMessageDeleted });
     useMessengerStore.getState().startBootstrap(context.ownerKey);
 
     expect(() =>
@@ -1580,7 +1645,7 @@ describe("messenger realtime active applier", () => {
       organizationOrigin: "https://organization-a.example.com",
       accessToken: "access-token-a",
     };
-    const applier = createMessengerRealtimeActiveApplier();
+    const applier = createSelectedModelApplier();
     useMessengerStore.getState().startBootstrap(context.ownerKey);
     await applyStreamAndTopicSnapshot(applier, context);
     useWorkspaceMessageStore.getState().setOwner(context.ownerKey, false);
@@ -1636,7 +1701,7 @@ describe("messenger realtime active applier", () => {
 
   it("does not move last-message pointers when an older message is edited", async () => {
     const context = createContext();
-    const applier = createMessengerRealtimeActiveApplier();
+    const applier = createSelectedModelApplier();
     useMessengerStore.getState().startBootstrap(context.ownerKey);
     await applyStreamAndTopicSnapshot(applier, context, {
       stream: { last_message_uuid: MESSAGE_B },
@@ -1674,7 +1739,7 @@ describe("messenger realtime active applier", () => {
       patchCachedMessage: vi.fn(),
       writeRealtimeCursor: vi.fn(),
     };
-    const applier = createMessengerRealtimeActiveApplier({
+    const applier = createSelectedModelApplier({
       cache,
       onMessageReactionAggregateUpdated,
     });
@@ -1747,7 +1812,7 @@ describe("messenger realtime active applier", () => {
       .applyLiveCreatedMessage(adaptMessengerMessage(createMessageDto()));
     const patchCachedMessage = vi.fn();
     const writeRealtimeCursor = vi.fn();
-    const applier = createMessengerRealtimeActiveApplier({
+    const applier = createSelectedModelApplier({
       cache: { patchCachedMessage, writeRealtimeCursor },
     });
     const newer = createMessageDto({
@@ -1800,7 +1865,7 @@ describe("messenger realtime active applier", () => {
     const context = createContext();
     const ownerKey = context.ownerKey;
     const onMessageReactionAggregateUpdated = vi.fn();
-    const applier = createMessengerRealtimeActiveApplier({
+    const applier = createSelectedModelApplier({
       onMessageReactionAggregateUpdated,
     });
     useMessengerStore.getState().startBootstrap(ownerKey);
@@ -1843,7 +1908,7 @@ describe("messenger realtime active applier", () => {
   it("keeps repeated created events outside an unloaded visible window", async () => {
     const context = createContext();
     const ownerKey = context.ownerKey;
-    const applier = createMessengerRealtimeActiveApplier();
+    const applier = createSelectedModelApplier();
     useMessengerStore.getState().startBootstrap(ownerKey);
     await applyStreamAndTopicSnapshot(applier, context);
 
@@ -1869,7 +1934,7 @@ describe("messenger realtime active applier", () => {
   it("stores an incoming message body without inventing stream or topic membership", async () => {
     const context = createContext();
     const ownerKey = context.ownerKey;
-    const applier = createMessengerRealtimeActiveApplier();
+    const applier = createSelectedModelApplier();
     useMessengerStore.getState().startBootstrap(ownerKey);
     await applyStreamAndTopicSnapshot(applier, context);
 
@@ -1901,7 +1966,7 @@ describe("messenger realtime active applier", () => {
       createOwner({ organizationId: "organization-b", projectId: "project-b" }),
     );
     useWorkspaceMessageStore.getState().setOwner(ownerB, false);
-    const applier = createMessengerRealtimeActiveApplier({ isOwnerCurrent: () => true });
+    const applier = createSelectedModelApplier({ isOwnerCurrent: () => true });
 
     applier.applyEvent(
       {
@@ -1925,7 +1990,7 @@ describe("messenger realtime active applier", () => {
         writeConversationMessagePage: vi.fn(),
         advanceReadBoundary: vi.fn(),
       };
-      const applier = createMessengerRealtimeActiveApplier({ cache });
+      const applier = createSelectedModelApplier({ cache });
       useMessengerStore.getState().startBootstrap(context.ownerKey);
       const beforeRevision = useWorkspaceMessageStore.getState().messageMutationRevision;
 
@@ -1952,7 +2017,7 @@ describe("messenger realtime active applier", () => {
     const context = createContext();
     const ownerKey = context.ownerKey;
     const onMessageCreated = vi.fn();
-    const applier = createMessengerRealtimeActiveApplier({ onMessageCreated });
+    const applier = createSelectedModelApplier({ onMessageCreated });
     useMessengerStore.getState().startBootstrap(ownerKey);
     await applyStreamAndTopicSnapshot(applier, context, {
       stream: {
@@ -2017,7 +2082,7 @@ describe("messenger realtime active applier", () => {
   it("does not run message-created side effects before realtime is ready", () => {
     const context = createContext(createOwner(), { notificationsEnabled: false });
     const onMessageCreated = vi.fn();
-    const applier = createMessengerRealtimeActiveApplier({ onMessageCreated });
+    const applier = createSelectedModelApplier({ onMessageCreated });
     useMessengerStore.getState().startBootstrap(context.ownerKey);
 
     applier.applyEvent(
@@ -2036,7 +2101,7 @@ describe("messenger realtime active applier", () => {
   it("stores backfill messages without running message-created live side effects", () => {
     const context = createContext();
     const onMessageCreated = vi.fn();
-    const applier = createMessengerRealtimeActiveApplier({ onMessageCreated });
+    const applier = createSelectedModelApplier({ onMessageCreated });
     useMessengerStore.getState().startBootstrap(context.ownerKey);
 
     applier.applyEvent(
@@ -2069,7 +2134,7 @@ describe("messenger realtime active applier", () => {
   it("stores old live provider messages without running message-created live side effects", () => {
     const context = createContext();
     const onMessageCreated = vi.fn();
-    const applier = createMessengerRealtimeActiveApplier({ onMessageCreated });
+    const applier = createSelectedModelApplier({ onMessageCreated });
     const oldCreatedAt = new Date(Date.now() - 60 * 60 * 1000 - 1).toISOString();
     useMessengerStore.getState().startBootstrap(context.ownerKey);
 
@@ -2106,7 +2171,7 @@ describe("messenger realtime active applier", () => {
   it("stores delayed live message bodies without extending an unloaded window", async () => {
     const context = createContext();
     const ownerKey = context.ownerKey;
-    const applier = createMessengerRealtimeActiveApplier();
+    const applier = createSelectedModelApplier();
     useMessengerStore.getState().startBootstrap(ownerKey);
     await applyStreamAndTopicSnapshot(applier, context);
 
@@ -2158,7 +2223,7 @@ describe("messenger realtime active applier", () => {
   it("updates inactive conversation sidebar preview and ordering from a fresh message event", async () => {
     const context = createContext();
     const ownerKey = context.ownerKey;
-    const applier = createMessengerRealtimeActiveApplier();
+    const applier = createSelectedModelApplier();
     useMessengerStore.getState().startBootstrap(ownerKey);
     await applyStreamAndTopicSnapshot(applier, context, {
       stream: { updated_at: DATE },
@@ -2270,7 +2335,7 @@ describe("messenger realtime active applier", () => {
   it("updates and deletes known message bodies outside an unloaded window", async () => {
     const context = createContext();
     const ownerKey = context.ownerKey;
-    const applier = createMessengerRealtimeActiveApplier();
+    const applier = createSelectedModelApplier();
     useMessengerStore.getState().startBootstrap(ownerKey);
     await applyStreamAndTopicSnapshot(applier, context);
     applier.applyEvent(
@@ -2344,7 +2409,7 @@ describe("messenger realtime active applier", () => {
   it("removes topic messages from the stream bucket when a topic is deleted", async () => {
     const context = createContext();
     const ownerKey = context.ownerKey;
-    const applier = createMessengerRealtimeActiveApplier();
+    const applier = createSelectedModelApplier();
     useMessengerStore.getState().startBootstrap(ownerKey);
     await applyStreamAndTopicSnapshot(applier, context);
     applier.applyEvent(
@@ -2376,7 +2441,7 @@ describe("messenger realtime active applier", () => {
 
   it("skips unsupported active events without throwing", () => {
     const context = createContext();
-    const applier = createMessengerRealtimeActiveApplier();
+    const applier = createSelectedModelApplier();
     useMessengerStore.getState().startBootstrap(context.ownerKey);
 
     applier.applyEvent(
@@ -2399,8 +2464,8 @@ describe("messenger realtime active applier", () => {
   it("does not mark user realtime events as unsupported in messenger appliers", () => {
     const activeContext = createContext();
     const backgroundContext = createContext(createOwner(), { surface: "background" });
-    const activeApplier = createMessengerRealtimeActiveApplier();
-    const backgroundApplier = createMessengerRealtimeBackgroundApplier();
+    const activeApplier = createSelectedModelApplier();
+    const backgroundApplier = createMessengerRealtimeApplier();
     const event: WorkspaceRealtimeEvent = {
       epoch_version: 23,
       type: "user",
@@ -2417,15 +2482,15 @@ describe("messenger realtime active applier", () => {
     expect(
       useMessengerBackgroundProjectionStore.getState().projectionsByOwnerKey[
         backgroundContext.ownerKey
-      ]?.skippedEvents,
+      ],
     ).toBeUndefined();
   });
 
   it("does not mark external operation realtime events as unsupported in messenger appliers", () => {
     const activeContext = createContext();
     const backgroundContext = createContext(createOwner(), { surface: "background" });
-    const activeApplier = createMessengerRealtimeActiveApplier();
-    const backgroundApplier = createMessengerRealtimeBackgroundApplier();
+    const activeApplier = createSelectedModelApplier();
+    const backgroundApplier = createMessengerRealtimeApplier();
     const event: WorkspaceRealtimeEvent = {
       epoch_version: 24,
       type: "external_operation",
@@ -2442,7 +2507,7 @@ describe("messenger realtime active applier", () => {
     expect(
       useMessengerBackgroundProjectionStore.getState().projectionsByOwnerKey[
         backgroundContext.ownerKey
-      ]?.skippedEvents,
+      ],
     ).toBeUndefined();
   });
 
@@ -2454,7 +2519,7 @@ describe("messenger realtime active applier", () => {
       deleteCachedMessage: vi.fn(),
       writeRealtimeCursor: vi.fn(),
     };
-    const applier = createMessengerRealtimeActiveApplier({
+    const applier = createSelectedModelApplier({
       isOwnerCurrent: () => false,
       cache,
     });
@@ -2490,7 +2555,7 @@ describe("messenger realtime active applier", () => {
         throw new Error("cursor unavailable");
       }),
     };
-    const applier = createMessengerRealtimeActiveApplier({ cache });
+    const applier = createSelectedModelApplier({ cache });
     useMessengerStore.getState().startBootstrap(ownerKey);
 
     expect(() =>
@@ -2512,97 +2577,71 @@ describe("messenger realtime active applier", () => {
     expect(cache.writeRealtimeCursor).toHaveBeenCalledWith(ownerKey, 33, expect.any(Function));
   });
 
-  it("does not write background events to messenger store", () => {
+  it("records skips in the background owner's catalog only", () => {
     const context = createContext(createOwner(), { surface: "background" });
-    const applier = createMessengerRealtimeActiveApplier();
-    useMessengerStore.getState().startBootstrap(context.ownerKey);
+    const { catalog } = authorizeBackgroundModel(context.owner);
+    const applier = createMessengerRealtimeApplier();
+    applier.skipEvent({ epoch_version: 42 }, "unsupported_event", context);
 
-    applier.applyEvent(
-      {
-        epoch_version: 41,
-        type: "stream",
-        kind: "stream.created",
-        stream: createStreamDto(),
-      },
-      context,
-    );
-    applier.skipEvent({ epoch_version: 42 }, "background_apply_deferred", context);
-
-    expect(useMessengerStore.getState().streamIds).toEqual([]);
+    expect(catalog.getState().skippedRealtimeEvents).toEqual([
+      { epochVersion: 42, reason: "unsupported_event" },
+    ]);
     expect(useMessengerStore.getState().skippedRealtimeEvents).toEqual([]);
-    expect(useMessengerStore.getState().lastEpochVersion).toBeNull();
   });
 
-  it("runs full owner-scoped cleanup for a background stream deletion", async () => {
-    const context = createContext(createOwner(), { surface: "background" });
+  it("waits for owner-scoped stream deletion before publishing the cursor", async () => {
+    const active = createContext();
+    useMessengerStore.getState().startBootstrap(active.ownerKey);
+    const context = createContext(createOwner({ accountId: "background" }), {
+      surface: "background",
+    });
+    const { catalog } = authorizeBackgroundModel(context.owner);
     let releaseCleanup: (() => void) | undefined;
     const cleanup = new Promise<void>((resolve) => {
       releaseCleanup = resolve;
     });
-    const deleteCachedStream = vi.fn();
+    const deleteCachedStream = vi.fn(() => cleanup);
     const writeRealtimeCursor = vi.fn();
-    const removeProjection = vi.fn((options: RemoveMessengerStreamProjectionOptions) => {
-      void options.deleteCachedStream?.(options.ownerKey, options.streamUuid);
-      return cleanup;
-    });
-    const applier = createMessengerRealtimeBackgroundApplier({
+    const applier = createMessengerRealtimeApplier({
       cache: { deleteCachedStream, writeRealtimeCursor },
-      removeProjection,
     });
-
-    const application = Promise.resolve(
-      applier.applyEvent(
-        {
-          epoch_version: 43,
-          type: "stream",
-          kind: "stream.deleted",
-          stream: createStreamDto(),
-        },
-        context,
-      ),
+    const stream = createStreamDto();
+    await applier.applyEvent(
+      { epoch_version: 42, type: "stream", kind: "stream.created", stream },
+      context,
     );
-    let settled = false;
-    void application.then(() => {
-      settled = true;
-    });
+    expect(catalog.getState().streamsById[STREAM_A]?.uuid).toBe(STREAM_A);
+    writeRealtimeCursor.mockClear();
 
-    await vi.waitFor(() => expect(removeProjection).toHaveBeenCalledOnce());
-    expect(deleteCachedStream).toHaveBeenCalledOnce();
-    expect(deleteCachedStream).toHaveBeenCalledWith(
+    const applying = applier.applyEvent(
+      { epoch_version: 43, type: "stream", kind: "stream.deleted", stream },
+      context,
+    );
+
+    expect(deleteCachedStream).toHaveBeenCalledExactlyOnceWith(
       context.ownerKey,
       STREAM_A,
       expect.any(Function),
     );
-    expect(writeRealtimeCursor).toHaveBeenCalledWith(context.ownerKey, 43);
-    expect(removeProjection).toHaveBeenCalledWith(
-      expect.objectContaining({
-        ownerKey: context.ownerKey,
-        streamUuid: STREAM_A,
-        removeActiveProjection: false,
-        isOwnerCurrent: expect.any(Function),
-        deleteCachedStream: expect.any(Function),
-      }),
-    );
-    expect(deleteCachedStream).toHaveBeenCalledTimes(1);
-    expect(settled).toBe(false);
-
+    expect(catalog.getState().streamsById[STREAM_A]).toBeUndefined();
+    expect(writeRealtimeCursor).not.toHaveBeenCalled();
     releaseCleanup?.();
-    await application;
+    await applying;
 
-    expect(settled).toBe(true);
-    expect(
-      useMessengerBackgroundProjectionStore.getState().projectionsByOwnerKey[context.ownerKey]
-        ?.lastEpochVersion,
-    ).toBe(43);
+    expect(catalog.getState().lastEpochVersion).toBe(43);
+    expect(writeRealtimeCursor).toHaveBeenCalledExactlyOnceWith(
+      context.ownerKey,
+      43,
+      expect.any(Function),
+    );
+    expect(useMessengerStore.getState().lastEpochVersion).toBeNull();
   });
 
-  it("writes background stream bindings without adding a deferred projection event", async () => {
+  it("writes background stream bindings without adding a notification projection event", async () => {
     const context = createContext(createOwner(), { surface: "background" });
-    const cache = {
-      upsertCachedStreamBindings: vi.fn(),
-      writeRealtimeCursor: vi.fn(),
-    };
-    const applier = createMessengerRealtimeBackgroundApplier({ cache });
+    const { catalog } = authorizeBackgroundModel(context.owner);
+    const cache = { upsertCachedStreamBindings: vi.fn(), writeRealtimeCursor: vi.fn() };
+    const applier = createMessengerRealtimeApplier({ cache });
 
     await applier.applyEvent(
       {
@@ -2615,47 +2654,54 @@ describe("messenger realtime active applier", () => {
       context,
     );
 
-    expect(cache.upsertCachedStreamBindings).toHaveBeenCalledWith(context.ownerKey, [
-      expect.objectContaining({ uuid: STREAM_BINDING_A, streamUuid: STREAM_A }),
-    ]);
-    expect(cache.writeRealtimeCursor).toHaveBeenCalledWith(context.ownerKey, 44);
+    expect(catalog.getState().streamBindingsById[STREAM_BINDING_A]?.uuid).toBe(STREAM_BINDING_A);
+    expect(cache.upsertCachedStreamBindings).toHaveBeenCalledWith(
+      context.ownerKey,
+      [expect.objectContaining({ uuid: STREAM_BINDING_A, streamUuid: STREAM_A })],
+      { shouldApply: expect.any(Function) },
+    );
+    expect(cache.writeRealtimeCursor).toHaveBeenCalledWith(
+      context.ownerKey,
+      44,
+      expect.any(Function),
+    );
     expect(
       useMessengerBackgroundProjectionStore.getState().projectionsByOwnerKey[context.ownerKey],
     ).toBeUndefined();
   });
 
-  it("keeps background file events deferred", async () => {
+  it("invalidates protected background file resources for their owner", async () => {
     const context = createContext(createOwner(), { surface: "background" });
+    authorizeBackgroundModel(context.owner);
+    const onFileChanged = vi.fn();
     const writeRealtimeCursor = vi.fn();
-    const applier = createMessengerRealtimeBackgroundApplier({
+    const applier = createMessengerRealtimeApplier({
       cache: { writeRealtimeCursor },
+      onFileChanged,
     });
+    const event = {
+      epoch_version: 45,
+      type: "file",
+      kind: "file.deleted",
+      file: { uuid: MESSAGE_A, stream_uuid: STREAM_A },
+    } as const;
 
-    await applier.applyEvent(
-      {
-        epoch_version: 45,
-        type: "file",
-        kind: "file.deleted",
-        file: { uuid: MESSAGE_A, stream_uuid: STREAM_A },
-      },
-      context,
+    await applier.applyEvent(event, context);
+
+    expect(onFileChanged).toHaveBeenCalledExactlyOnceWith(context.ownerKey, event);
+    expect(writeRealtimeCursor).toHaveBeenCalledExactlyOnceWith(
+      context.ownerKey,
+      45,
+      expect.any(Function),
     );
-
-    expect(writeRealtimeCursor).not.toHaveBeenCalled();
     expect(
-      useMessengerBackgroundProjectionStore.getState().projectionsByOwnerKey[context.ownerKey]
-        ?.skippedEvents,
-    ).toEqual([
-      expect.objectContaining({
-        epochVersion: 45,
-        reason: "background_apply_deferred",
-      }),
-    ]);
+      useMessengerBackgroundProjectionStore.getState().projectionsByOwnerKey[context.ownerKey],
+    ).toBeUndefined();
   });
 
   it("accepts a lawful stream.created after deleting the same stream UUID", async () => {
     const context = createContext();
-    const applier = createMessengerRealtimeActiveApplier({
+    const applier = createSelectedModelApplier({
       cache: {
         deleteCachedStream: vi.fn(),
         upsertCachedStream: vi.fn(),
@@ -2688,7 +2734,7 @@ describe("messenger realtime active applier", () => {
   it("projects active owner realtime messages into the shared notification projection store", async () => {
     const context = createContext();
     const ownerKey = context.ownerKey;
-    const applier = createMessengerRealtimeActiveApplier();
+    const applier = createSelectedModelApplier();
     useMessengerStore.getState().startBootstrap(ownerKey);
 
     await applyStreamAndTopicSnapshot(applier, context, {
@@ -2770,7 +2816,7 @@ describe("messenger realtime active applier", () => {
   it("applies stream, binding, topic, folder, and delete skeleton mappings", async () => {
     const context = createContext();
     const ownerKey = context.ownerKey;
-    const applier = createMessengerRealtimeActiveApplier();
+    const applier = createSelectedModelApplier();
     useMessengerStore.getState().startBootstrap(ownerKey);
 
     await applier.applyEvent(
@@ -2927,7 +2973,7 @@ describe("messenger realtime active applier", () => {
 
   it("uses folder realtime snapshots as the source of truth for title, counters, and items", () => {
     const context = createContext();
-    const applier = createMessengerRealtimeActiveApplier();
+    const applier = createSelectedModelApplier();
     useMessengerStore.getState().startBootstrap(context.ownerKey);
 
     applier.applyEvent(
@@ -2988,7 +3034,7 @@ describe("messenger realtime active applier", () => {
   it("projects realtime stream unread snapshots into folder items and aggregate counters", () => {
     const context = createContext();
     const upsertCachedFolder = vi.fn();
-    const applier = createMessengerRealtimeActiveApplier({
+    const applier = createSelectedModelApplier({
       cache: { upsertCachedFolder },
     });
     useMessengerStore.getState().startBootstrap(context.ownerKey);
@@ -3052,7 +3098,7 @@ describe("messenger realtime active applier", () => {
 
   it("removes realtime folder item membership while preserving the backend folder counter", () => {
     const context = createContext();
-    const applier = createMessengerRealtimeActiveApplier();
+    const applier = createSelectedModelApplier();
     useMessengerStore.getState().startBootstrap(context.ownerKey);
     applier.applyEvent(
       {
@@ -3103,7 +3149,7 @@ describe("messenger realtime active applier", () => {
 
   it("adds realtime created streams to sidebar and conversation surfaces", () => {
     const context = createContext();
-    const applier = createMessengerRealtimeActiveApplier();
+    const applier = createSelectedModelApplier();
     useMessengerStore.getState().startBootstrap(context.ownerKey);
 
     applier.applyEvent(
@@ -3139,7 +3185,7 @@ describe("messenger realtime active applier", () => {
 
   it("uses stream binding realtime events to refresh binding indexes and derived conversations", () => {
     const context = createContext();
-    const applier = createMessengerRealtimeActiveApplier();
+    const applier = createSelectedModelApplier();
     useMessengerStore.getState().startBootstrap(context.ownerKey);
     applier.applyEvent(
       {
@@ -3180,7 +3226,7 @@ describe("messenger realtime active applier", () => {
       upsertCachedStreamBindings: vi.fn(),
       deleteCachedStreamBinding: vi.fn(),
     };
-    const applier = createMessengerRealtimeActiveApplier({ cache });
+    const applier = createSelectedModelApplier({ cache });
     useMessengerStore.getState().startBootstrap(context.ownerKey);
 
     applier.applyEvent(
@@ -3236,7 +3282,7 @@ describe("messenger realtime active applier", () => {
   it("invalidates file resources for created, updated, and deleted file events", () => {
     const context = createContext();
     const onFileChanged = vi.fn();
-    const applier = createMessengerRealtimeActiveApplier({ onFileChanged });
+    const applier = createSelectedModelApplier({ onFileChanged });
     useMessengerStore.getState().startBootstrap(context.ownerKey);
     const file = {
       uuid: "9c24cf53-2d2d-473f-aacd-97662627a9d4",
@@ -3296,7 +3342,7 @@ describe("messenger realtime active applier", () => {
 
   it("keeps system folders stable after realtime folder updates", () => {
     const context = createContext();
-    const applier = createMessengerRealtimeActiveApplier();
+    const applier = createSelectedModelApplier();
     useMessengerStore.getState().startBootstrap(context.ownerKey);
 
     applier.applyEvent(
@@ -3366,7 +3412,7 @@ describe("messenger realtime active applier", () => {
       });
       useMessengerStore.getState().startBootstrap(context.ownerKey);
       useWorkspaceMessageStore.getState().setOwner(context.ownerKey, false);
-      const applier = createMessengerRealtimeActiveApplier({
+      const applier = createSelectedModelApplier({
         cache: { writeCreatedMessages: vi.fn() },
       });
       const lastMessageUuid = tail === "empty" ? null : MESSAGE_A;
@@ -3438,7 +3484,7 @@ describe("messenger realtime active applier", () => {
       }),
       writeRealtimeCursor: vi.fn(),
     };
-    const applier = createMessengerRealtimeActiveApplier({ cache });
+    const applier = createSelectedModelApplier({ cache });
     const events: WorkspaceRealtimeEvent[] = [
       { type: "message", kind: "message.created", epoch_version: 1, message: createMessageDto() },
       {
@@ -3499,7 +3545,7 @@ describe("messenger realtime active applier", () => {
         release = resolve;
       });
       const writeCreatedMessages = vi.fn(() => pending);
-      const applier = createMessengerRealtimeActiveApplier({
+      const applier = createSelectedModelApplier({
         cache: { writeCreatedMessages },
         isOwnerCurrent: () => current,
       });
@@ -3535,7 +3581,11 @@ describe("messenger realtime active applier", () => {
       notificationsEnabled: false,
     });
     const writeCreatedMessages = vi.fn();
-    const applier = createMessengerRealtimeBackgroundApplier({ cache: { writeCreatedMessages } });
+    const { messages } = authorizeBackgroundModel(background.owner);
+    const applier = createMessengerRealtimeApplier({
+      cache: { writeCreatedMessages },
+      requireOwnerCatalog: false,
+    });
     const events: WorkspaceRealtimeEvent[] = [
       { type: "message", kind: "message.created", epoch_version: 1, message: createMessageDto() },
       {
@@ -3557,6 +3607,9 @@ describe("messenger realtime active applier", () => {
       expect.any(Function),
     );
     expect(useWorkspaceMessageStore.getState().messagesById).toEqual({});
+    expect(Object.keys(messages.getState().messagesById)).toEqual(
+      expect.arrayContaining([MESSAGE_A, MESSAGE_B]),
+    );
     expect(useMessengerStore.getState().lastEpochVersion).toBeNull();
     expect(
       useMessengerBackgroundProjectionStore.getState().projectionsByOwnerKey[background.ownerKey]
@@ -3571,7 +3624,7 @@ describe("messenger realtime active applier", () => {
     useMessengerStore.getState().startBootstrap(context.ownerKey);
     useWorkspaceMessageStore.getState().setOwner(context.ownerKey, false);
     const writeCreatedMessages = vi.fn();
-    const applier = createMessengerRealtimeActiveApplier({ cache: { writeCreatedMessages } });
+    const applier = createSelectedModelApplier({ cache: { writeCreatedMessages } });
     const events: WorkspaceRealtimeEvent[] = Array.from({ length: 105 }, (_, index) => ({
       type: "message",
       kind: "message.created",
@@ -3633,7 +3686,7 @@ it("applies a personalized poll update through the message guard and realtime ap
   };
   expect(isWorkspaceMessengerMessageDto(update)).toBe(true);
   const cache = { writeConversationMessagePage: vi.fn(), patchCachedMessage: vi.fn() };
-  const applier = createMessengerRealtimeActiveApplier({ cache });
+  const applier = createSelectedModelApplier({ cache });
   await applier.applyEvent(
     { epoch_version: 1, type: "message", kind: "message.created", message: initial },
     context,

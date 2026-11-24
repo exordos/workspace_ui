@@ -22,12 +22,7 @@ import {
   workspaceMessengerStreamRoute,
   workspaceMessengerTopicRoute,
 } from "~/shared/lib/workspace-messenger-route.lib";
-import type {
-  WorkspaceRealtimeEventContext,
-  WorkspaceRealtimeSkipReason,
-  WorkspaceRealtimeSkippedEvent,
-  WorkspaceRealtimeTransportState,
-} from "~/shared/lib/workspace-realtime/workspace-realtime-runtime.lib";
+import type { WorkspaceRealtimeEventContext } from "~/shared/lib/workspace-realtime/workspace-realtime-runtime.lib";
 import { resolveMessengerFolderSystemType } from "../../model/chats/messenger-folder-system-type.lib";
 import {
   compareMessengerMessageOrder,
@@ -42,7 +37,6 @@ import type { MessengerFolder, MessengerMessage } from "../../model/messenger.ty
 
 const MAX_RECENT_EVENTS = 50;
 const MAX_NOTIFICATION_CANDIDATES = 50;
-const MAX_SKIPPED_EVENTS = 50;
 // Background keeps only limited in-memory data to speed up cold start.
 // This is not a second chat store: only compact notification data and short chat names live here.
 const MAX_LIGHTWEIGHT_SNAPSHOTS = 200;
@@ -87,15 +81,6 @@ export interface MessengerBackgroundNotificationCandidate {
 export interface MessengerBackgroundRecentEvent {
   ownerKey: string;
   epochVersion: WorkspaceMessengerEpochVersion;
-  kind: string;
-  source: WorkspaceRealtimeEventContext["source"];
-  observedAt: number;
-}
-
-export interface MessengerBackgroundSkippedEvent {
-  ownerKey: string;
-  epochVersion: WorkspaceMessengerEpochVersion;
-  reason: WorkspaceRealtimeSkipReason;
   kind: string;
   source: WorkspaceRealtimeEventContext["source"];
   observedAt: number;
@@ -193,8 +178,6 @@ export interface MessengerBackgroundProjection {
   messageIdSnapshotsById: Record<WorkspaceMessengerUuid, MessengerBackgroundMessageIdSnapshot>;
   recentEvents: MessengerBackgroundRecentEvent[];
   notificationCandidates: MessengerBackgroundNotificationCandidate[];
-  skippedEvents: MessengerBackgroundSkippedEvent[];
-  lastTransportState: WorkspaceRealtimeTransportState | null;
 }
 
 export interface MessengerBackgroundProjectionStoreState {
@@ -205,13 +188,6 @@ export interface MessengerBackgroundProjectionStoreState {
     context: WorkspaceRealtimeEventContext,
     activeReadAnchor?: MessengerMessage | null,
   ) => void;
-  recordSkippedEvent: (
-    ownerKey: string,
-    event: WorkspaceRealtimeEvent | WorkspaceRealtimeSkippedEvent,
-    reason: WorkspaceRealtimeSkipReason,
-    context: WorkspaceRealtimeEventContext,
-  ) => void;
-  recordTransportState: (state: WorkspaceRealtimeTransportState) => void;
   removeStreamProjection: (ownerKey: string, streamUuid: WorkspaceMessengerUuid) => void;
   clearOwner: (ownerKey: string) => void;
   clear: () => void;
@@ -269,8 +245,6 @@ function createEmptyProjection(ownerKey: string): MessengerBackgroundProjection 
     messageIdSnapshotsById: {},
     recentEvents: [],
     notificationCandidates: [],
-    skippedEvents: [],
-    lastTransportState: null,
   };
 }
 
@@ -390,7 +364,6 @@ function compactProjection(
       MAX_NOTIFICATION_CANDIDATES,
       now,
     ),
-    skippedEvents: pruneRecentItems(projection.skippedEvents, MAX_SKIPPED_EVENTS, now),
     streamSnapshotsById: pruneSnapshotRecord(
       projection.streamSnapshotsById,
       (snapshot) => snapshot.streamUuid,
@@ -419,7 +392,7 @@ function compactProjection(
   };
 }
 
-function eventKind(event: WorkspaceRealtimeEvent | WorkspaceRealtimeSkippedEvent): string {
+function eventKind(event: WorkspaceRealtimeEvent): string {
   if ("kind" in event && typeof event.kind === "string") {
     return event.kind;
   }
@@ -1306,37 +1279,6 @@ function filterFolderSnapshotsByExistingItems(
   return next;
 }
 
-function applySkippedProjection(
-  projection: MessengerBackgroundProjection,
-  event: WorkspaceRealtimeEvent | WorkspaceRealtimeSkippedEvent,
-  reason: WorkspaceRealtimeSkipReason,
-  context: WorkspaceRealtimeEventContext,
-): MessengerBackgroundProjection {
-  const observedAt = Date.now();
-  const compactedProjection = compactProjection(projection, observedAt);
-  const skippedEvent: MessengerBackgroundSkippedEvent = {
-    ownerKey: context.ownerKey,
-    epochVersion: event.epoch_version,
-    reason,
-    kind: eventKind(event),
-    source: context.source,
-    observedAt,
-  };
-
-  return compactProjection(
-    {
-      ...compactedProjection,
-      lastEpochVersion: advanceEpoch(compactedProjection.lastEpochVersion, event.epoch_version),
-      skippedEvents: appendBounded(
-        compactedProjection.skippedEvents,
-        skippedEvent,
-        MAX_SKIPPED_EVENTS,
-      ),
-    },
-    observedAt,
-  );
-}
-
 export function selectMessengerBackgroundProjectionSnapshot(
   state: MessengerBackgroundProjectionStoreState,
   ownerKey: string,
@@ -1369,43 +1311,6 @@ export const useMessengerBackgroundProjectionStore =
           projectionsByOwnerKey: {
             ...state.projectionsByOwnerKey,
             [ownerKey]: applyEventProjection(projection, event, context, activeReadAnchor),
-          },
-        };
-      });
-    },
-
-    recordSkippedEvent(ownerKey, event, reason, context) {
-      logStoreAction("messengerBackgroundProjection", "recordSkippedEvent", {
-        ownerKey,
-        epochVersion: event.epoch_version,
-        reason,
-      });
-      set((state) => {
-        const projection = state.projectionsByOwnerKey[ownerKey] ?? createEmptyProjection(ownerKey);
-        return {
-          projectionsByOwnerKey: {
-            ...state.projectionsByOwnerKey,
-            [ownerKey]: applySkippedProjection(projection, event, reason, context),
-          },
-        };
-      });
-    },
-
-    recordTransportState(state) {
-      logStoreAction("messengerBackgroundProjection", "recordTransportState", {
-        ownerKey: state.ownerKey,
-        mode: state.mode,
-      });
-      set((storeState) => {
-        const projection =
-          storeState.projectionsByOwnerKey[state.ownerKey] ?? createEmptyProjection(state.ownerKey);
-        return {
-          projectionsByOwnerKey: {
-            ...storeState.projectionsByOwnerKey,
-            [state.ownerKey]: {
-              ...projection,
-              lastTransportState: state,
-            },
           },
         };
       });

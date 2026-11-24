@@ -150,7 +150,7 @@ export async function updateOwnProfile(
     if (store.ownerKey == null) store.upsertUser(user);
     else if (!store.upsertUserForOwner(ownerKey, user))
       return { ok: true, profile, refreshPending: true };
-    writeUsersToCacheForOwner(ownerKey, [user]);
+    writeUsersToCacheForOwner(ownerKey, [user], undefined, () => !invalidated());
     return { ok: true, profile, refreshPending: false };
   } catch {
     if (invalidated()) return { ok: false, kind: "stale" };
@@ -206,6 +206,7 @@ function classifyAvatarMutationError(error: unknown): OwnAvatarMutationResult {
 function applyOwnAvatarResponse(
   runtimeContext: WorkspaceRuntimeContext,
   userDto: WorkspaceMessengerUserDto,
+  isCurrent: () => boolean,
 ): OwnAvatarMutationResult {
   const ownerKey = workspaceRuntimeOwnerKey(runtimeContext);
   const user = adaptWorkspaceMessengerUserDto(userDto);
@@ -225,7 +226,7 @@ function applyOwnAvatarResponse(
     };
   }
 
-  writeUsersToCacheForOwner(ownerKey, [user]);
+  writeUsersToCacheForOwner(ownerKey, [user], undefined, isCurrent);
   return { ok: true, avatarUrl: user.avatarUrl };
 }
 
@@ -238,20 +239,22 @@ async function mutateOwnAvatar(
   ) => Promise<WorkspaceMessengerUserDto>,
 ): Promise<OwnAvatarMutationResult> {
   const requestContext = captureWorkspaceRuntimeRequestContext(() => runtimeContext);
+  const isCurrent = () =>
+    !isWorkspaceRuntimeRequestInvalidated(requestContext, getCurrentRuntimeContext, signal);
 
   try {
     const userDto = await request(
       buildWorkspaceRequestOptions(runtimeContext, undefined, signal),
       runtimeContext.userUuid,
     );
-    if (isWorkspaceRuntimeRequestInvalidated(requestContext, getCurrentRuntimeContext, signal)) {
+    if (!isCurrent()) {
       return {
         ok: false,
         kind: "transient",
         message: STALE_AVATAR_MUTATION_MESSAGE,
       };
     }
-    return applyOwnAvatarResponse(runtimeContext, userDto);
+    return applyOwnAvatarResponse(runtimeContext, userDto, isCurrent);
   } catch (error) {
     if (signal?.aborted !== true) {
       log.warn("Workspace avatar mutation failed", {

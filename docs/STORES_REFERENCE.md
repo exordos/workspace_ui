@@ -26,7 +26,7 @@ This is a navigation guide to current Workspace state, not a copy of TypeScript 
 
 Async work captures the owner before it starts. `captureWorkspaceRuntimeRequestContext()` and `isWorkspaceRuntimeRequestInvalidated()` compare account, instance, organization, project, user and `runtimeGeneration`; an abort signal is an additional check. Guard both store writes and durable writes, including error/finally updates. Use the captured owner for cache keys rather than reading a newly active account after `await`. See [async safety](ORG_SCOPED_ASYNC_SAFETY.md).
 
-Realtime applies through [messenger-realtime-applier.lib.ts](../packages/web/src/applications/messenger/runtime/sync/messenger-realtime-applier.lib.ts) and [realtime cache handling](../packages/web/src/applications/messenger/runtime/sync/messenger-realtime-cache.lib.ts). Cursor advancement, event ordering, active messages and background projections must stay consistent.
+Realtime uses the [Messenger owner applier](../packages/web/src/applications/messenger/runtime/sync/messenger-realtime-applier.lib.ts) and [cache operations](../packages/web/src/applications/messenger/model/messenger-cache.lib.ts). Each authorized owner keeps its own models and cursor. The selected screen subscribes to that owner's models.
 
 ## Local UI state
 

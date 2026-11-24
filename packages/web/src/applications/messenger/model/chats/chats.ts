@@ -71,6 +71,11 @@ const PENDING_CHATS_CATALOG: ChatsCatalogSnapshot = { ...EMPTY_CHATS_CATALOG, is
 const getRuntime = () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
 const latestCatalogs = new WeakMap<MessengerStoreState["startBootstrap"], ChatsCatalogSnapshot>();
 
+// The legacy WebView and idle logout clear only the currently visible chat catalog.
+export function clearSelectedChatCatalogForLegacyLogout(): void {
+  getSelectedMessengerStore().getState().clear();
+}
+
 // Повторное чтение и внутренние изменения store сохраняют ссылку на публичный снимок.
 function readCatalog(state: MessengerStoreState): ChatsCatalogSnapshot {
   let latestCatalog = latestCatalogs.get(state.startBootstrap) ?? EMPTY_CHATS_CATALOG;
@@ -128,6 +133,18 @@ export function readActiveChats(): ChatsCatalogSnapshot {
   return state.ownerKey === workspaceRuntimeOwnerKey(runtime)
     ? readCatalog(state)
     : PENDING_CHATS_CATALOG;
+}
+
+// Console diagnostics include the selected owner's epoch and skipped-event reasons.
+export function readChatCatalogDiagnostics() {
+  const catalog = readActiveChats();
+  const state =
+    catalog.ownerKey == null ? null : getMessengerStoreForOwner(catalog.ownerKey)?.getState();
+  return {
+    ...catalog,
+    lastEpochVersion: state?.lastEpochVersion ?? null,
+    skippedRealtimeEvents: state?.skippedRealtimeEvents ?? [],
+  };
 }
 
 // Read a warm owner catalog for Workspace effects such as background notifications.

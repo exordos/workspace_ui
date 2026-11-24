@@ -225,8 +225,6 @@ function createProjection(
     messageIdSnapshotsById: options.messageIdSnapshotsById ?? {},
     recentEvents: [],
     notificationCandidates: options.notificationCandidates ?? [],
-    skippedEvents: [],
-    lastTransportState: null,
   };
 }
 

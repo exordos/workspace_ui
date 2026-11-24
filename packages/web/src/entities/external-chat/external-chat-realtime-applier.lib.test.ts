@@ -137,15 +137,11 @@ describe("external chat realtime applier", () => {
         external_chat: snapshot(4, ACCOUNT_UUID, STREAM_UUID),
       };
 
-      applier.applyEvent(deletedEvent, context(surface));
+      const eventContext = context(surface);
+      applier.applyEvent(deletedEvent, eventContext);
       await vi.waitFor(() => expect(removeProjection).toHaveBeenCalledOnce());
 
-      expect(removeProjection).toHaveBeenCalledWith({
-        ownerKey: OWNER_KEY,
-        streamUuid: STREAM_UUID,
-        removeActiveProjection: surface === "active",
-        isOwnerCurrent: expect.any(Function),
-      });
+      expect(removeProjection).toHaveBeenCalledWith(STREAM_UUID, eventContext);
     },
   );
 

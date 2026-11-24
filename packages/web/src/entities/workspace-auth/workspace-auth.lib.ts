@@ -341,6 +341,7 @@ function assertWorkspaceLoginCurrent(
   const state = useWorkspaceAuthStore.getState();
   const currentSession = state.getCurrentSession();
   if (
+    state.runtimeSuspended ||
     signal?.aborted === true ||
     state.sessionSelectionGeneration !== initialSelectionGeneration ||
     currentSession?.accountId !== initialSession?.accountId ||
@@ -467,8 +468,11 @@ async function cleanupWorkspaceExternalAccountOwnerCache(
 
 async function cleanupWorkspaceOwnerCaches(session: WorkspaceAuthSession): Promise<void> {
   // Re-entry with the same durable key revokes every outstanding delete.
+  const ownerKey = workspaceRuntimeOwnerKey(session);
   const isWriteCurrent = () =>
-    useWorkspaceAuthStore.getState().getRuntimeContextForOwner(session) == null;
+    !useWorkspaceAuthStore
+      .getState()
+      .sessions.some((candidate) => workspaceRuntimeOwnerKey(candidate) === ownerKey);
   await Promise.all([
     cleanupWorkspaceMessengerOwnerCache(session, isWriteCurrent),
     cleanupWorkspaceUserOwnerCache(session, isWriteCurrent),
@@ -739,11 +743,11 @@ export function ensureFreshWorkspaceSession(
       new WorkspaceAuthFlowError("refresh-unavailable", "Workspace session is missing"),
     );
   }
+  if (!isWorkspaceCredentialCurrent(session) || options.signal?.aborted === true) {
+    return Promise.reject(abortSignalError());
+  }
   if (options.force !== true && !shouldRefreshWorkspaceSession(session)) {
     return Promise.resolve(session);
-  }
-  if (options.signal?.aborted === true) {
-    return Promise.reject(abortSignalError());
   }
 
   const refreshKey = `${workspaceRuntimeOwnerKey(session)}:${session.runtimeGeneration}`;

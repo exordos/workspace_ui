@@ -508,6 +508,7 @@ export interface WorkspaceMessengerSearchResultWrite {
 }
 
 let dbPromise: Promise<IDBDatabase> | null = null;
+let preventReopenUntilReload = false;
 let lastCatalogCacheUpdatedAt = 0;
 
 function idbError(reason: unknown): Error {
@@ -620,6 +621,9 @@ function emptyCatalogSnapshot(): WorkspaceMessengerCatalogCacheSnapshot {
 }
 
 export function openWorkspaceMessengerCacheDb(): Promise<IDBDatabase> {
+  if (preventReopenUntilReload) {
+    return Promise.reject(new Error("Workspace cache closed for cold start"));
+  }
   if (!isIndexedDBAvailable()) {
     return Promise.reject(new Error("indexedDB unavailable"));
   }
@@ -642,40 +646,45 @@ export function openWorkspaceMessengerCacheDb(): Promise<IDBDatabase> {
 /** Test helper: resets singleton after database deletion. */
 export function resetWorkspaceMessengerCacheDbSingletonForTests(): void {
   dbPromise = null;
+  preventReopenUntilReload = false;
   lastCatalogCacheUpdatedAt = 0;
 }
 
-/** Drops the Workspace messenger cache database and resets the open-connection singleton. */
-export async function deleteWorkspaceMessengerCacheDatabase(): Promise<void> {
+/** Drops the cache. Cold start also bars old callbacks from opening a new connection. */
+export async function deleteWorkspaceMessengerCacheDatabase(
+  options: { preventReopen?: boolean } = {},
+): Promise<void> {
+  if (options.preventReopen) preventReopenUntilReload = true;
   if (!isIndexedDBAvailable()) return;
 
-  try {
-    if (dbPromise != null) {
-      const db = await dbPromise.catch(() => null);
-      db?.close();
-    }
-  } catch {
-    /* close is best-effort */
-  }
-  dbPromise = null;
+  const existing = dbPromise;
+  const closing = existing?.then((db) => db.close()).catch(() => undefined);
+  // The delete request waits for the connection to close. A blocked open cannot hold reload.
+  if (!options.preventReopen) await closing;
+  if (dbPromise === existing) dbPromise = null;
 
   await new Promise<void>((resolve, reject) => {
     const request = indexedDB.deleteDatabase(DB_NAME);
     let settled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
     const finishOk = (): void => {
       if (settled) return;
       settled = true;
+      clearTimeout(timer);
       resolve();
     };
     request.onsuccess = () => finishOk();
     request.onerror = () => {
       if (settled) return;
       settled = true;
+      clearTimeout(timer);
       reject(idbError(request.error));
     };
-    request.onblocked = () => {
-      globalThis.setTimeout(() => finishOk(), IDB_DELETE_BLOCKED_TIMEOUT_MS);
+    const handleBlocked = () => {
+      timer ??= globalThis.setTimeout(finishOk, IDB_DELETE_BLOCKED_TIMEOUT_MS);
     };
+    request.onblocked = handleBlocked;
+    if (options.preventReopen) handleBlocked();
   });
 }
 
@@ -765,6 +774,58 @@ async function readOwnerMeta(
   return (
     ((await requestToPromise(request)) as WorkspaceMessengerCacheOwnerMetaRow | undefined) ?? null
   );
+}
+
+// Owner-local cache counts and hydration metadata for the diagnostics dashboard.
+export interface WorkspaceMessengerCacheDiagnostics {
+  ownerKey: string;
+  hasOwnerMeta: boolean;
+  ownerMetaLastHydratedAt: number | null;
+  streamsCount: number;
+  conversationsCount: number;
+  messagesCount: number;
+  foldersCount: number | null;
+}
+
+// Reads only owner metadata and row counts. Cache access may be unavailable.
+export async function readWorkspaceMessengerCacheDiagnostics(
+  ownerKey: string,
+): Promise<WorkspaceMessengerCacheDiagnostics | null> {
+  if (!ownerKey) return null;
+  try {
+    const db = await openWorkspaceMessengerCacheDb();
+    const countRows = (storeName: string) =>
+      requestToPromise(
+        db
+          .transaction(storeName, "readonly")
+          .objectStore(storeName)
+          .index("byOwner")
+          .count(ownerKey),
+      );
+    const [ownerMeta, streamsCount, conversationsCount, messagesCount, foldersCount] =
+      await Promise.all([
+        readOwnerMeta(db, ownerKey),
+        countRows(WORKSPACE_MESSENGER_CACHE_STORES.streams),
+        countRows(WORKSPACE_MESSENGER_CACHE_STORES.conversations),
+        countRows(WORKSPACE_MESSENGER_CACHE_STORES.messages),
+        countRows(WORKSPACE_MESSENGER_CACHE_STORES.folders),
+      ]);
+    const lastHydratedAt = ownerMeta?.lastHydratedAt;
+    return {
+      ownerKey,
+      hasOwnerMeta: ownerMeta != null,
+      ownerMetaLastHydratedAt:
+        typeof lastHydratedAt === "number" && Number.isFinite(lastHydratedAt)
+          ? lastHydratedAt
+          : null,
+      streamsCount,
+      conversationsCount,
+      messagesCount,
+      foldersCount,
+    };
+  } catch {
+    return null;
+  }
 }
 
 async function readRealtimeCursor(

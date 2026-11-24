@@ -10,6 +10,12 @@ import { WORKSPACE_AUTH_STORAGE_KEYS } from "~/shared/lib/workspace-auth-storage
 import { deleteWorkspaceMessengerCacheDatabase } from "~/shared/lib/workspace-messenger-cache-db";
 
 const PRESERVED_AUTH_STORAGE_KEYS = WORKSPACE_AUTH_STORAGE_KEYS;
+let prepareColdStart: (() => void) | undefined;
+
+// The app composition supplies the owner operation that revokes writes for this document.
+export function setApplicationColdStartPreparation(prepare: () => void): void {
+  prepareColdStart = prepare;
+}
 
 function isPreservedAuthStorageKey(key: string): boolean {
   return (PRESERVED_AUTH_STORAGE_KEYS as readonly string[]).includes(key);
@@ -57,7 +63,13 @@ async function clearHttpCaches(): Promise<void> {
 /** Wipes Workspace cache, sessionStorage, HTTP caches, and localStorage except saved org logins. */
 export async function performApplicationColdStart(): Promise<void> {
   try {
-    await deleteWorkspaceMessengerCacheDatabase();
+    prepareColdStart?.();
+  } catch {
+    /* Local storage still needs to be erased if one runtime fails to stop. */
+  }
+
+  try {
+    await deleteWorkspaceMessengerCacheDatabase({ preventReopen: true });
   } catch {
     /* IDB wipe is best-effort */
   }

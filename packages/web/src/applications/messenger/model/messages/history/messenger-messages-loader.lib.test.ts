@@ -17,7 +17,7 @@ import {
   readConversationMessageWindow,
   resetWorkspaceMessengerCacheDbSingletonForTests,
 } from "~/shared/lib/workspace-messenger-cache-db";
-import { createMessengerRealtimeActiveApplier } from "../../../runtime/sync/messenger-realtime-applier.lib";
+import { createMessengerRealtimeApplier } from "../../../runtime/sync/messenger-realtime-applier.lib";
 import { useMessengerStore } from "../../chats/messenger.model";
 import * as messengerCache from "../../messenger-cache.lib";
 import {
@@ -941,7 +941,7 @@ describe("messenger conversation messages loader", () => {
         updated_at: DATE_LATER,
         payload: { kind: "e2ee", key_uuid: keyUuid, content: "BAUG" },
       });
-      await createMessengerRealtimeActiveApplier({ cache: {} }).applyEvent(
+      await createMessengerRealtimeApplier({ requireOwnerCatalog: false, cache: {} }).applyEvent(
         {
           epoch_version: 2,
           type: "message",

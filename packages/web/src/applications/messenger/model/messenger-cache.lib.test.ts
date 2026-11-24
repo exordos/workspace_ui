@@ -12,7 +12,7 @@ import {
 } from "~/shared/lib/workspace-messenger-cache-db";
 import {
   deleteMessengerStreamCache,
-  messengerRealtimeBackgroundCache,
+  messengerRealtimeCache,
   patchMessengerCachedMessage,
   readMessengerCatalogPayloadCache,
   readMessengerConversationWindowCache,
@@ -478,7 +478,7 @@ describe("messenger cache", () => {
       folders: [createFolder()],
     });
 
-    await messengerRealtimeBackgroundCache.upsertCachedStream(
+    await messengerRealtimeCache.upsertCachedStream(
       OWNER_KEY,
       createStream({ unreadCount: 5, activeUnreadCount: 3, passiveUnreadCount: 2 }),
     );
@@ -506,29 +506,25 @@ describe("messenger cache", () => {
 
   it("persists the background message lifecycle without crossing owner boundaries", async () => {
     const conversationId = `topic:${STREAM_UUID}:${TOPIC_UUID}`;
-    await messengerRealtimeBackgroundCache.writeConversationMessagePage(OWNER_KEY, conversationId, {
+    await messengerRealtimeCache.writeConversationMessagePage(OWNER_KEY, conversationId, {
       messages: [createMessage()],
     });
-    await messengerRealtimeBackgroundCache.writeConversationMessagePage(
-      OTHER_OWNER_KEY,
-      conversationId,
-      {
-        messages: [createMessage({ payload: { kind: "markdown", content: "Other owner" } })],
-      },
-    );
+    await messengerRealtimeCache.writeConversationMessagePage(OTHER_OWNER_KEY, conversationId, {
+      messages: [createMessage({ payload: { kind: "markdown", content: "Other owner" } })],
+    });
 
     await expect(readMessengerConversationWindowCache(OWNER_KEY, conversationId)).resolves.toEqual(
       expect.objectContaining({ messages: [expect.objectContaining({ uuid: MESSAGE_UUID })] }),
     );
 
-    await messengerRealtimeBackgroundCache.patchCachedMessage(
+    await messengerRealtimeCache.patchCachedMessage(
       OWNER_KEY,
       createMessage({
         payload: { kind: "markdown", content: "Edited" },
         updatedAt: "2026-07-01T08:10:00.000Z",
       }),
     );
-    await messengerRealtimeBackgroundCache.markCachedMessagesRead(OWNER_KEY, [MESSAGE_UUID]);
+    await messengerRealtimeCache.markCachedMessagesRead(OWNER_KEY, [MESSAGE_UUID]);
 
     await expect(readMessengerMessageBodyCache(OWNER_KEY, [MESSAGE_UUID])).resolves.toEqual([
       expect.objectContaining({
@@ -545,7 +541,7 @@ describe("messenger cache", () => {
       }),
     ]);
 
-    await messengerRealtimeBackgroundCache.deleteCachedMessage(OWNER_KEY, MESSAGE_UUID, [
+    await messengerRealtimeCache.deleteCachedMessage(OWNER_KEY, MESSAGE_UUID, [
       `stream:${STREAM_UUID}`,
       conversationId,
     ]);
@@ -583,13 +579,11 @@ describe("messenger cache", () => {
         createConversation({ id: topicConversationId, lastMessageUuid: deleted.uuid }),
       ],
     });
-    await messengerRealtimeBackgroundCache.writeConversationMessagePage(
-      OWNER_KEY,
-      topicConversationId,
-      { messages: [predecessor, deleted] },
-    );
+    await messengerRealtimeCache.writeConversationMessagePage(OWNER_KEY, topicConversationId, {
+      messages: [predecessor, deleted],
+    });
 
-    await messengerRealtimeBackgroundCache.deleteCachedMessage(OWNER_KEY, deleted.uuid, [
+    await messengerRealtimeCache.deleteCachedMessage(OWNER_KEY, deleted.uuid, [
       streamConversationId,
       topicConversationId,
     ]);
@@ -667,18 +661,14 @@ describe("messenger cache", () => {
         }),
       ],
     });
-    await messengerRealtimeBackgroundCache.writeConversationMessagePage(
-      OWNER_KEY,
-      topicConversationId,
-      { messages: [predecessor, deleted] },
-    );
-    await messengerRealtimeBackgroundCache.writeConversationMessagePage(
-      OWNER_KEY,
-      otherTopicConversationId,
-      { messages: [newerStreamTail] },
-    );
+    await messengerRealtimeCache.writeConversationMessagePage(OWNER_KEY, topicConversationId, {
+      messages: [predecessor, deleted],
+    });
+    await messengerRealtimeCache.writeConversationMessagePage(OWNER_KEY, otherTopicConversationId, {
+      messages: [newerStreamTail],
+    });
 
-    await messengerRealtimeBackgroundCache.deleteCachedMessage(OWNER_KEY, deleted.uuid, [
+    await messengerRealtimeCache.deleteCachedMessage(OWNER_KEY, deleted.uuid, [
       streamConversationId,
       topicConversationId,
     ]);
@@ -715,8 +705,8 @@ describe("messenger cache", () => {
       ],
     });
 
-    await messengerRealtimeBackgroundCache.deleteCachedStream(OWNER_KEY, STREAM_UUID);
-    await messengerRealtimeBackgroundCache.upsertCachedStream(
+    await messengerRealtimeCache.deleteCachedStream(OWNER_KEY, STREAM_UUID);
+    await messengerRealtimeCache.upsertCachedStream(
       OWNER_KEY,
       createStream({ unreadCount: 9, activeUnreadCount: 9 }),
     );

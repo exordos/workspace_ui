@@ -41,7 +41,7 @@ import type {
   MessengerMessage,
   MessengerTopic,
 } from "~/applications/messenger/model/messenger.types";
-import { createMessengerRealtimeActiveApplier } from "~/applications/messenger/runtime/sync/messenger-realtime-applier.lib";
+import { createMessengerRealtimeApplier } from "~/applications/messenger/runtime/sync/messenger-realtime-applier.lib";
 import { useDownloadStore } from "~/entities/download/download.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import type { WorkspaceAuthSession } from "~/entities/workspace-auth/workspace-auth.model";
@@ -6612,7 +6612,7 @@ describe("ChatPage Workspace route", () => {
         surface: "active",
         source: "websocket",
       } as const;
-      const applier = createMessengerRealtimeActiveApplier({ cache: {} });
+      const applier = createMessengerRealtimeApplier({ requireOwnerCatalog: false, cache: {} });
       await act(async () => {
         if (source === "dismissal") {
           useMessengerOutboxStore.getState().removeOutgoingMessage(outgoing.placementUuid);
@@ -6719,7 +6719,7 @@ describe("ChatPage Workspace route", () => {
     try {
       await waitFor(() => expect(captured.openRealChatSession).toHaveBeenCalledOnce());
       const message = toMarkdownMessageDto(createSentMessage(outgoing));
-      await createMessengerRealtimeActiveApplier({ cache: {} }).applyEvent(
+      await createMessengerRealtimeApplier({ requireOwnerCatalog: false, cache: {} }).applyEvent(
         {
           type: "message",
           kind: "message.created",
@@ -8614,7 +8614,7 @@ describe("ChatPage Workspace route", () => {
       const owner = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
       if (owner == null) throw new Error("Expected runtime for realtime");
       await act(async () => {
-        await createMessengerRealtimeActiveApplier({ cache: {} }).applyEvent(
+        await createMessengerRealtimeApplier({ requireOwnerCatalog: false, cache: {} }).applyEvent(
           {
             type: "message",
             kind: "message.created",

@@ -202,7 +202,7 @@ export function createWorkspaceRealtimeRuntimeManager<
     const isOwnerCurrent = (owner: WorkspaceRealtimeRuntimeOwner) =>
       entry != null && isEntryOwnerCurrent(entry, owner);
     const activeApplier = options.activeApplierFactory({ isOwnerCurrent });
-    // Фон сейчас не пишет в messengerStore: он только даёт transport-у принять событие и сдвинуть cursor.
+    // The host chooses background participants. A host without them can still track transport.
     const backgroundApplier =
       options.backgroundApplierFactory?.({ isOwnerCurrent }) ??
       createWorkspaceRealtimeNoopApplier();

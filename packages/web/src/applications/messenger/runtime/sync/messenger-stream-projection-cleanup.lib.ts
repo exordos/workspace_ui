@@ -16,26 +16,23 @@ import {
 import { useMessengerBackgroundProjectionStore } from "./messenger-background-projection.model";
 import type { MessengerUuid } from "../../model/messenger.types";
 
-export interface RemoveMessengerStreamProjectionOptions {
+// Removes a deleted stream from this owner's memory and durable projection.
+interface RemoveMessengerStreamProjectionOptions {
   ownerKey: string;
   streamUuid: MessengerUuid;
-  removeActiveProjection: boolean;
   isOwnerCurrent?: () => boolean;
   deleteCachedStream?: (
     ownerKey: string,
     streamUuid: MessengerUuid,
     isCurrent?: () => boolean,
   ) => Promise<void> | void;
-  clearOwnerSearchCache?: boolean;
 }
 
 export async function removeMessengerStreamProjection({
   ownerKey,
   streamUuid,
-  removeActiveProjection,
   isOwnerCurrent = () => true,
   deleteCachedStream,
-  clearOwnerSearchCache = true,
 }: RemoveMessengerStreamProjectionOptions): Promise<void> {
   if (!isOwnerCurrent()) return;
 
@@ -57,7 +54,7 @@ export async function removeMessengerStreamProjection({
   const draftCleanup = removeWorkspaceComposerDraftsForStream(ownerKey, streamUuid);
 
   const catalog = getMessengerStoreForOwner(ownerKey);
-  if (removeActiveProjection && catalog?.getState().ownerKey === ownerKey) {
+  if (catalog?.getState().ownerKey === ownerKey) {
     catalog.getState().removeStream(ownerKey, { uuid: streamUuid });
     getWorkspaceMessageStoreForOwner(ownerKey)?.getState().removeMessagesForStream(streamUuid);
   }
@@ -67,29 +64,6 @@ export async function removeMessengerStreamProjection({
   await Promise.all([
     cacheDeletion,
     deleteWorkspaceComposerDraftRecordsForStream(ownerKey, streamUuid, isRemovalCurrent),
-    clearOwnerSearchCache
-      ? deleteMessengerSearchResultsForOwner(ownerKey, isRemovalCurrent)
-      : Promise.resolve(),
+    deleteMessengerSearchResultsForOwner(ownerKey, isRemovalCurrent),
   ]);
-}
-
-export async function removeMessengerStreamProjections(
-  options: Omit<RemoveMessengerStreamProjectionOptions, "streamUuid" | "clearOwnerSearchCache"> & {
-    streamUuids: readonly MessengerUuid[];
-  },
-): Promise<void> {
-  if (!(options.isOwnerCurrent?.() ?? true)) return;
-  const streamUuids = [...new Set(options.streamUuids)];
-  await Promise.all(
-    streamUuids.map((streamUuid) =>
-      removeMessengerStreamProjection({
-        ...options,
-        streamUuid,
-        clearOwnerSearchCache: false,
-      }),
-    ),
-  );
-  if (streamUuids.length > 0) {
-    await deleteMessengerSearchResultsForOwner(options.ownerKey, options.isOwnerCurrent);
-  }
 }

@@ -1,6 +1,10 @@
 import "fake-indexeddb/auto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { performApplicationColdStart } from "./local-reset";
+import { performApplicationColdStart, setApplicationColdStartPreparation } from "./local-reset";
+import {
+  openWorkspaceMessengerCacheDb,
+  resetWorkspaceMessengerCacheDbSingletonForTests,
+} from "./workspace-messenger-cache-db";
 
 function clearTestStorage(): void {
   for (const key of [
@@ -36,6 +40,40 @@ describe("performApplicationColdStart", () => {
 
   afterEach(() => {
     clearTestStorage();
+    resetWorkspaceMessengerCacheDbSingletonForTests();
+    setApplicationColdStartPreparation(() => undefined);
+  });
+
+  it("revokes writers before wiping local state and prevents a late cache reopen", async () => {
+    localStorage.setItem("temporary-cache", "cached");
+    const connection = await openWorkspaceMessengerCacheDb();
+    const prepare = vi.fn(() => {
+      expect(localStorage.getItem("temporary-cache")).toBe("cached");
+    });
+    setApplicationColdStartPreparation(prepare);
+
+    await performApplicationColdStart();
+
+    expect(prepare).toHaveBeenCalledOnce();
+    expect(localStorage.getItem("temporary-cache")).toBeNull();
+    expect(() => connection.transaction("ownerMeta")).toThrow();
+    await expect(openWorkspaceMessengerCacheDb()).rejects.toThrow("closed for cold start");
+  });
+
+  it("still clears storage when IndexedDB deletion errors", async () => {
+    localStorage.setItem("temporary-cache", "cached");
+    localStorage.setItem("workspace-auth-current-account", "account-1");
+    const deleteDatabase = vi.spyOn(indexedDB, "deleteDatabase").mockImplementation(() => {
+      throw new Error("IDB unavailable");
+    });
+    try {
+      await expect(performApplicationColdStart()).resolves.toBeUndefined();
+      expect(localStorage.getItem("temporary-cache")).toBeNull();
+      expect(localStorage.getItem("workspace-auth-current-account")).toBe("account-1");
+      await expect(openWorkspaceMessengerCacheDb()).rejects.toThrow("closed for cold start");
+    } finally {
+      deleteDatabase.mockRestore();
+    }
   });
 
   it("preserves current auth keys while removing legacy auth, preferences, and caches", async () => {

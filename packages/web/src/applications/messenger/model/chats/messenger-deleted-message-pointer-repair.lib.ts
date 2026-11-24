@@ -17,6 +17,11 @@ import {
 import type { WorkspaceMessengerMessageDto } from "~/shared/api/messenger.types";
 import { isLaterMessageTimestamp } from "~/shared/lib/workspace-messenger-message-time";
 import { adaptMessengerMessage } from "../messages/messenger-message-adapter.lib";
+import {
+  messengerRealtimeCache,
+  type MessengerMessagePointerCacheRepair,
+  type MessengerMessagePointerCacheTargets,
+} from "../messenger-cache.lib";
 import { conversationIdForStream, conversationIdForTopic } from "../messenger-ids.lib";
 import {
   buildMessengerRequestOptions,
@@ -29,10 +34,6 @@ import {
   type MessengerDeletedMessagePointerTargets,
 } from "./messenger.model";
 import type { KnownMessageCacheWriter } from "../messages/messages-accept-update.lib";
-import type {
-  MessengerMessagePointerCacheRepair,
-  MessengerMessagePointerCacheTargets,
-} from "../messenger-cache.lib";
 import type { MessengerDeletedMessage, MessengerMessage, MessengerUuid } from "../messenger.types";
 
 export interface DeletedMessagePointerRepairPlan {
@@ -281,13 +282,14 @@ export function captureDeletedMessagePointerRepair(
   };
 }
 
+// Reconcile the remaining owner pointers in memory and the local snapshot.
 export async function repairDeletedMessagePointers({
   runtimeContext,
   plan,
   getRuntimeContext = () => runtimeContext,
   clientOptions,
   client = {},
-  cache,
+  cache = messengerRealtimeCache,
   signal,
   isCurrent = () => true,
 }: RepairDeletedMessagePointersOptions): Promise<void> {

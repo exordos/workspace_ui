@@ -1,11 +1,9 @@
 import { repairDeletedMessagePointers } from "~/applications/messenger/model/chats/messenger-deleted-message-pointer-repair.lib";
-import { getWorkspaceMessageStoreForOwner } from "~/applications/messenger/model/messages/message.model";
 import { createMessengerReactionAggregateRevalidateHandler } from "~/applications/messenger/model/messages/messenger-message-reactions-actions.lib";
-import { messengerRealtimeActiveCache } from "~/applications/messenger/model/messenger-cache.lib";
 import { buildWorkspaceRequestOptions } from "~/applications/messenger/model/messenger-request-options.lib";
 import {
-  createMessengerRealtimeActiveApplier,
-  type MessengerRealtimeActiveApplierOptions,
+  createMessengerRealtimeApplier,
+  type MessengerRealtimeApplierOptions,
 } from "~/applications/messenger/runtime/sync/messenger-realtime-applier.lib";
 import { removeMessengerStreamProjection } from "~/applications/messenger/runtime/sync/messenger-stream-projection-cleanup.lib";
 import { createActivityRealtimeApplier } from "~/entities/activity/activity-realtime-applier.lib";
@@ -36,6 +34,7 @@ import {
 } from "~/shared/lib/workspace-realtime/workspace-realtime-manager.lib";
 import {
   createWorkspaceRealtimeTransportCore,
+  type WorkspaceRealtimeEventContext,
   type WorkspaceRealtimeRuntimeOwner,
 } from "~/shared/lib/workspace-realtime/workspace-realtime-runtime.lib";
 import {
@@ -69,7 +68,7 @@ export function toWorkspaceSessionContext(
 
 // Repair loaded catalog pointers through the owning model after a message is removed.
 const repairRealtimeDeletedMessagePointers: NonNullable<
-  MessengerRealtimeActiveApplierOptions["onMessageDeleted"]
+  MessengerRealtimeApplierOptions["onMessageDeleted"]
 > = (_ownerKey, _message, plan, context, isCurrent) => {
   const getRuntimeContext = () => readWorkspaceSession(context.owner);
   const runtimeContext = getRuntimeContext();
@@ -78,16 +77,18 @@ const repairRealtimeDeletedMessagePointers: NonNullable<
     runtimeContext,
     plan,
     getRuntimeContext,
-    cache: messengerRealtimeActiveCache,
     signal: context.signal,
     isCurrent,
   });
 };
 
 // The applier calls this only for live frames, outside recovery and catch-up.
-const ingestRealtimeCallInvite: NonNullable<
-  MessengerRealtimeActiveApplierOptions["onMessageCreated"]
-> = (ownerKey, message, stream, context) => {
+const ingestRealtimeCallInvite: NonNullable<MessengerRealtimeApplierOptions["onMessageCreated"]> = (
+  ownerKey,
+  message,
+  stream,
+  context,
+) => {
   if (readWorkspaceSession(context.owner, "active") == null) return;
   const { usersById } = useUsersStore.getState();
   const currentUserUuid = context.owner.userUuid;
@@ -106,7 +107,7 @@ const ingestRealtimeCallInvite: NonNullable<
 
 // Refresh own reactions in the model that received the event, even when it is off-screen.
 const revalidateRealtimeOwnReactions: NonNullable<
-  MessengerRealtimeActiveApplierOptions["onMessageReactionAggregateUpdated"]
+  MessengerRealtimeApplierOptions["onMessageReactionAggregateUpdated"]
 > = (ownerKey, message, context) => {
   const getRuntimeContext = () => readWorkspaceSession(context.owner);
   const runtimeContext = getRuntimeContext();
@@ -115,7 +116,6 @@ const revalidateRealtimeOwnReactions: NonNullable<
     runtimeContext,
     getRuntimeContext,
     signal: context.signal,
-    store: getWorkspaceMessageStoreForOwner(ownerKey) ?? undefined,
   })(ownerKey, message);
 };
 
@@ -127,14 +127,24 @@ function currentSurface(owner: WorkspaceRealtimeRuntimeOwner): "active" | "backg
 }
 
 function createOwnerApplier(isOwnerCurrent: (owner: WorkspaceRealtimeRuntimeOwner) => boolean) {
-  return createMessengerRealtimeActiveApplier({
+  return createMessengerRealtimeApplier({
     isOwnerCurrent,
-    applyToBothSurfaces: true,
-    requireActiveCatalog: true,
     onMessageCreated: ingestRealtimeCallInvite,
     onMessageDeleted: repairRealtimeDeletedMessagePointers,
     onMessageReactionAggregateUpdated: revalidateRealtimeOwnReactions,
   });
+}
+
+// A projection deletion belongs to the owner even if the screen selection changes during cleanup.
+function bindExternalProjectionRemoval(
+  isOwnerCurrent: (owner: WorkspaceRealtimeRuntimeOwner) => boolean,
+) {
+  return (streamUuid: string, context: WorkspaceRealtimeEventContext) =>
+    removeMessengerStreamProjection({
+      ownerKey: context.ownerKey,
+      streamUuid,
+      isOwnerCurrent: () => context.signal?.aborted !== true && isOwnerCurrent(context.owner),
+    });
 }
 
 // Compose real application participants once per authorized workspace runtime.
@@ -180,7 +190,11 @@ export function createWorkspaceSessionRuntimeManager(
             useWorkspaceAuthStore.getState().getCurrentRuntimeContext()?.runtimeGeneration,
         }),
         createExternalAccountRealtimeApplier({ surface: "active", isOwnerCurrent: isActive }),
-        createExternalChatRealtimeApplier({ surface: "active", isOwnerCurrent: isActive }),
+        createExternalChatRealtimeApplier({
+          surface: "active",
+          isOwnerCurrent: isActive,
+          removeProjection: bindExternalProjectionRemoval(isOwnerCurrent),
+        }),
         createOwnerApplier(isOwnerCurrent),
         createUserRealtimeApplier({ isOwnerCurrent, requireActiveProjection: true }),
       ]);
@@ -196,8 +210,7 @@ export function createWorkspaceSessionRuntimeManager(
         createExternalChatRealtimeApplier({
           surface: "background",
           isOwnerCurrent: isBackground,
-          removeProjection: (options) =>
-            removeMessengerStreamProjection({ ...options, removeActiveProjection: true }),
+          removeProjection: bindExternalProjectionRemoval(isOwnerCurrent),
         }),
         createOwnerApplier(isOwnerCurrent),
         createUserRealtimeApplier({ isOwnerCurrent, requireActiveProjection: true }),

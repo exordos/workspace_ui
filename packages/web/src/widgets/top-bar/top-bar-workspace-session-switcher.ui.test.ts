@@ -98,8 +98,6 @@ function createProjection(
     messageIdSnapshotsById: {},
     recentEvents: [],
     notificationCandidates: [createCandidate()],
-    skippedEvents: [],
-    lastTransportState: null,
     ...overrides,
   };
 }

@@ -9,8 +9,8 @@
  */
 
 import { useSidebarConfigStore } from "~/applications/messenger/features/sidebar/sidebar-config.model";
-import { useMessengerStore } from "~/applications/messenger/model/chats/messenger.model";
-import { useWorkspaceMessageStore } from "~/applications/messenger/model/messages/message.model";
+import { readChatCatalogDiagnostics } from "~/applications/messenger/model/chats/chats";
+import { readActiveMessageIndex } from "~/applications/messenger/model/messages/messages-consumers";
 import { useCallParticipantsStore } from "~/entities/call/call.model";
 import { useThemeStore } from "~/entities/theme/theme.model";
 import { useUsersStore } from "~/entities/user/user.model";
@@ -34,8 +34,8 @@ import {
 
 interface DevTools {
   stores: {
-    messenger: typeof useMessengerStore;
-    messages: typeof useWorkspaceMessageStore;
+    messenger: { getState: typeof readChatCatalogDiagnostics };
+    messages: { getState: typeof readMessageDiagnostics };
     users: typeof useUsersStore;
     workspaceAuth: typeof useWorkspaceAuthStore;
     theme: typeof useThemeStore;
@@ -68,6 +68,25 @@ interface DevTools {
 
 let consoleCaptureCleanup: (() => void) | undefined;
 
+// Window generations are internal Symbols. The remaining fields can be detached for inspection.
+function readMessageDiagnostics() {
+  const index = readActiveMessageIndex();
+  const conversationWindowsById = Object.fromEntries(
+    Object.entries(index.conversationWindowsById).map(([conversationId, window]) => [
+      conversationId,
+      {
+        mode: window.mode,
+        anchorMessageUuid: window.anchorMessageUuid,
+        messageUuids: window.messageUuids,
+        beforePageMarker: window.beforePageMarker,
+        afterPageMarker: window.afterPageMarker,
+        revision: window.revision,
+      },
+    ]),
+  );
+  return structuredClone({ ...index, conversationWindowsById });
+}
+
 export function installDevTools(): void {
   if (!import.meta.env.DEV) return;
   if (typeof window === "undefined") return;
@@ -77,8 +96,8 @@ export function installDevTools(): void {
 
   const devtools: DevTools = {
     stores: {
-      messenger: useMessengerStore,
-      messages: useWorkspaceMessageStore,
+      messenger: { getState: () => structuredClone(readChatCatalogDiagnostics()) },
+      messages: { getState: readMessageDiagnostics },
       users: useUsersStore,
       workspaceAuth: useWorkspaceAuthStore,
       theme: useThemeStore,
@@ -128,7 +147,7 @@ Log scopes: app, api, realtime, connection-health, action, store:<name>, trace:*
   __dev__.logs() / __dev__.logs("error")
   __dev__.clearLogs()
 
-  __dev__.stores.<name>.getState()   — Zustand store snapshot
+  __dev__.stores.<name>.getState()   — state snapshot (messenger and messages are read-only)
   __dev__.theme.toggle() / __dev__.theme.setPalette("blue-cold")
   __dev__.i18n.setLocale("en")
   __dev__.perf.startTimer("label")

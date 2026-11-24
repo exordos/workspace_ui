@@ -1,10 +1,25 @@
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  useWorkspaceAuthStore,
+  type WorkspaceAuthSession,
+} from "~/entities/workspace-auth/workspace-auth.model";
+import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { clearLogHistory, createLogger, setMinLevel } from "~/shared/lib/logger";
+import {
+  readWorkspaceMessengerCacheDiagnostics,
+  type WorkspaceMessengerCacheDiagnostics,
+} from "~/shared/lib/workspace-messenger-cache-db";
+import type * as WorkspaceMessengerCacheDb from "~/shared/lib/workspace-messenger-cache-db";
 import { renderWithProviders } from "~/test/render";
 import { LogsPage } from "./logs-page.ui";
 
 const downloadLogsAsFileMock = vi.fn();
+
+vi.mock("~/shared/lib/workspace-messenger-cache-db", async (importOriginal) => ({
+  ...(await importOriginal<typeof WorkspaceMessengerCacheDb>()),
+  readWorkspaceMessengerCacheDiagnostics: vi.fn(),
+}));
 
 vi.mock("./logs-export.lib", () => ({
   downloadLogsAsFile: (...args: unknown[]) => downloadLogsAsFileMock(...args),
@@ -19,13 +34,77 @@ describe("LogsPage", () => {
     clearLogHistory();
     setMinLevel("debug");
     downloadLogsAsFileMock.mockReset();
+    vi.mocked(readWorkspaceMessengerCacheDiagnostics).mockResolvedValue(null);
     vi.spyOn(console, "warn").mockImplementation(() => {});
     vi.spyOn(console, "error").mockImplementation(() => {});
   });
 
   afterEach(() => {
+    useWorkspaceAuthStore.setState({ sessions: [], currentAccountId: null });
     clearLogHistory();
     vi.restoreAllMocks();
+  });
+
+  it("discards a late cache snapshot for the previously selected account", async () => {
+    function session(accountId: string): WorkspaceAuthSession {
+      return {
+        accountId,
+        instanceId: accountId,
+        organizationId: accountId,
+        organizationOrigin: `https://${accountId}.example.invalid`,
+        projectId: accountId,
+        userUuid: accountId,
+        accessToken: "test-token",
+        runtimeGeneration: 1,
+        login: accountId,
+        profile: {
+          uuid: accountId,
+          username: accountId,
+          firstName: null,
+          lastName: null,
+          email: null,
+        },
+      };
+    }
+    const first = session("first");
+    const second = session("second");
+    const firstKey = workspaceRuntimeOwnerKey(first);
+    const secondKey = workspaceRuntimeOwnerKey(second);
+    function snapshot(ownerKey: string, messagesCount: number): WorkspaceMessengerCacheDiagnostics {
+      return {
+        ownerKey,
+        messagesCount,
+        hasOwnerMeta: false,
+        ownerMetaLastHydratedAt: null,
+        streamsCount: 0,
+        conversationsCount: 0,
+        foldersCount: 0,
+      };
+    }
+    const previous = Promise.withResolvers<WorkspaceMessengerCacheDiagnostics>();
+    vi.mocked(readWorkspaceMessengerCacheDiagnostics).mockImplementation((ownerKey) =>
+      ownerKey === firstKey ? previous.promise : Promise.resolve(snapshot(secondKey, 222)),
+    );
+    useWorkspaceAuthStore.setState({
+      sessions: [first, second],
+      currentAccountId: first.accountId,
+    });
+    const { container } = renderWithProviders(<LogsPage />);
+    expect(readWorkspaceMessengerCacheDiagnostics).toHaveBeenCalledWith(firstKey);
+
+    act(() => {
+      useWorkspaceAuthStore.getState().setCurrentAccountId(second.accountId);
+    });
+    const readCache = () => {
+      const displayed = container.querySelector("details pre")?.textContent ?? "{}";
+      return (JSON.parse(displayed) as { cache?: WorkspaceMessengerCacheDiagnostics }).cache;
+    };
+    await waitFor(() => expect(readCache()).toEqual(snapshot(secondKey, 222)));
+    await act(() => {
+      previous.resolve(snapshot(firstKey, 111));
+      return previous.promise.then(() => undefined);
+    });
+    expect(readCache()).toEqual(snapshot(secondKey, 222));
   });
 
   it("renders in-memory log entries in the logs modal", () => {

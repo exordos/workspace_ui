@@ -11,11 +11,11 @@ import { describe, expect, it, vi, afterEach } from "vitest";
 import { useThemeStore } from "../entities/theme/theme.model";
 import { installDevTools } from "./devtools";
 
-vi.mock("../applications/messenger/model/chats/messenger.model", () => ({
-  useMessengerStore: { getState: vi.fn(() => ({})) },
+vi.mock("../applications/messenger/model/chats/chats", () => ({
+  readChatCatalogDiagnostics: () => mockChatCatalog,
 }));
-vi.mock("../applications/messenger/model/messages/message.model", () => ({
-  useWorkspaceMessageStore: { getState: vi.fn(() => ({})) },
+vi.mock("../applications/messenger/model/messages/messages-consumers", () => ({
+  readActiveMessageIndex: () => mockMessageIndex,
 }));
 vi.mock("../entities/user/user.model", () => ({
   useUsersStore: { getState: vi.fn(() => ({})) },
@@ -23,16 +23,33 @@ vi.mock("../entities/user/user.model", () => ({
 vi.mock("../entities/workspace-auth/workspace-auth.model", () => ({
   useWorkspaceAuthStore: { getState: vi.fn(() => ({})) },
 }));
-const { mockThemeState, initConsoleCaptureMock } = vi.hoisted(() => ({
-  mockThemeState: {
-    paletteId: "orange-warm",
-    mode: "dark",
-    setPalette: vi.fn(),
-    setMode: vi.fn(),
-    toggleMode: vi.fn(),
-  },
-  initConsoleCaptureMock: vi.fn(() => () => {}),
-}));
+const { mockThemeState, mockChatCatalog, mockMessageIndex, initConsoleCaptureMock } = vi.hoisted(
+  () => ({
+    mockChatCatalog: { folderIds: ["folder"] },
+    mockMessageIndex: {
+      messagesById: {},
+      conversationWindowsById: {
+        conversation: {
+          generation: Symbol("window"),
+          mode: "tail",
+          anchorMessageUuid: null,
+          messageUuids: ["message"],
+          beforePageMarker: null,
+          afterPageMarker: null,
+          revision: 1,
+        },
+      },
+    },
+    mockThemeState: {
+      paletteId: "orange-warm",
+      mode: "dark",
+      setPalette: vi.fn(),
+      setMode: vi.fn(),
+      toggleMode: vi.fn(),
+    },
+    initConsoleCaptureMock: vi.fn(() => () => {}),
+  }),
+);
 vi.mock("../entities/theme/theme.model", () => ({
   useThemeStore: {
     getState: vi.fn(() => mockThemeState),
@@ -163,10 +180,8 @@ describe("devtools", () => {
   // Exposed namespaces
   // ---------------------------------------------------------------------------
 
-  // Verifies all Zustand stores are accessible for console debugging
   describe("exposed stores", () => {
-    // All 7 stores must be exposed so developers can inspect any domain state
-    it("includes all 7 store references", () => {
+    it("includes all 7 state diagnostics", () => {
       installDevTools();
       const dev = getDev()!;
       const storeNames = Object.keys(dev.stores);
@@ -177,6 +192,29 @@ describe("devtools", () => {
       expect(storeNames).toContain("theme");
       expect(storeNames).toContain("sidebar");
       expect(storeNames).toContain("callParticipants");
+    });
+
+    it("exposes detached Messenger snapshots without Zustand mutators", () => {
+      installDevTools();
+      const dev = getDev()!;
+      const catalog = dev.stores.messenger as { getState: () => { folderIds: string[] } };
+      const messages = dev.stores.messages as {
+        getState: () => { conversationWindowsById: { conversation: { messageUuids: string[] } } };
+      };
+      expect(Object.keys(catalog)).toEqual(["getState"]);
+      expect(Object.keys(messages)).toEqual(["getState"]);
+      const selectedCatalog = catalog.getState();
+      const messageIndex = messages.getState();
+      expect(messageIndex.conversationWindowsById.conversation).toMatchObject({
+        messageUuids: ["message"],
+      });
+      expect(messageIndex.conversationWindowsById.conversation).not.toHaveProperty("generation");
+      selectedCatalog.folderIds.push("console edit");
+      messageIndex.conversationWindowsById.conversation.messageUuids.length = 0;
+      expect(mockChatCatalog.folderIds).toEqual(["folder"]);
+      expect(mockMessageIndex.conversationWindowsById.conversation.messageUuids).toEqual([
+        "message",
+      ]);
     });
   });
 
