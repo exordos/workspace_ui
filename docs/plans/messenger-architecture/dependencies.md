@@ -47,11 +47,7 @@ platform
 Ответственность инфраструктуры, сборки и доменных обработчиков описана в [границах платформы](platform.md#граница-с-app-и-мессенджером).
 
 ```ts
-const applier = composeWorkspaceRealtimeAppliers([
-  users.events,
-  messenger.events,
-  calendar.events,
-]);
+const applier = composeWorkspaceRealtimeAppliers([users.events, messenger.events, calendar.events]);
 const realtime = createRealtime({ session, applier });
 ```
 
@@ -151,7 +147,7 @@ messages.subscribeWindow(conversationId, renderHistory);
 ## Что остаётся определить
 
 - Точные сигнатуры публичных операций, подписок и callback по мере переноса сценариев.
-- Механизм проверки направлений, циклов и глубоких импортов в CI.
+- Внедрение [проверки направлений, циклов и публичных входов в CI](workspace-architecture-next.md#1-проверка-импортов-в-ci).
 - Последовательность перехода от действующей структуры. Новые связи между features или владельцами модели описываем в сценарии и добавляем в граф по мере необходимости.
 
 Вариант использует слои по мотивам FSD. Внутренний граф мессенджера допускает явно обоснованные связи соседей, указанные выше. [Правила FSD](https://feature-sliced.design/docs/reference/layers)
