@@ -12,8 +12,7 @@
     "entities/feed/feed.api.ts -> applications/messenger/model/messages/messenger-message-adapter.lib.ts",
     "entities/feed/feed.api.ts -> applications/messenger/model/messenger-request-options.lib.ts",
     "entities/feed/feed.api.ts -> applications/messenger/model/messenger.types.ts",
-    "entities/feed/feed.model.ts -> applications/messenger/model/messenger.types.ts",
-    "entities/workspace-auth/workspace-auth.lib.ts -> applications/messenger/model/messenger-runtime-mutation.lib.ts"
+    "entities/feed/feed.model.ts -> applications/messenger/model/messenger.types.ts"
   ],
   "legacy-direction": [
     "shared/lib/notification-sound-preset.lib.ts -> features/settings/settings.types.ts",
@@ -64,22 +63,6 @@
   "static-value-cycle": [
     "applications/messenger/features/sidebar/folder-rail/folder-rail-visual.lib.ts -> applications/messenger/features/sidebar/folder-rail/folder-rail.lib.ts",
     "applications/messenger/features/sidebar/folder-rail/folder-rail.lib.ts -> applications/messenger/features/sidebar/folder-rail/folder-rail-visual.lib.ts",
-    "applications/messenger/model/chats/messenger-deleted-message-pointer-repair.lib.ts -> applications/messenger/model/messenger-request-options.lib.ts",
-    "applications/messenger/model/crypto/chat-crypto-runtime.lib.ts -> applications/messenger/model/messages/messenger-message-actions.lib.ts",
-    "applications/messenger/model/crypto/chat-crypto-session.lib.ts -> applications/messenger/model/crypto/chat-crypto-runtime.lib.ts",
-    "applications/messenger/model/drafts/composer-draft-sync.lib.ts -> applications/messenger/model/messenger-request-options.lib.ts",
-    "applications/messenger/model/messages/messages-accept-deletion.lib.ts -> applications/messenger/model/chats/messenger-deleted-message-pointer-repair.lib.ts",
-    "applications/messenger/model/messages/messenger-message-actions.lib.ts -> applications/messenger/model/chats/messenger-deleted-message-pointer-repair.lib.ts",
-    "applications/messenger/model/messages/messenger-message-actions.lib.ts -> applications/messenger/model/messages/messages-accept-deletion.lib.ts",
-    "applications/messenger/model/messages/messenger-message-actions.lib.ts -> applications/messenger/model/messages/messenger-read-actions.lib.ts",
-    "applications/messenger/model/messages/messenger-message-actions.lib.ts -> applications/messenger/model/messages/polls/messenger-poll-actions.lib.ts",
-    "applications/messenger/model/messages/messenger-message-actions.lib.ts -> applications/messenger/model/messenger-request-options.lib.ts",
-    "applications/messenger/model/messages/messenger-read-actions.lib.ts -> applications/messenger/model/messenger-request-options.lib.ts",
-    "applications/messenger/model/messages/polls/messenger-poll-actions.lib.ts -> applications/messenger/model/messenger-request-options.lib.ts",
-    "applications/messenger/model/messenger-request-options.lib.ts -> entities/workspace-auth/workspace-auth.lib.ts",
-    "applications/messenger/model/messenger-runtime-mutation.lib.ts -> applications/messenger/model/crypto/chat-crypto-session.lib.ts",
-    "applications/messenger/model/messenger-runtime-mutation.lib.ts -> applications/messenger/model/drafts/composer-draft-sync.lib.ts",
-    "entities/workspace-auth/workspace-auth.lib.ts -> applications/messenger/model/messenger-runtime-mutation.lib.ts",
     "shared/lib/guards.ts -> shared/lib/logger.ts",
     "shared/lib/logger.ts -> shared/lib/guards.ts",
     "shared/lib/logger.ts -> shared/lib/pwa.ts",

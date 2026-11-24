@@ -8,6 +8,8 @@ import {
   type WorkspaceRuntimeContextGetter,
 } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
+import { createLogger } from "~/shared/lib/logger";
+import { deleteWorkspaceMessengerOwnerCache } from "~/shared/lib/workspace-messenger-cache-db";
 import { disposeChatCryptoOwner } from "./crypto/chat-crypto-session.lib";
 import { disposeWorkspaceDraftSyncOwner } from "./drafts/composer-draft-sync.lib";
 import { disposeWorkspaceDraftOwner } from "./drafts/composer-draft.model";
@@ -17,6 +19,7 @@ type MessengerRuntimeMutation<T> = (signal: AbortSignal) => Promise<T>;
 
 const activeControllers = new Map<AbortController, () => boolean>();
 const ownerDisposals = new Map<string, Promise<void>>();
+const logger = createLogger("messenger:session-cleanup");
 
 function abortActiveMutations(): void {
   for (const controller of activeControllers.keys()) controller.abort();
@@ -102,9 +105,27 @@ async function disposeMessengerOwnerWork(ownerKey: string): Promise<void> {
   return disposeWorkspaceDraftOwner(ownerKey);
 }
 
-// Durable deletion waits for detached draft operations without detaching a later login.
-export function waitForMessengerOwnerDisposal(ownerKey: string): Promise<void> {
-  return ownerDisposals.get(ownerKey) ?? Promise.resolve();
+// Delete this owner's cache once the session-change subscriber has drained detached draft writes.
+export async function cleanupMessengerSession(
+  ownerKey: string,
+  isWriteCurrent: () => boolean,
+): Promise<void> {
+  if (!isWriteCurrent()) return;
+  try {
+    await ownerDisposals.get(ownerKey);
+  } catch (error) {
+    logger.warn("Workspace composer draft disposal failed during session removal", {
+      errorName: error instanceof Error ? error.name : typeof error,
+    });
+  }
+  if (!isWriteCurrent()) return;
+  try {
+    await deleteWorkspaceMessengerOwnerCache(ownerKey, { isWriteCurrent });
+  } catch (error) {
+    logger.warn("Workspace messenger cache cleanup failed during session removal", {
+      errorName: error instanceof Error ? error.name : typeof error,
+    });
+  }
 }
 
 export function resetMessengerRuntimeMutations(): void {

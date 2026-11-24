@@ -1,6 +1,7 @@
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { Link, useLocation } from "react-router-dom";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { installWorkspaceSessionCleanup } from "~/app/workspace-session/workspace-session-cleanup.lib";
 import { useMessengerStore } from "~/applications/messenger/model/chats/messenger.model";
 import type { MessengerStream } from "~/applications/messenger/model/messenger.types";
 import { useDownloadStore } from "~/entities/download/download.model";
@@ -134,6 +135,8 @@ function createDirectWorkspaceStream(overrides: Partial<MessengerStream> = {}): 
 }
 
 describe("TopBar", () => {
+  beforeEach(installWorkspaceSessionCleanup);
+
   afterEach(() => {
     resetTopBarRelatedStores();
     delete (window as unknown as Record<string, unknown>).electronAPI;

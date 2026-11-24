@@ -16,7 +16,7 @@
 ## 2. Разорвать зависимости от Messenger
 
 1. **Готово.** `buildWorkspaceRequestOptions` доступна через Workspace auth. Общая сборка параметров и обновление токена используются запросами Workspace и Messenger. Сессия запроса выбирается по переданному runtime, сигнал отмены передаётся при обновлении токена. [Вход Workspace auth](../../../packages/web/src/entities/workspace-auth/workspace-auth.lib.ts) · [Общая сборка параметров](../../../packages/web/src/entities/workspace-auth/workspace-auth-request-options.lib.ts)
-2. Отдельным изменением подключить очистку ресурсов Messenger через `app`. Auth определяет завершение сессии и отзывает право записи. Messenger дожидается текущих операций и удаляет свой кеш. Повторный вход с тем же ключом владельца делает прежнее удаление неактуальным. [Действующая очистка](../../../packages/web/src/entities/workspace-auth/workspace-auth.lib.ts) · [Правила привязки к сессии](../../ORG_SCOPED_ASYNC_SAFETY.md#selected-screen-and-owner-operations)
+2. **Готово.** `app` подключает очистку Messenger к завершению сессии. Auth отзывает право записи, а Messenger дожидается текущих операций и удаляет свой кеш. Повторный вход с тем же ключом владельца делает прежнее удаление неактуальным. [Контракт, порядок очистки и проверки](scenarios/session-end-cleanup.md)
 
 ## 3. Открыть контракт `users`
 

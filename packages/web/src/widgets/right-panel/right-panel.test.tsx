@@ -2,6 +2,7 @@ import { act, fireEvent, screen, waitFor, within } from "@testing-library/react"
 import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { installWorkspaceSessionCleanup } from "~/app/workspace-session/workspace-session-cleanup.lib";
 import { useUsersStore } from "~/entities/user/user.model";
 import {
   useWorkspaceAuthStore,
@@ -118,6 +119,7 @@ describe("RightPanelShell", () => {
   beforeEach(() => {
     updateWorkspaceOwnStatusMock.mockReset();
     updateWorkspaceOwnStatusMock.mockResolvedValue({ ok: true, user: null });
+    return installWorkspaceSessionCleanup();
   });
 
   afterEach(() => {

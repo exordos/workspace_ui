@@ -1,4 +1,3 @@
-import { waitForMessengerOwnerDisposal } from "~/applications/messenger/model/messenger-runtime-mutation.lib";
 import {
   isWorkspaceRuntimeRequestContextCurrent,
   workspaceRuntimeOwnerKey,
@@ -25,7 +24,6 @@ import { guard } from "~/shared/lib/guards";
 import { createLogger } from "~/shared/lib/logger";
 import { buildOrgRouteIdFromOrigin } from "~/shared/lib/org-route";
 import { deleteWorkspaceExternalAccountOwnerCache } from "~/shared/lib/workspace-external-account-cache-db";
-import { deleteWorkspaceMessengerOwnerCache } from "~/shared/lib/workspace-messenger-cache-db";
 import { workspaceOrgOriginFromLoginServerUrlInput } from "~/shared/lib/workspace-org-origin.lib";
 import { deleteWorkspaceUserOwnerCache } from "~/shared/lib/workspace-user-cache-db";
 import { buildWorkspaceSessionRequestOptions } from "./workspace-auth-request-options.lib";
@@ -54,6 +52,20 @@ type WorkspaceSessionRemovalReason =
   | "explicit-logout"
   | "owner-mismatch"
   | "terminal-refresh-failure";
+
+// App supplies cleanup for resources owned outside auth and receives the removal's write guard.
+type WorkspaceSessionCleanup = (ownerKey: string, isWriteCurrent: () => boolean) => Promise<void>;
+
+let applicationSessionCleanup: { cleanup: WorkspaceSessionCleanup } | undefined;
+
+// Install the application cleanup, with a disposer that only removes its own registration.
+export function registerWorkspaceSessionCleanup(cleanup: WorkspaceSessionCleanup): () => void {
+  const registration = { cleanup };
+  applicationSessionCleanup = registration;
+  return () => {
+    if (applicationSessionCleanup === registration) applicationSessionCleanup = undefined;
+  };
+}
 
 interface WorkspaceSessionRemovalDecision {
   remove: boolean;
@@ -416,25 +428,16 @@ useWorkspaceAuthStore.subscribe((state, previous) => {
   }
 });
 
-async function cleanupWorkspaceMessengerOwnerCache(
-  session: WorkspaceAuthSession,
+// Application failures are isolated from session removal and the other owner caches.
+async function cleanupWorkspaceApplicationSession(
+  ownerKey: string,
   isWriteCurrent: () => boolean,
 ): Promise<void> {
   if (!isWriteCurrent()) return;
-  const ownerKey = workspaceRuntimeOwnerKey(session);
   try {
-    await waitForMessengerOwnerDisposal(ownerKey);
+    await applicationSessionCleanup?.cleanup(ownerKey, isWriteCurrent);
   } catch (error) {
-    authLogger.warn("Workspace composer draft disposal failed during session removal", {
-      accountId: session.accountId,
-      errorName: error instanceof Error ? error.name : typeof error,
-    });
-  }
-  try {
-    await deleteWorkspaceMessengerOwnerCache(ownerKey, { isWriteCurrent });
-  } catch (error) {
-    authLogger.warn("Workspace messenger cache cleanup failed during session removal", {
-      accountId: session.accountId,
+    authLogger.warn("Application cleanup failed during Workspace session removal", {
       errorName: error instanceof Error ? error.name : typeof error,
     });
   }
@@ -470,18 +473,32 @@ async function cleanupWorkspaceExternalAccountOwnerCache(
   }
 }
 
-async function cleanupWorkspaceOwnerCaches(session: WorkspaceAuthSession): Promise<void> {
-  // Re-entry with the same durable key revokes every outstanding delete.
+// Keep a removal's writes fenced even if the replacing login ends before the cleanup settles.
+async function revokeAndCleanupWorkspaceSession(session: WorkspaceAuthSession): Promise<void> {
   const ownerKey = workspaceRuntimeOwnerKey(session);
+  const incarnation = workspaceAuthSessionIncarnation(session);
+  const hasOwnerKey = (candidate: WorkspaceAuthSession) =>
+    workspaceRuntimeOwnerKey(candidate) === ownerKey;
+  let ownerReentered = false;
+  const unsubscribe = useWorkspaceAuthStore.subscribe((state, previous) => {
+    if (state.sessions === previous.sessions) return;
+    ownerReentered ||= state.sessions.some(
+      (candidate) =>
+        hasOwnerKey(candidate) && workspaceAuthSessionIncarnation(candidate) !== incarnation,
+    );
+  });
   const isWriteCurrent = () =>
-    !useWorkspaceAuthStore
-      .getState()
-      .sessions.some((candidate) => workspaceRuntimeOwnerKey(candidate) === ownerKey);
-  await Promise.all([
-    cleanupWorkspaceMessengerOwnerCache(session, isWriteCurrent),
-    cleanupWorkspaceUserOwnerCache(session, isWriteCurrent),
-    cleanupWorkspaceExternalAccountOwnerCache(session, isWriteCurrent),
-  ]);
+    !ownerReentered && !useWorkspaceAuthStore.getState().sessions.some(hasOwnerKey);
+  try {
+    useWorkspaceAuthStore.getState().removeSession(session.accountId);
+    await Promise.all([
+      cleanupWorkspaceApplicationSession(ownerKey, isWriteCurrent),
+      cleanupWorkspaceUserOwnerCache(session, isWriteCurrent),
+      cleanupWorkspaceExternalAccountOwnerCache(session, isWriteCurrent),
+    ]);
+  } finally {
+    unsubscribe();
+  }
 }
 
 async function endWorkspaceSession(
@@ -499,8 +516,7 @@ async function endWorkspaceSession(
     userUuid: session?.userUuid,
   });
   resetTerminalRefreshFailureAttempts(accountId);
-  useWorkspaceAuthStore.getState().removeSession(accountId);
-  await cleanupWorkspaceOwnerCaches(session);
+  await revokeAndCleanupWorkspaceSession(session);
   authLogger.warn("Workspace session removed", {
     accountId,
     reason,

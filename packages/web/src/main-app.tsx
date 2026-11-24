@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import { installAiContext } from "~/app/ai-context";
 import { installDevTools } from "~/app/devtools";
 import { createWorkspacePluginDataProvider } from "~/app/workspace-plugin-data-provider.lib";
+import { installWorkspaceSessionCleanup } from "~/app/workspace-session/workspace-session-cleanup.lib";
 import { prepareWorkspaceColdStart } from "~/app/workspace-session/workspace-session-reset.lib";
 import { clearSelectedChatCatalogForLegacyLogout } from "~/applications/messenger/model/chats/chats";
 import { initAnalytics } from "~/shared/lib/analytics/setup";
@@ -30,6 +31,7 @@ import "./app/focus-outline.styles.css";
 
 setStoreWiper(clearSelectedChatCatalogForLegacyLogout);
 setApplicationColdStartPreparation(prepareWorkspaceColdStart);
+installWorkspaceSessionCleanup();
 
 setPluginDataProvider(createWorkspacePluginDataProvider());
 

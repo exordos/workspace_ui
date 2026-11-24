@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { installWorkspaceSessionCleanup } from "~/app/workspace-session/workspace-session-cleanup.lib";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type * as WorkspaceIamAuthModule from "~/shared/api/workspace-iam-auth";
 import { WorkspaceIamAuthError } from "~/shared/api/workspace-iam-auth";
@@ -8,6 +9,7 @@ import {
   ensureFreshWorkspaceSession,
   loginWorkspaceWithPassword,
   prepareWorkspaceProjectLogin,
+  registerWorkspaceSessionCleanup,
   removeWorkspaceSession,
 } from "./workspace-auth.lib";
 import { suspendWorkspaceRuntimeForColdStart, useWorkspaceAuthStore } from "./workspace-auth.model";
@@ -212,6 +214,7 @@ describe("workspace-auth flow", () => {
         organization: { uuid: "organization-1", name: "Example organization" },
       },
     ]);
+    return installWorkspaceSessionCleanup();
   });
 
   afterEach(() => {
@@ -1205,6 +1208,65 @@ describe("workspace-auth flow", () => {
     cacheCleanup.resolve();
     await removal;
     expect(useWorkspaceAuthStore.getState().getCurrentSession()).toEqual(next);
+  });
+
+  it("keeps the first cleanup fenced after the replacing login also ends", async () => {
+    const first = storeWorkspaceSession(createWorkspaceSession());
+    const firstDraftDisposal = createDeferred();
+    const secondDraftDisposal = createDeferred();
+    disposeWorkspaceComposerDraftOwner
+      .mockReturnValueOnce(firstDraftDisposal.promise)
+      .mockReturnValueOnce(secondDraftDisposal.promise);
+
+    const firstRemoval = removeWorkspaceSession(first.accountId);
+    const second = storeWorkspaceSession({ ...first, refreshToken: "new-login-refresh" });
+    expect(ownerKeyFromSession(second)).toBe(ownerKeyFromSession(first));
+    const secondRemoval = removeWorkspaceSession(second.accountId);
+    expect(useWorkspaceAuthStore.getState().sessions).toEqual([]);
+
+    firstDraftDisposal.resolve();
+    await firstRemoval;
+    expect(deleteWorkspaceMessengerOwnerCache).not.toHaveBeenCalled();
+
+    secondDraftDisposal.resolve();
+    await secondRemoval;
+    expect(deleteWorkspaceMessengerOwnerCache).toHaveBeenCalledExactlyOnceWith(
+      ownerKeyFromSession(second),
+      { isWriteCurrent: expect.any(Function) },
+    );
+  });
+
+  it("deletes the removed owner's cache even if a detached draft write fails", async () => {
+    const session = await loginAndGetCurrentSession();
+    disposeWorkspaceComposerDraftOwner.mockRejectedValueOnce(new Error("draft write failed"));
+
+    await removeWorkspaceSession(session.accountId);
+
+    expect(deleteWorkspaceMessengerOwnerCache).toHaveBeenCalledExactlyOnceWith(
+      ownerKeyFromSession(session),
+      { isWriteCurrent: expect.any(Function) },
+    );
+    expect(useWorkspaceAuthStore.getState().sessions).toEqual([]);
+  });
+
+  it("continues owner cleanup if the application handler fails", async () => {
+    const session = await loginAndGetCurrentSession();
+    const cleanup = vi.fn<() => Promise<void>>().mockRejectedValue(new Error("application failed"));
+    const unregister = registerWorkspaceSessionCleanup(cleanup);
+    try {
+      await removeWorkspaceSession(session.accountId);
+
+      const ownerKey = ownerKeyFromSession(session);
+      expect(cleanup).toHaveBeenCalledExactlyOnceWith(ownerKey, expect.any(Function));
+      expect(deleteWorkspaceUserOwnerCache).toHaveBeenCalledWith(ownerKey, expect.any(Function));
+      expect(deleteWorkspaceExternalAccountOwnerCache).toHaveBeenCalledWith(
+        ownerKey,
+        expect.any(Function),
+      );
+      expect(useWorkspaceAuthStore.getState().sessions).toEqual([]);
+    } finally {
+      unregister();
+    }
   });
 
   it("removes an explicit Workspace session even when owner cache cleanup fails", async () => {
