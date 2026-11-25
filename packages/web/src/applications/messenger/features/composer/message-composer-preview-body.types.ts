@@ -18,5 +18,9 @@ export interface MessageComposerPreviewBodyProps {
   removeFile?: (index: number) => void;
   attachments?: readonly MessageComposerAttachmentView[];
   onRemoveAttachment?: (localId: string) => void;
+  onOpenComposerMedia?: (
+    localId: string,
+    attachments: readonly MessageComposerAttachmentView[],
+  ) => void;
   onRetryAttachment?: (localId: string) => void;
 }

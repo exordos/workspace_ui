@@ -27,6 +27,8 @@ export const ChatPageComposerSection = React.memo(function ChatPageComposerSecti
   attachmentsBlockSend,
   onAddAttachments,
   onRemoveAttachment,
+  onOpenComposerMedia,
+  onComposerAttachmentsChange,
   onRetryAttachment,
   onCreateCallLink,
   onCancelUpload,
@@ -81,6 +83,8 @@ export const ChatPageComposerSection = React.memo(function ChatPageComposerSecti
         attachmentsBlockSend={attachmentsBlockSend}
         onAddAttachments={onAddAttachments}
         onRemoveAttachment={onRemoveAttachment}
+        onOpenComposerMedia={onOpenComposerMedia}
+        onComposerAttachmentsChange={onComposerAttachmentsChange}
         onRetryAttachment={onRetryAttachment}
         onCreateCallLink={undefined}
         onCancelUpload={onCancelUpload}
@@ -151,6 +155,8 @@ export const ChatPageComposerSection = React.memo(function ChatPageComposerSecti
       attachmentsBlockSend={attachmentsBlockSend}
       onAddAttachments={onAddAttachments}
       onRemoveAttachment={onRemoveAttachment}
+      onOpenComposerMedia={onOpenComposerMedia}
+      onComposerAttachmentsChange={onComposerAttachmentsChange}
       onRetryAttachment={onRetryAttachment}
       onCreateCallLink={onCreateCallLink}
       onCancelUpload={onCancelUpload}

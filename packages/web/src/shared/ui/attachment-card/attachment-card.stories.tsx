@@ -70,6 +70,26 @@ export const States: Story = {
     </AttachmentCardList>
   ),
 };
+export const OpenableMedia: Story = {
+  render: () => (
+    <AttachmentCardList ariaLabel={t("attachmentCard.list")}>
+      <AttachmentCard
+        status="image"
+        fileName="preview.png"
+        previewUrl={PREVIEW}
+        onOpen={fn()}
+        onRemove={fn()}
+      />
+      <AttachmentCard
+        status="uploading"
+        fileName="meeting.mp4"
+        progress={48}
+        onOpen={fn()}
+        onCancel={fn()}
+      />
+    </AttachmentCardList>
+  ),
+};
 export const LongFileName: Story = {
   args: { fileName: "Workspace design review with a very long filename and many revisions.pdf" },
 };

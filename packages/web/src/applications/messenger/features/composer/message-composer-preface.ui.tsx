@@ -74,6 +74,7 @@ export const MessageComposerPreface: React.FC<MessageComposerPrefaceProps> = Rea
     removeFile,
     attachments = [],
     onRemoveAttachment,
+    onOpenComposerMedia,
     onRemoveImageFromText,
     onRetryAttachment,
     onLoadWorkspaceFilePreview,
@@ -180,6 +181,7 @@ export const MessageComposerPreface: React.FC<MessageComposerPrefaceProps> = Rea
               <MessageComposerControlledAttachmentCards
                 attachments={attachments}
                 onRemoveAttachment={onRemoveAttachment}
+                onOpenComposerMedia={onOpenComposerMedia}
                 onRemoveImageFromText={onRemoveImageFromText}
                 onRetryAttachment={onRetryAttachment}
                 imageAliases={imageAliases}

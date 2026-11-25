@@ -76,6 +76,7 @@ export interface MessageComposerAttachmentView {
   sizeBytes: number;
   contentType: string;
   previewUrl: string | null;
+  mediaUrl?: string | null; // Local URL for opening image or video.
   status: MessageComposerAttachmentStatus;
   loadedBytes: number;
   totalBytes: number | null;
@@ -118,11 +119,16 @@ export interface MessageComposerProps {
   ) => void | MessageComposerSendResult | Promise<void | MessageComposerSendResult>;
   /** In after-acceptance mode the owner keeps the sent draft and the editor only clears its display. */
   optimisticClearOnSend?: boolean | "after-acceptance";
+  onComposerAttachmentsChange?: (attachments: readonly MessageComposerAttachmentView[]) => void;
   /** Enables externally owned attachments for Workspace upload-before-send. */
   attachments?: readonly MessageComposerAttachmentView[];
   attachmentsBlockSend?: boolean;
   onAddAttachments?: (files: readonly File[]) => void;
   onRemoveAttachment?: (localId: string) => void;
+  onOpenComposerMedia?: (
+    localId: string,
+    attachments: readonly MessageComposerAttachmentView[],
+  ) => void;
   onRetryAttachment?: (localId: string) => void;
   onSubmitEdit?: (messageId: number, content: string) => void | Promise<void>;
   onCancelEdit?: () => void;
@@ -228,6 +234,10 @@ export interface MessageComposerPrefaceProps {
   removeFile: (index: number) => void;
   attachments?: readonly MessageComposerAttachmentView[];
   onRemoveAttachment?: (localId: string) => void;
+  onOpenComposerMedia?: (
+    localId: string,
+    attachments: readonly MessageComposerAttachmentView[],
+  ) => void;
   onRemoveImageFromText?: (localId: string) => void;
   onRetryAttachment?: (localId: string) => void;
   onLoadWorkspaceFilePreview?: LoadWorkspaceFilePreview;

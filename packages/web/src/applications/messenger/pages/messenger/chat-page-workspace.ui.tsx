@@ -218,6 +218,7 @@ import {
   ChatPageClosedTopicPrompt,
   ChatPageStreamTopicPrompt,
 } from "./chat-page-stream-topic-prompt.ui";
+import { useComposerMediaViewer } from "./composer-media-viewer.hook";
 import {
   useWorkspaceConversationOpening,
   useWorkspaceTopicResolution,
@@ -3147,6 +3148,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
       normalizeWorkspaceActionError(error, t("workspaceMessenger.mediaViewerUnsupported")),
     );
   }, []);
+  const { open: openComposerMedia, sync: syncComposerMedia } = useComposerMediaViewer();
   const { openWorkspaceMedia: handleOpenWorkspaceMedia } = useWorkspaceMediaViewer({
     scope: {
       ownerKey,
@@ -4192,6 +4194,8 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
     (controlledProps?: WorkspaceComposerControlledProps) => (
       <MessageComposer
         {...controlledProps}
+        onOpenComposerMedia={openComposerMedia}
+        onComposerAttachmentsChange={syncComposerMedia}
         key={`${encryptedComposerScopeKey}:${conversationId}`}
         onSend={controlledProps?.onSend ?? handleSend}
         attachments={[...restoredAttachments, ...(controlledProps?.attachments ?? [])]}
@@ -4230,6 +4234,8 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
       />
     ),
     [
+      openComposerMedia,
+      syncComposerMedia,
       encryptedComposerScopeKey,
       conversationId,
       currentEncryptedComposer?.text,
@@ -4262,6 +4268,8 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
         <ChatPageComposerSection
           onCreatePoll={canCreatePoll ? () => setPollDialogOpen(true) : undefined}
           {...controlledProps}
+          onOpenComposerMedia={openComposerMedia}
+          onComposerAttachmentsChange={syncComposerMedia}
           attachments={[...restoredAttachments, ...controlledProps.attachments]}
           onRemoveAttachment={(localId) =>
             handleRemoveComposerAttachment(localId, controlledProps.onRemoveAttachment)
@@ -4315,6 +4323,8 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({
       );
     },
     [
+      openComposerMedia,
+      syncComposerMedia,
       activeWorkspaceReplyQuote,
       activeWorkspaceReplyTab?.answer,
       activeWorkspaceReplyTab?.id,

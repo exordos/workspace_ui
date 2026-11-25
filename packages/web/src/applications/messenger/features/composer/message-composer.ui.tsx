@@ -488,6 +488,8 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
   attachmentsBlockSend = false,
   onAddAttachments,
   onRemoveAttachment,
+  onOpenComposerMedia,
+  onComposerAttachmentsChange,
   onRetryAttachment,
   onSubmitEdit,
   onCancelEdit,
@@ -518,6 +520,11 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
   aiMessagesContext,
   aiChatContext,
 }) => {
+  useEffect(() => {
+    onComposerAttachmentsChange?.(attachments ?? []);
+  }, [attachments, onComposerAttachmentsChange]);
+  useEffect(() => () => onComposerAttachmentsChange?.([]), [onComposerAttachmentsChange]);
+
   // Capabilities preserve the composer layout while deciding whether an action can hit the backend.
   const sendNewlineMode: ComposerSendNewlineMode = "enter-sends";
   const [mode, setMode] = useState<ComposerMode>("write");
@@ -2077,6 +2084,7 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
         removeFile={removeFile}
         attachments={mode === "write" ? attachments : []}
         onRemoveAttachment={handleRemoveAttachment}
+        onOpenComposerMedia={onOpenComposerMedia}
         onRemoveImageFromText={handleRemoveImageFromText}
         onRetryAttachment={onRetryAttachment}
         onLoadWorkspaceFilePreview={onLoadWorkspaceFilePreview}
@@ -2227,6 +2235,7 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
                   removeFile={removeFile}
                   attachments={attachments}
                   onRemoveAttachment={handleRemoveAttachment}
+                  onOpenComposerMedia={onOpenComposerMedia}
                   onRetryAttachment={onRetryAttachment}
                 />
               )}

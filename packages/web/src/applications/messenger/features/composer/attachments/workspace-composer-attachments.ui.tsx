@@ -9,6 +9,7 @@ import {
   deleteWorkspaceFile,
   uploadWorkspaceFileWithProgress,
 } from "~/shared/api/messenger-files.api";
+import { resolveAttachmentMediaKind } from "~/shared/lib/attachment-card-meta.lib";
 import { useWorkspaceComposerAttachments } from "./workspace-composer-attachments.hook";
 import {
   buildWorkspaceComposerAttachmentMarkdown,
@@ -40,6 +41,7 @@ export interface WorkspaceComposerControlledAttachmentView {
   sizeBytes: number;
   contentType: string;
   previewUrl: string | null;
+  mediaUrl: string | null; // Local image or video URL owned by the attachment controller.
   status: "validating" | "queued" | "uploading" | "ready" | "error";
   loadedBytes: number;
   totalBytes: number | null;
@@ -165,7 +167,11 @@ export const WorkspaceComposerAttachments = React.memo(function WorkspaceCompose
         fileName: attachment.fileName,
         sizeBytes: attachment.sizeBytes,
         contentType: attachment.contentType,
-        previewUrl: attachment.previewUrl,
+        previewUrl:
+          resolveAttachmentMediaKind(attachment.fileName, attachment.contentType) === "video"
+            ? null
+            : attachment.previewUrl,
+        mediaUrl: attachment.errorKind === "validation" ? null : attachment.previewUrl,
         status: attachment.status,
         loadedBytes: attachment.loadedBytes,
         totalBytes: attachment.totalBytes,

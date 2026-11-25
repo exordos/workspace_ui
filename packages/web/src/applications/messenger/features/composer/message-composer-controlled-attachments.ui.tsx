@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import type { LoadWorkspaceFilePreview } from "~/applications/messenger/features/timeline/messenger-workspace-message-file-preview.hook";
 import { buildWorkspaceMediaDisplayBlob } from "~/applications/messenger/features/timeline/messenger-workspace-message-preview-blob.lib";
 import { t } from "~/i18n/i18n";
+import { resolveAttachmentMediaKind } from "~/shared/lib/attachment-card-meta.lib";
 import { createDisplayableBlobUrl } from "~/shared/lib/media-display-url.lib";
 import { AttachmentCard } from "~/shared/ui/attachment-card";
 import { Icon } from "~/shared/ui/icon";
@@ -10,6 +11,10 @@ import type { MessageComposerAttachmentView } from "./message-composer.types";
 interface MessageComposerControlledAttachmentCardsProps {
   attachments: readonly MessageComposerAttachmentView[];
   onRemoveAttachment?: (localId: string) => void;
+  onOpenComposerMedia?: (
+    localId: string,
+    attachments: readonly MessageComposerAttachmentView[],
+  ) => void;
   onRemoveImageFromText?: (localId: string) => void;
   onRetryAttachment?: (localId: string) => void;
   onLoadWorkspaceFilePreview?: LoadWorkspaceFilePreview;
@@ -213,6 +218,7 @@ export const MessageComposerControlledAttachmentCards = React.memo(
   function MessageComposerControlledAttachmentCards({
     attachments,
     onRemoveAttachment,
+    onOpenComposerMedia,
     onRemoveImageFromText,
     onRetryAttachment,
     onLoadWorkspaceFilePreview,
@@ -226,6 +232,15 @@ export const MessageComposerControlledAttachmentCards = React.memo(
 
     return attachments.map((attachment) => {
       const alias = imageAliasByLocalId.get(attachment.localId);
+      const mediaUrl =
+        attachment.mediaUrl === undefined ? attachment.previewUrl : attachment.mediaUrl;
+      const canOpen =
+        mediaUrl != null &&
+        resolveAttachmentMediaKind(attachment.fileName, attachment.contentType) != null;
+      const onOpen =
+        canOpen && onOpenComposerMedia
+          ? () => onOpenComposerMedia(attachment.localId, attachments)
+          : undefined;
       const inText = inlineImageLocalIds.has(attachment.localId);
       const wrapReadyImage = (node: React.ReactElement): React.ReactElement => {
         if (alias == null) return node;
@@ -271,6 +286,7 @@ export const MessageComposerControlledAttachmentCards = React.memo(
         return (
           <AttachmentCard
             key={attachment.localId}
+            onOpen={onOpen}
             status="error"
             fileName={attachment.fileName}
             errorMessage={attachment.error ?? t("attachmentCard.uploadError")}
@@ -285,6 +301,7 @@ export const MessageComposerControlledAttachmentCards = React.memo(
         return (
           <AttachmentCard
             key={attachment.localId}
+            onOpen={onOpen}
             status={attachment.status}
             fileName={attachment.fileName}
             detailText={
@@ -302,6 +319,7 @@ export const MessageComposerControlledAttachmentCards = React.memo(
         return (
           <AttachmentCard
             key={attachment.localId}
+            onOpen={onOpen}
             status="uploading"
             fileName={attachment.fileName}
             progress={progress}
@@ -312,6 +330,7 @@ export const MessageComposerControlledAttachmentCards = React.memo(
       if (attachment.previewUrl != null) {
         return wrapReadyImage(
           <AttachmentCard
+            onOpen={onOpen}
             status="image"
             fileName={attachment.fileName}
             previewUrl={attachment.previewUrl}
@@ -323,6 +342,7 @@ export const MessageComposerControlledAttachmentCards = React.memo(
       }
       return wrapReadyImage(
         <AttachmentCard
+          onOpen={onOpen}
           status="file"
           fileName={attachment.fileName}
           contentType={attachment.contentType}

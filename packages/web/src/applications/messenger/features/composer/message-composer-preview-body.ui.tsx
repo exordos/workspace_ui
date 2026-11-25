@@ -25,6 +25,7 @@ export const MessageComposerPreviewBody = React.memo(function MessageComposerPre
   removeFile,
   attachments = [],
   onRemoveAttachment,
+  onOpenComposerMedia,
   onRetryAttachment,
 }: MessageComposerPreviewBodyProps) {
   const bodyRef = React.useRef<HTMLDivElement | null>(null);
@@ -155,6 +156,9 @@ export const MessageComposerPreviewBody = React.memo(function MessageComposerPre
           <MessageComposerControlledAttachmentCards
             attachments={incompleteAttachments}
             onRemoveAttachment={onRemoveAttachment}
+            onOpenComposerMedia={
+              onOpenComposerMedia == null ? undefined : (id) => onOpenComposerMedia(id, attachments)
+            }
             onRetryAttachment={onRetryAttachment}
             onLoadWorkspaceFilePreview={onLoadWorkspaceFilePreview}
           />

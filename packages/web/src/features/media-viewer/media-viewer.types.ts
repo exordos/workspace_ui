@@ -32,8 +32,9 @@ export interface MediaViewerState {
   isOpen: boolean;
   currentIndex: number;
   items: MediaItem[];
+  ownerToken: object | null; // Identifies the owner of the current viewer session.
 
-  open: (items: MediaItem[], startIndex?: number) => void;
+  open: (items: MediaItem[], startIndex?: number, ownerToken?: object) => void;
   replaceItem: (index: number, item: MediaItem) => void;
   close: () => void;
   next: () => void;

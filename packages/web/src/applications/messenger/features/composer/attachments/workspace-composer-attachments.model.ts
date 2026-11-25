@@ -1,4 +1,5 @@
 import { createStore, type StoreApi } from "zustand/vanilla";
+import { resolveAttachmentMediaKind } from "~/shared/lib/attachment-card-meta.lib";
 import { createHeicPreview, isHeicAttachment } from "~/shared/lib/heic-preview.lib";
 import { detectImageMime, validateFileUpload } from "~/shared/lib/validation";
 import type {
@@ -34,16 +35,16 @@ function normalizeImageMime(mime: string): string {
   return normalized === "image/jpg" ? "image/jpeg" : normalized;
 }
 
-function createPersistentImagePreviewUrl(image: Blob): string | null {
+function createPersistentMediaPreviewUrl(media: Blob): string | null {
   if (typeof URL === "undefined" || typeof URL.createObjectURL !== "function") return null;
   try {
-    return URL.createObjectURL(image);
+    return URL.createObjectURL(media);
   } catch {
     return null;
   }
 }
 
-function revokePersistentImagePreviewUrl(previewUrl: string | null): void {
+function revokePersistentMediaPreviewUrl(previewUrl: string | null): void {
   if (previewUrl == null) return;
   if (typeof URL === "undefined" || typeof URL.revokeObjectURL !== "function") return;
   URL.revokeObjectURL(previewUrl);
@@ -189,7 +190,7 @@ export function createWorkspaceComposerAttachmentsController({
 
   const revokeAttachmentPreview = (localId: string): void => {
     abortAttachmentPreview(localId);
-    revokePersistentImagePreviewUrl(activePreviewUrlsByLocalId.get(localId) ?? null);
+    revokePersistentMediaPreviewUrl(activePreviewUrlsByLocalId.get(localId) ?? null);
     activePreviewUrlsByLocalId.delete(localId);
   };
 
@@ -221,7 +222,7 @@ export function createWorkspaceComposerAttachmentsController({
     void createHeicPreview(file, { signal: controller.signal })
       .then((image) => {
         if (controller.signal.aborted || previewControllers.get(localId) !== controller) return;
-        const previewUrl = createPersistentImagePreviewUrl(image);
+        const previewUrl = createPersistentMediaPreviewUrl(image);
         if (previewUrl == null) return;
         activePreviewUrlsByLocalId.set(localId, previewUrl);
         const updated = updateAttachment(localId, (current) => ({ ...current, previewUrl }));
@@ -422,9 +423,10 @@ export function createWorkspaceComposerAttachmentsController({
         const attemptToken = nextAttemptToken();
         const initialValidation = validateFileUpload(file);
         const previewUrl =
-          normalizeImageMime(file.type).startsWith("image/") &&
-          !isHeicAttachment(file.name, file.type)
-            ? createPersistentImagePreviewUrl(file)
+          (resolveAttachmentMediaKind(file.name, file.type) === "image" &&
+            !isHeicAttachment(file.name, file.type)) ||
+          resolveAttachmentMediaKind(file.name, file.type) === "video"
+            ? createPersistentMediaPreviewUrl(file)
             : null;
         if (previewUrl != null) activePreviewUrlsByLocalId.set(localId, previewUrl);
         localIds.push(localId);

@@ -43,7 +43,12 @@ export interface ChatPageComposerSectionProps {
   attachments?: readonly MessageComposerAttachmentView[];
   attachmentsBlockSend?: boolean;
   onAddAttachments?: (files: readonly File[]) => void;
+  onComposerAttachmentsChange?: (attachments: readonly MessageComposerAttachmentView[]) => void;
   onRemoveAttachment?: (localId: string) => void;
+  onOpenComposerMedia?: (
+    localId: string,
+    attachments: readonly MessageComposerAttachmentView[],
+  ) => void;
   onRetryAttachment?: (localId: string) => void;
   onCreateCallLink: (() => string | null) | undefined;
   onCancelUpload: () => void;

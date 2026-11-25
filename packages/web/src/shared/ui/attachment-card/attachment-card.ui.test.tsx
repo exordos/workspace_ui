@@ -8,6 +8,73 @@ describe("AttachmentCard", () => {
     setLocale("en");
   });
 
+  it("opens card bodies without triggering the independent attachment actions", () => {
+    const open = vi.fn();
+    const remove = vi.fn();
+    const cancel = vi.fn();
+    const retry = vi.fn();
+    render(
+      <AttachmentCardList ariaLabel="Attached files">
+        <AttachmentCard
+          status="image"
+          fileName="image.png"
+          previewUrl="blob:image"
+          onOpen={open}
+          onRemove={remove}
+        />
+        <AttachmentCard status="file" fileName="video.mp4" onOpen={open} onRemove={remove} />
+        <AttachmentCard
+          status="validating"
+          fileName="validating.png"
+          detailText="Checking"
+          onOpen={open}
+          onRemove={remove}
+        />
+        <AttachmentCard
+          status="queued"
+          fileName="queued.png"
+          detailText="Waiting"
+          onOpen={open}
+          onRemove={remove}
+        />
+        <AttachmentCard
+          status="uploading"
+          fileName="uploading.mp4"
+          progress={50}
+          onOpen={open}
+          onCancel={cancel}
+        />
+        <AttachmentCard
+          status="error"
+          fileName="failed.mp4"
+          onOpen={open}
+          onRetry={retry}
+          onRemove={remove}
+        />
+      </AttachmentCardList>,
+    );
+    for (const fileName of [
+      "image.png",
+      "video.mp4",
+      "validating.png",
+      "queued.png",
+      "uploading.mp4",
+      "failed.mp4",
+    ]) {
+      const button = screen.getByRole("button", { name: `Open ${fileName}` });
+      expect(button.tagName).toBe("BUTTON");
+      fireEvent.click(button);
+    }
+    expect(open).toHaveBeenCalledTimes(6);
+    fireEvent.click(screen.getByRole("button", { name: "Remove image.png" }));
+    fireEvent.click(screen.getByRole("button", { name: "Cancel upload of uploading.mp4" }));
+    fireEvent.click(screen.getByRole("button", { name: "Retry upload of failed.mp4" }));
+    expect(remove).toHaveBeenCalledTimes(1);
+    expect(cancel).toHaveBeenCalledTimes(1);
+    expect(retry).toHaveBeenCalledTimes(1);
+    expect(open).toHaveBeenCalledTimes(6);
+  });
+
   it("renders file and image cards with fixed Figma dimensions and truncated names", () => {
     const onRemove = vi.fn();
     render(

@@ -132,6 +132,24 @@ describe("workspace composer attachments", () => {
     );
   });
 
+  it("keeps a local video URL during upload and releases it when removed", () => {
+    const createUrl = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:draft-video");
+    const revokeUrl = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    const upload = deferred<WorkspaceComposerAttachmentServerMetadata>();
+    const controller = createWorkspaceComposerAttachmentsController({
+      scope: SCOPE,
+      transport: transport(() => upload.promise),
+    });
+    const clip = new File(["video"], "clip.mp4", { type: "video/mp4" });
+    const [localId] = controller.add([clip]);
+    expect(createUrl).toHaveBeenCalledWith(clip);
+    expect(selectWorkspaceComposerAttachmentViews(controller.store.getState())[0]?.previewUrl).toBe(
+      "blob:draft-video",
+    );
+    controller.remove(localId!);
+    expect(revokeUrl).toHaveBeenCalledWith("blob:draft-video");
+  });
+
   it("creates one persistent image preview across upload retry and exposes it File-free", async () => {
     const createObjectUrl = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:draft-image");
     const revokeObjectUrl = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
