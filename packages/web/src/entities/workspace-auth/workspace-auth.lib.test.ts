@@ -1148,13 +1148,23 @@ describe("workspace-auth flow", () => {
     const session = await loginAndGetCurrentSession();
     const draftDisposal = createDeferred();
     const cacheCleanup = createDeferred();
+    const usersCacheCleanup = createDeferred();
     disposeWorkspaceComposerDraftOwner.mockReturnValueOnce(draftDisposal.promise);
     deleteWorkspaceMessengerOwnerCache.mockReturnValueOnce(cacheCleanup.promise);
+    deleteWorkspaceUserOwnerCache.mockReturnValueOnce(usersCacheCleanup.promise);
 
     const removal = removeWorkspaceSession(session.accountId);
+    let removalFinished = false;
+    void removal.then(() => {
+      removalFinished = true;
+    });
 
     expect(disposeWorkspaceComposerDraftOwner).toHaveBeenCalledWith(ownerKeyFromSession(session));
     expect(deleteWorkspaceMessengerOwnerCache).not.toHaveBeenCalled();
+    expect(deleteWorkspaceUserOwnerCache).toHaveBeenCalledWith(
+      ownerKeyFromSession(session),
+      expect.any(Function),
+    );
     expect(useWorkspaceAuthStore.getState().sessions).toEqual([]);
 
     draftDisposal.resolve();
@@ -1175,6 +1185,11 @@ describe("workspace-auth flow", () => {
     expect(useWorkspaceAuthStore.getState().sessions).toEqual([]);
 
     cacheCleanup.resolve();
+    await new Promise((resolve) => {
+      setTimeout(resolve, 0);
+    });
+    expect(removalFinished).toBe(false);
+    usersCacheCleanup.resolve();
     await removal;
 
     expect(useWorkspaceAuthStore.getState().sessions).toEqual([]);
@@ -1193,19 +1208,32 @@ describe("workspace-auth flow", () => {
   it("fences an outstanding cleanup when the durable owner key is reused", async () => {
     const old = storeWorkspaceSession(createWorkspaceSession());
     const cacheCleanup = createDeferred();
+    const usersCacheCleanup = createDeferred();
     let canDelete = () => false;
+    let canDeleteUsers = () => false;
     deleteWorkspaceMessengerOwnerCache.mockImplementationOnce(
       (_ownerKey: string, { isWriteCurrent }: { isWriteCurrent: () => boolean }) => {
         canDelete = isWriteCurrent;
         return cacheCleanup.promise;
       },
     );
+    deleteWorkspaceUserOwnerCache.mockImplementationOnce(
+      (_ownerKey: string, isWriteCurrent: () => boolean) => {
+        canDeleteUsers = isWriteCurrent;
+        return usersCacheCleanup.promise;
+      },
+    );
     const removal = removeWorkspaceSession(old.accountId);
-    await vi.waitFor(() => expect(canDelete()).toBe(true));
+    await vi.waitFor(() => {
+      expect(canDelete()).toBe(true);
+      expect(canDeleteUsers()).toBe(true);
+    });
 
     const next = storeWorkspaceSession({ ...old, refreshToken: "new-login-refresh" });
     expect(canDelete()).toBe(false);
+    expect(canDeleteUsers()).toBe(false);
     cacheCleanup.resolve();
+    usersCacheCleanup.resolve();
     await removal;
     expect(useWorkspaceAuthStore.getState().getCurrentSession()).toEqual(next);
   });
@@ -1258,7 +1286,6 @@ describe("workspace-auth flow", () => {
 
       const ownerKey = ownerKeyFromSession(session);
       expect(cleanup).toHaveBeenCalledExactlyOnceWith(ownerKey, expect.any(Function));
-      expect(deleteWorkspaceUserOwnerCache).toHaveBeenCalledWith(ownerKey, expect.any(Function));
       expect(deleteWorkspaceExternalAccountOwnerCache).toHaveBeenCalledWith(
         ownerKey,
         expect.any(Function),

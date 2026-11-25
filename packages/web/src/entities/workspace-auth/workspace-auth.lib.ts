@@ -25,7 +25,6 @@ import { createLogger } from "~/shared/lib/logger";
 import { buildOrgRouteIdFromOrigin } from "~/shared/lib/org-route";
 import { deleteWorkspaceExternalAccountOwnerCache } from "~/shared/lib/workspace-external-account-cache-db";
 import { workspaceOrgOriginFromLoginServerUrlInput } from "~/shared/lib/workspace-org-origin.lib";
-import { deleteWorkspaceUserOwnerCache } from "~/shared/lib/workspace-user-cache-db";
 import { buildWorkspaceSessionRequestOptions } from "./workspace-auth-request-options.lib";
 import { useWorkspaceAuthStore, workspaceAuthSessionIncarnation } from "./workspace-auth.model";
 import { recordSuccessfulWorkspaceOrganization } from "./workspace-organization-history.lib";
@@ -443,21 +442,6 @@ async function cleanupWorkspaceApplicationSession(
   }
 }
 
-async function cleanupWorkspaceUserOwnerCache(
-  session: WorkspaceAuthSession,
-  isWriteCurrent: () => boolean,
-): Promise<void> {
-  const ownerKey = workspaceRuntimeOwnerKey(session);
-  try {
-    await deleteWorkspaceUserOwnerCache(ownerKey, isWriteCurrent);
-  } catch (error) {
-    authLogger.warn("Workspace user cache cleanup failed during session removal", {
-      accountId: session.accountId,
-      errorName: error instanceof Error ? error.name : typeof error,
-    });
-  }
-}
-
 async function cleanupWorkspaceExternalAccountOwnerCache(
   session: WorkspaceAuthSession,
   isWriteCurrent: () => boolean,
@@ -493,7 +477,6 @@ async function revokeAndCleanupWorkspaceSession(session: WorkspaceAuthSession): 
     useWorkspaceAuthStore.getState().removeSession(session.accountId);
     await Promise.all([
       cleanupWorkspaceApplicationSession(ownerKey, isWriteCurrent),
-      cleanupWorkspaceUserOwnerCache(session, isWriteCurrent),
       cleanupWorkspaceExternalAccountOwnerCache(session, isWriteCurrent),
     ]);
   } finally {
