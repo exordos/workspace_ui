@@ -49,6 +49,11 @@ src/
     sessions/
     http/
     realtime/
+      workspace-realtime-runtime.lib.ts
+      workspace-realtime-manager.lib.ts
+      workspace-realtime-catch-up.lib.ts
+      workspace-realtime-cursor.lib.ts
+      workspace-realtime-applier.lib.ts
     storage/
     desktop/
       clipboard.ts

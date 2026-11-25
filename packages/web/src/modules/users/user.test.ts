@@ -5,11 +5,11 @@ import {
 } from "~/entities/workspace-auth/workspace-auth.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
-import type { WorkspaceMessengerUserDto } from "~/shared/api/messenger.types";
 import type {
   WorkspaceRealtimeEventContext,
   WorkspaceRealtimeRuntimeOwner,
-} from "~/shared/lib/workspace-realtime/workspace-realtime-runtime.lib";
+} from "~/platform/realtime/workspace-realtime-runtime.lib";
+import type { WorkspaceMessengerUserDto } from "~/shared/api/messenger.types";
 import { adaptWorkspaceMessengerUserDto } from "./user-adapters.lib";
 import { readManualStatus } from "./user-manual-status.lib";
 import { createUserRealtimeApplier } from "./user-realtime-applier.lib";

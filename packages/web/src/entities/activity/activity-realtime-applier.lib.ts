@@ -1,10 +1,10 @@
 import { adaptMessengerMessage } from "~/applications/messenger/model/messages/messenger-message-adapter.lib";
-import type { WorkspaceRealtimeEvent } from "~/shared/api/messenger.types";
 import type {
   WorkspaceRealtimeEventApplier,
   WorkspaceRealtimeRuntimeContext,
   WorkspaceRealtimeRuntimeOwner,
-} from "~/shared/lib/workspace-realtime/workspace-realtime-runtime.lib";
+} from "~/platform/realtime/workspace-realtime-runtime.lib";
+import type { WorkspaceRealtimeEvent } from "~/shared/api/messenger.types";
 import {
   useActivityStore,
   type ActivityLiveMentionMessageMutation,

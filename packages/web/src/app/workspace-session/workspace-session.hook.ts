@@ -12,9 +12,9 @@ import {
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { useWorkspaceJitsiSettingsStore } from "~/features/jitsi-call/jitsi-call-settings.model";
 import { reconcileUsersSessions, useHasUserForOwner } from "~/modules/users/users-runtime";
+import { createWorkspaceRealtimeBrowserCursorStorage } from "~/platform/realtime/workspace-realtime-cursor.lib";
 import { onPowerResume } from "~/shared/lib/power";
 import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
-import { createWorkspaceRealtimeBrowserCursorStorage } from "~/shared/lib/workspace-realtime/workspace-realtime-cursor.lib";
 import { readWorkspaceSession } from "./workspace-session-bootstrap.lib";
 import { registerWorkspaceColdStartStopper } from "./workspace-session-reset.lib";
 import {

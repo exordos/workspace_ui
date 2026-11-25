@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { WorkspaceRealtimeEventContext } from "~/platform/realtime/workspace-realtime-runtime.lib";
 import type { WorkspaceExternalChatDto } from "~/shared/api/messenger-external-chats.types";
-import type { WorkspaceRealtimeEventContext } from "~/shared/lib/workspace-realtime/workspace-realtime-runtime.lib";
 import { adaptWorkspaceExternalChatDto } from "./external-chat-adapters.lib";
 import { createExternalChatRealtimeApplier } from "./external-chat-realtime-applier.lib";
 import { useExternalChatsStore } from "./external-chat.model";

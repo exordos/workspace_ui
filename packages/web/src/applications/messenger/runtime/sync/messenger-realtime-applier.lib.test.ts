@@ -10,6 +10,10 @@ import {
   type WorkspaceAuthSession,
 } from "~/entities/workspace-auth/workspace-auth.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
+import type {
+  WorkspaceRealtimeEventContext,
+  WorkspaceRealtimeRuntimeOwner,
+} from "~/platform/realtime/workspace-realtime-runtime.lib";
 import { isWorkspaceMessengerMessageDto } from "~/shared/api/messenger.types";
 import type {
   WorkspaceMessengerFolderDto,
@@ -20,10 +24,6 @@ import type {
   WorkspaceRealtimeEvent,
 } from "~/shared/api/messenger.types";
 import { subscribeWorkspaceFileResourceInvalidation } from "~/shared/lib/workspace-file-loader.lib";
-import type {
-  WorkspaceRealtimeEventContext,
-  WorkspaceRealtimeRuntimeOwner,
-} from "~/shared/lib/workspace-realtime/workspace-realtime-runtime.lib";
 import {
   selectMessengerSidebarFolders,
   selectMessengerSidebarStreams,

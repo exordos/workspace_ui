@@ -30,18 +30,18 @@ import {
 } from "~/modules/users/users-runtime";
 import { selectUserDisplayName } from "~/modules/users/users-selectors";
 import type { UsersById } from "~/modules/users/users-types";
-import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
-import { composeWorkspaceRealtimeAppliers } from "~/shared/lib/workspace-realtime/workspace-realtime-applier.lib";
-import type { WorkspaceRealtimeDurableCursorStorage } from "~/shared/lib/workspace-realtime/workspace-realtime-cursor.lib";
+import { composeWorkspaceRealtimeAppliers } from "~/platform/realtime/workspace-realtime-applier.lib";
+import type { WorkspaceRealtimeDurableCursorStorage } from "~/platform/realtime/workspace-realtime-cursor.lib";
 import {
   createWorkspaceRealtimeRuntimeManager,
   type WorkspaceRealtimeManagerRuntimeContext,
-} from "~/shared/lib/workspace-realtime/workspace-realtime-manager.lib";
+} from "~/platform/realtime/workspace-realtime-manager.lib";
 import {
   createWorkspaceRealtimeTransportCore,
   type WorkspaceRealtimeEventContext,
   type WorkspaceRealtimeRuntimeOwner,
-} from "~/shared/lib/workspace-realtime/workspace-realtime-runtime.lib";
+} from "~/platform/realtime/workspace-realtime-runtime.lib";
+import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
 import {
   prepareWorkspaceSessionParticipant,
   prepareWorkspaceSessionSnapshots,

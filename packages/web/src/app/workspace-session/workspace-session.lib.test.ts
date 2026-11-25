@@ -11,30 +11,25 @@ import {
   useWorkspaceAuthStore,
   type WorkspaceAuthSession,
 } from "~/entities/workspace-auth/workspace-auth.model";
+import { createWorkspaceRealtimeBrowserCursorStorage } from "~/platform/realtime/workspace-realtime-cursor.lib";
+import { createWorkspaceRealtimeTransportCore } from "~/platform/realtime/workspace-realtime-runtime.lib";
 import { MessengerApiError } from "~/shared/api/messenger-client";
 import type {
   WorkspaceMessengerMessageDto,
   WorkspaceMessengerRealtimeEventDto,
 } from "~/shared/api/messenger.types";
-import { createWorkspaceRealtimeBrowserCursorStorage } from "~/shared/lib/workspace-realtime/workspace-realtime-cursor.lib";
-import { createWorkspaceRealtimeTransportCore } from "~/shared/lib/workspace-realtime/workspace-realtime-runtime.lib";
 import {
   createWorkspaceSessionRuntimeManager,
   toWorkspaceSessionContext,
 } from "./workspace-session.lib";
 
-vi.mock(
-  "~/shared/lib/workspace-realtime/workspace-realtime-runtime.lib",
-  async (importOriginal) => ({
-    ...(await importOriginal<
-      typeof import("~/shared/lib/workspace-realtime/workspace-realtime-runtime.lib")
-    >()),
-    createWorkspaceRealtimeTransportCore: vi.fn(() => ({
-      start: vi.fn(() => Promise.resolve()),
-      stop: vi.fn(() => Promise.resolve()),
-    })),
-  }),
-);
+vi.mock("~/platform/realtime/workspace-realtime-runtime.lib", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("~/platform/realtime/workspace-realtime-runtime.lib")>()),
+  createWorkspaceRealtimeTransportCore: vi.fn(() => ({
+    start: vi.fn(() => Promise.resolve()),
+    stop: vi.fn(() => Promise.resolve()),
+  })),
+}));
 
 function createSession(accountId: string): WorkspaceAuthSession {
   const suffix = accountId.endsWith("a") ? "a" : "b";
@@ -270,8 +265,8 @@ it("keeps applying A events while B recovers a pruned cursor into its own model"
   const aModels = seedWarmModels(a);
   const bModels = seedWarmModels(b);
   const actual = await vi.importActual<
-    typeof import("~/shared/lib/workspace-realtime/workspace-realtime-runtime.lib")
-  >("~/shared/lib/workspace-realtime/workspace-realtime-runtime.lib");
+    typeof import("~/platform/realtime/workspace-realtime-runtime.lib")
+  >("~/platform/realtime/workspace-realtime-runtime.lib");
   const cursors = createWorkspaceRealtimeBrowserCursorStorage();
   const cursor = (epochVersion: number) => ({ epochGeneration: "generation", epochVersion });
   cursors.write(a, cursor(120));

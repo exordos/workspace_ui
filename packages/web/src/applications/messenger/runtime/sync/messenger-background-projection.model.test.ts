@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type {
+  WorkspaceRealtimeEventContext,
+  WorkspaceRealtimeRuntimeOwner,
+} from "~/platform/realtime/workspace-realtime-runtime.lib";
+import type {
   WorkspaceMessengerFolderDto,
   WorkspaceMessengerFolderItemDto,
   WorkspaceMessengerMessageDto,
@@ -13,10 +17,6 @@ import {
   workspaceMessengerStreamRoute,
   workspaceMessengerTopicRoute,
 } from "~/shared/lib/workspace-messenger-route.lib";
-import type {
-  WorkspaceRealtimeEventContext,
-  WorkspaceRealtimeRuntimeOwner,
-} from "~/shared/lib/workspace-realtime/workspace-realtime-runtime.lib";
 import {
   MESSENGER_CHANNELS_FOLDER_UUID,
   MESSENGER_PERSONAL_FOLDER_UUID,

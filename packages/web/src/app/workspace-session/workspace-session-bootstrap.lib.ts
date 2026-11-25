@@ -18,13 +18,13 @@ import {
   refreshWorkspaceSessionUsers,
   restoreWorkspaceSessionUsers,
 } from "~/modules/users/users-runtime";
-import { getEpoch } from "~/shared/api/workspace-client";
-import type { WorkspaceRealtimeCursor } from "~/shared/lib/workspace-realtime/workspace-realtime-cursor.lib";
+import type { WorkspaceRealtimeCursor } from "~/platform/realtime/workspace-realtime-cursor.lib";
 import type {
   WorkspaceRealtimeRuntimeContext,
   WorkspaceRealtimeRuntimeOptions,
   WorkspaceRealtimeRuntimeOwner,
-} from "~/shared/lib/workspace-realtime/workspace-realtime-runtime.lib";
+} from "~/platform/realtime/workspace-realtime-runtime.lib";
+import { getEpoch } from "~/shared/api/workspace-client";
 
 const CACHE_RESUME_WAIT_MS = 150; // A blocked IDB read must not hold network startup.
 

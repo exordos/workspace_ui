@@ -1,8 +1,8 @@
-import { WorkspaceRealtimeParticipantNotReadyError } from "~/shared/lib/workspace-realtime/workspace-realtime-applier.lib";
+import { WorkspaceRealtimeParticipantNotReadyError } from "~/platform/realtime/workspace-realtime-applier.lib";
 import type {
   WorkspaceRealtimeEventApplier,
   WorkspaceRealtimeRuntimeOwner,
-} from "~/shared/lib/workspace-realtime/workspace-realtime-runtime.lib";
+} from "~/platform/realtime/workspace-realtime-runtime.lib";
 import { adaptWorkspaceMessengerUserDto } from "./user-adapters.lib";
 import { writeUsersToCacheForOwner } from "./user-sync.lib";
 import { getSelectedUsersStore, getUsersStoreForOwner } from "./user.model";

@@ -7,7 +7,7 @@ globs:
 
 # Network awareness
 
-Sources: `packages/web/src/shared/lib/network.ts`, `network-transport-probe.lib.ts`, and `packages/web/src/shared/lib/workspace-realtime/`.
+Sources: `packages/web/src/shared/lib/network.ts`, `network-transport-probe.lib.ts`, and `packages/web/src/platform/realtime/`.
 
 - `navigator.onLine` is a connectivity hint, not proof that the Workspace service is reachable.
 - Distinguish offline, transport failure, authentication failure, and backend rejection. Use the existing transport/realtime owner for retries and recovery.

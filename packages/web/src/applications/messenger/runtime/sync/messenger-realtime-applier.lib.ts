@@ -1,9 +1,6 @@
 import { restoreWorkspaceComposerDraftsForStream } from "~/applications/messenger/model/drafts/composer-draft.model";
 import { getWorkspaceMessageStoreForOwner } from "~/applications/messenger/model/messages/message.model";
-import type { WorkspaceRealtimeEvent } from "~/shared/api/messenger.types";
-import { createLogger } from "~/shared/lib/logger";
-import { invalidateWorkspaceFileResourceCache } from "~/shared/lib/workspace-file-loader.lib";
-import { WorkspaceRealtimeParticipantNotReadyError } from "~/shared/lib/workspace-realtime/workspace-realtime-applier.lib";
+import { WorkspaceRealtimeParticipantNotReadyError } from "~/platform/realtime/workspace-realtime-applier.lib";
 import type {
   WorkspaceRealtimeEventApplier,
   WorkspaceRealtimeEventContext,
@@ -11,7 +8,10 @@ import type {
   WorkspaceRealtimeRuntimeOwner,
   WorkspaceRealtimeSkipReason,
   WorkspaceRealtimeSkippedEvent,
-} from "~/shared/lib/workspace-realtime/workspace-realtime-runtime.lib";
+} from "~/platform/realtime/workspace-realtime-runtime.lib";
+import type { WorkspaceRealtimeEvent } from "~/shared/api/messenger.types";
+import { createLogger } from "~/shared/lib/logger";
+import { invalidateWorkspaceFileResourceCache } from "~/shared/lib/workspace-file-loader.lib";
 import {
   adaptMessengerFolder,
   adaptMessengerStream,

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { WorkspaceRealtimeEventContext } from "~/shared/lib/workspace-realtime/workspace-realtime-runtime.lib";
+import type { WorkspaceRealtimeEventContext } from "~/platform/realtime/workspace-realtime-runtime.lib";
 import { adaptWorkspaceExternalAccountDto } from "./external-account-adapters.lib";
 import {
   createExternalAccountRealtimeApplier,

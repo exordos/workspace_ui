@@ -2,7 +2,7 @@ import type {
   WorkspaceRealtimeEventApplier,
   WorkspaceRealtimeEventContext,
   WorkspaceRealtimeRuntimeOwner,
-} from "~/shared/lib/workspace-realtime/workspace-realtime-runtime.lib";
+} from "~/platform/realtime/workspace-realtime-runtime.lib";
 import { adaptWorkspaceExternalChatDto } from "./external-chat-adapters.lib";
 import { useExternalChatsStore } from "./external-chat.model";
 

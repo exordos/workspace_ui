@@ -31,7 +31,7 @@ All paths below are relative to `packages/web/src`.
 | Messenger REST                          | [messenger-client.ts](../packages/web/src/shared/api/messenger-client.ts) and adjacent `messenger-*.api.ts`            |
 | Common Workspace REST                   | [workspace-client.ts](../packages/web/src/shared/api/workspace-client.ts)                                              |
 | IAM token requests                      | [workspace-iam-auth.ts](../packages/web/src/shared/api/workspace-iam-auth.ts)                                          |
-| Realtime transport                      | [shared/lib/workspace-realtime](../packages/web/src/shared/lib/workspace-realtime/)                                    |
+| Realtime transport                      | [platform/realtime](../packages/web/src/platform/realtime/)                                                            |
 | Shared encrypted chat sessions          | [chat-crypto-session.lib.ts](../packages/web/src/applications/messenger/model/crypto/chat-crypto-session.lib.ts)       |
 | Messenger cache                         | [workspace-messenger-cache-db.ts](../packages/web/src/shared/lib/workspace-messenger-cache-db.ts)                      |
 | Message rendering                       | [shared/lib/workspace-message-render](../packages/web/src/shared/lib/workspace-message-render/)                        |

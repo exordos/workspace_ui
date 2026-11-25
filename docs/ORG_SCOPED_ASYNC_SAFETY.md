@@ -58,9 +58,9 @@ UI mutations need the same protection as loaders: edit, delete, read, react, dra
 
 ## Cleanup and background work
 
-The [Workspace session host](../packages/web/src/app/workspace-session/workspace-session.hook.ts) reconciles authorized owners. The [realtime manager](../packages/web/src/shared/lib/workspace-realtime/workspace-realtime-manager.lib.ts) aborts replaced or removed attempts independently. Invalidate pending writes, abort owned work, release subscriptions and reset coordination when the runtime ends, including transition to no session.
+The [Workspace session host](../packages/web/src/app/workspace-session/workspace-session.hook.ts) reconciles authorized owners. The [realtime manager](../packages/web/src/platform/realtime/workspace-realtime-manager.lib.ts) aborts replaced or removed attempts independently. Invalidate pending writes, abort owned work, release subscriptions and reset coordination when the runtime ends, including transition to no session.
 
-Background multi-owner work has a different lifecycle. Check the explicit owner and lifecycle supplied to the job, rather than requiring it to equal the active UI selection. The [realtime runtime](../packages/web/src/shared/lib/workspace-realtime/) supports separate active/background surfaces; neither may write into another owner's active store.
+Background multi-owner work has a different lifecycle. Check the explicit owner and lifecycle supplied to the job, rather than requiring it to equal the active UI selection. The [realtime runtime](../packages/web/src/platform/realtime/) supports separate active/background surfaces; neither may write into another owner's active store.
 
 ## Verification scenarios
 

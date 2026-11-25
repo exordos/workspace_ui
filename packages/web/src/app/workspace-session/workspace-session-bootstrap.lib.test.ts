@@ -17,9 +17,9 @@ import {
   refreshWorkspaceSessionUsers,
   restoreWorkspaceSessionUsers,
 } from "~/modules/users/users-runtime";
+import type { WorkspaceRealtimeRuntimeContext } from "~/platform/realtime/workspace-realtime-runtime.lib";
 import type { WorkspaceMessengerEpochDto } from "~/shared/api/messenger.types";
 import { getEpoch } from "~/shared/api/workspace-client";
-import type { WorkspaceRealtimeRuntimeContext } from "~/shared/lib/workspace-realtime/workspace-realtime-runtime.lib";
 import { prepareWorkspaceSessionSnapshots } from "./workspace-session-bootstrap.lib";
 
 vi.mock("~/applications/messenger/runtime/sync/messenger-session-snapshot.lib", () => ({

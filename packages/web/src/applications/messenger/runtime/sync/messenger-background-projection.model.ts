@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import type { WorkspaceRealtimeEventContext } from "~/platform/realtime/workspace-realtime-runtime.lib";
 import type {
   WorkspaceMessengerEpochVersion,
   WorkspaceMessengerFolderDto,
@@ -22,7 +23,6 @@ import {
   workspaceMessengerStreamRoute,
   workspaceMessengerTopicRoute,
 } from "~/shared/lib/workspace-messenger-route.lib";
-import type { WorkspaceRealtimeEventContext } from "~/shared/lib/workspace-realtime/workspace-realtime-runtime.lib";
 import { resolveMessengerFolderSystemType } from "../../model/chats/messenger-folder-system-type.lib";
 import {
   compareMessengerMessageOrder,
