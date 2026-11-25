@@ -1,7 +1,7 @@
 import { useEffect, useMemo } from "react";
+import { osIntegration } from "~/platform/desktop/os-integration";
 import { getElectronAPI } from "~/shared/lib/electron";
 import { syncFaviconWithUnreadIndicator } from "~/shared/lib/organization-branding";
-import { osIntegration } from "~/shared/lib/os-integration";
 
 function hasPersonalUnreadIndicator(personalDmUnread: number, mentionsUnread: number): boolean {
   return Math.max(0, personalDmUnread) > 0 || Math.max(0, mentionsUnread) > 0;

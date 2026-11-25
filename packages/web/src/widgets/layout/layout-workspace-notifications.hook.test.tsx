@@ -79,7 +79,7 @@ vi.mock("~/shared/lib/notification-sound", () => ({
     playNotificationSoundMock(...args),
 }));
 
-vi.mock("~/shared/lib/os-integration", () => ({
+vi.mock("~/platform/desktop/os-integration", () => ({
   osIntegration: {
     requestAttention: (...args: Parameters<typeof requestAttentionMock>) =>
       requestAttentionMock(...args),

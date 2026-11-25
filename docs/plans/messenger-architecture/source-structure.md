@@ -52,6 +52,7 @@ src/
     storage/
     desktop/
       clipboard.ts
+      os-integration.ts
     notifications/
       notifications.ts
 

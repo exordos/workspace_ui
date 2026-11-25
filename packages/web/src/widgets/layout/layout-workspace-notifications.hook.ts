@@ -14,6 +14,7 @@ import type {
 import { getDockBounceEnabledForOwner, useSettingsStore } from "~/features/settings/settings.model";
 import { t } from "~/i18n/i18n";
 import { resolveCachedWorkspaceUser } from "~/modules/users/users-runtime";
+import { osIntegration } from "~/platform/desktop/os-integration";
 import { notificationService } from "~/platform/notifications/notifications";
 import { isElectronDarwin } from "~/shared/lib/electron";
 import { createLogger } from "~/shared/lib/logger";
@@ -22,7 +23,6 @@ import {
   wasWorkspaceMessageRecentlyNotified,
 } from "~/shared/lib/notification-dedup.lib";
 import { playNotificationSound } from "~/shared/lib/notification-sound";
-import { osIntegration } from "~/shared/lib/os-integration";
 import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
 import { getActivityState } from "~/shared/lib/visibility";
 import { shouldWorkspaceDesktopNotify } from "~/shared/lib/workspace-desktop-notifications.lib";

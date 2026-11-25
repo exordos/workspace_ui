@@ -9,7 +9,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type * as OsIntegrationModule from "./os-integration";
 
-vi.mock("./electron", () => ({
+vi.mock("~/shared/lib/electron", () => ({
   isElectron: vi.fn(() => false),
   getElectronAPI: vi.fn(() => null),
 }));
@@ -24,7 +24,7 @@ describe("osIntegration (web runtime)", () => {
   beforeEach(async () => {
     vi.resetModules();
 
-    const electronMod = await import("./electron");
+    const electronMod = await import("~/shared/lib/electron");
     (electronMod.isElectron as ReturnType<typeof vi.fn>).mockReturnValue(false);
     (electronMod.getElectronAPI as ReturnType<typeof vi.fn>).mockReturnValue(null);
 
@@ -132,7 +132,7 @@ describe("osIntegration (electron runtime)", () => {
     mockOsAPI.setLoginItemSettings.mockClear();
     mockOsAPI.getLoginItemSettings.mockClear().mockResolvedValue({ openAtLogin: true });
 
-    const electronMod = await import("./electron");
+    const electronMod = await import("~/shared/lib/electron");
     (electronMod.isElectron as ReturnType<typeof vi.fn>).mockReturnValue(true);
     (electronMod.getElectronAPI as ReturnType<typeof vi.fn>).mockReturnValue({
       os: mockOsAPI,
@@ -197,7 +197,7 @@ describe("osIntegration (electron runtime)", () => {
   it("methods are no-op when electronAPI returns null mid-session", async () => {
     vi.resetModules();
 
-    const electronMod = await import("./electron");
+    const electronMod = await import("~/shared/lib/electron");
     (electronMod.isElectron as ReturnType<typeof vi.fn>).mockReturnValue(true);
     (electronMod.getElectronAPI as ReturnType<typeof vi.fn>)
       .mockReturnValueOnce({ os: mockOsAPI })

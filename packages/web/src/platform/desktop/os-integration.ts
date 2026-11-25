@@ -2,11 +2,10 @@
  * Unified OS integration — badge count, progress bar, attention request, startup.
  *
  * Electron: native APIs via IPC (dock badge, taskbar progress, flash frame, tray)
- * PWA: navigator.setAppBadge (Chrome 81+, Edge 81+)
- * Browser: no-op
+ * Browser and PWA: App Badging API when available.
  *
  * Usage:
- *   import { osIntegration } from "~/lib/os-integration";
+ *   import { osIntegration } from "~/platform/desktop/os-integration";
  *
  *   osIntegration.setBadgeCount(totalUnread); // >0 → dot on PWA/Electron icons
  *   osIntegration.setProgressBar(0.75);       // download progress
@@ -15,7 +14,7 @@
  *   osIntegration.setStartupEnabled(true);    // open at login
  */
 
-import { getElectronAPI, isElectron } from "./electron";
+import { getElectronAPI, isElectron } from "~/shared/lib/electron";
 
 export interface OsIntegration {
   setBadgeCount(count: number): void;
