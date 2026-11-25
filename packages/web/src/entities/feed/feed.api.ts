@@ -1,9 +1,9 @@
 import { adaptMessengerMessage } from "~/applications/messenger/model/messages/messenger-message-adapter.lib";
+import type { MessengerMessage } from "~/applications/messenger/model/messenger.types";
 import {
   buildMessengerRequestOptions,
   type MessengerRequestOptionsOverrides,
-} from "~/applications/messenger/model/messenger-request-options.lib";
-import type { MessengerMessage } from "~/applications/messenger/model/messenger.types";
+} from "~/entities/workspace-auth/workspace-auth-messenger-request-options.lib";
 import type { WorkspaceRuntimeContext } from "~/platform/sessions/workspace-runtime.types";
 import {
   getMessagesPage as defaultGetMessagesPage,

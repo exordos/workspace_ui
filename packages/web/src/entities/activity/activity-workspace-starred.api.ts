@@ -1,7 +1,7 @@
 import {
   buildMessengerRequestOptions,
   type MessengerRequestOptionsOverrides,
-} from "~/applications/messenger/model/messenger-request-options.lib";
+} from "~/entities/workspace-auth/workspace-auth-messenger-request-options.lib";
 import type { WorkspaceRuntimeContext } from "~/platform/sessions/workspace-runtime.types";
 import {
   getMessagesPage as defaultGetMessagesPage,

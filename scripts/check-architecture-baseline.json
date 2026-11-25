@@ -1,16 +1,10 @@
 {
   "application-direction": [
     "entities/activity/activity-mentions.api.ts -> applications/messenger/model/messages/messenger-message-adapter.lib.ts",
-    "entities/activity/activity-mentions.api.ts -> applications/messenger/model/messenger-request-options.lib.ts",
     "entities/activity/activity-mentions.api.ts -> applications/messenger/model/messenger.types.ts",
     "entities/activity/activity-realtime-applier.lib.ts -> applications/messenger/model/messages/messenger-message-adapter.lib.ts",
-    "entities/activity/activity-workspace-starred.api.ts -> applications/messenger/model/messenger-request-options.lib.ts",
     "entities/activity/activity.model.ts -> applications/messenger/model/messenger.types.ts",
-    "entities/external-account/external-account-loader.lib.ts -> applications/messenger/model/messenger-request-options.lib.ts",
-    "entities/external-account/external-account-sync.lib.ts -> applications/messenger/model/messenger-request-options.lib.ts",
-    "entities/external-chat/external-chat-loader.lib.ts -> applications/messenger/model/messenger-request-options.lib.ts",
     "entities/feed/feed.api.ts -> applications/messenger/model/messages/messenger-message-adapter.lib.ts",
-    "entities/feed/feed.api.ts -> applications/messenger/model/messenger-request-options.lib.ts",
     "entities/feed/feed.api.ts -> applications/messenger/model/messenger.types.ts",
     "entities/feed/feed.model.ts -> applications/messenger/model/messenger.types.ts"
   ],
