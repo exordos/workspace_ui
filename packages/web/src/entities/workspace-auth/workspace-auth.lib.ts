@@ -23,7 +23,6 @@ import { env } from "~/shared/lib/env";
 import { guard } from "~/shared/lib/guards";
 import { createLogger } from "~/shared/lib/logger";
 import { buildOrgRouteIdFromOrigin } from "~/shared/lib/org-route";
-import { deleteWorkspaceExternalAccountOwnerCache } from "~/shared/lib/workspace-external-account-cache-db";
 import { workspaceOrgOriginFromLoginServerUrlInput } from "~/shared/lib/workspace-org-origin.lib";
 import { buildWorkspaceSessionRequestOptions } from "./workspace-auth-request-options.lib";
 import { useWorkspaceAuthStore, workspaceAuthSessionIncarnation } from "./workspace-auth.model";
@@ -427,7 +426,7 @@ useWorkspaceAuthStore.subscribe((state, previous) => {
   }
 });
 
-// Application failures are isolated from session removal and the other owner caches.
+// Application cleanup failures do not undo the synchronous session removal.
 async function cleanupWorkspaceApplicationSession(
   ownerKey: string,
   isWriteCurrent: () => boolean,
@@ -437,21 +436,6 @@ async function cleanupWorkspaceApplicationSession(
     await applicationSessionCleanup?.cleanup(ownerKey, isWriteCurrent);
   } catch (error) {
     authLogger.warn("Application cleanup failed during Workspace session removal", {
-      errorName: error instanceof Error ? error.name : typeof error,
-    });
-  }
-}
-
-async function cleanupWorkspaceExternalAccountOwnerCache(
-  session: WorkspaceAuthSession,
-  isWriteCurrent: () => boolean,
-): Promise<void> {
-  const ownerKey = workspaceRuntimeOwnerKey(session);
-  try {
-    await deleteWorkspaceExternalAccountOwnerCache(ownerKey, isWriteCurrent);
-  } catch (error) {
-    authLogger.warn("Workspace external account cache cleanup failed during session removal", {
-      accountId: session.accountId,
       errorName: error instanceof Error ? error.name : typeof error,
     });
   }
@@ -475,10 +459,7 @@ async function revokeAndCleanupWorkspaceSession(session: WorkspaceAuthSession): 
     !ownerReentered && !useWorkspaceAuthStore.getState().sessions.some(hasOwnerKey);
   try {
     useWorkspaceAuthStore.getState().removeSession(session.accountId);
-    await Promise.all([
-      cleanupWorkspaceApplicationSession(ownerKey, isWriteCurrent),
-      cleanupWorkspaceExternalAccountOwnerCache(session, isWriteCurrent),
-    ]);
+    await cleanupWorkspaceApplicationSession(ownerKey, isWriteCurrent);
   } finally {
     unsubscribe();
   }

@@ -1,4 +1,5 @@
 import { cleanupMessengerSession } from "~/applications/messenger/model/messenger-runtime-mutation.lib";
+import { cleanupExternalAccountSession } from "~/entities/external-account/external-account-session-cleanup.lib";
 import { registerWorkspaceSessionCleanup } from "~/entities/workspace-auth/workspace-auth.lib";
 import { cleanupUsersSession } from "~/modules/users/users-runtime";
 import { createLogger } from "~/shared/lib/logger";
@@ -11,6 +12,7 @@ export function installWorkspaceSessionCleanup(): () => void {
     const results = await Promise.allSettled([
       cleanupMessengerSession(ownerKey, isWriteCurrent),
       cleanupUsersSession(ownerKey, isWriteCurrent),
+      cleanupExternalAccountSession(ownerKey, isWriteCurrent),
     ]);
     for (const result of results) {
       if (result.status === "rejected") {
