@@ -7,7 +7,6 @@
 
 import { getLocale } from "~/i18n/i18n";
 import { analytics } from "../analytics/analytics";
-import { showDesktopNotification } from "../electron";
 import { createLogger } from "../logger";
 import { getRuntime } from "../pwa";
 import type {
@@ -33,6 +32,13 @@ let dataProvider: PluginDataProvider | null = null;
 /** Set by the app layer to provide entity store data to the plugin API. */
 export function setPluginDataProvider(provider: PluginDataProvider): void {
   dataProvider = provider;
+}
+
+let showPluginNotification: PluginAPI["notify"];
+
+// Set the host operation used by plugins with notification permission.
+export function setPluginNotificationHandler(handler: PluginAPI["notify"]): void {
+  showPluginNotification = handler;
 }
 
 // ---------------------------------------------------------------------------
@@ -204,7 +210,7 @@ export function createPluginAPI(manifest: PluginManifest, callbacks: RegistryCal
 
   if (hasPermission(manifest, "notifications")) {
     api.notify = async (title, body) => {
-      await showDesktopNotification(title, body);
+      await showPluginNotification?.(title, body);
     };
   }
 

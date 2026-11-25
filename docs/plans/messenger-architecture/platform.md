@@ -2,7 +2,7 @@
 
 [Карта заметок](README.md) · [Дерево src](source-structure.md#дерево) · [Направление зависимостей](dependencies.md#направление-зависимостей)
 
-В целевой структуре `packages/web/src/platform` предоставляет инфраструктуру для мессенджера, календаря, почты и общих модулей. Первый реализованный вход — [буфер обмена](#буфер-обмена-и-мост-electron).
+В целевой структуре `packages/web/src/platform` предоставляет инфраструктуру для мессенджера, календаря, почты и общих модулей. Уже доступны [буфер обмена](#буфер-обмена-и-мост-electron) и [системные уведомления](#системные-уведомления).
 
 | Часть           | Ответственность                                                                                       |
 | --------------- | ----------------------------------------------------------------------------------------------------- |
@@ -48,3 +48,11 @@ const copied = await writeText(messageLink);
 В Electron адаптер обращается к существующему `window.electronAPI.clipboard`. Пакет Electron публикует мост через `contextBridge`, выполняет чтение и запись в системном буфере и возвращает результат через IPC. [Методы preload](../../../packages/electron/src/preload.ts#L49) · [Обработчики IPC](../../../packages/electron/src/main.ts#L1076)
 
 `Copyable` вызывает переданный `onCopy` при нажатии и отображает результат. Код профиля и медиапросмотр передают операции копирования текста и изображения. `deeplink.share(data, copyText)` использует переданную функцию, когда Web Share API недоступен. [Copyable](../../../packages/web/src/shared/ui/copyable/index.ts) · [Общий помощник ссылок](../../../packages/web/src/shared/lib/deeplinks.ts)
+
+## Системные уведомления
+
+`notificationService` управляет разрешениями, показывает и закрывает уведомления по тегу, передаёт клики вызывающему коду и обновляет счётчик на значке приложения там, где это поддерживается. Браузер и PWA используют Web Notifications API, Electron обращается к системному показу через существующий IPC. [Сервис уведомлений](../../../packages/web/src/platform/notifications/notifications.ts) · [Мост Electron](../../../packages/electron/src/preload.ts#L106)
+
+Оболочка проверяет правила показа и собирает заголовок, текст, тег и маршрут. Она вызывает `notificationService.show(options)` и обрабатывает переход по клику. [Хук оболочки](../../../packages/web/src/widgets/layout/layout-workspace-notifications.hook.ts)
+
+Точка входа приложения передаёт в API плагинов функцию `showDesktopNotification(title, body)`. Плагин вызывает `api.notify(title, body)`, когда его манифест объявляет разрешение `notifications`. [Подключение в приложении](../../../packages/web/src/main-app.tsx) · [API плагинов](../../../packages/web/src/shared/lib/plugins/api.ts)

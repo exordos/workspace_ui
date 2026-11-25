@@ -18,12 +18,3 @@ export function isElectronDarwin(): boolean {
 export function getElectronAPI() {
   return window.electronAPI ?? null;
 }
-
-export async function showDesktopNotification(title: string, body: string): Promise<void> {
-  const api = getElectronAPI();
-  if (api) {
-    await api.notifications.show(title, body);
-  } else if ("Notification" in window && Notification.permission === "granted") {
-    new Notification(title, { body });
-  }
-}

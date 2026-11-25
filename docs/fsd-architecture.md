@@ -80,6 +80,8 @@ The [users module](../packages/web/src/modules/users/) owns user records, profil
 
 For imports within `src`, `npm run arch:check` limits production dependencies from `platform` to `platform` and `shared`, and forbids `shared` from importing `platform`. Callers import [the clipboard operations](../packages/web/src/platform/desktop/clipboard.ts) and pass a copy action to shared controls such as `Copyable`. [Clipboard and Electron bridge](plans/messenger-architecture/platform.md#буфер-обмена-и-мост-electron)
 
+The shell uses the platform notification service for system delivery and owns notification policy and click navigation. The application bootstrap passes a show action to the permission-gated plugin API. [System notifications](plans/messenger-architecture/platform.md#системные-уведомления)
+
 ## Workspace data flow
 
 1. IAM establishes the session and runtime owner in `entities/workspace-auth`.

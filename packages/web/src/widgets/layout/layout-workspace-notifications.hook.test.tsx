@@ -19,8 +19,8 @@ import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { useSettingsStore } from "~/features/settings/settings.model";
 import { t } from "~/i18n/i18n";
+import type { NotificationOptions } from "~/platform/notifications/notifications";
 import { clearNotifiedMessageIds } from "~/shared/lib/notification-dedup.lib";
-import type { NotificationOptions } from "~/shared/lib/notifications";
 import type { shouldWorkspaceDesktopNotify } from "~/shared/lib/workspace-desktop-notifications.lib";
 import { workspaceMessengerTopicRoute } from "~/shared/lib/workspace-messenger-route.lib";
 import { useLayoutWorkspaceNotifications as useNotificationEffects } from "./layout-workspace-notifications.hook";
@@ -66,7 +66,7 @@ const resolveConversationMetadataMock = vi.hoisted(() =>
   ),
 );
 
-vi.mock("~/shared/lib/notifications", () => ({
+vi.mock("~/platform/notifications/notifications", () => ({
   notificationService: {
     show: (...args: Parameters<typeof showNotificationMock>) => showNotificationMock(...args),
     closeByTag: (...args: Parameters<typeof closeNotificationMock>) =>
@@ -258,12 +258,13 @@ describe("useLayoutWorkspaceNotifications", () => {
     useMessengerStore.getState().clear();
   });
 
-  it("shows notifications for candidates from different ownerKey values", async () => {
+  it("shows owner-scoped notifications and opens the background owner's topic", async () => {
     const sessionA = createSession("a");
     const sessionB = createSession("b");
     const ownerKeyA = workspaceRuntimeOwnerKey(sessionA);
     const ownerKeyB = workspaceRuntimeOwnerKey(sessionB);
     const sharedMessageUuid = "shared-message";
+    const navigate = vi.fn();
 
     useWorkspaceAuthStore.setState({
       sessions: [sessionA, sessionB],
@@ -300,7 +301,7 @@ describe("useLayoutWorkspaceNotifications", () => {
     renderHook(() =>
       useLayoutWorkspaceNotifications({
         enabled: true,
-        navigate: vi.fn(),
+        navigate,
         pathname: OTHER_CONVERSATION_PATHNAME,
       }),
     );
@@ -324,6 +325,12 @@ describe("useLayoutWorkspaceNotifications", () => {
     );
     expect(resolveCachedWorkspaceUserMock).toHaveBeenCalledTimes(2);
     expect(shouldWorkspaceDesktopNotifyMock).toHaveBeenCalledTimes(2);
+
+    const backgroundNotification = showNotificationMock.mock.calls[1]?.[0];
+    expect(backgroundNotification?.onClick).toEqual(expect.any(Function));
+    backgroundNotification?.onClick?.();
+    expect(navigate).toHaveBeenCalledOnce();
+    expect(navigate).toHaveBeenCalledWith(`/topics/${ownerKeyB}/topic-1`);
   });
 
   it("opens private and channel notifications in the topic", async () => {

@@ -9,7 +9,7 @@
  * safely within a sandboxed API.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { setPluginNavigate } from "~/shared/lib/plugins/api";
+import { setPluginNavigate, setPluginNotificationHandler } from "~/shared/lib/plugins/api";
 import {
   registerPlugin,
   unregisterPlugin,
@@ -471,6 +471,7 @@ describe("activatePlugin edge cases", () => {
 // Verifies that each API capability is gated by the plugin's declared permissions
 describe("Plugin API permission gating", () => {
   afterEach(() => {
+    setPluginNotificationHandler(undefined);
     for (const p of getPlugins()) {
       unregisterPlugin(p.id);
     }
@@ -627,6 +628,8 @@ describe("Plugin API permission gating", () => {
 
   // Notification access requires explicit permission to prevent spam
   it("notify is not available without 'notifications' permission", async () => {
+    const show = vi.fn<NonNullable<PluginAPI["notify"]>>();
+    setPluginNotificationHandler(show);
     let savedApi: PluginAPI | null = null;
     registerPlugin({
       manifest: {
@@ -642,9 +645,12 @@ describe("Plugin API permission gating", () => {
     await activatePlugin("test.perm.no-notif");
 
     expect(savedApi!.notify).toBeUndefined();
+    expect(show).not.toHaveBeenCalled();
   });
 
-  it("notify is available with 'notifications' permission", async () => {
+  it("delegates notify to the host with 'notifications' permission", async () => {
+    const show = vi.fn<NonNullable<PluginAPI["notify"]>>().mockResolvedValue(undefined);
+    setPluginNotificationHandler(show);
     let savedApi: PluginAPI | null = null;
     registerPlugin({
       manifest: {
@@ -659,7 +665,12 @@ describe("Plugin API permission gating", () => {
     });
     await activatePlugin("test.perm.has-notif");
 
-    expect(typeof savedApi!.notify).toBe("function");
+    await expect(savedApi!.notify!("Test notification", "Test body")).resolves.toBeUndefined();
+    expect(show).toHaveBeenCalledExactlyOnceWith("Test notification", "Test body");
+
+    const error = new Error("Notification failed");
+    show.mockRejectedValueOnce(error);
+    await expect(savedApi!.notify!("Retry notification", "Test body")).rejects.toBe(error);
   });
 
   // Stream list is protected — requires explicit read:streams permission

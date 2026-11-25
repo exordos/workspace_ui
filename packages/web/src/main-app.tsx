@@ -6,6 +6,7 @@ import { createWorkspacePluginDataProvider } from "~/app/workspace-plugin-data-p
 import { installWorkspaceSessionCleanup } from "~/app/workspace-session/workspace-session-cleanup.lib";
 import { prepareWorkspaceColdStart } from "~/app/workspace-session/workspace-session-reset.lib";
 import { clearSelectedChatCatalogForLegacyLogout } from "~/applications/messenger/model/chats/chats";
+import { showDesktopNotification } from "~/platform/notifications/notifications";
 import { initAnalytics } from "~/shared/lib/analytics/setup";
 import { setStoreWiper } from "~/shared/lib/auth-guard";
 import { brand } from "~/shared/lib/brand";
@@ -15,7 +16,7 @@ import { createLogger } from "~/shared/lib/logger";
 import { initNetworkTracking } from "~/shared/lib/network";
 import { attachNotificationAudioUnlock } from "~/shared/lib/notification-sound";
 import { perf } from "~/shared/lib/perf";
-import { setPluginDataProvider } from "~/shared/lib/plugins/api";
+import { setPluginDataProvider, setPluginNotificationHandler } from "~/shared/lib/plugins/api";
 import { initPlugins } from "~/shared/lib/plugins/setup";
 import { initPowerTracking } from "~/shared/lib/power";
 import { initPresenceTracker } from "~/shared/lib/presence";
@@ -34,6 +35,7 @@ setApplicationColdStartPreparation(prepareWorkspaceColdStart);
 installWorkspaceSessionCleanup();
 
 setPluginDataProvider(createWorkspacePluginDataProvider());
+setPluginNotificationHandler(showDesktopNotification);
 
 /** Application bootstrap after vendored Jitsi external_api is loaded (see `main.tsx`). */
 export function mountApplication(): void {

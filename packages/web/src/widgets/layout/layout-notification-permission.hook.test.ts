@@ -6,7 +6,7 @@ const getPermissionMock = vi.hoisted(() => vi.fn(() => "default"));
 const isSupportedMock = vi.hoisted(() => vi.fn(() => true));
 const requestPermissionMock = vi.hoisted(() => vi.fn(() => Promise.resolve("granted")));
 
-vi.mock("~/shared/lib/notifications", () => ({
+vi.mock("~/platform/notifications/notifications", () => ({
   notificationService: {
     getPermission: getPermissionMock,
     isSupported: isSupportedMock,

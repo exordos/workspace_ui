@@ -8,14 +8,15 @@
  * layer for all notification types in the app.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { getElectronAPI } from "~/shared/lib/electron";
 import type * as NotificationsModule from "./notifications";
 
-vi.mock("./electron", () => ({
+vi.mock("~/shared/lib/electron", () => ({
   isElectron: vi.fn(() => false),
   getElectronAPI: vi.fn(() => null),
 }));
 
-vi.mock("./pwa", () => ({
+vi.mock("~/shared/lib/pwa", () => ({
   getRuntime: vi.fn(() => "browser"),
 }));
 
@@ -26,11 +27,11 @@ describe("notificationService (web runtime)", () => {
   beforeEach(async () => {
     vi.resetModules();
 
-    const electronMod = await import("./electron");
+    const electronMod = await import("~/shared/lib/electron");
     (electronMod.isElectron as ReturnType<typeof vi.fn>).mockReturnValue(false);
     (electronMod.getElectronAPI as ReturnType<typeof vi.fn>).mockReturnValue(null);
 
-    const pwaMod = await import("./pwa");
+    const pwaMod = await import("~/shared/lib/pwa");
     (pwaMod.getRuntime as ReturnType<typeof vi.fn>).mockReturnValue("browser");
 
     const mod = await import("./notifications");
@@ -291,10 +292,10 @@ describe("notificationService (electron runtime)", () => {
   it("returns 'default' until the user enables Electron notifications locally", async () => {
     vi.resetModules();
 
-    const electronMod = await import("./electron");
+    const electronMod = await import("~/shared/lib/electron");
     (electronMod.isElectron as ReturnType<typeof vi.fn>).mockReturnValue(true);
 
-    const pwaMod = await import("./pwa");
+    const pwaMod = await import("~/shared/lib/pwa");
     (pwaMod.getRuntime as ReturnType<typeof vi.fn>).mockReturnValue("electron");
 
     const mod = await import("./notifications");
@@ -308,13 +309,13 @@ describe("notificationService (electron runtime)", () => {
     vi.resetModules();
 
     const showFn = vi.fn().mockResolvedValue(true);
-    const electronMod = await import("./electron");
+    const electronMod = await import("~/shared/lib/electron");
     (electronMod.isElectron as ReturnType<typeof vi.fn>).mockReturnValue(true);
     (electronMod.getElectronAPI as ReturnType<typeof vi.fn>).mockReturnValue({
       notifications: { show: showFn },
     });
 
-    const pwaMod = await import("./pwa");
+    const pwaMod = await import("~/shared/lib/pwa");
     (pwaMod.getRuntime as ReturnType<typeof vi.fn>).mockReturnValue("electron");
 
     const mod = await import("./notifications");
@@ -339,13 +340,13 @@ describe("notificationService (electron runtime)", () => {
     vi.resetModules();
 
     const showFn = vi.fn().mockResolvedValue(false);
-    const electronMod = await import("./electron");
+    const electronMod = await import("~/shared/lib/electron");
     (electronMod.isElectron as ReturnType<typeof vi.fn>).mockReturnValue(true);
     (electronMod.getElectronAPI as ReturnType<typeof vi.fn>).mockReturnValue({
       notifications: { show: showFn },
     });
 
-    const pwaMod = await import("./pwa");
+    const pwaMod = await import("~/shared/lib/pwa");
     (pwaMod.getRuntime as ReturnType<typeof vi.fn>).mockReturnValue("electron");
 
     const mod = await import("./notifications");
@@ -360,13 +361,13 @@ describe("notificationService (electron runtime)", () => {
     vi.resetModules();
 
     const showFn = vi.fn().mockResolvedValue(undefined);
-    const electronMod = await import("./electron");
+    const electronMod = await import("~/shared/lib/electron");
     (electronMod.isElectron as ReturnType<typeof vi.fn>).mockReturnValue(true);
     (electronMod.getElectronAPI as ReturnType<typeof vi.fn>).mockReturnValue({
       notifications: { show: showFn },
     });
 
-    const pwaMod = await import("./pwa");
+    const pwaMod = await import("~/shared/lib/pwa");
     (pwaMod.getRuntime as ReturnType<typeof vi.fn>).mockReturnValue("electron");
 
     const mod = await import("./notifications");
@@ -384,13 +385,13 @@ describe("notificationService (electron runtime)", () => {
     vi.resetModules();
 
     const showFn = vi.fn().mockResolvedValue(undefined);
-    const electronMod = await import("./electron");
+    const electronMod = await import("~/shared/lib/electron");
     (electronMod.isElectron as ReturnType<typeof vi.fn>).mockReturnValue(true);
     (electronMod.getElectronAPI as ReturnType<typeof vi.fn>).mockReturnValue({
       notifications: { show: showFn },
     });
 
-    const pwaMod = await import("./pwa");
+    const pwaMod = await import("~/shared/lib/pwa");
     (pwaMod.getRuntime as ReturnType<typeof vi.fn>).mockReturnValue("electron");
 
     const mod = await import("./notifications");
@@ -419,13 +420,13 @@ describe("notificationService (electron runtime)", () => {
       clickHandler = callback;
       return () => undefined;
     });
-    const electronMod = await import("./electron");
+    const electronMod = await import("~/shared/lib/electron");
     (electronMod.isElectron as ReturnType<typeof vi.fn>).mockReturnValue(true);
     (electronMod.getElectronAPI as ReturnType<typeof vi.fn>).mockReturnValue({
       notifications: { show: showFn, onClick },
     });
 
-    const pwaMod = await import("./pwa");
+    const pwaMod = await import("~/shared/lib/pwa");
     (pwaMod.getRuntime as ReturnType<typeof vi.fn>).mockReturnValue("electron");
 
     const mod = await import("./notifications");
@@ -447,10 +448,10 @@ describe("notificationService (electron runtime)", () => {
   it("setBadgeCount and clearBadge are no-ops in electron service", async () => {
     vi.resetModules();
 
-    const electronMod = await import("./electron");
+    const electronMod = await import("~/shared/lib/electron");
     (electronMod.isElectron as ReturnType<typeof vi.fn>).mockReturnValue(true);
 
-    const pwaMod = await import("./pwa");
+    const pwaMod = await import("~/shared/lib/pwa");
     (pwaMod.getRuntime as ReturnType<typeof vi.fn>).mockReturnValue("electron");
 
     const mod = await import("./notifications");
@@ -466,10 +467,10 @@ describe("notificationService proxy", () => {
   it("proxy delegates to the underlying service", async () => {
     vi.resetModules();
 
-    const electronMod = await import("./electron");
+    const electronMod = await import("~/shared/lib/electron");
     (electronMod.isElectron as ReturnType<typeof vi.fn>).mockReturnValue(false);
 
-    const pwaMod = await import("./pwa");
+    const pwaMod = await import("~/shared/lib/pwa");
     (pwaMod.getRuntime as ReturnType<typeof vi.fn>).mockReturnValue("browser");
 
     const mod = await import("./notifications");
@@ -482,5 +483,64 @@ describe("notificationService proxy", () => {
     expect(typeof mod.notificationService.isSupported).toBe("function");
     expect(typeof mod.notificationService.setBadgeCount).toBe("function");
     expect(typeof mod.notificationService.clearBadge).toBe("function");
+  });
+});
+
+describe("showDesktopNotification", () => {
+  beforeEach(() => {
+    vi.mocked(getElectronAPI).mockReturnValue(null);
+  });
+
+  afterEach(() => {
+    vi.mocked(getElectronAPI).mockReturnValue(null);
+    vi.unstubAllGlobals();
+  });
+
+  it("calls electron notifications.show when electronAPI is available", async () => {
+    const show = vi.fn().mockResolvedValue(true);
+    vi.mocked(getElectronAPI, { partial: true, deep: true }).mockReturnValue({
+      notifications: { show },
+    });
+
+    const { showDesktopNotification } = await import("./notifications");
+    await showDesktopNotification("Title", "Body text");
+    expect(show).toHaveBeenCalledWith("Title", "Body text");
+  });
+
+  it("uses the Web Notification API when permission is granted", async () => {
+    const browserNotification = Object.assign(vi.fn(), { permission: "granted" });
+    vi.stubGlobal("Notification", browserNotification);
+
+    const { showDesktopNotification } = await import("./notifications");
+    await showDesktopNotification("Hello", "World");
+    expect(browserNotification).toHaveBeenCalledWith("Hello", { body: "World" });
+  });
+
+  it.each(["denied", "default"])(
+    "does nothing when browser permission is %s",
+    async (permission) => {
+      const browserNotification = Object.assign(vi.fn(), { permission });
+      vi.stubGlobal("Notification", browserNotification);
+
+      const { showDesktopNotification } = await import("./notifications");
+      await showDesktopNotification("Hello", "World");
+      expect(browserNotification).not.toHaveBeenCalled();
+    },
+  );
+
+  it("prefers Electron over Web Notifications without subscribing to tagged clicks", async () => {
+    const show = vi.fn().mockResolvedValue(true);
+    const onClick = vi.fn();
+    vi.mocked(getElectronAPI, { partial: true, deep: true }).mockReturnValue({
+      notifications: { show, onClick },
+    });
+    const browserNotification = Object.assign(vi.fn(), { permission: "granted" });
+    vi.stubGlobal("Notification", browserNotification);
+
+    const { showDesktopNotification } = await import("./notifications");
+    await showDesktopNotification("Title", "Body");
+    expect(show).toHaveBeenCalledWith("Title", "Body");
+    expect(onClick).not.toHaveBeenCalled();
+    expect(browserNotification).not.toHaveBeenCalled();
   });
 });

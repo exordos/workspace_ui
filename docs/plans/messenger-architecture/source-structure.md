@@ -53,6 +53,7 @@ src/
     desktop/
       clipboard.ts
     notifications/
+      notifications.ts
 
   shared/
     ui/

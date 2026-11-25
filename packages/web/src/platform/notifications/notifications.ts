@@ -1,19 +1,17 @@
 /**
  * Unified notification service.
  *
- * Three runtimes:
- * - Electron → ipcRenderer (native OS notifications via main process)
- * - PWA/Browser → Web Notifications API
- * - In-app toasts for user-action errors → `~/shared/lib/toast/toast`
+ * Electron uses the native notification bridge. Browsers and PWAs use the Web
+ * Notifications API.
  *
  * Usage:
- *   import { notificationService } from "~/lib/notifications";
+ *   import { notificationService } from "~/platform/notifications/notifications";
  *   await notificationService.requestPermission();
  *   await notificationService.show({ title: "New message", body: "Hello!" });
  */
 
-import { getElectronAPI } from "./electron";
-import { getRuntime } from "./pwa";
+import { getElectronAPI } from "~/shared/lib/electron";
+import { getRuntime } from "~/shared/lib/pwa";
 
 export type NotificationPermissionStatus = "granted" | "denied" | "default" | "unsupported";
 
@@ -208,3 +206,13 @@ export const notificationService = new Proxy({} as NotificationService, {
     return getNotificationService()[prop];
   },
 });
+
+// Show a plugin notification directly through the OS bridge or browser API.
+export async function showDesktopNotification(title: string, body: string): Promise<void> {
+  const api = getElectronAPI();
+  if (api) {
+    await api.notifications.show(title, body);
+  } else if ("Notification" in window && Notification.permission === "granted") {
+    new Notification(title, { body });
+  }
+}
