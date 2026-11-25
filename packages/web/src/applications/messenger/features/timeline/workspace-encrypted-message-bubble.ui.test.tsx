@@ -23,8 +23,8 @@ import type {
   MessengerStream,
 } from "~/applications/messenger/model/messenger.types";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
-import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { setLocale } from "~/i18n/i18n";
+import { workspaceRuntimeOwnerKey } from "~/platform/sessions/workspace-runtime.lib";
 import {
   buildWorkspaceForwardUrn,
   buildWorkspaceSecretUrn,

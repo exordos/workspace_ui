@@ -6,8 +6,8 @@ import {
   useWorkspaceAuthStore,
   type WorkspaceAuthSession,
 } from "~/entities/workspace-auth/workspace-auth.model";
-import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { getUsersStoreForOwner, useUsersStore } from "~/modules/users/user.model";
+import { workspaceRuntimeOwnerKey } from "~/platform/sessions/workspace-runtime.lib";
 import { createUser } from "~/test/factories";
 import { useLayoutRightPanelShell } from "./layout-right-panel-shell.hook";
 import type { UseLayoutRightPanelShellParams } from "./layout-right-panel-shell.hook";

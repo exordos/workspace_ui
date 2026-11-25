@@ -7,8 +7,8 @@ import {
   type WorkspaceAuthSession,
 } from "~/entities/workspace-auth/workspace-auth.model";
 import { resolveWorkspacePostLogoutRoute } from "~/entities/workspace-auth/workspace-post-logout-route.lib";
-import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { t } from "~/i18n/i18n";
+import { workspaceRuntimeOwnerKey } from "~/platform/sessions/workspace-runtime.lib";
 import { UNREAD_COUNT_DISPLAY_LIMIT } from "~/shared/lib/count-format.lib";
 import { resolveMessengerNavigationPath } from "~/shared/lib/last-messenger-route.lib";
 import { withOrgRoutePrefix } from "~/shared/lib/org-route";

@@ -7,9 +7,9 @@ import {
 import {
   isWorkspaceRuntimeRequestInvalidated,
   workspaceRuntimeOwnerKey,
-} from "~/entities/workspace-runtime/workspace-runtime.lib";
-import type { WorkspaceRuntimeContextGetter } from "~/entities/workspace-runtime/workspace-runtime.lib";
-import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
+} from "~/platform/sessions/workspace-runtime.lib";
+import type { WorkspaceRuntimeContextGetter } from "~/platform/sessions/workspace-runtime.lib";
+import type { WorkspaceRuntimeContext } from "~/platform/sessions/workspace-runtime.types";
 import { createDraft, deleteDraft, getDraft, updateDraft } from "~/shared/api/messenger-drafts.api";
 import { MessengerApiError } from "~/shared/api/messenger-transport.internal";
 import { isWorkspaceMessengerDraftDto } from "~/shared/api/messenger.types";

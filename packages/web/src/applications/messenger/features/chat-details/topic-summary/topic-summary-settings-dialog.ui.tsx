@@ -1,9 +1,9 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { MessengerTopic } from "~/applications/messenger/model/messenger.types";
-import type { WorkspaceRuntimeContextGetter } from "~/entities/workspace-runtime/workspace-runtime.lib";
-import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import { useTranslation } from "~/i18n/i18n";
+import type { WorkspaceRuntimeContextGetter } from "~/platform/sessions/workspace-runtime.lib";
+import type { WorkspaceRuntimeContext } from "~/platform/sessions/workspace-runtime.types";
 import {
   APP_DIALOG_CONTENT_BASE_CLASS,
   AppDialogShell,

@@ -1,9 +1,9 @@
 import {
   isWorkspaceRuntimeRequestContextCurrent,
   workspaceRuntimeOwnerKey,
-} from "~/entities/workspace-runtime/workspace-runtime.lib";
-import type { WorkspaceRuntimeContextGetter } from "~/entities/workspace-runtime/workspace-runtime.lib";
-import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
+} from "~/platform/sessions/workspace-runtime.lib";
+import type { WorkspaceRuntimeContextGetter } from "~/platform/sessions/workspace-runtime.lib";
+import type { WorkspaceRuntimeContext } from "~/platform/sessions/workspace-runtime.types";
 import type { MessengerPollAction } from "~/shared/api/messenger-messages.api";
 import {
   openMessengerMessageWindow,

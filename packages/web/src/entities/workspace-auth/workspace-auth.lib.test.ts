@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { installWorkspaceSessionCleanup } from "~/app/workspace-session/workspace-session-cleanup.lib";
-import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
+import { workspaceRuntimeOwnerKey } from "~/platform/sessions/workspace-runtime.lib";
 import type * as WorkspaceIamAuthModule from "~/shared/api/workspace-iam-auth";
 import { WorkspaceIamAuthError } from "~/shared/api/workspace-iam-auth";
 import {

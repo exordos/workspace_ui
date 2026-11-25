@@ -11,8 +11,8 @@ import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.
 import {
   workspaceRuntimeOwnerKey,
   isWorkspaceRuntimeRequestInvalidated,
-} from "~/entities/workspace-runtime/workspace-runtime.lib";
-import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
+} from "~/platform/sessions/workspace-runtime.lib";
+import type { WorkspaceRuntimeContext } from "~/platform/sessions/workspace-runtime.types";
 
 /** Route recovery and topic clicks share one request owned by the current location. */
 export function useWorkspaceTopicResolution({

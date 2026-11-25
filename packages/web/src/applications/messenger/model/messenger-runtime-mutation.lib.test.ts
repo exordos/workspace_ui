@@ -3,7 +3,7 @@ import {
   type WorkspaceAuthSession,
   useWorkspaceAuthStore,
 } from "~/entities/workspace-auth/workspace-auth.model";
-import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
+import type { WorkspaceRuntimeContext } from "~/platform/sessions/workspace-runtime.types";
 import {
   resetMessengerRuntimeMutations,
   runMessengerOwnerMutation,

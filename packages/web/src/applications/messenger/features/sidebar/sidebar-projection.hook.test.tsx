@@ -4,9 +4,9 @@ import { useMessengerStore } from "~/applications/messenger/model/chats/messenge
 import { useWorkspaceMessageStore } from "~/applications/messenger/model/messages/message.model";
 import type { MessengerStream } from "~/applications/messenger/model/messenger.types";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
-import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
-import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import { useUsersStore } from "~/modules/users/user.model";
+import { workspaceRuntimeOwnerKey } from "~/platform/sessions/workspace-runtime.lib";
+import type { WorkspaceRuntimeContext } from "~/platform/sessions/workspace-runtime.types";
 import { initVisibilityTracking } from "~/shared/lib/visibility";
 import { createUser } from "~/test/factories";
 import { useSidebarProjectionSnapshot } from "./sidebar-projection.hook";

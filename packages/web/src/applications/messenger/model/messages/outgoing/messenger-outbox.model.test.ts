@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
-import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
+import { workspaceRuntimeOwnerKey } from "~/platform/sessions/workspace-runtime.lib";
 import "../../messenger-runtime-mutation.lib";
 import { selectWorkspaceMessagesForConversation, useWorkspaceMessageStore } from "../message.model";
 import {

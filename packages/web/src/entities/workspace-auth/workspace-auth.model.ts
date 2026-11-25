@@ -2,11 +2,11 @@ import { create } from "zustand";
 import {
   isWorkspaceRuntimeRequestContextCurrent,
   workspaceRuntimeOwnerKey,
-} from "~/entities/workspace-runtime/workspace-runtime.lib";
+} from "~/platform/sessions/workspace-runtime.lib";
 import type {
   WorkspaceRuntimeContext,
   WorkspaceRuntimeOwner,
-} from "~/entities/workspace-runtime/workspace-runtime.types";
+} from "~/platform/sessions/workspace-runtime.types";
 import { logStoreAction } from "~/shared/lib/logger";
 import {
   WORKSPACE_AUTH_CURRENT_ACCOUNT_KEY,

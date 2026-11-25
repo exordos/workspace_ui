@@ -19,7 +19,7 @@ All paths below are relative to `packages/web/src`.
 | --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
 | Routes                                  | [app/app.tsx](../packages/web/src/app/app.tsx)                                                                         |
 | IAM sessions and current runtime        | [workspace-auth.model.ts](../packages/web/src/entities/workspace-auth/workspace-auth.model.ts)                         |
-| Owner keys and request validity         | [workspace-runtime.lib.ts](../packages/web/src/entities/workspace-runtime/workspace-runtime.lib.ts)                    |
+| Owner keys and request validity         | [workspace-runtime.lib.ts](../packages/web/src/platform/sessions/workspace-runtime.lib.ts)                             |
 | Session startup and recovery            | [app/workspace-session](../packages/web/src/app/workspace-session/)                                                    |
 | Messenger route and Favorites           | [messenger.ts](../packages/web/src/applications/messenger/messenger.ts)                                                |
 | Catalogs, conversations, domain actions | [model/chats](../packages/web/src/applications/messenger/model/chats/)                                                 |

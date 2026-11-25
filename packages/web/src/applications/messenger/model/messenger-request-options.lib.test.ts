@@ -4,7 +4,7 @@ import {
   useWorkspaceAuthStore,
   type WorkspaceAuthSession,
 } from "~/entities/workspace-auth/workspace-auth.model";
-import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
+import type { WorkspaceRuntimeContext } from "~/platform/sessions/workspace-runtime.types";
 import {
   getBinaryResult,
   getJsonResult,

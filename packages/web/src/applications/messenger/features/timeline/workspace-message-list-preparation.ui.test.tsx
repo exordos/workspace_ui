@@ -14,8 +14,8 @@ import type {
   MessengerStream,
 } from "~/applications/messenger/model/messenger.types";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
-import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { setLocale } from "~/i18n/i18n";
+import { workspaceRuntimeOwnerKey } from "~/platform/sessions/workspace-runtime.lib";
 import { WorkspaceMessageListWithPreparation as WorkspaceMessageList } from "./workspace-message-list-with-preparation.ui";
 import type { WorkspaceMessageListProps } from "./workspace-message-list.types";
 

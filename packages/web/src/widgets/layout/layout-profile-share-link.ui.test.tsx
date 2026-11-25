@@ -5,10 +5,10 @@ import {
   useWorkspaceAuthStore,
   type WorkspaceAuthSession,
 } from "~/entities/workspace-auth/workspace-auth.model";
-import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { adaptWorkspaceMessengerUserDto } from "~/modules/users/user-adapters.lib";
 import { toWorkspaceUserCacheProfile } from "~/modules/users/user-sync.lib";
 import { getSelectedUsersStore, useUsersStore } from "~/modules/users/user.model";
+import { workspaceRuntimeOwnerKey } from "~/platform/sessions/workspace-runtime.lib";
 import type { WorkspaceMessengerUserDto } from "~/shared/api/messenger.types";
 import type * as WorkspaceUserCacheModule from "~/shared/lib/workspace-user-cache-db";
 import { useRightDrawerStore } from "~/widgets/right-panel/right-drawer.model";

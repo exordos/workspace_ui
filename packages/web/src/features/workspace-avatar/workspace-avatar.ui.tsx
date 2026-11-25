@@ -4,7 +4,7 @@ import {
   selectCurrentWorkspaceRuntimeContext,
   useWorkspaceAuthStore,
 } from "~/entities/workspace-auth/workspace-auth.model";
-import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
+import { workspaceRuntimeOwnerKey } from "~/platform/sessions/workspace-runtime.lib";
 import { useWorkspaceAvatarUrl } from "~/shared/lib/workspace-avatar.lib";
 import { Avatar } from "~/shared/ui/avatar";
 import type { AvatarProps } from "~/shared/ui/avatar";

@@ -1,5 +1,5 @@
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
-import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
+import { workspaceRuntimeOwnerKey } from "~/platform/sessions/workspace-runtime.lib";
 import { parseMessengerConversationId } from "../../messenger-ids.lib";
 import type { MessengerConversationId } from "../../messenger.types";
 

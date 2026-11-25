@@ -7,10 +7,6 @@ import {
   selectCurrentWorkspaceRuntimeContext,
   useWorkspaceAuthStore,
 } from "~/entities/workspace-auth/workspace-auth.model";
-import {
-  isWorkspaceRuntimeRequestContextCurrent,
-  workspaceRuntimeOwnerKey,
-} from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { useOwnProfileEditor } from "~/features/user-profile/user-profile-editor.hook";
 import { profileDraftDisplayName } from "~/features/user-profile/user-profile-editor.lib";
 import { ProfileEditorFeedback } from "~/features/user-profile/user-profile-editor.ui";
@@ -24,6 +20,10 @@ import { t } from "~/i18n/i18n";
 import { useUserById } from "~/modules/users/users";
 import { resolveUserPresenceVisual, selectUserStatusLabel } from "~/modules/users/users-selectors";
 import { writeText } from "~/platform/desktop/clipboard";
+import {
+  isWorkspaceRuntimeRequestContextCurrent,
+  workspaceRuntimeOwnerKey,
+} from "~/platform/sessions/workspace-runtime.lib";
 import { createLogger } from "~/shared/lib/logger";
 import { validateFileUpload } from "~/shared/lib/validation";
 import { buildWorkspaceDefaultAvatarUrn } from "~/shared/lib/workspace-avatar-urn.lib";

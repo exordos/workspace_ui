@@ -1,7 +1,7 @@
 import type { WorkspaceComposerDraftSubmission } from "~/applications/messenger/model/drafts/composer-draft-actions.lib";
 import { resolveWorkspaceOwnerRuntimeForRequest } from "~/entities/workspace-auth/workspace-auth.model";
-import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
-import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
+import { workspaceRuntimeOwnerKey } from "~/platform/sessions/workspace-runtime.lib";
+import type { WorkspaceRuntimeContext } from "~/platform/sessions/workspace-runtime.types";
 import { createLogger } from "~/shared/lib/logger";
 import { isWorkspaceMessageWithinLimit } from "~/shared/lib/workspace-message-limits.lib";
 import {

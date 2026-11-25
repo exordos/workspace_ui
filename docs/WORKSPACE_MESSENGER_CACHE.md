@@ -12,7 +12,7 @@ The Workspace cache is implemented. Its original [July plan](archive/WORKSPACE_M
 | Catalog hydration and server refresh        | [messenger-bootstrap.lib.ts](../packages/web/src/applications/messenger/runtime/sync/messenger-bootstrap.lib.ts)                                                                                                         |
 | Message windows and pagination              | [messenger-messages-loader.lib.ts](../packages/web/src/applications/messenger/model/messages/history/messenger-messages-loader.lib.ts)                                                                                   |
 | Store projections                           | [messenger.model.ts](../packages/web/src/applications/messenger/model/chats/messenger.model.ts), [message.model.ts](../packages/web/src/applications/messenger/model/messages/message.model.ts)                          |
-| Realtime/cursor ownership                   | [workspace-runtime.types.ts](../packages/web/src/entities/workspace-runtime/workspace-runtime.types.ts), [realtime runtime](../packages/web/src/platform/realtime/)                                                      |
+| Realtime/cursor ownership                   | [workspace-runtime.types.ts](../packages/web/src/platform/sessions/workspace-runtime.types.ts), [realtime runtime](../packages/web/src/platform/realtime/)                                                               |
 | Cache regression tests                      | [workspace-messenger-cache-db.test.ts](../packages/web/src/shared/lib/workspace-messenger-cache-db.test.ts), [messenger-cache.lib.test.ts](../packages/web/src/applications/messenger/model/messenger-cache.lib.test.ts) |
 
 ## Invariants

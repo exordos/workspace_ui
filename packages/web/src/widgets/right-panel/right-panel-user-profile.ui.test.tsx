@@ -6,10 +6,10 @@ import {
   useWorkspaceAuthStore,
   type WorkspaceAuthSession,
 } from "~/entities/workspace-auth/workspace-auth.model";
-import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { t } from "~/i18n/i18n";
 import { useUsersStore } from "~/modules/users/user.model";
 import type * as UsersProfileModule from "~/modules/users/users-profile";
+import { workspaceRuntimeOwnerKey } from "~/platform/sessions/workspace-runtime.lib";
 import * as messengerStreamsApi from "~/shared/api/messenger-streams.api";
 import { renderWithProviders } from "~/test/render";
 import { RightPanelShell as ProductionRightPanelShell } from "./right-panel-shell.ui";

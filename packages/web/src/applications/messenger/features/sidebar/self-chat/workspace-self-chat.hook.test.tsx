@@ -11,8 +11,8 @@ import type {
 } from "~/applications/messenger/model/messenger.types";
 import type { WorkspaceAuthSession } from "~/entities/workspace-auth/workspace-auth.model";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
-import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
-import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
+import { workspaceRuntimeOwnerKey } from "~/platform/sessions/workspace-runtime.lib";
+import type { WorkspaceRuntimeContext } from "~/platform/sessions/workspace-runtime.types";
 import { useWorkspaceSelfChat } from "./workspace-self-chat.hook";
 
 const createWorkspaceDirectStream = vi.hoisted(() => vi.fn());

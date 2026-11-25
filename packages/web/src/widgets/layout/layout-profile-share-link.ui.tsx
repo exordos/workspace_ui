@@ -1,12 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
-import {
-  captureWorkspaceRuntimeRequestContext,
-  isWorkspaceRuntimeRequestInvalidated,
-  workspaceRuntimeOwnerKey,
-} from "~/entities/workspace-runtime/workspace-runtime.lib";
-import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import { t } from "~/i18n/i18n";
 import { readActiveUser, readActiveUsers, useUsersOwnerKey } from "~/modules/users/users";
 import {
@@ -14,6 +8,12 @@ import {
   refreshSharedUserProfile,
   restoreSharedUserProfile,
 } from "~/modules/users/users-profile";
+import {
+  captureWorkspaceRuntimeRequestContext,
+  isWorkspaceRuntimeRequestInvalidated,
+  workspaceRuntimeOwnerKey,
+} from "~/platform/sessions/workspace-runtime.lib";
+import type { WorkspaceRuntimeContext } from "~/platform/sessions/workspace-runtime.types";
 import { parseWorkspaceProfileShareHash } from "~/shared/lib/workspace-profile-link.lib";
 import { Button } from "~/shared/ui/button";
 import { useRightDrawerStore } from "~/widgets/right-panel/right-drawer.model";

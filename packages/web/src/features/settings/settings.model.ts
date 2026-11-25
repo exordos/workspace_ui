@@ -15,8 +15,8 @@ import {
   getWorkspaceSessionStorageScopeFromAuthState,
   type WorkspaceSessionStorageScope,
 } from "~/entities/workspace-auth/workspace-session-storage-scope.lib";
-import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { setLocale } from "~/i18n/i18n";
+import { workspaceRuntimeOwnerKey } from "~/platform/sessions/workspace-runtime.lib";
 import { normalizeHotkeyOverrides, type HotkeyOverrides } from "~/shared/lib/hotkeys";
 import { logStoreAction } from "~/shared/lib/logger";
 import { resolveAuthIdleTimeout } from "./auth-idle-timeout.lib";

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
-import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
+import type { WorkspaceRuntimeContext } from "~/platform/sessions/workspace-runtime.types";
 import {
   forgetMessengerConversationPositions,
   openMessengerConversationPosition,

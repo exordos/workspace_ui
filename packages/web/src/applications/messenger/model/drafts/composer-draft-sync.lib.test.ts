@@ -22,7 +22,7 @@ vi.mock("~/shared/lib/workspace-messenger-cache-db", () => ({
 }));
 
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
-import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
+import type { WorkspaceRuntimeContext } from "~/platform/sessions/workspace-runtime.types";
 import { MessengerApiError } from "~/shared/api/messenger-transport.internal";
 import { clearLogHistory, getLogHistory } from "~/shared/lib/logger";
 import { createWorkspaceComposerDrafts } from "./composer-draft-actions.lib";

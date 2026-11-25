@@ -1,5 +1,5 @@
 import { useStore, type StoreApi, type UseBoundStore } from "zustand";
-import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
+import { workspaceRuntimeOwnerKey } from "~/platform/sessions/workspace-runtime.lib";
 import {
   useWorkspaceAuthStore,
   workspaceAuthSessionIncarnation,

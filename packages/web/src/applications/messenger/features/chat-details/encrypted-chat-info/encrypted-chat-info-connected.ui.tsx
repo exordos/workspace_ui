@@ -5,9 +5,9 @@ import { subscribeRealChatKeyChanges } from "~/applications/messenger/model/cryp
 import type { RealChatSession } from "~/applications/messenger/model/crypto/chat-crypto-runtime.lib";
 import type { StoredChatKeyMetadata } from "~/applications/messenger/model/crypto/chat-key-storage.types";
 import type { MessengerStream } from "~/applications/messenger/model/messenger.types";
-import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
-import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import { t } from "~/i18n/i18n";
+import { workspaceRuntimeOwnerKey } from "~/platform/sessions/workspace-runtime.lib";
+import type { WorkspaceRuntimeContext } from "~/platform/sessions/workspace-runtime.types";
 import { formatDateJoined } from "~/shared/lib/datetime.lib";
 import { toast } from "~/shared/lib/toast/toast";
 import { AppDialog, AppDialogFormFooter } from "~/shared/ui/app-dialog";

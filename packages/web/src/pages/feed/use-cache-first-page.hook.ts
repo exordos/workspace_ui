@@ -6,8 +6,8 @@ import {
   captureWorkspaceRuntimeRequestContext,
   isWorkspaceRuntimeRequestContextCurrent,
   type WorkspaceRuntimeContextGetter,
-} from "~/entities/workspace-runtime/workspace-runtime.lib";
-import type { WorkspaceRuntimeRequestContext } from "~/entities/workspace-runtime/workspace-runtime.types";
+} from "~/platform/sessions/workspace-runtime.lib";
+import type { WorkspaceRuntimeRequestContext } from "~/platform/sessions/workspace-runtime.types";
 import { runInFlightDeduped } from "~/shared/lib/request-lifecycle.lib";
 
 interface CacheFirstPageRunContext {

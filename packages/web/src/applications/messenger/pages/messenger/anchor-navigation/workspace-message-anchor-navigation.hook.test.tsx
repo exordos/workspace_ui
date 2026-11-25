@@ -12,8 +12,8 @@ import { useWorkspaceMessageStore } from "~/applications/messenger/model/message
 import { adaptMessengerMessage } from "~/applications/messenger/model/messages/messenger-message-adapter.lib";
 import type { MessengerConversationId } from "~/applications/messenger/model/messenger.types";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
-import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
-import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
+import { workspaceRuntimeOwnerKey } from "~/platform/sessions/workspace-runtime.lib";
+import type { WorkspaceRuntimeContext } from "~/platform/sessions/workspace-runtime.types";
 import type { WorkspaceMessengerMessageDto } from "~/shared/api/messenger.types";
 import { useWorkspaceMessageAnchorNavigation } from "./workspace-message-anchor-navigation.hook";
 import type { WorkspaceMessageAnchorNavigationOptions } from "./workspace-message-anchor-navigation.types";

@@ -4,8 +4,8 @@ An async result may arrive after account, organization, project or user changes,
 
 ## Source of truth
 
-- [workspace-runtime.types.ts](../packages/web/src/entities/workspace-runtime/workspace-runtime.types.ts): owner and request-context types.
-- [workspace-runtime.lib.ts](../packages/web/src/entities/workspace-runtime/workspace-runtime.lib.ts): capture, comparison and owner keys.
+- [workspace-runtime.types.ts](../packages/web/src/platform/sessions/workspace-runtime.types.ts): owner and request-context types.
+- [workspace-runtime.lib.ts](../packages/web/src/platform/sessions/workspace-runtime.lib.ts): capture, comparison and owner keys.
 - [workspace-auth.model.ts](../packages/web/src/entities/workspace-auth/workspace-auth.model.ts): current session, runtime context and generation transitions.
 
 `WorkspaceRuntimeOwner` contains `accountId`, `instanceId`, `organizationId`, `projectId`, and `userUuid`. A request snapshot adds `runtimeGeneration`. Comparing only organization or instance is insufficient: returning to the same owner must not revive old callbacks.
@@ -64,4 +64,4 @@ Background multi-owner work has a different lifecycle. Check the explicit owner 
 
 ## Verification scenarios
 
-For changed async behavior, cover the relevant races: owner A to B; A to no session; A to B to A; project/user changes; older request finishing after a newer request; pending cache write after cleanup. Verify both store and durable writes where affected. Reuse the [runtime helper tests](../packages/web/src/entities/workspace-runtime/workspace-runtime.lib.test.ts).
+For changed async behavior, cover the relevant races: owner A to B; A to no session; A to B to A; project/user changes; older request finishing after a newer request; pending cache write after cleanup. Verify both store and durable writes where affected. Reuse the [runtime helper tests](../packages/web/src/platform/sessions/workspace-runtime.lib.test.ts).

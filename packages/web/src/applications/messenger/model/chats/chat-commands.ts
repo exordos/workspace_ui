@@ -2,7 +2,7 @@ import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.
 import {
   isWorkspaceRuntimeRequestContextCurrent,
   workspaceRuntimeOwnerKey,
-} from "~/entities/workspace-runtime/workspace-runtime.lib";
+} from "~/platform/sessions/workspace-runtime.lib";
 import {
   runWorkspaceStreamRead,
   runWorkspaceTopicRead,

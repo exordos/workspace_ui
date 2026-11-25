@@ -1,4 +1,4 @@
-import type { WorkspaceRuntimeOwner } from "~/entities/workspace-runtime/workspace-runtime.types";
+import type { WorkspaceRuntimeOwner } from "~/platform/sessions/workspace-runtime.types";
 import type {
   ChatCryptoEnvelope,
   ChatCryptoGroupKey,

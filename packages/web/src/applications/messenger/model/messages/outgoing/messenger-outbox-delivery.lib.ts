@@ -3,12 +3,12 @@ import {
   useWorkspaceAuthStore,
   workspaceAuthSessionIncarnation,
 } from "~/entities/workspace-auth/workspace-auth.model";
+import { t } from "~/i18n/i18n";
 import {
   isWorkspaceRuntimeRequestInvalidated,
   workspaceRuntimeOwnerKey,
-} from "~/entities/workspace-runtime/workspace-runtime.lib";
-import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
-import { t } from "~/i18n/i18n";
+} from "~/platform/sessions/workspace-runtime.lib";
+import type { WorkspaceRuntimeContext } from "~/platform/sessions/workspace-runtime.types";
 import { parseWorkspaceSecretDraft } from "~/shared/lib/workspace-secret-draft.lib";
 import { getMessengerStoreForOwner } from "../../chats/messenger.model";
 import { acquireChatCryptoSession } from "../../crypto/chat-crypto-session.lib";

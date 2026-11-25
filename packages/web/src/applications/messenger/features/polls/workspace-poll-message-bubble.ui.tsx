@@ -6,8 +6,8 @@ import {
 } from "~/applications/messenger/model/messages/polls/messenger-poll-actions.lib";
 import type { MessengerMessage } from "~/applications/messenger/model/messenger.types";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
-import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { WorkspaceAvatar } from "~/features/workspace-avatar/workspace-avatar.ui";
+import { workspaceRuntimeOwnerKey } from "~/platform/sessions/workspace-runtime.lib";
 import { WorkspaceMessageBubblePresentation } from "../timeline/workspace-message-bubble-presentation.ui";
 import { WorkspaceMessagePollConnected } from "./workspace-message-poll-connected.ui";
 import { usePollDeadline } from "./workspace-poll-deadline.hook";

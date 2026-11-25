@@ -20,7 +20,7 @@ Workspace still uses the existing FSD layers for the shell and other application
 
 In the legacy tree, dependencies flow `app -> pages -> widgets -> features -> entities -> shared`. Shared code must not reach upward into domain stores; inject callbacks or data at the composition boundary.
 
-Prefer composing sibling features/widgets in a higher layer instead of coupling them. Existing dependencies between domain modules remain explicit and limited to domain responsibilities. Messenger uses `entities/workspace-auth`, `entities/workspace-runtime`, and shared API and storage primitives during the migration. `getState()` does not bypass dependency rules. Do not introduce an abstraction solely to satisfy a file template.
+Prefer composing sibling features/widgets in a higher layer instead of coupling them. Existing dependencies between domain modules remain explicit and limited to domain responsibilities. Messenger uses `entities/workspace-auth`, `platform/sessions` for context and request validity, and shared API and storage primitives during the migration. `getState()` does not bypass dependency rules. Do not introduce an abstraction solely to satisfy a file template.
 
 ## Files and imports
 

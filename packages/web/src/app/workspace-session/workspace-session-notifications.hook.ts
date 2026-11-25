@@ -4,7 +4,7 @@ import {
   useWorkspaceAuthStore,
   type WorkspaceAuthSession,
 } from "~/entities/workspace-auth/workspace-auth.model";
-import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
+import { workspaceRuntimeOwnerKey } from "~/platform/sessions/workspace-runtime.lib";
 import type { WorkspaceNotificationOwner } from "~/widgets/layout/layout-workspace-notifications.hook";
 import { readWorkspaceSession } from "./workspace-session-bootstrap.lib";
 

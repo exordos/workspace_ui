@@ -1,6 +1,6 @@
 import React from "react";
 import type { ExternalAccount } from "~/entities/external-account/external-account.types";
-import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
+import type { WorkspaceRuntimeContext } from "~/platform/sessions/workspace-runtime.types";
 import {
   ExternalChatCatalogActions,
   ExternalChatCatalogContent,

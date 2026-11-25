@@ -3,12 +3,12 @@ import React, { useCallback, useLayoutEffect, useMemo, useRef, useState } from "
 import { createPortal } from "react-dom";
 import { isMessengerUuid } from "~/applications/messenger/model/messenger-ids.lib";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
+import { t } from "~/i18n/i18n";
+import { writeImage, writeText } from "~/platform/desktop/clipboard";
 import {
   captureWorkspaceRuntimeRequestContext,
   isWorkspaceRuntimeRequestContextCurrent,
-} from "~/entities/workspace-runtime/workspace-runtime.lib";
-import { t } from "~/i18n/i18n";
-import { writeImage, writeText } from "~/platform/desktop/clipboard";
+} from "~/platform/sessions/workspace-runtime.lib";
 import type { WorkspaceMessageFileReference } from "~/shared/lib/workspace-message-render/workspace-message-document.types";
 import { formatWorkspaceMessageTimesForCopy } from "~/shared/lib/workspace-message-render/workspace-message-marked.lib";
 import { DropdownMenu, type DropdownMenuItem } from "~/shared/ui/dropdown-menu";

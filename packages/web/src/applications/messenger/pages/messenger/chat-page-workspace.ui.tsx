@@ -137,10 +137,6 @@ import {
   selectCurrentWorkspaceRuntimeContext,
   useWorkspaceAuthStore,
 } from "~/entities/workspace-auth/workspace-auth.model";
-import {
-  isWorkspaceRuntimeRequestContextCurrent,
-  workspaceRuntimeOwnerKey,
-} from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { useWorkspaceJitsiSettingsStore } from "~/features/jitsi-call/jitsi-call-settings.model";
 import { createJitsiCallKey, useJitsiCallStore } from "~/features/jitsi-call/jitsi-call.model";
 import { buildWorkspaceJitsiMeetingUrl } from "~/features/jitsi-call/workspace-jitsi-call.lib";
@@ -154,6 +150,10 @@ import { useUsersById } from "~/modules/users/users";
 import { selectUserDisplayName } from "~/modules/users/users-selectors";
 import type { UsersById } from "~/modules/users/users-types";
 import { writeText } from "~/platform/desktop/clipboard";
+import {
+  isWorkspaceRuntimeRequestContextCurrent,
+  workspaceRuntimeOwnerKey,
+} from "~/platform/sessions/workspace-runtime.lib";
 import { useOpenSearch } from "~/shared/contexts/open-search";
 import { useRightDrawer } from "~/shared/contexts/right-drawer";
 import type { RightDrawerContextValue } from "~/shared/contexts/right-drawer.types";

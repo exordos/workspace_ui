@@ -19,14 +19,14 @@ import {
   selectCurrentWorkspaceRuntimeContext,
   useWorkspaceAuthStore,
 } from "~/entities/workspace-auth/workspace-auth.model";
-import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
-import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import { t } from "~/i18n/i18n";
 import { readActiveUser, useUserIds, useUsersById } from "~/modules/users/users";
 import {
   selectSelectableWorkspaceUsers,
   selectUserDisplayName,
 } from "~/modules/users/users-selectors";
+import { workspaceRuntimeOwnerKey } from "~/platform/sessions/workspace-runtime.lib";
+import type { WorkspaceRuntimeContext } from "~/platform/sessions/workspace-runtime.types";
 import { createLogger } from "~/shared/lib/logger";
 import { resolveTopicDisplayInfo } from "~/shared/lib/topic-display.lib";
 import { isWorkspaceMessageWithinLimit } from "~/shared/lib/workspace-message-limits.lib";

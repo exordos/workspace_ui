@@ -1,9 +1,9 @@
 import { useDownloadStore } from "~/entities/download/download.model";
 import type { DownloadEntry } from "~/entities/download/download.types";
 import { ensureFreshWorkspaceSession } from "~/entities/workspace-auth/workspace-auth.lib";
-import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
-import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import { t } from "~/i18n/i18n";
+import { workspaceRuntimeOwnerKey } from "~/platform/sessions/workspace-runtime.lib";
+import type { WorkspaceRuntimeContext } from "~/platform/sessions/workspace-runtime.types";
 import { toast } from "~/shared/lib/toast/toast";
 import { sanitizeFilename } from "~/shared/lib/validation";
 

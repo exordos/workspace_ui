@@ -15,9 +15,9 @@ import type {
   MessengerTopic,
 } from "~/applications/messenger/model/messenger.types";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
-import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { useUsersStore } from "~/modules/users/user.model";
 import type { User } from "~/modules/users/users-types";
+import { workspaceRuntimeOwnerKey } from "~/platform/sessions/workspace-runtime.lib";
 import { useCreateChatDialog } from "./create-chat-dialog.hook";
 
 vi.mock("~/applications/messenger/model/chats/messenger-create-chat-actions.lib", () => ({

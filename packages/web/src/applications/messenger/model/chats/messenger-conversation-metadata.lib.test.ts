@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
+import type { WorkspaceRuntimeContext } from "~/platform/sessions/workspace-runtime.types";
 import type { WorkspaceMessengerTopicDto } from "~/shared/api/messenger.types";
 import {
   clearWorkspaceConversationMetadataMemo,

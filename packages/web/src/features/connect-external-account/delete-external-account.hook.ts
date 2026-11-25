@@ -10,9 +10,9 @@ import {
   captureWorkspaceRuntimeRequestContext,
   isWorkspaceRuntimeRequestInvalidated,
   workspaceRuntimeOwnerKey,
-} from "~/entities/workspace-runtime/workspace-runtime.lib";
-import type { WorkspaceRuntimeContextGetter } from "~/entities/workspace-runtime/workspace-runtime.lib";
-import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
+} from "~/platform/sessions/workspace-runtime.lib";
+import type { WorkspaceRuntimeContextGetter } from "~/platform/sessions/workspace-runtime.lib";
+import type { WorkspaceRuntimeContext } from "~/platform/sessions/workspace-runtime.types";
 import { deleteExternalAccount as defaultDeleteExternalAccount } from "~/shared/api/messenger-external-accounts.api";
 import type { MessengerClientOptions } from "~/shared/api/messenger-transport.internal";
 import { isAbortError } from "~/shared/lib/abort-error";

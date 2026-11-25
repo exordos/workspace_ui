@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { MessengerTopic } from "~/applications/messenger/model/messenger.types";
-import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
+import type { WorkspaceRuntimeContext } from "~/platform/sessions/workspace-runtime.types";
 import type { WorkspaceTopicSummaryEndpointDto } from "~/shared/api/messenger-topic-summary-management.types";
 import { TopicSummarySettingsDialog } from "./topic-summary-settings-dialog.ui";
 import type { UseTopicSummaryEndpointsResult } from "./topic-summary-endpoints.hook";

@@ -5,7 +5,7 @@ import type {
   MessengerTopic,
   MessengerUuid,
 } from "~/applications/messenger/model/messenger.types";
-import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
+import type { WorkspaceRuntimeContext } from "~/platform/sessions/workspace-runtime.types";
 
 export interface WorkspaceForwardMessageOpenRequest {
   messageUuids: readonly MessengerUuid[];

@@ -15,9 +15,7 @@
     "entities/feed/feed.model.ts -> applications/messenger/model/messenger.types.ts"
   ],
   "legacy-direction": [
-    "shared/lib/notification-sound-preset.lib.ts -> features/settings/settings.types.ts",
-    "shared/lib/use-cache-first-page.hook.ts -> entities/workspace-runtime/workspace-runtime.lib.ts",
-    "shared/lib/use-cache-first-page.hook.ts -> entities/workspace-runtime/workspace-runtime.types.ts"
+    "shared/lib/notification-sound-preset.lib.ts -> features/settings/settings.types.ts"
   ],
   "messenger-direction": [
     "applications/messenger/features/composer/chat-page-composer-section.ui.tsx -> applications/messenger/pages/messenger/chat-topic-prompt-button.lib.ts",

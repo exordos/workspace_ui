@@ -1,7 +1,7 @@
 import { expect, it, vi } from "vitest";
 import { useWorkspaceMessageStore } from "~/applications/messenger/model/messages/message.model";
-import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
-import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
+import { workspaceRuntimeOwnerKey } from "~/platform/sessions/workspace-runtime.lib";
+import type { WorkspaceRuntimeContext } from "~/platform/sessions/workspace-runtime.types";
 import { acquireChatCryptoSession } from "./chat-crypto-session.lib";
 import type { MessengerMessage } from "../messenger.types";
 

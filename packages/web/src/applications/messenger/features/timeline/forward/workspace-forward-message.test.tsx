@@ -12,9 +12,9 @@ import type {
 } from "~/applications/messenger/model/messenger.types";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import type { WorkspaceAuthSession } from "~/entities/workspace-auth/workspace-auth.model";
-import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { useUsersStore } from "~/modules/users/user.model";
 import type { User } from "~/modules/users/users-types";
+import { workspaceRuntimeOwnerKey } from "~/platform/sessions/workspace-runtime.lib";
 import type { WorkspaceMessengerMessageDto } from "~/shared/api/messenger.types";
 import { parseWorkspaceReferenceUrn } from "~/shared/lib/workspace-reference-urn.lib";
 import { useWorkspaceForwardMessageStore } from "./workspace-forward-message.model";

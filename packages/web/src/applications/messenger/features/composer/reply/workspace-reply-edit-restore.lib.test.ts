@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { MessengerMessage } from "~/applications/messenger/model/messenger.types";
-import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
+import type { WorkspaceRuntimeContext } from "~/platform/sessions/workspace-runtime.types";
 import {
   createWorkspaceReplyEditRestoreController,
   type WorkspaceReplyEditRestoreDependencies,

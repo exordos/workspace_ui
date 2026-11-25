@@ -17,8 +17,6 @@ import {
   workspaceAuthSessionIncarnation,
   type WorkspaceAuthSession,
 } from "~/entities/workspace-auth/workspace-auth.model";
-import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
-import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import { useWorkspaceJitsiSettingsStore } from "~/features/jitsi-call/jitsi-call-settings.model";
 import { useJitsiCallStore } from "~/features/jitsi-call/jitsi-call.model";
 import { buildWorkspaceIncomingDmCallInvite } from "~/features/jitsi-call/workspace-jitsi-incoming-call.lib";
@@ -41,6 +39,8 @@ import {
   type WorkspaceRealtimeEventContext,
   type WorkspaceRealtimeRuntimeOwner,
 } from "~/platform/realtime/workspace-realtime-runtime.lib";
+import { workspaceRuntimeOwnerKey } from "~/platform/sessions/workspace-runtime.lib";
+import type { WorkspaceRuntimeContext } from "~/platform/sessions/workspace-runtime.types";
 import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
 import {
   prepareWorkspaceSessionParticipant,

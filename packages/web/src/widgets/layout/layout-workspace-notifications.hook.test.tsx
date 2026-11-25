@@ -16,10 +16,10 @@ import type {
 } from "~/applications/messenger/runtime/sync/messenger-background-projection.model";
 import type { WorkspaceAuthSession } from "~/entities/workspace-auth/workspace-auth.model";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
-import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { useSettingsStore } from "~/features/settings/settings.model";
 import { t } from "~/i18n/i18n";
 import type { NotificationOptions } from "~/platform/notifications/notifications";
+import { workspaceRuntimeOwnerKey } from "~/platform/sessions/workspace-runtime.lib";
 import { clearNotifiedMessageIds } from "~/shared/lib/notification-dedup.lib";
 import type { shouldWorkspaceDesktopNotify } from "~/shared/lib/workspace-desktop-notifications.lib";
 import { workspaceMessengerTopicRoute } from "~/shared/lib/workspace-messenger-route.lib";

@@ -19,8 +19,8 @@ import {
   type WorkspaceAuthSession,
   useWorkspaceAuthStore,
 } from "~/entities/workspace-auth/workspace-auth.model";
-import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { useUsersStore } from "~/modules/users/user.model";
+import { workspaceRuntimeOwnerKey } from "~/platform/sessions/workspace-runtime.lib";
 import type { WorkspaceMessengerMessageDto } from "~/shared/api/messenger.types";
 import { ActivityPage } from "./activity-page.ui";
 import type * as ReactRouterDom from "react-router-dom";

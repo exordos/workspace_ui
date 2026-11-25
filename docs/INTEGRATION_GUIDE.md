@@ -16,7 +16,7 @@ Use the relevant [Workspace API module](API_CLIENT_REFERENCE.md) and existing ru
 
 For persistent data, preserve cache-first rendering where supported: restore the owner's cache, refresh from the server, then update the active state and the appropriate cache. Use a stricter loading policy only when showing stale data would violate the feature's contract, and record why.
 
-Before async work starts, capture `captureWorkspaceRuntimeRequestContext()` from [workspace-runtime.lib.ts](../packages/web/src/entities/workspace-runtime/workspace-runtime.lib.ts). Before applying results, use `isWorkspaceRuntimeRequestInvalidated()` with the current-context getter and the request's abort signal. Owner fields and `runtimeGeneration` matter even if the request was not aborted. Guard success, error/finally state, cache writes and optimistic rollback. Read [ORG_SCOPED_ASYNC_SAFETY.md](ORG_SCOPED_ASYNC_SAFETY.md) for the full invariant.
+Before async work starts, capture `captureWorkspaceRuntimeRequestContext()` from [workspace-runtime.lib.ts](../packages/web/src/platform/sessions/workspace-runtime.lib.ts). Before applying results, use `isWorkspaceRuntimeRequestInvalidated()` with the current-context getter and the request's abort signal. Owner fields and `runtimeGeneration` matter even if the request was not aborted. Guard success, error/finally state, cache writes and optimistic rollback. Read [ORG_SCOPED_ASYNC_SAFETY.md](ORG_SCOPED_ASYNC_SAFETY.md) for the full invariant.
 
 Use narrow selectors and keep derived values stable. Do not introduce a second store for data already owned by the messenger or message store.
 

@@ -8,13 +8,13 @@ import {
   useWorkspaceAuthStore,
 } from "~/entities/workspace-auth/workspace-auth.model";
 import { getWorkspaceSessionStorageScopeFromAuthState } from "~/entities/workspace-auth/workspace-session-storage-scope.lib";
-import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
-import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import { authIdleTimeoutToMs } from "~/features/settings/auth-idle-timeout.lib";
 import { useSettingsStore } from "~/features/settings/settings.model";
 import { t } from "~/i18n/i18n";
 import { useUserCount } from "~/modules/users/users";
 import { writeText } from "~/platform/desktop/clipboard";
+import { workspaceRuntimeOwnerKey } from "~/platform/sessions/workspace-runtime.lib";
+import type { WorkspaceRuntimeContext } from "~/platform/sessions/workspace-runtime.types";
 import { SCROLL_AREA_CLASS } from "~/shared/config/constants";
 import { getSessionRemainingMs } from "~/shared/lib/auth-guard";
 import {

@@ -16,6 +16,8 @@
 
 ## Граница с app и мессенджером
 
+`platform/sessions` предоставляет [контекст владельца и проверку актуальности запроса](../../../packages/web/src/platform/sessions/workspace-runtime.lib.ts) с типами из [workspace-runtime.types.ts](../../../packages/web/src/platform/sessions/workspace-runtime.types.ts). `entities/workspace-auth` владеет IAM-сессией, токеном и выбранным контекстом. [Сборка runtime](../../../packages/web/src/app/workspace-session/workspace-session.lib.ts) остаётся в `app/workspace-session`, а realtime transport — в `platform/realtime`.
+
 - **`app`** создаёт runtime каждой авторизованной сессии, собирает приложения и общие модули, подключает их обработчики к транспорту. Оболочка привязывает UI к выбранному runtime. [Сборка сессии](workspace-runtime.md#сборка-и-доставка-событий)
 - **`platform`** выполняет запрос, доставляет событие, предоставляет операции чтения и записи и показывает переданное ему уведомление. Транспорт получает обработчик при сборке.
 - **Мессенджер** решает, что изменение сообщения означает для истории, списка чатов и исходящих. Он владеет схемой и правилами своего кеша, а его сценарий уведомлений определяет, когда вызвать показ.

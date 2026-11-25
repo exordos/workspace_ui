@@ -10,20 +10,19 @@ import {
   selectCurrentWorkspaceRuntimeContext,
   useWorkspaceAuthStore,
 } from "~/entities/workspace-auth/workspace-auth.model";
-import {
-  isWorkspaceRuntimeRequestContextCurrent,
-  workspaceRuntimeOwnerKey,
-} from "~/entities/workspace-runtime/workspace-runtime.lib";
-import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import { t } from "~/i18n/i18n";
 import { useUserById } from "~/modules/users/users";
 import { selectUserDisplayName } from "~/modules/users/users-selectors";
+import {
+  isWorkspaceRuntimeRequestContextCurrent,
+  workspaceRuntimeOwnerKey,
+} from "~/platform/sessions/workspace-runtime.lib";
+import type { WorkspaceRuntimeContext } from "~/platform/sessions/workspace-runtime.types";
 import { useOpenSearch } from "~/shared/contexts/open-search";
 import { formatMessageTimeWithDate } from "~/shared/lib/datetime.lib";
 import { createLogger } from "~/shared/lib/logger";
 import { runInFlightDeduped } from "~/shared/lib/request-lifecycle.lib";
 import { scrollToBottom } from "~/shared/lib/scroll-position.lib";
-import { useCacheFirstPageLoad } from "~/shared/lib/use-cache-first-page.hook";
 import type { WorkspaceMessageSummaryOptions } from "~/shared/lib/workspace-message-render/workspace-message-document.types";
 import { summarizeWorkspaceMessageMarkdown } from "~/shared/lib/workspace-message-render/workspace-message-summary.lib";
 import { workspaceMessengerTopicRoute } from "~/shared/lib/workspace-messenger-route.lib";
@@ -31,6 +30,7 @@ import { FloatingScrollToBottomButton } from "~/shared/ui/floating-scroll-to-bot
 import { Icon } from "~/shared/ui/icon";
 import { FloatingLoadingOverlay } from "~/shared/ui/loading";
 import { computeFeedScrollTopAfterPrepend, shouldRequestOlderFeedPage } from "./feed-scroll.lib";
+import { useCacheFirstPageLoad } from "./use-cache-first-page.hook";
 
 const log = createLogger("feed-page");
 

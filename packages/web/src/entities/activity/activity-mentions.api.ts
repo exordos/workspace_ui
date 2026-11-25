@@ -5,7 +5,7 @@ import {
 } from "~/applications/messenger/model/messenger-request-options.lib";
 import type { MessengerMessage } from "~/applications/messenger/model/messenger.types";
 import type { ActivityUnreadMention } from "~/entities/activity/activity.model";
-import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
+import type { WorkspaceRuntimeContext } from "~/platform/sessions/workspace-runtime.types";
 import {
   getMessagesPage as defaultGetMessagesPage,
   type MessengerClientOptions,

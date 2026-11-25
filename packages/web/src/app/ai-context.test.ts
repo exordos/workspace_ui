@@ -14,8 +14,8 @@ import {
   useWorkspaceAuthStore,
   type WorkspaceAuthProfile,
 } from "../entities/workspace-auth/workspace-auth.model";
-import { workspaceRuntimeOwnerKey } from "../entities/workspace-runtime/workspace-runtime.lib";
 import { readActiveUser } from "../modules/users/users";
+import { workspaceRuntimeOwnerKey } from "../platform/sessions/workspace-runtime.lib";
 import { createUser } from "../test/factories";
 import {
   installAiContext,

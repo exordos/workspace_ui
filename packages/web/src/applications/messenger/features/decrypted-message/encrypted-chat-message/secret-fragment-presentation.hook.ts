@@ -16,7 +16,7 @@ import {
   selectCurrentWorkspaceRuntimeContext,
   useWorkspaceAuthStore,
 } from "~/entities/workspace-auth/workspace-auth.model";
-import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
+import { workspaceRuntimeOwnerKey } from "~/platform/sessions/workspace-runtime.lib";
 import type { WorkspaceSecretUrnReference } from "~/shared/lib/workspace-reference-urn.lib";
 
 type SecretFragmentPresentation = (RealChatMessageDecryption | { readonly status: "loading" }) & {

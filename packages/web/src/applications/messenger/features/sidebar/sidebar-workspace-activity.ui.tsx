@@ -1,9 +1,9 @@
 import React from "react";
 import { useActivityStore } from "~/entities/activity/activity.model";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
-import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { useSettingsStore } from "~/features/settings/settings.model";
 import { t } from "~/i18n/i18n";
+import { workspaceRuntimeOwnerKey } from "~/platform/sessions/workspace-runtime.lib";
 import { SidebarActivityView } from "./sidebar-activity-view.ui";
 import type { MessengerSidebarActivityCounts } from "./messenger-sidebar.lib";
 import type { SidebarActivityProps } from "./sidebar-activity.types";

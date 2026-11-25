@@ -1,4 +1,4 @@
-import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
+import type { WorkspaceRuntimeContext } from "~/platform/sessions/workspace-runtime.types";
 import type { WorkspaceClientOptions } from "~/shared/api/workspace-client";
 import { useWorkspaceAuthStore } from "./workspace-auth.model";
 

@@ -4,7 +4,7 @@ import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.
 import {
   captureWorkspaceRuntimeRequestContext,
   isWorkspaceRuntimeRequestInvalidated,
-} from "~/entities/workspace-runtime/workspace-runtime.lib";
+} from "~/platform/sessions/workspace-runtime.lib";
 import type { PollVoterTarget, WorkspacePollQuestion } from "./workspace-message-poll.types";
 
 const getRuntimeContext = () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext();

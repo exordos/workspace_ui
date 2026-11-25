@@ -12,14 +12,14 @@ import type {
   MessengerUuid,
 } from "~/applications/messenger/model/messenger.types";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
+import { readActiveUser } from "~/modules/users/users";
+import { selectUserDisplayName } from "~/modules/users/users-selectors";
 import {
   captureWorkspaceRuntimeRequestContext,
   isWorkspaceRuntimeRequestInvalidated,
-} from "~/entities/workspace-runtime/workspace-runtime.lib";
-import type { WorkspaceRuntimeContextGetter } from "~/entities/workspace-runtime/workspace-runtime.lib";
-import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
-import { readActiveUser } from "~/modules/users/users";
-import { selectUserDisplayName } from "~/modules/users/users-selectors";
+} from "~/platform/sessions/workspace-runtime.lib";
+import type { WorkspaceRuntimeContextGetter } from "~/platform/sessions/workspace-runtime.lib";
+import type { WorkspaceRuntimeContext } from "~/platform/sessions/workspace-runtime.types";
 import { parseWorkspaceMessageBody } from "~/shared/lib/workspace-message-render/workspace-message-parse.lib";
 import {
   restoreWorkspaceReplySessionFromMarkdown,

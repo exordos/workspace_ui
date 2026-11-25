@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
-import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { t } from "~/i18n/i18n";
+import { workspaceRuntimeOwnerKey } from "~/platform/sessions/workspace-runtime.lib";
 import { CALL_INCOMING_MODAL_VARIANT } from "~/shared/config/constants";
 import { IncomingCallCompact } from "./jitsi-call-incoming-compact.ui";
 import { IncomingCallLarge } from "./jitsi-call-incoming-large.ui";

@@ -3,8 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useMessengerStore } from "~/applications/messenger/model/chats/messenger.model";
 import type { MessengerStream } from "~/applications/messenger/model/messenger.types";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
-import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { setLocale, useTranslation } from "~/i18n/i18n";
+import { workspaceRuntimeOwnerKey } from "~/platform/sessions/workspace-runtime.lib";
 import { LayoutMainWorkspace } from "./layout-main-workspace.ui";
 import {
   LAYOUT_SIDEBAR_WIDTH_STORAGE_KEY,

@@ -12,8 +12,6 @@ import {
   ensureFreshWorkspaceSession,
 } from "~/entities/workspace-auth/workspace-auth.lib";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
-import { isWorkspaceRuntimeRequestContextCurrent } from "~/entities/workspace-runtime/workspace-runtime.lib";
-import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import {
   refreshWorkspaceSessionUsers,
   restoreWorkspaceSessionUsers,
@@ -24,6 +22,8 @@ import type {
   WorkspaceRealtimeRuntimeOptions,
   WorkspaceRealtimeRuntimeOwner,
 } from "~/platform/realtime/workspace-realtime-runtime.lib";
+import { isWorkspaceRuntimeRequestContextCurrent } from "~/platform/sessions/workspace-runtime.lib";
+import type { WorkspaceRuntimeContext } from "~/platform/sessions/workspace-runtime.types";
 import { getEpoch } from "~/shared/api/workspace-client";
 
 const CACHE_RESUME_WAIT_MS = 150; // A blocked IDB read must not hold network startup.

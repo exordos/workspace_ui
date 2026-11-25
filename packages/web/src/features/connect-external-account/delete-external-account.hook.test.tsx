@@ -6,8 +6,8 @@ import type { ExternalAccount } from "~/entities/external-account/external-accou
 import { externalChatScopeKey } from "~/entities/external-chat/external-chat-loader.lib";
 import { useExternalChatsStore } from "~/entities/external-chat/external-chat.model";
 import type { ExternalChat } from "~/entities/external-chat/external-chat.types";
-import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
-import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
+import { workspaceRuntimeOwnerKey } from "~/platform/sessions/workspace-runtime.lib";
+import type { WorkspaceRuntimeContext } from "~/platform/sessions/workspace-runtime.types";
 import { useDeleteExternalAccount } from "./delete-external-account.hook";
 
 const runtimeContext: WorkspaceRuntimeContext = {

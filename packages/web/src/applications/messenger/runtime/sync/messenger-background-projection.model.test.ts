@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type {
   WorkspaceRealtimeEventContext,
   WorkspaceRealtimeRuntimeOwner,
 } from "~/platform/realtime/workspace-realtime-runtime.lib";
+import { workspaceRuntimeOwnerKey } from "~/platform/sessions/workspace-runtime.lib";
 import type {
   WorkspaceMessengerFolderDto,
   WorkspaceMessengerFolderItemDto,

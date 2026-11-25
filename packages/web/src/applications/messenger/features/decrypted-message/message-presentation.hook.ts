@@ -26,7 +26,7 @@ import {
   captureWorkspaceRuntimeRequestContext,
   isWorkspaceRuntimeRequestInvalidated,
   workspaceRuntimeOwnerKey,
-} from "~/entities/workspace-runtime/workspace-runtime.lib";
+} from "~/platform/sessions/workspace-runtime.lib";
 
 export type MessagePresentation = (MessengerMessageContent | { readonly status: "preparing" }) & {
   readonly retry: () => void;

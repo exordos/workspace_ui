@@ -3,8 +3,8 @@ import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.
 import {
   isWorkspaceRuntimeRequestInvalidated,
   workspaceRuntimeOwnerKey,
-} from "~/entities/workspace-runtime/workspace-runtime.lib";
-import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
+} from "~/platform/sessions/workspace-runtime.lib";
+import type { WorkspaceRuntimeContext } from "~/platform/sessions/workspace-runtime.types";
 import type { WorkspaceMessengerUserDto } from "~/shared/api/messenger.types";
 import {
   invokeUserPresence as defaultInvokeUserPresence,

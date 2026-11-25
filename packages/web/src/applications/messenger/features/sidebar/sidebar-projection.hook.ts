@@ -9,13 +9,13 @@ import {
   type MessagesIndexSnapshot,
 } from "~/applications/messenger/model/messages/messages-consumers";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
+import { readActiveUsers, subscribeActiveUsers } from "~/modules/users/users";
+import type { UsersById } from "~/modules/users/users-types";
 import {
   isWorkspaceRuntimeRequestContextCurrent,
   workspaceRuntimeOwnerKey,
-} from "~/entities/workspace-runtime/workspace-runtime.lib";
-import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
-import { readActiveUsers, subscribeActiveUsers } from "~/modules/users/users";
-import type { UsersById } from "~/modules/users/users-types";
+} from "~/platform/sessions/workspace-runtime.lib";
+import type { WorkspaceRuntimeContext } from "~/platform/sessions/workspace-runtime.types";
 import { isTabVisible, onVisibilityChange } from "~/shared/lib/visibility";
 
 const PROJECTION_INTERVAL_MS = 100;

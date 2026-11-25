@@ -3,13 +3,13 @@ import {
   captureWorkspaceRuntimeRequestContext,
   isWorkspaceRuntimeRequestInvalidated,
   workspaceRuntimeOwnerKey,
-} from "~/entities/workspace-runtime/workspace-runtime.lib";
-import type { WorkspaceRuntimeContextGetter } from "~/entities/workspace-runtime/workspace-runtime.lib";
+} from "~/platform/sessions/workspace-runtime.lib";
+import type { WorkspaceRuntimeContextGetter } from "~/platform/sessions/workspace-runtime.lib";
 import type {
   WorkspaceRealtimeSurface,
   WorkspaceRuntimeContext,
   WorkspaceRuntimeRequestContext,
-} from "~/entities/workspace-runtime/workspace-runtime.types";
+} from "~/platform/sessions/workspace-runtime.types";
 import { isWorkspaceMessengerUserDto } from "~/shared/api/messenger.types";
 import type { WorkspaceMessengerUserDto } from "~/shared/api/messenger.types";
 import {

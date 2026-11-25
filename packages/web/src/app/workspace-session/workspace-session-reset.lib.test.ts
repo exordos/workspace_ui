@@ -4,7 +4,7 @@ import {
   useWorkspaceAuthStore,
   type WorkspaceAuthSession,
 } from "~/entities/workspace-auth/workspace-auth.model";
-import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
+import { workspaceRuntimeOwnerKey } from "~/platform/sessions/workspace-runtime.lib";
 import { prepareWorkspaceColdStart } from "./workspace-session-reset.lib";
 import { useWorkspaceSessionRuntime } from "./workspace-session.hook";
 

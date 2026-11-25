@@ -1,6 +1,6 @@
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
-import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
-import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
+import { workspaceRuntimeOwnerKey } from "~/platform/sessions/workspace-runtime.lib";
+import type { WorkspaceRuntimeContext } from "~/platform/sessions/workspace-runtime.types";
 import { compareWorkspaceMessages } from "./message-workspace-order.lib";
 import { markMessengerMessagesReadUpTo } from "./messenger-message-actions.lib";
 import type { MessengerMessage, MessengerUuid } from "../messenger.types";

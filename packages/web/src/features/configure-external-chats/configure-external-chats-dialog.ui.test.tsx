@@ -1,7 +1,7 @@
 import { fireEvent, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { ExternalAccount } from "~/entities/external-account/external-account.types";
-import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
+import type { WorkspaceRuntimeContext } from "~/platform/sessions/workspace-runtime.types";
 import { renderWithProviders } from "~/test/render";
 import { ConfigureExternalChatsDialog } from "./configure-external-chats-dialog.ui";
 import { useConfigureExternalChats } from "./configure-external-chats.hook";

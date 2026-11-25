@@ -1,11 +1,11 @@
 import { useLayoutEffect, useRef, type RefObject } from "react";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
+import { useTranslation } from "~/i18n/i18n";
 import {
   captureWorkspaceRuntimeRequestContext,
   isWorkspaceRuntimeRequestContextCurrent,
   workspaceRuntimeOwnerKey,
-} from "~/entities/workspace-runtime/workspace-runtime.lib";
-import { useTranslation } from "~/i18n/i18n";
+} from "~/platform/sessions/workspace-runtime.lib";
 import { createLogger } from "~/shared/lib/logger";
 import {
   AUTH_IMAGE_PLACEHOLDER_SRC,

@@ -8,10 +8,10 @@ import type {
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import type { WorkspaceAuthSession } from "~/entities/workspace-auth/workspace-auth.model";
 import { useWorkspaceIamCapabilitiesStore } from "~/entities/workspace-auth/workspace-iam-capabilities.model";
-import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { t } from "~/i18n/i18n";
 import { useUsersStore } from "~/modules/users/user.model";
 import type { User } from "~/modules/users/users-types";
+import { workspaceRuntimeOwnerKey } from "~/platform/sessions/workspace-runtime.lib";
 import { renderWithProviders } from "~/test/render";
 import { RightDrawer } from "../../../../widgets/right-panel/right-drawer.ui";
 import { useChatDmCallBridgeStore } from "./call-bridge/chat-dm-call-bridge.model";

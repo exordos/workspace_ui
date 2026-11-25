@@ -5,10 +5,10 @@ import {
   selectCurrentWorkspaceRuntimeContext,
   useWorkspaceAuthStore,
 } from "~/entities/workspace-auth/workspace-auth.model";
-import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { t } from "~/i18n/i18n";
 import { useUsersById, useUsersOwnerKey } from "~/modules/users/users";
 import { writeText } from "~/platform/desktop/clipboard";
+import { workspaceRuntimeOwnerKey } from "~/platform/sessions/workspace-runtime.lib";
 import { toast } from "~/shared/lib/toast/toast";
 import { selectEncryptedChatInfo } from "./encrypted-chat-info-selector.lib";
 

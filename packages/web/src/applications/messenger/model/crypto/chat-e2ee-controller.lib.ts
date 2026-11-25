@@ -1,4 +1,4 @@
-import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
+import { workspaceRuntimeOwnerKey } from "~/platform/sessions/workspace-runtime.lib";
 import { getDeviceName } from "~/shared/lib/device-name.lib";
 import { encodeChatE2eePayload } from "./chat-e2ee-payload-adapters.lib";
 import { correlateChatKeyResponse, resolveChatGenerationAccess } from "./chat-e2ee.lib";

@@ -9,8 +9,8 @@ import type {
   MessengerStream,
 } from "~/applications/messenger/model/messenger.types";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
-import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { writeText } from "~/platform/desktop/clipboard";
+import { workspaceRuntimeOwnerKey } from "~/platform/sessions/workspace-runtime.lib";
 import { toast } from "~/shared/lib/toast/toast";
 import { useChatCryptoSession } from "./chat-crypto-session.hook";
 import { useEncryptedChatInfo } from "./encrypted-chat-info.hook";

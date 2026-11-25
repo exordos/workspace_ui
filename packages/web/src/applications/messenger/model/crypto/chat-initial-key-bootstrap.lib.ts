@@ -1,4 +1,4 @@
-import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
+import type { WorkspaceRuntimeContext } from "~/platform/sessions/workspace-runtime.types";
 
 export interface ChatInitialKeyMetadata {
   readonly keyUuid: string;

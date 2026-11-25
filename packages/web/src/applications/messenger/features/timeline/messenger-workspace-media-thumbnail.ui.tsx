@@ -3,7 +3,7 @@ import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.
 import {
   captureWorkspaceRuntimeRequestContext,
   isWorkspaceRuntimeRequestContextCurrent,
-} from "~/entities/workspace-runtime/workspace-runtime.lib";
+} from "~/platform/sessions/workspace-runtime.lib";
 import { createDisplayableBlobUrl } from "~/shared/lib/media-display-url.lib";
 import { MESSAGE_MEDIA_THUMBNAIL_CLASS_NAME } from "~/shared/lib/message-body-rich-text-classes";
 import type { WorkspaceMessageFileReference } from "~/shared/lib/workspace-message-render/workspace-message-document.types";

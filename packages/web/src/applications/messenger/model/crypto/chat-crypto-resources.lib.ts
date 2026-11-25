@@ -1,4 +1,4 @@
-import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
+import type { WorkspaceRuntimeContext } from "~/platform/sessions/workspace-runtime.types";
 import { getDeviceName } from "~/shared/lib/device-name.lib";
 import { IndexedDbChatKeyStorage } from "./chat-key-storage-idb.lib";
 import { createRealChatCryptoProvider } from "./chat-real-crypto-provider.lib";

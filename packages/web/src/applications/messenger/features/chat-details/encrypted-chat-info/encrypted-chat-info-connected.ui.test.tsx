@@ -1,7 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RealChatKeyChange } from "~/applications/messenger/model/crypto/chat-crypto-resources.lib";
-import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
+import { workspaceRuntimeOwnerKey } from "~/platform/sessions/workspace-runtime.lib";
 import { EncryptedChatInfoConnected } from "./encrypted-chat-info-connected.ui";
 
 const mocks = vi.hoisted(() => ({

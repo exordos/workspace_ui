@@ -9,10 +9,10 @@ import {
   workspaceAuthSessionIncarnation,
   type WorkspaceAuthSession,
 } from "~/entities/workspace-auth/workspace-auth.model";
-import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { useWorkspaceJitsiSettingsStore } from "~/features/jitsi-call/jitsi-call-settings.model";
 import { reconcileUsersSessions, useHasUserForOwner } from "~/modules/users/users-runtime";
 import { createWorkspaceRealtimeBrowserCursorStorage } from "~/platform/realtime/workspace-realtime-cursor.lib";
+import { workspaceRuntimeOwnerKey } from "~/platform/sessions/workspace-runtime.lib";
 import { onPowerResume } from "~/shared/lib/power";
 import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
 import { readWorkspaceSession } from "./workspace-session-bootstrap.lib";

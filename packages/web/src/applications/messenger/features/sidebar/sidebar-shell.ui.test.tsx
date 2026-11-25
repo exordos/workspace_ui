@@ -15,8 +15,8 @@ import type {
   MessengerTopic,
 } from "~/applications/messenger/model/messenger.types";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
-import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { useSettingsStore } from "~/features/settings/settings.model";
+import { workspaceRuntimeOwnerKey } from "~/platform/sessions/workspace-runtime.lib";
 import * as messengerSidebarLib from "./messenger-sidebar.lib";
 import { useSidebarConfigStore } from "./sidebar-config.model";
 import { SidebarShell } from "./sidebar-shell.ui";

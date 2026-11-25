@@ -32,6 +32,10 @@
 
 ## Дерево
 
+### Фактический шаг 9
+
+В текущем FSD-дереве типы, ключи и функции проверки актуальности запросов находятся в [platform/sessions](../../../packages/web/src/platform/sessions/workspace-runtime.lib.ts); тест `workspace-runtime.lib.test.ts` лежит рядом. `use-cache-first-page.hook.ts` находится в [pages/feed](../../../packages/web/src/pages/feed/use-cache-first-page.hook.ts), рядом со своим единственным потребителем.
+
 ```text
 src/
   app/

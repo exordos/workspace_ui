@@ -21,8 +21,6 @@ import {
   selectWorkspaceIamPermissionsForOwner,
   useWorkspaceIamCapabilitiesStore,
 } from "~/entities/workspace-auth/workspace-iam-capabilities.model";
-import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
-import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import { WorkspaceAvatar } from "~/features/workspace-avatar/workspace-avatar.ui";
 import { t } from "~/i18n/i18n";
 import { useUsersById } from "~/modules/users/users";
@@ -32,6 +30,8 @@ import {
   selectUserDisplayName,
 } from "~/modules/users/users-selectors";
 import type { User, UsersById } from "~/modules/users/users-types";
+import { workspaceRuntimeOwnerKey } from "~/platform/sessions/workspace-runtime.lib";
+import type { WorkspaceRuntimeContext } from "~/platform/sessions/workspace-runtime.types";
 import { resolveAvatarBackgroundColor } from "~/shared/lib/avatar-color.lib";
 import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
 import {

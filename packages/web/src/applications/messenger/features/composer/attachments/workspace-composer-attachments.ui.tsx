@@ -2,9 +2,9 @@ import React, { useCallback, useMemo } from "react";
 import type { MessengerSendOptions } from "~/applications/messenger/model/messages/outgoing/messenger-outbox.types";
 import { buildMessengerRequestOptions } from "~/applications/messenger/model/messenger-request-options.lib";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
-import { isWorkspaceRuntimeRequestInvalidated } from "~/entities/workspace-runtime/workspace-runtime.lib";
-import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import { t } from "~/i18n/i18n";
+import { isWorkspaceRuntimeRequestInvalidated } from "~/platform/sessions/workspace-runtime.lib";
+import type { WorkspaceRuntimeContext } from "~/platform/sessions/workspace-runtime.types";
 import {
   deleteWorkspaceFile,
   uploadWorkspaceFileWithProgress,

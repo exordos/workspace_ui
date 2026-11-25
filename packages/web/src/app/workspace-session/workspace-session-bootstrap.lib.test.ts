@@ -12,12 +12,12 @@ import {
   useWorkspaceAuthStore,
   type WorkspaceAuthSession,
 } from "~/entities/workspace-auth/workspace-auth.model";
-import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import {
   refreshWorkspaceSessionUsers,
   restoreWorkspaceSessionUsers,
 } from "~/modules/users/users-runtime";
 import type { WorkspaceRealtimeRuntimeContext } from "~/platform/realtime/workspace-realtime-runtime.lib";
+import { workspaceRuntimeOwnerKey } from "~/platform/sessions/workspace-runtime.lib";
 import type { WorkspaceMessengerEpochDto } from "~/shared/api/messenger.types";
 import { getEpoch } from "~/shared/api/workspace-client";
 import { prepareWorkspaceSessionSnapshots } from "./workspace-session-bootstrap.lib";

@@ -16,13 +16,13 @@ import type {
   MessengerSidebarStreamItem,
 } from "~/applications/messenger/model/messenger.types";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
+import { t } from "~/i18n/i18n";
 import {
   captureWorkspaceRuntimeRequestContext,
   isWorkspaceRuntimeRequestContextCurrent,
   workspaceRuntimeOwnerKey,
-} from "~/entities/workspace-runtime/workspace-runtime.lib";
-import type { WorkspaceRuntimeRequestContext } from "~/entities/workspace-runtime/workspace-runtime.types";
-import { t } from "~/i18n/i18n";
+} from "~/platform/sessions/workspace-runtime.lib";
+import type { WorkspaceRuntimeRequestContext } from "~/platform/sessions/workspace-runtime.types";
 import type { WorkspaceMessengerStreamNotificationMode } from "~/shared/api/messenger.types";
 import { useRightDrawer } from "~/shared/contexts/right-drawer";
 import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";

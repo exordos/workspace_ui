@@ -3,9 +3,9 @@ import {
   useWorkspaceAuthStore,
   type WorkspaceAuthSession,
 } from "~/entities/workspace-auth/workspace-auth.model";
-import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
-import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import { useUsersStore } from "~/modules/users/user.model";
+import { workspaceRuntimeOwnerKey } from "~/platform/sessions/workspace-runtime.lib";
+import type { WorkspaceRuntimeContext } from "~/platform/sessions/workspace-runtime.types";
 import { MessengerApiError } from "~/shared/api/messenger-transport.internal";
 import type { WorkspaceMessengerUserDto } from "~/shared/api/messenger.types";
 import type { OwnProfile, OwnProfileApi } from "~/shared/api/own-profile.types";

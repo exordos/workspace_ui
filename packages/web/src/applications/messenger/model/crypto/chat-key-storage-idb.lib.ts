@@ -1,5 +1,5 @@
-import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
-import type { WorkspaceRuntimeOwner } from "~/entities/workspace-runtime/workspace-runtime.types";
+import { workspaceRuntimeOwnerKey } from "~/platform/sessions/workspace-runtime.lib";
+import type { WorkspaceRuntimeOwner } from "~/platform/sessions/workspace-runtime.types";
 import type {
   ChatDeviceIdentity,
   ChatKeyRequestCompletion,

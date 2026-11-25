@@ -8,18 +8,18 @@ import {
   selectCurrentWorkspaceRuntimeContext,
   useWorkspaceAuthStore,
 } from "~/entities/workspace-auth/workspace-auth.model";
-import {
-  captureWorkspaceRuntimeRequestContext,
-  isWorkspaceRuntimeRequestContextCurrent,
-  workspaceRuntimeOwnerKey,
-} from "~/entities/workspace-runtime/workspace-runtime.lib";
-import type { WorkspaceRuntimeRequestContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import { useUserIds, useUsersById, useUsersOwnerKey } from "~/modules/users/users";
 import {
   selectSelectableWorkspaceUsers,
   selectUserDisplayName,
 } from "~/modules/users/users-selectors";
 import type { User } from "~/modules/users/users-types";
+import {
+  captureWorkspaceRuntimeRequestContext,
+  isWorkspaceRuntimeRequestContextCurrent,
+  workspaceRuntimeOwnerKey,
+} from "~/platform/sessions/workspace-runtime.lib";
+import type { WorkspaceRuntimeRequestContext } from "~/platform/sessions/workspace-runtime.types";
 import { createLogger } from "~/shared/lib/logger";
 import {
   matchesUserPickerQuery,

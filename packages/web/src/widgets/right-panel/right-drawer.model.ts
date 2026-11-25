@@ -2,7 +2,7 @@ import { create } from "zustand";
 import type { EncryptedChatInfoScreen } from "~/applications/messenger/features/chat-details/encrypted-chat-info/encrypted-chat-info.types";
 import type { MessengerUuid } from "~/applications/messenger/model/messenger.types";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
-import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
+import { workspaceRuntimeOwnerKey } from "~/platform/sessions/workspace-runtime.lib";
 import { logStoreAction } from "~/shared/lib/logger";
 
 export type RightDrawerMode = "info" | "settings" | "user-menu" | "about" | "personal-info";

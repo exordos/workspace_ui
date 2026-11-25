@@ -2,12 +2,12 @@ import type { WorkspaceAuthSession } from "~/entities/workspace-auth/workspace-a
 import {
   isWorkspaceRuntimeRequestInvalidated,
   workspaceRuntimeOwnerKey,
-} from "~/entities/workspace-runtime/workspace-runtime.lib";
-import type { WorkspaceRuntimeContextGetter } from "~/entities/workspace-runtime/workspace-runtime.lib";
+} from "~/platform/sessions/workspace-runtime.lib";
+import type { WorkspaceRuntimeContextGetter } from "~/platform/sessions/workspace-runtime.lib";
 import type {
   WorkspaceRealtimeSurface,
   WorkspaceRuntimeContext,
-} from "~/entities/workspace-runtime/workspace-runtime.types";
+} from "~/platform/sessions/workspace-runtime.types";
 import { getFolders, getStreams, getStreamTopics } from "~/shared/api/messenger-client";
 import { invalidateWorkspaceOwnerFileResources } from "~/shared/lib/workspace-file-loader.lib";
 import { deleteWorkspaceMessengerOwnerCache } from "~/shared/lib/workspace-messenger-cache-db";
