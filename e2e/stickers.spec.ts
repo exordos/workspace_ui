@@ -7,8 +7,6 @@ const MARKDOWN = `![sticker](urn:sticker:${ID})`;
 
 test("Workspace sticker send and history reload @mock", async ({ authenticated: page }) => {
   let favorite = false;
-  let hidden = false;
-  let blocked = false;
   let failNextDownload = false;
   await page.route("**/api/workspace/v1/messenger/stickers**", async (route) => {
     const url = new URL(route.request().url());
@@ -29,17 +27,13 @@ test("Workspace sticker send and history reload @mock", async ({ authenticated: 
         await route.fulfill({ status: 503, body: "Temporary media outage" });
         return;
       }
-      await route.fulfill(
-        blocked
-          ? { status: 404, body: "" }
-          : {
-              contentType: "image/gif",
-              body: Buffer.from(
-                "R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7",
-                "base64",
-              ),
-            },
-      );
+      await route.fulfill({
+        contentType: "image/gif",
+        body: Buffer.from(
+          "R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7",
+          "base64",
+        ),
+      });
     } else if (url.pathname.endsWith("/star/invoke")) {
       favorite = true;
       await route.fulfill({ status: 200, body: "" });
@@ -47,9 +41,8 @@ test("Workspace sticker send and history reload @mock", async ({ authenticated: 
       favorite = false;
       await route.fulfill({ status: 200, body: "" });
     } else {
-      const available = !blocked && (!hidden || url.searchParams.has("uuid"));
       await route.fulfill({
-        json: available ? [card] : [],
+        json: [card],
         headers: { "X-Pagination-Limit": "50" },
       });
     }
@@ -110,15 +103,8 @@ test("Workspace sticker send and history reload @mock", async ({ authenticated: 
   await expect(
     page.locator('[data-sticker-message="true"] [data-sticker-media-status="ready"]'),
   ).toBeVisible();
-  hidden = true;
   await page.reload();
   await expect(page.locator('[data-sticker-message="true"] img')).toBeVisible();
-  blocked = true;
-  await page.reload();
-  await expect(page.locator('[data-sticker-message="true"]')).toContainText(
-    /недоступен|unavailable/i,
-  );
-  await expect(page.locator('[data-sticker-message="true"] img')).toHaveCount(0);
 });
 
 test("Sticker management dialog keeps the picker open and edits a card @mock", async ({

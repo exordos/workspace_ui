@@ -111,32 +111,29 @@ describe("Workspace sticker HTTP contract", () => {
     );
     expect(fetchImpl).not.toHaveBeenCalled();
   });
-  it("enforces metadata limits and the visibility invariant", () => {
+  it("enforces sticker metadata limits", () => {
     expect(isValidStickerUpdate({})).toBe(false);
     expect(isValidStickerUpdate({ title: "a".repeat(201) })).toBe(false);
     expect(isValidStickerUpdate({ alt_text: "a".repeat(501) })).toBe(false);
     expect(isValidStickerUpdate({ emoji: Array<string>(6).fill("😀") })).toBe(false);
     expect(isValidStickerUpdate({ tags: Array<string>(65).fill("tag") })).toBe(false);
     expect(isValidStickerUpdate({ tags: Array<string>(64).fill("😀".repeat(64)) })).toBe(false);
-    expect(isValidStickerUpdate({ active: true, blocked: true })).toBe(false);
-    expect(isValidStickerUpdate({ active: false, blocked: true, tags: [] })).toBe(true);
   });
-  it("updates explicit metadata and visibility without internal fields", async () => {
+  it("updates explicit catalog metadata without internal fields", async () => {
     const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(Response.json(stickerDto()));
     await updateSticker({ ...options, fetchImpl }, STICKER_ID, {
       title: "New",
-      active: false,
-      blocked: true,
+      tags: ["celebration"],
     });
     expect(fetchImpl).toHaveBeenCalledWith(
       expect.stringContaining(`/stickers/${STICKER_ID}`),
       expect.objectContaining({
         method: "PUT",
-        body: JSON.stringify({ title: "New", active: false, blocked: true }),
+        body: JSON.stringify({ title: "New", tags: ["celebration"] }),
       }),
     );
   });
-  it("downloads authorized bytes without duplicating the API prefix and revalidates blocked media", async () => {
+  it("downloads authorized bytes without duplicating the API prefix and revalidates media", async () => {
     const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(new Response("GIF89a"));
     const blob = await downloadSticker({ ...options, fetchImpl }, stickerDto());
     expect(blob.type).toBe("image/gif");

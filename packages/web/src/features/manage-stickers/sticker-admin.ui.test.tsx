@@ -139,7 +139,7 @@ describe("Sticker admin dialog HTTP integration", () => {
     fireEvent.click(screen.getByRole("button", { name: "Discard changes" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
   });
-  it("loads by UUID and does not infer visibility from the public DTO", async () => {
+  it("loads by UUID and offers deletion without a visibility setting", async () => {
     renderWithProviders(<StickerAdmin />);
     open();
     fireEvent.click(screen.getByRole("button", { name: "Edit stickers" }));
@@ -147,7 +147,8 @@ describe("Sticker admin dialog HTTP integration", () => {
     fireEvent.change(screen.getByLabelText("Sticker UUID"), { target: { value: STICKER_ID } });
     fireEvent.click(screen.getByRole("button", { name: "Load sticker" }));
     await screen.findByLabelText("Title");
-    expect(screen.getByLabelText("Visibility")).toHaveValue("");
+    expect(screen.queryByLabelText("Visibility")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Delete sticker" })).toBeVisible();
   });
   it("keeps the dialog open during import and ignores its result after account switch", async () => {
     let finish!: (response: Response) => void;

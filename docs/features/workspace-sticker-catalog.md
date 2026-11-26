@@ -1,18 +1,18 @@
 # Workspace sticker catalog integration
 
 Implemented on `feat/workspace-sticker-catalog`.
-Backend reference: `workspace_backend`, `feature/sticker-catalog-api`, `c13e1ba`.
+Backend reference: `workspace_backend`, `feature/stickers-zulip-v5`, `c2a7b16`.
 
 ## Contract sources
 
-The implementation was checked against backend `docs/ru/sticker_catalog_api_tz.md`,
-`workspace/messenger_api/api/openapi_contract.py`, `api/sticker_controllers.py`,
-`sticker_catalog.py`, `dm/stickers.py`, and `workspace/tests/unit/test_sticker_http_contract.py`.
-The backend document's historical changelog says that `blocked` was removed; current
-controller/model/tests retain both `active` and `blocked` for PUT. They are absent
-from public cards. The model's general serializer contains nullable dimensions,
-but the HTTP service's `public_card_dict` omits unknown width/height. The client
-follows the HTTP representation. No other differences from the supplied plan were found.
+The current contract was checked against backend `docs/ru/sticker_catalog_api_tz.md`,
+`workspace/messenger_api/api/routes.py`, `api/sticker_controllers.py`,
+`sticker_catalog.py`, and `dm/stickers.py`. Admin PUT accepts catalog metadata only:
+`title`, `alt_text`, `emoji`, `tags`, and `category`; `active` and `blocked` are no
+longer supported. Admin deletion uses `DELETE /stickers/{uuid}`, requires
+`workspace.sticker_catalog.manage`, and returns `204`. Favorites cascade with the
+sticker row; media cleanup is queued after commit. Existing message references remain
+and resolve as unavailable. Public cards do not expose internal media fields.
 
 ## Behavior
 
@@ -22,7 +22,8 @@ follows the HTTP representation. No other differences from the supplied plan wer
   narrowly scoped to runtime owner/generation and cleared on account/project switches.
   Reopening or switching projects refetches the same server favorites.
 - Pages and media URLs are not stored durably. Lists revalidate on opening and filter
-  changes so cached cards cannot keep hidden/blocked content available indefinitely.
+  changes so deleted stickers stop appearing. Existing references to deleted stickers
+  resolve as unavailable.
   The client does not send If-None-Match; browser HTTP caching may transparently
   revalidate the server's private/no-cache responses. There is no application 304 body parsing.
 - Star/unstar sends `{}` and accepts an empty HTTP 200. Each card's button stays
@@ -44,11 +45,12 @@ follows the HTTP representation. No other differences from the supplied plan wer
   field, a 40 MiB client limit, and browser-generated multipart Content-Type.
   The dialog separates ZIP import from editing. Editing starts with the ordinary
   paginated catalog or a UUID lookup, then shows a preview and loaded metadata.
-  Tags/emoji and visibility are expandable sections. Only edited fields are sent
-  in PUT; missing administrative status is never inferred from the public DTO.
+  Tags/emoji are expandable sections. Only edited metadata fields are sent in PUT.
+  The editor confirms hard deletion through `DELETE /stickers/{uuid}` and refreshes
+  the catalog after the server returns `204`.
   Drafts survive task switches; discarding edits requires confirmation. Pending
   mutations prevent accidental dismissal. Escape closes only the top dialog.
-  An admin update refreshes both picker and mounted history/media resolution.
+  Admin updates and deletions refresh both picker and mounted history/media resolution.
 
 ## Environment and remaining live checks
 

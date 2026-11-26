@@ -1,5 +1,6 @@
 import { isWorkspaceUuid } from "~/shared/lib/workspace-reference-urn.lib";
 import {
+  messengerDeleteJson,
   messengerRequestJsonResult,
   messengerPostJson,
   messengerPutJson,
@@ -41,8 +42,6 @@ export interface StickerUpdateBody {
   emoji?: string[];
   tags?: string[];
   category?: StickerCategory;
-  active?: boolean;
-  blocked?: boolean;
 }
 export interface StickerImportResult {
   created: number;
@@ -139,14 +138,15 @@ export async function updateSticker(
   );
 }
 
+export async function deleteSticker(options: MessengerClientOptions, id: string): Promise<void> {
+  await messengerDeleteJson(stickerPath(id), options);
+}
+
 export function isValidStickerUpdate(body: StickerUpdateBody): boolean {
   const fields = Object.keys(body);
   if (
     fields.length === 0 ||
-    fields.some(
-      (key) =>
-        !["title", "alt_text", "emoji", "tags", "category", "active", "blocked"].includes(key),
-    )
+    fields.some((key) => !["title", "alt_text", "emoji", "tags", "category"].includes(key))
   )
     return false;
   if (
@@ -162,7 +162,6 @@ export function isValidStickerUpdate(body: StickerUpdateBody): boolean {
   )
     return false;
   if (body.tags && !validStickerTags(body.tags)) return false;
-  if (body.active === true && body.blocked === true) return false;
   return true;
 }
 function validStickerTags(tags: string[]): boolean {

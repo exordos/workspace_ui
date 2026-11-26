@@ -10,6 +10,7 @@ import { t } from "~/i18n/i18n";
 import {
   getSticker,
   getStickersPage,
+  deleteSticker,
   updateSticker,
   isValidStickerUpdate,
 } from "~/shared/api/messenger-stickers.api";
@@ -212,6 +213,7 @@ function StickerEditForm({
   const [body, setBody] = useState<StickerUpdateBody>({});
   const [saved, setSaved] = useState(false);
   const [confirmBack, setConfirmBack] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const { run, busy, error } = useStickerAdminRequest();
   const dirty = Object.keys(body).length > 0;
   useEffect(() => {
@@ -243,7 +245,22 @@ function StickerEditForm({
       onBusyChange(false);
     }
   }
-  const visibility = visibilityValue(body);
+  async function remove() {
+    onBusyChange(true);
+    try {
+      const deleted = await run(async (signal) => {
+        await deleteSticker(stickerRequestOptions(signal), current.id);
+        return true;
+      });
+      if (deleted) {
+        onDirtyChange(false);
+        void useStickerStore.getState().refresh();
+        onBack();
+      }
+    } finally {
+      onBusyChange(false);
+    }
+  }
   return (
     <div className="space-y-5">
       <button
@@ -335,34 +352,6 @@ function StickerEditForm({
             </label>
           </div>
         </details>
-        <details className="rounded-lg border border-border-subtle p-4">
-          <summary className="cursor-pointer text-sm font-medium">
-            {t("sticker.visibility")}
-          </summary>
-          <p className="my-3 text-xs text-text-muted">{t("sticker.visibilityHelp")}</p>
-          <select
-            aria-label={t("sticker.visibility")}
-            className={fieldClass}
-            value={visibility}
-            onChange={(e) => {
-              if (!e.target.value) {
-                const rest = { ...body };
-                delete rest.active;
-                delete rest.blocked;
-                setBody(rest);
-              } else
-                change({
-                  active: e.target.value === "visible",
-                  blocked: e.target.value === "blocked",
-                });
-            }}
-          >
-            <option value="">{t("sticker.unchanged")}</option>
-            <option value="visible">{t("sticker.visible")}</option>
-            <option value="hidden">{t("sticker.hidden")}</option>
-            <option value="blocked">{t("sticker.blocked")}</option>
-          </select>
-        </details>
       </fieldset>
       {Object.keys(body).length > 0 && !isValidStickerUpdate(patch) && (
         <p role="alert" className="text-sm">
@@ -371,14 +360,50 @@ function StickerEditForm({
       )}
       {error && <p role="alert">{error}</p>}
       {saved && <p role="status">{t("sticker.saved")}</p>}
-      <div className="sticky bottom-0 flex justify-end border-t border-border-subtle bg-bg-elevated py-3">
-        <DialogPrimaryButton
-          disabled={!isValidStickerUpdate(patch)}
-          isSubmitting={busy}
-          onClick={() => void save()}
-        >
-          {t("sticker.save")}
-        </DialogPrimaryButton>
+      {confirmDelete && (
+        <p role="alert" className="border-danger/30 bg-danger/5 rounded-lg border p-3 text-sm">
+          {t("sticker.deleteHelp")}
+        </p>
+      )}
+      <div className="sticky bottom-0 flex justify-between gap-3 border-t border-border-subtle bg-bg-elevated py-3">
+        {confirmDelete ? (
+          <>
+            <button
+              type="button"
+              disabled={busy}
+              className="rounded-lg border border-border-subtle px-3 py-2 text-sm hover:bg-card-bg disabled:opacity-50"
+              onClick={() => setConfirmDelete(false)}
+            >
+              {t("common.cancel")}
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              className="hover:bg-danger/90 rounded-lg bg-danger px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
+              onClick={() => void remove()}
+            >
+              {busy ? t("sticker.deleting") : t("sticker.deleteConfirm")}
+            </button>
+          </>
+        ) : (
+          <>
+            <button
+              type="button"
+              disabled={busy}
+              className="border-danger/30 hover:bg-danger/10 rounded-lg border px-3 py-2 text-sm text-danger disabled:opacity-50"
+              onClick={() => setConfirmDelete(true)}
+            >
+              {t("sticker.deleteAction")}
+            </button>
+            <DialogPrimaryButton
+              disabled={!isValidStickerUpdate(patch)}
+              isSubmitting={busy}
+              onClick={() => void save()}
+            >
+              {t("sticker.save")}
+            </DialogPrimaryButton>
+          </>
+        )}
       </div>
     </div>
   );
@@ -386,10 +411,4 @@ function StickerEditForm({
 
 function mergeCards(previous: WorkspaceStickerDto[], incoming: WorkspaceStickerDto[]) {
   return [...new Map([...previous, ...incoming].map((card) => [card.id, card])).values()];
-}
-function visibilityValue(body: StickerUpdateBody) {
-  if (body.blocked) return "blocked";
-  if (body.active === false) return "hidden";
-  if (body.active) return "visible";
-  return "";
 }
