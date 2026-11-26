@@ -213,7 +213,7 @@ test.describe("Workspace message quick actions @mock", () => {
   });
 
   test("decrypted messages expose hover reactions and send a genuinely encrypted quick reply", async ({
-    authenticated: page,
+    authenticatedPage: page,
   }) => {
     const draftWrites: unknown[] = [];
     await page.route(/\/messenger\/drafts\/?(?:[^?]*)?(?:\?.*)?$/, async (route) => {
@@ -349,7 +349,7 @@ test.describe("Workspace message quick actions @mock", () => {
   });
 
   test("removing a decrypted message key replaces hover actions with the persistent key request", async ({
-    authenticated: page,
+    authenticatedPage: page,
   }) => {
     await installDecryptedMessage(page);
     await openStreamChatWithComposer(page);

@@ -12,7 +12,7 @@ import {
 } from "./mocks/workspace-default-responses";
 
 for (const entry of ["ordinary header", "encrypted header", "encrypted sidebar"] as const) {
-  test(`${entry} starts the shared Jitsi flow @mock`, async ({ authenticated: page }) => {
+  test(`${entry} starts the shared Jitsi flow @mock`, async ({ authenticatedPage: page }) => {
     const encrypted = entry !== "ordinary header";
     const keyUuid = crypto.randomUUID();
     if (encrypted) {

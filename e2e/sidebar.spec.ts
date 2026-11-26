@@ -47,7 +47,7 @@ async function expectConversationFocusStyle(item: Locator) {
 
 test.describe("Sidebar", () => {
   test("switches chat-card navigation to the latest topic and keeps avatar navigation @mock", async ({
-    authenticated: page,
+    authenticatedPage: page,
   }, testInfo) => {
     const latestTopicUuid = "66666666-6666-4666-8666-666666666666";
     const latestMessageUuid = "77777777-7777-4777-8777-777777777777";
@@ -205,7 +205,7 @@ test.describe("Sidebar", () => {
   });
 
   test("opens a chat or visible topic from search results with the keyboard @mock", async ({
-    authenticated: page,
+    authenticatedPage: page,
   }) => {
     const streamPath = `${e2eOrgBasePath()}/stream/${E2E_STREAM_UUID}`;
     const topicPath = `${streamPath}/topic/${E2E_TOPIC_UUID}`;
@@ -351,7 +351,7 @@ test.describe("Sidebar", () => {
   });
 
   test("finds direct streams by name, username and email while preserving group and topic search", async ({
-    authenticated: page,
+    authenticatedPage: page,
   }) => {
     const userUuid = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
     const directUuid = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";

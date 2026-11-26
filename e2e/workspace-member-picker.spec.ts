@@ -13,7 +13,7 @@ const BOB_UUID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 
 for (const mode of ["create", "add"] as const) {
   test(`${mode} channel members preserves selections across searches and finds hidden usernames`, async ({
-    authenticated: page,
+    authenticatedPage: page,
   }) => {
     const submittedBodies: unknown[] = [];
     const stream = streamsSuccess()[0]!;
