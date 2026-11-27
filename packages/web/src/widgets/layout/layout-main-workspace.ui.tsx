@@ -1,10 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Outlet } from "react-router-dom";
-import { useMessengerStore } from "~/entities/messenger/messenger.model";
+import { SidebarShell } from "~/applications/messenger/features/sidebar/sidebar-shell.ui";
+import { useChatsCatalog } from "~/applications/messenger/model/chats/chats";
 import { useTranslation } from "~/i18n/i18n";
 import { RightDrawer } from "~/widgets/right-panel/right-drawer.ui";
 import { RightPanelShell as RightPanel } from "~/widgets/right-panel/right-panel-shell.ui";
-import { SidebarShell } from "~/widgets/sidebar/sidebar-shell.ui";
 import {
   resolveLayoutChatScreenTitle,
   resolveLayoutAccountScreenTitle,
@@ -63,7 +63,7 @@ export const LayoutMainWorkspace = React.memo(function LayoutMainWorkspace({
     workspaceRightPanelInfo?.kind === "channel" || workspaceRightPanelInfo?.kind === "directPrivate"
       ? workspaceRightPanelInfo.streamUuid
       : null;
-  const showEncryptedMenuRows = useMessengerStore(
+  const showEncryptedMenuRows = useChatsCatalog(
     (state) =>
       rightDrawerMode === "info" &&
       infoStreamUuid != null &&

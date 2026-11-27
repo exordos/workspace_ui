@@ -1,14 +1,14 @@
 import {
   buildMessengerRequestOptions,
   type MessengerRequestOptionsOverrides,
-} from "~/entities/messenger/messenger-request-options.lib";
+} from "~/entities/workspace-auth/workspace-auth-messenger-request-options.lib";
 import {
   captureWorkspaceRuntimeRequestContext,
   isWorkspaceRuntimeRequestInvalidated,
   workspaceRuntimeOwnerKey,
-} from "~/entities/workspace-runtime/workspace-runtime.lib";
-import type { WorkspaceRuntimeContextGetter } from "~/entities/workspace-runtime/workspace-runtime.lib";
-import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
+} from "~/platform/sessions/workspace-runtime.lib";
+import type { WorkspaceRuntimeContextGetter } from "~/platform/sessions/workspace-runtime.lib";
+import type { WorkspaceRuntimeContext } from "~/platform/sessions/workspace-runtime.types";
 import { getExternalChats } from "~/shared/api/messenger-external-chats.api";
 import { isAbortError } from "~/shared/lib/abort-error";
 import { adaptWorkspaceExternalChatDto } from "./external-chat-adapters.lib";

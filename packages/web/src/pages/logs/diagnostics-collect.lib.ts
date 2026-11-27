@@ -6,7 +6,6 @@ import { brand } from "~/shared/lib/brand";
 import type { ConnectionHealthSnapshot } from "~/shared/lib/connection-health";
 import type { ApiLatencySummary } from "~/shared/lib/diagnostics-api-latency.lib";
 import { summarizeApiLogs } from "~/shared/lib/diagnostics-api-latency.lib";
-import type { DiagnosticIdbSnapshot } from "~/shared/lib/diagnostics-idb.lib";
 import type { DiagnosticsMemorySnapshot } from "~/shared/lib/diagnostics-memory.lib";
 import type { DiagnosticRealtimeStats } from "~/shared/lib/diagnostics-realtime.lib";
 import type { DiagnosticVitalEntry } from "~/shared/lib/diagnostics-vitals.lib";
@@ -18,6 +17,7 @@ import { getIdleTimeMs, getLocalPresenceStatus } from "~/shared/lib/presence";
 import { getRuntime, isPwa } from "~/shared/lib/pwa";
 import { isTabVisible } from "~/shared/lib/visibility";
 import { getWebViewPlatform, isWebView } from "~/shared/lib/webview";
+import type { WorkspaceMessengerCacheDiagnostics } from "~/shared/lib/workspace-messenger-cache-db";
 
 export type DiagnosticsOverallStatus = "healthy" | "degraded" | "offline";
 
@@ -104,7 +104,7 @@ export interface DiagnosticsPageSnapshot {
     vitals: readonly DiagnosticVitalEntry[];
     apiLatency: ApiLatencySummary;
   };
-  cache: DiagnosticIdbSnapshot | null;
+  cache: WorkspaceMessengerCacheDiagnostics | null;
   logs: {
     total: number;
     filtered: number;
@@ -123,7 +123,7 @@ export interface DiagnosticsCollectInput {
   rateLimitBlockedUntil: number | null;
   memorySnapshot: DiagnosticsMemorySnapshot | null;
   vitals: readonly DiagnosticVitalEntry[];
-  cache: DiagnosticIdbSnapshot | null;
+  cache: WorkspaceMessengerCacheDiagnostics | null;
   realtimeStats: DiagnosticRealtimeStats;
   sessionRemainingMs: number | null;
   authIdleTimeoutMs: number | null;

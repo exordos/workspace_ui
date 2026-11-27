@@ -1,0 +1,104 @@
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+import type { MessengerSidebarTopicItem } from "~/applications/messenger/model/messenger.types";
+import { t } from "~/i18n/i18n";
+import {
+  ChatPageClosedTopicPrompt,
+  ChatPageStreamTopicPrompt,
+} from "./chat-page-stream-topic-prompt.ui";
+
+function createTopic(
+  overrides: Partial<MessengerSidebarTopicItem> = {},
+): MessengerSidebarTopicItem {
+  return {
+    id: "topic:stream-1:topic-1",
+    streamUuid: "stream-1",
+    topicUuid: "topic-1",
+    title: "Planning",
+    unreadCount: 0,
+    isDefault: false,
+    isDone: false,
+    notificationMode: "default",
+    color: null,
+    route: "/stream/stream-1/topic/topic-1",
+    preview: null,
+    lastMessageCreatedAt: null,
+    updatedAt: "2026-07-22T10:00:00.000Z",
+    ...overrides,
+  };
+}
+
+describe("ChatPageStreamTopicPrompt", () => {
+  it("does not paint its own surface so the chat underlay shows through", () => {
+    render(<ChatPageStreamTopicPrompt topics={[]} onSelectTopic={vi.fn()} />);
+
+    const prompt = screen.getByTestId("stream-topic-prompt");
+    expect(prompt).toHaveClass("border-t", "border-border-subtle");
+    expect(prompt).not.toHaveClass("bg-bg-elevated");
+    expect(prompt).not.toHaveClass("bg-card-bg");
+    expect(prompt).not.toHaveClass("bg-bg");
+  });
+
+  it("omits its top border when the preceding notice owns the separator", () => {
+    render(
+      <ChatPageStreamTopicPrompt topics={[]} onSelectTopic={vi.fn()} topBorderVisible={false} />,
+    );
+
+    expect(screen.getByTestId("stream-topic-prompt")).not.toHaveClass(
+      "border-t",
+      "border-border-subtle",
+    );
+  });
+
+  it("renders a scrollable topic rail and selects a topic", () => {
+    const onSelectTopic = vi.fn();
+    render(
+      <ChatPageStreamTopicPrompt
+        topics={[
+          createTopic(),
+          createTopic({ topicUuid: "topic-2", title: "Releases", unreadCount: 3 }),
+        ]}
+        onSelectTopic={onSelectTopic}
+      />,
+    );
+
+    const rail = screen.getByRole("navigation", { name: t("chat.selectTopicToWrite") });
+    expect(rail).toHaveClass("overflow-x-auto", "scrollbar-none");
+    Object.defineProperties(rail, {
+      clientWidth: { value: 200 },
+      scrollWidth: { value: 400 },
+    });
+    expect(fireEvent.wheel(rail, { deltaY: 100, cancelable: true })).toBe(false);
+    expect(rail.scrollLeft).toBe(100);
+    expect(screen.getByRole("button", { name: /# Releases.*3/ })).toBeInTheDocument();
+    expect(screen.getByText("3")).toHaveClass("bg-sidebar-unread");
+
+    fireEvent.click(screen.getByRole("button", { name: "# Planning" }));
+    expect(onSelectTopic).toHaveBeenCalledWith("topic-1");
+  });
+
+  it("requires a menu choice before reopening a resolved topic", async () => {
+    const onReopenTopic = vi.fn();
+    render(<ChatPageClosedTopicPrompt pending={false} onReopenTopic={onReopenTopic} />);
+
+    const prompt = screen.getByTestId("topic-closed-prompt");
+    expect(prompt).toHaveClass("border-t", "border-border-subtle", "text-base");
+    expect(prompt).toHaveTextContent(
+      `${t("workspaceMessenger.topicResolved")} ${t(
+        "workspaceMessenger.topicResolvedRemoveMark",
+      )} ${t("workspaceMessenger.topicResolvedSendHint")}`,
+    );
+
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: t("workspaceMessenger.topicResolvedRemoveMark") }),
+    );
+    expect(onReopenTopic).not.toHaveBeenCalled();
+
+    fireEvent.click(
+      await screen.findByRole("menuitem", {
+        name: t("workspaceMessenger.topicResolvedRemoveMark"),
+      }),
+    );
+    expect(onReopenTopic).toHaveBeenCalledTimes(1);
+  });
+});

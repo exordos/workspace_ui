@@ -1,14 +1,14 @@
 import { afterEach, describe, expect, it } from "vitest";
+import type {
+  WorkspaceRealtimeEventContext,
+  WorkspaceRealtimeTransportState,
+} from "~/platform/realtime/workspace-realtime-runtime.lib";
 import { normalizeWorkspaceWebSocketFrame } from "~/shared/api/messenger-realtime.api";
 import type {
   WorkspaceMessengerMessageDto,
   WorkspaceMessengerStreamDto,
   WorkspaceMessengerTopicDto,
 } from "~/shared/api/messenger.types";
-import type {
-  WorkspaceRealtimeEventContext,
-  WorkspaceRealtimeTransportState,
-} from "~/shared/lib/workspace-realtime/workspace-realtime-runtime.lib";
 import { createActivityRealtimeApplier } from "./activity-realtime-applier.lib";
 import { useActivityStore, type ActivityUnreadMention } from "./activity.model";
 

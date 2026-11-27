@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
+import { installWorkspaceSessionCleanup } from "~/app/workspace-session/workspace-session-cleanup.lib";
+import { workspaceRuntimeOwnerKey } from "~/platform/sessions/workspace-runtime.lib";
 import type * as WorkspaceIamAuthModule from "~/shared/api/workspace-iam-auth";
 import { WorkspaceIamAuthError } from "~/shared/api/workspace-iam-auth";
 import {
@@ -8,9 +9,10 @@ import {
   ensureFreshWorkspaceSession,
   loginWorkspaceWithPassword,
   prepareWorkspaceProjectLogin,
+  registerWorkspaceSessionCleanup,
   removeWorkspaceSession,
 } from "./workspace-auth.lib";
-import { useWorkspaceAuthStore } from "./workspace-auth.model";
+import { suspendWorkspaceRuntimeForColdStart, useWorkspaceAuthStore } from "./workspace-auth.model";
 import { readWorkspaceOrganizationHistory } from "./workspace-organization-history.lib";
 import type { WorkspaceAuthSession } from "./workspace-auth.model";
 
@@ -60,10 +62,11 @@ vi.mock("~/shared/lib/workspace-user-cache-db", () => ({
   deleteWorkspaceUserOwnerCache,
 }));
 
-vi.mock("~/entities/composer-draft/composer-draft.model", () => ({
-  useWorkspaceComposerDraftStore: {
-    getState: () => ({ disposeOwner: disposeWorkspaceComposerDraftOwner }),
-  },
+vi.mock("~/applications/messenger/model/drafts/composer-draft.model", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("~/applications/messenger/model/drafts/composer-draft.model")
+  >()),
+  disposeWorkspaceDraftOwner: disposeWorkspaceComposerDraftOwner,
 }));
 
 function tokenWithClaims(claims: Record<string, unknown>): string {
@@ -82,7 +85,9 @@ function resetStore(): void {
     sessions: [],
     currentAccountId: null,
     runtimeGeneration: 0,
+    runtimeGenerationSequence: 0,
     sessionSelectionGeneration: 0,
+    runtimeSuspended: false,
   });
 }
 
@@ -209,6 +214,7 @@ describe("workspace-auth flow", () => {
         organization: { uuid: "organization-1", name: "Example organization" },
       },
     ]);
+    return installWorkspaceSessionCleanup();
   });
 
   afterEach(() => {
@@ -510,6 +516,23 @@ describe("workspace-auth flow", () => {
     expect(readWorkspaceOrganizationHistory()).toEqual([]);
   });
 
+  it("discards a pending login that resolves during cold start", async () => {
+    const saved = storeWorkspaceSession(createWorkspaceSession({ accountId: "saved" }));
+    const persistedBeforeReset = localStorage.getItem("workspace-auth-sessions");
+    const profile = createDeferredValue<unknown>();
+    getWorkspaceMessengerAuthProfile.mockReturnValueOnce(profile.promise);
+    const pending = loginAndGetCurrentSession();
+    await vi.waitFor(() => expect(getWorkspaceMessengerAuthProfile).toHaveBeenCalled());
+
+    suspendWorkspaceRuntimeForColdStart();
+    profile.resolve({ uuid: USER_UUID });
+
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    expect(useWorkspaceAuthStore.getState().getCurrentSession()).toEqual(saved);
+    expect(localStorage.getItem("workspace-auth-sessions")).toBe(persistedBeforeReset);
+    expect(readWorkspaceOrganizationHistory()).toEqual([]);
+  });
+
   describe.each(["password", "project"] as const)("pending %s login", (flow) => {
     function startLogin() {
       const params = {
@@ -767,6 +790,38 @@ describe("workspace-auth flow", () => {
     });
   });
 
+  it.each(["success", "failure"] as const)(
+    "discards a pending shared IAM refresh %s during cold start",
+    async (result) => {
+      const session = storeWorkspaceSession(createWorkspaceSession());
+      const persistedBeforeReset = localStorage.getItem("workspace-auth-sessions");
+      const deferred = createDeferredValue<WorkspaceIamAuthModule.WorkspaceIamTokenResponse>();
+      refreshWorkspaceIamToken.mockReturnValueOnce(deferred.promise);
+      const first = ensureFreshWorkspaceSession(session.accountId, { force: true });
+      const second = ensureFreshWorkspaceSession(session.accountId, { force: true });
+
+      suspendWorkspaceRuntimeForColdStart();
+      if (result === "success") {
+        deferred.resolve({
+          accessToken: tokenWithClaims({ user_uuid: USER_UUID, project_id: PROJECT_ID }),
+          refreshToken: "rotated",
+          raw: {},
+        });
+      } else {
+        deferred.reject(new Error("IAM unavailable"));
+      }
+
+      await expect(first).rejects.toMatchObject({ name: "AbortError" });
+      await expect(second).rejects.toMatchObject({ name: "AbortError" });
+      expect(useWorkspaceAuthStore.getState().getCurrentSession()).toEqual(session);
+      expect(localStorage.getItem("workspace-auth-sessions")).toBe(persistedBeforeReset);
+      await expect(
+        ensureFreshWorkspaceSession(session.accountId, { force: true }),
+      ).rejects.toMatchObject({ name: "AbortError" });
+      expect(refreshWorkspaceIamToken).toHaveBeenCalledOnce();
+    },
+  );
+
   it("keeps shared refresh alive when one waiting caller is aborted", async () => {
     const session = await loginAndGetCurrentSession();
     const deferred = createDeferredValue<WorkspaceIamAuthModule.WorkspaceIamTokenResponse>();
@@ -802,6 +857,27 @@ describe("workspace-auth flow", () => {
       accountId: session.accountId,
       refreshToken: "refresh-token-after-abort",
     });
+  });
+
+  it("ignores an old token reply after a replacement login with the same owner key", async () => {
+    const old = storeWorkspaceSession(createWorkspaceSession());
+    const token = createDeferredValue<WorkspaceIamAuthModule.WorkspaceIamTokenResponse>();
+    refreshWorkspaceIamToken.mockReturnValueOnce(token.promise);
+    const refresh = ensureFreshWorkspaceSession(old.accountId, { force: true });
+    const next = storeWorkspaceSession({ ...old, refreshToken: "replacement-refresh" });
+
+    expect(ownerKeyFromSession(next)).toBe(ownerKeyFromSession(old));
+    expect(next.incarnationGeneration).not.toBe(old.incarnationGeneration);
+    const request = refreshWorkspaceIamToken.mock.calls[0]?.[1] as { signal?: AbortSignal };
+    expect(request.signal?.aborted).toBe(true);
+    token.resolve({
+      accessToken: old.accessToken,
+      refreshToken: "late-old-refresh",
+      raw: {},
+    });
+
+    await expect(refresh).rejects.toMatchObject({ name: "AbortError" });
+    expect(useWorkspaceAuthStore.getState().getCurrentSession()).toEqual(next);
   });
 
   it("refreshes only the requested Workspace account id", async () => {
@@ -972,8 +1048,17 @@ describe("workspace-auth flow", () => {
       ensureFreshWorkspaceSession(session.accountId, { force: true }),
     ).rejects.toBeInstanceOf(WorkspaceIamAuthError);
 
-    expect(deleteWorkspaceMessengerOwnerCache).toHaveBeenCalledWith(ownerKeyFromSession(session));
-    expect(deleteWorkspaceUserOwnerCache).toHaveBeenCalledWith(ownerKeyFromSession(session));
+    expect(deleteWorkspaceMessengerOwnerCache).toHaveBeenCalledWith(ownerKeyFromSession(session), {
+      isWriteCurrent: expect.any(Function),
+    });
+    expect(deleteWorkspaceUserOwnerCache).toHaveBeenCalledWith(
+      ownerKeyFromSession(session),
+      expect.any(Function),
+    );
+    expect(deleteWorkspaceExternalAccountOwnerCache).toHaveBeenCalledExactlyOnceWith(
+      ownerKeyFromSession(session),
+      expect.any(Function),
+    );
     expect(useWorkspaceAuthStore.getState().sessions).toEqual([]);
   });
 
@@ -1063,33 +1148,52 @@ describe("workspace-auth flow", () => {
     });
   });
 
-  it("waits for Workspace messenger owner cache cleanup before explicit session removal", async () => {
+  it("revokes a session before waiting for its draft and cache cleanup", async () => {
     const session = await loginAndGetCurrentSession();
     const draftDisposal = createDeferred();
     const cacheCleanup = createDeferred();
+    const usersCacheCleanup = createDeferred();
     disposeWorkspaceComposerDraftOwner.mockReturnValueOnce(draftDisposal.promise);
     deleteWorkspaceMessengerOwnerCache.mockReturnValueOnce(cacheCleanup.promise);
+    deleteWorkspaceUserOwnerCache.mockReturnValueOnce(usersCacheCleanup.promise);
 
     const removal = removeWorkspaceSession(session.accountId);
+    let removalFinished = false;
+    void removal.then(() => {
+      removalFinished = true;
+    });
 
     expect(disposeWorkspaceComposerDraftOwner).toHaveBeenCalledWith(ownerKeyFromSession(session));
     expect(deleteWorkspaceMessengerOwnerCache).not.toHaveBeenCalled();
-    expect(useWorkspaceAuthStore.getState().sessions).toEqual([session]);
+    expect(deleteWorkspaceUserOwnerCache).toHaveBeenCalledWith(
+      ownerKeyFromSession(session),
+      expect.any(Function),
+    );
+    expect(useWorkspaceAuthStore.getState().sessions).toEqual([]);
 
     draftDisposal.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
+    await vi.waitFor(() => expect(deleteWorkspaceMessengerOwnerCache).toHaveBeenCalledOnce());
 
-    expect(deleteWorkspaceMessengerOwnerCache).toHaveBeenCalledWith(ownerKeyFromSession(session));
-    expect(deleteWorkspaceUserOwnerCache).toHaveBeenCalledWith(ownerKeyFromSession(session));
+    expect(deleteWorkspaceMessengerOwnerCache).toHaveBeenCalledWith(ownerKeyFromSession(session), {
+      isWriteCurrent: expect.any(Function),
+    });
+    expect(deleteWorkspaceUserOwnerCache).toHaveBeenCalledWith(
+      ownerKeyFromSession(session),
+      expect.any(Function),
+    );
     expect(
       disposeWorkspaceComposerDraftOwner.mock.invocationCallOrder[0] ?? Number.NEGATIVE_INFINITY,
     ).toBeLessThan(
       deleteWorkspaceMessengerOwnerCache.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY,
     );
-    expect(useWorkspaceAuthStore.getState().sessions).toEqual([session]);
+    expect(useWorkspaceAuthStore.getState().sessions).toEqual([]);
 
     cacheCleanup.resolve();
+    await new Promise((resolve) => {
+      setTimeout(resolve, 0);
+    });
+    expect(removalFinished).toBe(false);
+    usersCacheCleanup.resolve();
     await removal;
 
     expect(useWorkspaceAuthStore.getState().sessions).toEqual([]);
@@ -1105,25 +1209,147 @@ describe("workspace-auth flow", () => {
     expect(useWorkspaceAuthStore.getState().sessions).toEqual([session]);
   });
 
+  it("fences an outstanding cleanup when the durable owner key is reused", async () => {
+    const old = storeWorkspaceSession(createWorkspaceSession());
+    const cacheCleanup = createDeferred();
+    let messengerGuard: (() => boolean) | undefined;
+    deleteWorkspaceMessengerOwnerCache.mockImplementationOnce(
+      (_ownerKey: string, { isWriteCurrent }: { isWriteCurrent: () => boolean }) => {
+        messengerGuard = isWriteCurrent;
+        return cacheCleanup.promise;
+      },
+    );
+    deleteWorkspaceUserOwnerCache.mockReturnValueOnce(cacheCleanup.promise);
+    deleteWorkspaceExternalAccountOwnerCache.mockReturnValueOnce(cacheCleanup.promise);
+    const removal = removeWorkspaceSession(old.accountId);
+    const ownerKey = ownerKeyFromSession(old);
+    await vi.waitFor(() => {
+      expect(messengerGuard).toBeTypeOf("function");
+      expect(deleteWorkspaceMessengerOwnerCache).toHaveBeenCalledExactlyOnceWith(ownerKey, {
+        isWriteCurrent: expect.any(Function),
+      });
+      expect(deleteWorkspaceUserOwnerCache).toHaveBeenCalledExactlyOnceWith(
+        ownerKey,
+        messengerGuard,
+      );
+      expect(deleteWorkspaceExternalAccountOwnerCache).toHaveBeenCalledExactlyOnceWith(
+        ownerKey,
+        messengerGuard,
+      );
+      expect(messengerGuard?.()).toBe(true);
+    });
+
+    const next = storeWorkspaceSession({ ...old, refreshToken: "new-login-refresh" });
+    expect(messengerGuard?.()).toBe(false);
+    cacheCleanup.resolve();
+    await removal;
+    expect(useWorkspaceAuthStore.getState().getCurrentSession()).toEqual(next);
+  });
+
+  it("keeps the first cleanup fenced after the replacing login also ends", async () => {
+    const first = storeWorkspaceSession(createWorkspaceSession());
+    const firstDraftDisposal = createDeferred();
+    const secondDraftDisposal = createDeferred();
+    disposeWorkspaceComposerDraftOwner
+      .mockReturnValueOnce(firstDraftDisposal.promise)
+      .mockReturnValueOnce(secondDraftDisposal.promise);
+
+    const firstRemoval = removeWorkspaceSession(first.accountId);
+    const second = storeWorkspaceSession({ ...first, refreshToken: "new-login-refresh" });
+    expect(ownerKeyFromSession(second)).toBe(ownerKeyFromSession(first));
+    const secondRemoval = removeWorkspaceSession(second.accountId);
+    expect(useWorkspaceAuthStore.getState().sessions).toEqual([]);
+
+    firstDraftDisposal.resolve();
+    await firstRemoval;
+    expect(deleteWorkspaceMessengerOwnerCache).not.toHaveBeenCalled();
+
+    secondDraftDisposal.resolve();
+    await secondRemoval;
+    expect(deleteWorkspaceMessengerOwnerCache).toHaveBeenCalledExactlyOnceWith(
+      ownerKeyFromSession(second),
+      { isWriteCurrent: expect.any(Function) },
+    );
+  });
+
+  it("deletes the removed owner's cache even if a detached draft write fails", async () => {
+    const session = await loginAndGetCurrentSession();
+    disposeWorkspaceComposerDraftOwner.mockRejectedValueOnce(new Error("draft write failed"));
+
+    await removeWorkspaceSession(session.accountId);
+
+    expect(deleteWorkspaceMessengerOwnerCache).toHaveBeenCalledExactlyOnceWith(
+      ownerKeyFromSession(session),
+      { isWriteCurrent: expect.any(Function) },
+    );
+    expect(useWorkspaceAuthStore.getState().sessions).toEqual([]);
+  });
+
+  it("keeps the session closed if the app cleanup callback fails", async () => {
+    const session = await loginAndGetCurrentSession();
+    const cleanup = vi.fn<() => Promise<void>>().mockRejectedValue(new Error("application failed"));
+    const unregister = registerWorkspaceSessionCleanup(cleanup);
+    try {
+      await removeWorkspaceSession(session.accountId);
+
+      const ownerKey = ownerKeyFromSession(session);
+      expect(cleanup).toHaveBeenCalledExactlyOnceWith(ownerKey, expect.any(Function));
+      expect(deleteWorkspaceExternalAccountOwnerCache).not.toHaveBeenCalled();
+      expect(useWorkspaceAuthStore.getState().sessions).toEqual([]);
+    } finally {
+      unregister();
+    }
+  });
+
+  it.each([
+    ["external-account", deleteWorkspaceExternalAccountOwnerCache],
+    ["users", deleteWorkspaceUserOwnerCache],
+  ])(
+    "keeps sibling owner cleanup running when %s cleanup fails",
+    async (_owner, failingCleanup) => {
+      const session = await loginAndGetCurrentSession();
+      const messengerCleanup = createDeferred();
+      deleteWorkspaceMessengerOwnerCache.mockReturnValueOnce(messengerCleanup.promise);
+      failingCleanup.mockRejectedValueOnce(new Error("idb failed"));
+
+      let removalFinished = false;
+      const removal = removeWorkspaceSession(session.accountId).then(() => {
+        removalFinished = true;
+      });
+      await new Promise((resolve) => {
+        setTimeout(resolve, 0);
+      });
+      expect(deleteWorkspaceMessengerOwnerCache).toHaveBeenCalled();
+      expect(removalFinished).toBe(false);
+      messengerCleanup.resolve();
+      await removal;
+
+      const ownerKey = ownerKeyFromSession(session);
+      expect(deleteWorkspaceMessengerOwnerCache).toHaveBeenCalledWith(ownerKey, {
+        isWriteCurrent: expect.any(Function),
+      });
+      expect(deleteWorkspaceUserOwnerCache).toHaveBeenCalledWith(ownerKey, expect.any(Function));
+      expect(deleteWorkspaceExternalAccountOwnerCache).toHaveBeenCalledWith(
+        ownerKey,
+        expect.any(Function),
+      );
+      expect(useWorkspaceAuthStore.getState().sessions).toEqual([]);
+    },
+  );
+
   it("removes an explicit Workspace session even when owner cache cleanup fails", async () => {
     const session = await loginAndGetCurrentSession();
     deleteWorkspaceMessengerOwnerCache.mockRejectedValueOnce(new Error("idb failed"));
 
     await removeWorkspaceSession(session.accountId);
 
-    expect(deleteWorkspaceMessengerOwnerCache).toHaveBeenCalledWith(ownerKeyFromSession(session));
-    expect(deleteWorkspaceUserOwnerCache).toHaveBeenCalledWith(ownerKeyFromSession(session));
-    expect(useWorkspaceAuthStore.getState().sessions).toEqual([]);
-  });
-
-  it("removes an explicit Workspace session even when user cache cleanup fails", async () => {
-    const session = await loginAndGetCurrentSession();
-    deleteWorkspaceUserOwnerCache.mockRejectedValueOnce(new Error("idb failed"));
-
-    await removeWorkspaceSession(session.accountId);
-
-    expect(deleteWorkspaceMessengerOwnerCache).toHaveBeenCalledWith(ownerKeyFromSession(session));
-    expect(deleteWorkspaceUserOwnerCache).toHaveBeenCalledWith(ownerKeyFromSession(session));
+    expect(deleteWorkspaceMessengerOwnerCache).toHaveBeenCalledWith(ownerKeyFromSession(session), {
+      isWriteCurrent: expect.any(Function),
+    });
+    expect(deleteWorkspaceUserOwnerCache).toHaveBeenCalledWith(
+      ownerKeyFromSession(session),
+      expect.any(Function),
+    );
     expect(useWorkspaceAuthStore.getState().sessions).toEqual([]);
   });
 
@@ -1151,8 +1377,13 @@ describe("workspace-auth flow", () => {
       ensureFreshWorkspaceSession(session.accountId, { force: true }),
     ).rejects.toMatchObject({ code: "owner-mismatch" });
 
-    expect(deleteWorkspaceMessengerOwnerCache).toHaveBeenCalledWith(ownerKeyFromSession(session));
-    expect(deleteWorkspaceUserOwnerCache).toHaveBeenCalledWith(ownerKeyFromSession(session));
+    expect(deleteWorkspaceMessengerOwnerCache).toHaveBeenCalledWith(ownerKeyFromSession(session), {
+      isWriteCurrent: expect.any(Function),
+    });
+    expect(deleteWorkspaceUserOwnerCache).toHaveBeenCalledWith(
+      ownerKeyFromSession(session),
+      expect.any(Function),
+    );
     expect(useWorkspaceAuthStore.getState().sessions).toEqual([
       expect.objectContaining({
         accountId: otherSession.accountId,
@@ -1177,8 +1408,13 @@ describe("workspace-auth flow", () => {
       ensureFreshWorkspaceSession(session.accountId, { force: true }),
     ).rejects.toMatchObject({ code: "owner-mismatch" });
 
-    expect(deleteWorkspaceMessengerOwnerCache).toHaveBeenCalledWith(ownerKeyFromSession(session));
-    expect(deleteWorkspaceUserOwnerCache).toHaveBeenCalledWith(ownerKeyFromSession(session));
+    expect(deleteWorkspaceMessengerOwnerCache).toHaveBeenCalledWith(ownerKeyFromSession(session), {
+      isWriteCurrent: expect.any(Function),
+    });
+    expect(deleteWorkspaceUserOwnerCache).toHaveBeenCalledWith(
+      ownerKeyFromSession(session),
+      expect.any(Function),
+    );
     expect(useWorkspaceAuthStore.getState().sessions).toEqual([]);
   });
 
@@ -1201,8 +1437,13 @@ describe("workspace-auth flow", () => {
       ensureFreshWorkspaceSession(session.accountId, { force: true }),
     ).rejects.toBeInstanceOf(WorkspaceIamAuthError);
 
-    expect(deleteWorkspaceMessengerOwnerCache).toHaveBeenCalledWith(ownerKeyFromSession(session));
-    expect(deleteWorkspaceUserOwnerCache).toHaveBeenCalledWith(ownerKeyFromSession(session));
+    expect(deleteWorkspaceMessengerOwnerCache).toHaveBeenCalledWith(ownerKeyFromSession(session), {
+      isWriteCurrent: expect.any(Function),
+    });
+    expect(deleteWorkspaceUserOwnerCache).toHaveBeenCalledWith(
+      ownerKeyFromSession(session),
+      expect.any(Function),
+    );
     expect(useWorkspaceAuthStore.getState().sessions).toEqual([]);
   });
 });

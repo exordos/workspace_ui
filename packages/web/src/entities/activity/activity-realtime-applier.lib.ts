@@ -1,10 +1,10 @@
-import { adaptMessengerMessage } from "~/entities/messenger/messenger-adapters.lib";
-import type { WorkspaceRealtimeEvent } from "~/shared/api/messenger.types";
+import { adaptMessengerMessage } from "~/applications/messenger/model/messages/messenger-message-adapter.lib";
 import type {
   WorkspaceRealtimeEventApplier,
   WorkspaceRealtimeRuntimeContext,
   WorkspaceRealtimeRuntimeOwner,
-} from "~/shared/lib/workspace-realtime/workspace-realtime-runtime.lib";
+} from "~/platform/realtime/workspace-realtime-runtime.lib";
+import type { WorkspaceRealtimeEvent } from "~/shared/api/messenger.types";
 import {
   useActivityStore,
   type ActivityLiveMentionMessageMutation,
@@ -13,6 +13,7 @@ import {
 
 export interface ActivityRealtimeApplierOptions {
   isOwnerCurrent?: (owner: WorkspaceRealtimeRuntimeOwner) => boolean;
+  getViewGeneration?: () => number | undefined; // Activity still follows the selected screen.
 }
 
 function isCurrentActiveOwner(
@@ -143,17 +144,14 @@ export function createActivityRealtimeApplier(
       if (mutation == null && liveMessageMutation == null) return;
 
       const store = useActivityStore.getState();
+      const runtimeGeneration = options.getViewGeneration?.() ?? context.owner.runtimeGeneration;
       if (mutation != null) {
-        store.applyUnreadMentionMutation(
-          context.ownerKey,
-          context.owner.runtimeGeneration,
-          mutation,
-        );
+        store.applyUnreadMentionMutation(context.ownerKey, runtimeGeneration, mutation);
       }
       if (liveMessageMutation != null) {
         store.applyLiveMentionMessageMutation(
           context.ownerKey,
-          context.owner.runtimeGeneration,
+          runtimeGeneration,
           liveMessageMutation,
         );
       }

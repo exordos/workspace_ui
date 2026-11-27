@@ -1,16 +1,15 @@
-import { removeMessengerStreamProjection } from "~/entities/messenger/messenger-stream-projection-cleanup.lib";
 import type {
   WorkspaceRealtimeEventApplier,
   WorkspaceRealtimeEventContext,
   WorkspaceRealtimeRuntimeOwner,
-} from "~/shared/lib/workspace-realtime/workspace-realtime-runtime.lib";
+} from "~/platform/realtime/workspace-realtime-runtime.lib";
 import { adaptWorkspaceExternalChatDto } from "./external-chat-adapters.lib";
 import { useExternalChatsStore } from "./external-chat.model";
 
 export interface ExternalChatRealtimeApplierOptions {
   surface: "active" | "background";
   isOwnerCurrent?: (owner: WorkspaceRealtimeRuntimeOwner) => boolean;
-  removeProjection?: typeof removeMessengerStreamProjection;
+  removeProjection?: (streamUuid: string, context: WorkspaceRealtimeEventContext) => Promise<void>;
 }
 
 function isCurrentContext(
@@ -53,12 +52,9 @@ export function createExternalChatRealtimeApplier(
           store.remove(scopeKey, snapshot.external_account_uuid, snapshot.uuid, snapshot.revision);
         }
         if (snapshot.projection_stream_uuid != null) {
-          void (options.removeProjection ?? removeMessengerStreamProjection)({
-            ownerKey: context.ownerKey,
-            streamUuid: snapshot.projection_stream_uuid,
-            removeActiveProjection: options.surface === "active",
-            isOwnerCurrent: () => isCurrentContext(context, options),
-          }).catch(() => undefined);
+          void options
+            .removeProjection?.(snapshot.projection_stream_uuid, context)
+            .catch(() => undefined);
         }
         return;
       }

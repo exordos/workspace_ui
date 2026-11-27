@@ -23,6 +23,209 @@ describe("MediaViewerOverlay", () => {
     vi.restoreAllMocks();
   });
 
+  it("zooms with controls and resets when changing or reopening media", () => {
+    useMediaViewerStore.getState().open(GALLERY_ITEMS, 0);
+    render(<MediaViewerOverlay />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Zoom in" }));
+    expect(screen.getByRole("button", { name: "Reset zoom" })).toHaveTextContent("125%");
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    expect(screen.getByRole("button", { name: "Reset zoom" })).toHaveTextContent("100%");
+    fireEvent.click(screen.getByRole("button", { name: "Zoom in" }));
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    act(() => useMediaViewerStore.getState().open(GALLERY_ITEMS, 1));
+    expect(screen.getByRole("button", { name: "Reset zoom" })).toHaveTextContent("100%");
+  });
+
+  it("handles trackpad pinch and wheel without allowing browser zoom", () => {
+    useMediaViewerStore.getState().open(GALLERY_ITEMS, 0);
+    const { container } = render(<MediaViewerOverlay />);
+    const image = container.querySelector("img") as HTMLImageElement;
+    const wheel = new WheelEvent("wheel", {
+      bubbles: true,
+      cancelable: true,
+      ctrlKey: true,
+      deltaY: -100,
+    });
+    fireEvent(image, wheel);
+    expect(wheel.defaultPrevented).toBe(true);
+    expect(screen.getByRole("button", { name: "Reset zoom" })).toHaveTextContent("142%");
+    fireEvent.click(screen.getByRole("button", { name: "Reset zoom" }));
+    expect(screen.getByRole("button", { name: "Reset zoom" })).toHaveTextContent("100%");
+  });
+
+  it("drags a zoomed image within the viewport and resets its position", () => {
+    useMediaViewerStore.getState().open(GALLERY_ITEMS, 0);
+    const { container } = render(<MediaViewerOverlay />);
+    const image = container.querySelector("img") as HTMLImageElement;
+    const viewport = image.parentElement as HTMLDivElement;
+    const rect = {
+      left: 0,
+      top: 0,
+      right: 400,
+      bottom: 400,
+      width: 400,
+      height: 400,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    };
+    vi.spyOn(viewport, "getBoundingClientRect").mockReturnValue(rect);
+    vi.spyOn(image, "getBoundingClientRect").mockImplementation(() => {
+      const match = /translate\(([-.\d]+)px, ([-.\d]+)px\) scale\(([-.\d]+)\)/.exec(
+        image.style.transform,
+      );
+      const x = Number(match?.[1] ?? 0);
+      const y = Number(match?.[2] ?? 0);
+      const scale = Number(match?.[3] ?? 1);
+      const size = 400 * scale;
+      return {
+        ...rect,
+        left: 200 + x - size / 2,
+        right: 200 + x + size / 2,
+        top: 200 + y - size / 2,
+        bottom: 200 + y + size / 2,
+        width: size,
+        height: size,
+      };
+    });
+    Object.defineProperty(image, "offsetWidth", { value: 400 });
+    Object.defineProperty(image, "offsetHeight", { value: 400 });
+    image.setPointerCapture = vi.fn();
+    fireEvent.click(screen.getByRole("button", { name: "Zoom in" }));
+    const pointer = (type: string, x: number, y = 100) => {
+      const event = new Event(type, { bubbles: true, cancelable: true });
+      Object.defineProperties(event, {
+        pointerId: { value: 1 },
+        pointerType: { value: "mouse" },
+        button: { value: 0 },
+        clientX: { value: x },
+        clientY: { value: y },
+      });
+      fireEvent(image, event);
+    };
+    pointer("pointerdown", 100);
+    pointer("pointermove", 140);
+    expect(image.style.transform).toContain("translate(40px, 0px)");
+    pointer("pointermove", 1000, 1000);
+    expect(image.style.transform).toContain("translate(250px, 250px)");
+    pointer("pointermove", -1000, -1000);
+    expect(image.style.transform).toContain("translate(-250px, -250px)");
+    pointer("pointerup", -1000, -1000);
+    fireEvent.click(screen.getByRole("button", { name: "Reset zoom" }));
+    expect(image.style.transform).toContain("translate(0px, 0px)");
+  });
+
+  it("keeps a panned image reachable after its viewport and fitted size shrink", () => {
+    let onResize: ResizeObserverCallback | undefined;
+    const disconnect = vi.fn();
+    const observe = vi.fn();
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        constructor(callback: ResizeObserverCallback) {
+          onResize = callback;
+        }
+        observe = observe;
+        disconnect = disconnect;
+      },
+    );
+    useMediaViewerStore.getState().open(GALLERY_ITEMS, 0);
+    const { container, unmount } = render(<MediaViewerOverlay />);
+    const image = container.querySelector("img") as HTMLImageElement;
+    const viewport = image.parentElement as HTMLDivElement;
+    let size = 400;
+    const rect = (left: number, top: number, width: number, height: number) => ({
+      left,
+      top,
+      right: left + width,
+      bottom: top + height,
+      width,
+      height,
+      x: left,
+      y: top,
+      toJSON: () => ({}),
+    });
+    vi.spyOn(viewport, "getBoundingClientRect").mockImplementation(() => rect(0, 0, size, size));
+    vi.spyOn(image, "getBoundingClientRect").mockImplementation(() => {
+      const match = /translate\(([-.\d]+)px, ([-.\d]+)px\) scale\(([-.\d]+)\)/.exec(
+        image.style.transform,
+      );
+      const x = Number(match?.[1] ?? 0);
+      const y = Number(match?.[2] ?? 0);
+      const scaled = size * Number(match?.[3] ?? 1);
+      return rect(size / 2 + x - scaled / 2, size / 2 + y - scaled / 2, scaled, scaled);
+    });
+    Object.defineProperty(image, "offsetWidth", { get: () => size });
+    Object.defineProperty(image, "offsetHeight", { get: () => size });
+    image.setPointerCapture = vi.fn();
+    fireEvent.click(screen.getByRole("button", { name: "Zoom in" }));
+    const pointer = (type: string, x: number) => {
+      const event = new Event(type, { bubbles: true, cancelable: true });
+      Object.defineProperties(event, {
+        pointerId: { value: 1 },
+        pointerType: { value: "mouse" },
+        button: { value: 0 },
+        clientX: { value: x },
+        clientY: { value: x },
+      });
+      fireEvent(image, event);
+    };
+    pointer("pointerdown", 100);
+    pointer("pointermove", 1000);
+    expect(image.style.transform).toContain("translate(250px, 250px)");
+    size = 100;
+    act(() => onResize?.([], {} as ResizeObserver));
+    expect(image.style.transform).toContain("translate(62.5px, 62.5px)");
+    expect(observe).toHaveBeenCalledWith(viewport);
+    expect(observe).toHaveBeenCalledWith(image);
+    unmount();
+    expect(disconnect).toHaveBeenCalled();
+  });
+
+  it("pans with Shift and arrows while plain arrows still navigate the gallery", () => {
+    useMediaViewerStore.getState().open(GALLERY_ITEMS, 0);
+    const { container } = render(<MediaViewerOverlay />);
+    const image = container.querySelector("img") as HTMLImageElement;
+    const viewport = image.parentElement as HTMLDivElement;
+    const rect = {
+      left: 0,
+      top: 0,
+      right: 400,
+      bottom: 400,
+      width: 400,
+      height: 400,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    };
+    vi.spyOn(viewport, "getBoundingClientRect").mockReturnValue(rect);
+    vi.spyOn(image, "getBoundingClientRect").mockReturnValue(rect);
+    Object.defineProperty(image, "offsetWidth", { value: 400 });
+    Object.defineProperty(image, "offsetHeight", { value: 400 });
+    fireEvent.click(screen.getByRole("button", { name: "Zoom in" }));
+    fireEvent.keyDown(document, { key: "ArrowRight", shiftKey: true });
+    expect(image.style.transform).toContain("translate(48px, 0px)");
+    expect(useMediaViewerStore.getState().currentIndex).toBe(0);
+    fireEvent.keyDown(document, { key: "ArrowRight" });
+    expect(useMediaViewerStore.getState().currentIndex).toBe(1);
+    expect(screen.getByRole("button", { name: "Reset zoom" })).toHaveTextContent("100%");
+    fireEvent.keyDown(document, { key: "ArrowLeft" });
+    expect(useMediaViewerStore.getState().currentIndex).toBe(0);
+  });
+
+  it("supports keyboard zoom without interfering with gallery arrows or video", () => {
+    useMediaViewerStore.getState().open([GALLERY_ITEMS[0]!, { url: "blob:video", type: "video" }]);
+    render(<MediaViewerOverlay />);
+    fireEvent.keyDown(document, { key: "+" });
+    expect(screen.getByRole("button", { name: "Reset zoom" })).toHaveTextContent("125%");
+    fireEvent.keyDown(document, { key: "0" });
+    expect(screen.getByRole("button", { name: "Reset zoom" })).toHaveTextContent("100%");
+    fireEvent.keyDown(document, { key: "ArrowRight" });
+    expect(useMediaViewerStore.getState().currentIndex).toBe(1);
+    expect(screen.queryByRole("button", { name: "Zoom in" })).not.toBeInTheDocument();
+  });
+
   it("does not change hook count when opening from closed (no Rules of Hooks violation)", () => {
     const { rerender } = render(<MediaViewerOverlay />);
 

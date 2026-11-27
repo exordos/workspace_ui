@@ -1,10 +1,10 @@
 import React, { useMemo } from "react";
-import { buildMessengerRequestOptions } from "~/entities/messenger/messenger-request-options.lib";
+import { buildMessengerRequestOptions } from "~/applications/messenger/model/messenger-request-options.lib";
 import {
   selectCurrentWorkspaceRuntimeContext,
   useWorkspaceAuthStore,
 } from "~/entities/workspace-auth/workspace-auth.model";
-import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
+import { workspaceRuntimeOwnerKey } from "~/platform/sessions/workspace-runtime.lib";
 import { useWorkspaceAvatarUrl } from "~/shared/lib/workspace-avatar.lib";
 import { Avatar } from "~/shared/ui/avatar";
 import type { AvatarProps } from "~/shared/ui/avatar";

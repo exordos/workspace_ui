@@ -3,6 +3,7 @@ import {
   runWorkspaceMessengerCacheDbUpgrade,
   WORKSPACE_MESSENGER_CACHE_STORES,
 } from "./workspace-messenger-cache-db-upgrade.lib";
+import { reconcileWorkspacePollSnapshot } from "./workspace-messenger-poll-snapshot";
 import type { WorkspaceMessengerTopicSummaryReasoningEffort } from "../api/messenger.types";
 
 const DB_NAME = "workspace-messenger-cache-v1";
@@ -30,6 +31,7 @@ export interface WorkspaceMessengerCacheOwnerMetaRow {
   schemaVersion: number;
   lastHydratedAt: number | null;
   lastCompactedAt: number | null;
+  hasCompleteCatalog?: boolean; // A full streams, topics and folders snapshot reached the cache.
 }
 
 export interface WorkspaceMessengerCachedStream {
@@ -103,7 +105,7 @@ export interface WorkspaceMessengerConversationCacheRow {
 
 export interface WorkspaceMessengerCachedFolder {
   uuid: string;
-  items?: WorkspaceMessengerCachedFolderItem[];
+  items?: readonly WorkspaceMessengerCachedFolderItem[];
   updatedAt?: string | null;
 }
 
@@ -182,13 +184,13 @@ export interface WorkspaceMessengerCachedMessage {
     revision: number;
     isClosed: boolean;
     voterCount: number;
-    questions: {
+    questions: readonly {
       questionUuid: string;
       voterCount: number;
       optionCounts: Record<string, number>;
-      optionVoterPreviews?: Record<string, string[]>;
+      optionVoterPreviews?: Readonly<Record<string, readonly string[]>>;
     }[];
-    myVotes: { questionUuid: string; optionUuids: string[] }[];
+    myVotes: readonly { questionUuid: string; optionUuids: readonly string[] }[];
   } | null;
   read?: boolean;
   createdAt: string;
@@ -247,11 +249,11 @@ export type WorkspaceMessengerCachedMessagePayload =
   | WorkspaceMessengerCachedMarkdownPayload
   | {
       kind: "poll";
-      questions: {
+      questions: readonly {
         uuid: string;
         text: string;
-        options: { uuid: string; text: string }[];
-        correctOptionUuids: string[];
+        options: readonly { uuid: string; text: string }[];
+        correctOptionUuids: readonly string[];
       }[];
       multipleAnswers: boolean;
       isAnonymous: boolean;
@@ -435,6 +437,9 @@ export interface WorkspaceMessengerCatalogCacheWriteSnapshot {
 export interface WorkspaceMessengerCatalogCacheWriteOptions {
   mode?: "partial" | "reconcile";
   reconcileFence?: number;
+  isWriteCurrent?: () => boolean; // Runtime validity at each asynchronous write.
+  completeCatalog?: boolean; // Set only by a complete authoritative snapshot.
+  requireWrite?: boolean; // Background has no in-memory fallback for a full snapshot.
 }
 
 export interface WorkspaceMessengerConversationMessagePage {
@@ -503,6 +508,7 @@ export interface WorkspaceMessengerSearchResultWrite {
 }
 
 let dbPromise: Promise<IDBDatabase> | null = null;
+let preventReopenUntilReload = false;
 let lastCatalogCacheUpdatedAt = 0;
 
 function idbError(reason: unknown): Error {
@@ -615,6 +621,9 @@ function emptyCatalogSnapshot(): WorkspaceMessengerCatalogCacheSnapshot {
 }
 
 export function openWorkspaceMessengerCacheDb(): Promise<IDBDatabase> {
+  if (preventReopenUntilReload) {
+    return Promise.reject(new Error("Workspace cache closed for cold start"));
+  }
   if (!isIndexedDBAvailable()) {
     return Promise.reject(new Error("indexedDB unavailable"));
   }
@@ -637,44 +646,57 @@ export function openWorkspaceMessengerCacheDb(): Promise<IDBDatabase> {
 /** Test helper: resets singleton after database deletion. */
 export function resetWorkspaceMessengerCacheDbSingletonForTests(): void {
   dbPromise = null;
+  preventReopenUntilReload = false;
   lastCatalogCacheUpdatedAt = 0;
 }
 
-/** Drops the Workspace messenger cache database and resets the open-connection singleton. */
-export async function deleteWorkspaceMessengerCacheDatabase(): Promise<void> {
+/** Drops the cache. Cold start also bars old callbacks from opening a new connection. */
+export async function deleteWorkspaceMessengerCacheDatabase(
+  options: { preventReopen?: boolean } = {},
+): Promise<void> {
+  if (options.preventReopen) preventReopenUntilReload = true;
   if (!isIndexedDBAvailable()) return;
 
-  try {
-    if (dbPromise != null) {
-      const db = await dbPromise.catch(() => null);
-      db?.close();
-    }
-  } catch {
-    /* close is best-effort */
-  }
-  dbPromise = null;
+  const existing = dbPromise;
+  const closing = existing?.then((db) => db.close()).catch(() => undefined);
+  // The delete request waits for the connection to close. A blocked open cannot hold reload.
+  if (!options.preventReopen) await closing;
+  if (dbPromise === existing) dbPromise = null;
 
   await new Promise<void>((resolve, reject) => {
     const request = indexedDB.deleteDatabase(DB_NAME);
     let settled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
     const finishOk = (): void => {
       if (settled) return;
       settled = true;
+      clearTimeout(timer);
       resolve();
     };
     request.onsuccess = () => finishOk();
     request.onerror = () => {
       if (settled) return;
       settled = true;
+      clearTimeout(timer);
       reject(idbError(request.error));
     };
-    request.onblocked = () => {
-      globalThis.setTimeout(() => finishOk(), IDB_DELETE_BLOCKED_TIMEOUT_MS);
+    const handleBlocked = () => {
+      timer ??= globalThis.setTimeout(finishOk, IDB_DELETE_BLOCKED_TIMEOUT_MS);
     };
+    request.onblocked = handleBlocked;
+    if (options.preventReopen) handleBlocked();
   });
 }
 
-export async function deleteWorkspaceMessengerOwnerCache(ownerKey: string): Promise<void> {
+// A cursor gap discards derived projections while preserving unsynced local drafts.
+export async function deleteWorkspaceMessengerOwnerCache(
+  ownerKey: string,
+  options: {
+    preserveDrafts?: boolean;
+    isWriteCurrent?: () => boolean;
+    requireWrite?: boolean;
+  } = {},
+): Promise<void> {
   if (!isIndexedDBAvailable()) return;
 
   try {
@@ -695,27 +717,32 @@ export async function deleteWorkspaceMessengerOwnerCache(ownerKey: string): Prom
       stores.ownMessageReactions,
       stores.realtimeCursor,
       stores.searchResults,
-      stores.composerDrafts,
+      ...(options.preserveDrafts === true ? [] : [stores.composerDrafts]),
       stores.readBoundaries,
     ];
-    const idsByStore = await Promise.all(
-      storeNames.map(async (storeName) => {
-        if (storeName === stores.ownerMeta || storeName === stores.realtimeCursor) {
-          return { storeName, ids: [ownerKey] };
-        }
-        return { storeName, ids: await readRowIdsByOwner(db, ownerKey, storeName) };
-      }),
-    );
+    if (options.isWriteCurrent?.() === false) return;
     const transaction = db.transaction(storeNames, "readwrite");
-    for (const { storeName, ids } of idsByStore) {
+    for (const storeName of storeNames) {
       const store = transaction.objectStore(storeName);
-      for (const id of ids) {
-        store.delete(id);
+      if (storeName === stores.ownerMeta || storeName === stores.realtimeCursor) {
+        store.delete(ownerKey);
+        continue;
       }
+      const request = store.index("byOwner").openCursor(IDBKeyRange.only(ownerKey));
+      request.onsuccess = () => {
+        if (options.isWriteCurrent?.() === false) {
+          transaction.abort();
+          return;
+        }
+        const cursor = request.result;
+        if (cursor == null) return;
+        cursor.delete();
+        cursor.continue();
+      };
     }
     await transactionDone(transaction);
-  } catch {
-    return;
+  } catch (error) {
+    if (options.requireWrite) throw error;
   }
 }
 
@@ -747,6 +774,58 @@ async function readOwnerMeta(
   return (
     ((await requestToPromise(request)) as WorkspaceMessengerCacheOwnerMetaRow | undefined) ?? null
   );
+}
+
+// Owner-local cache counts and hydration metadata for the diagnostics dashboard.
+export interface WorkspaceMessengerCacheDiagnostics {
+  ownerKey: string;
+  hasOwnerMeta: boolean;
+  ownerMetaLastHydratedAt: number | null;
+  streamsCount: number;
+  conversationsCount: number;
+  messagesCount: number;
+  foldersCount: number | null;
+}
+
+// Reads only owner metadata and row counts. Cache access may be unavailable.
+export async function readWorkspaceMessengerCacheDiagnostics(
+  ownerKey: string,
+): Promise<WorkspaceMessengerCacheDiagnostics | null> {
+  if (!ownerKey) return null;
+  try {
+    const db = await openWorkspaceMessengerCacheDb();
+    const countRows = (storeName: string) =>
+      requestToPromise(
+        db
+          .transaction(storeName, "readonly")
+          .objectStore(storeName)
+          .index("byOwner")
+          .count(ownerKey),
+      );
+    const [ownerMeta, streamsCount, conversationsCount, messagesCount, foldersCount] =
+      await Promise.all([
+        readOwnerMeta(db, ownerKey),
+        countRows(WORKSPACE_MESSENGER_CACHE_STORES.streams),
+        countRows(WORKSPACE_MESSENGER_CACHE_STORES.conversations),
+        countRows(WORKSPACE_MESSENGER_CACHE_STORES.messages),
+        countRows(WORKSPACE_MESSENGER_CACHE_STORES.folders),
+      ]);
+    const lastHydratedAt = ownerMeta?.lastHydratedAt;
+    return {
+      ownerKey,
+      hasOwnerMeta: ownerMeta != null,
+      ownerMetaLastHydratedAt:
+        typeof lastHydratedAt === "number" && Number.isFinite(lastHydratedAt)
+          ? lastHydratedAt
+          : null,
+      streamsCount,
+      conversationsCount,
+      messagesCount,
+      foldersCount,
+    };
+  } catch {
+    return null;
+  }
 }
 
 async function readRealtimeCursor(
@@ -886,31 +965,16 @@ function toMessageRow(
   message: WorkspaceMessengerCachedMessage,
   previous?: WorkspaceMessengerMessageCacheRow,
 ): WorkspaceMessengerMessageCacheRow {
-  let snapshot = message;
   const old = previous?.message;
-  if (
-    old?.payload.kind === "poll" &&
-    message.payload.kind === "poll" &&
-    old.pollState &&
-    message.pollState
-  ) {
-    if (old.pollState.revision > message.pollState.revision) {
-      snapshot = { ...message, payload: old.payload, pollState: old.pollState };
-    } else if (
-      old.pollState.revision === message.pollState.revision &&
-      old.pollState.isClosed &&
-      !message.pollState.isClosed
-    ) {
-      snapshot = { ...message, pollState: { ...message.pollState, isClosed: true } };
-    }
-  }
+  const poll = old == null ? null : reconcileWorkspacePollSnapshot(old, message);
+  const snapshot = poll == null ? message : { ...message, ...poll };
   return {
     id: cacheRowId(ownerKey, message.uuid),
     ownerKey,
     messageUuid: message.uuid,
     message: snapshot,
-    createdAt: message.createdAt,
-    updatedAt: updatedAtOrNow(message.updatedAt),
+    createdAt: snapshot.createdAt,
+    updatedAt: updatedAtOrNow(snapshot.updatedAt),
     version: (previous?.version ?? 0) + 1,
   };
 }
@@ -1164,33 +1228,33 @@ function updateCatalogRowsAtomically<TRow extends { id: string }>(
   return transactionDone(transaction);
 }
 
-function updateRowById<TRow>(
+async function updateRowById<TRow>(
   store: IDBObjectStore,
   id: string,
   update: (row: TRow) => TRow | null,
-): void {
-  const request = store.get(id);
-  request.onsuccess = () => {
-    const row = request.result as TRow | undefined;
-    if (row == null) return;
-    const nextRow = update(row);
-    if (nextRow != null) store.put(nextRow);
-  };
+): Promise<void> {
+  const row = await requestToPromise<TRow | undefined>(store.get(id));
+  if (row == null) return;
+  const nextRow = update(row);
+  if (nextRow != null) store.put(nextRow);
 }
 
 function updateRowsByOwner<TRow>(
   store: IDBObjectStore,
   ownerKey: string,
   update: (row: TRow) => TRow | null,
-): void {
-  const request = store.index("byOwner").openCursor(IDBKeyRange.only(ownerKey));
-  request.onsuccess = () => {
-    const cursor = request.result;
-    if (cursor == null) return;
-    const nextRow = update(cursor.value as TRow);
-    if (nextRow != null) cursor.update(nextRow);
-    cursor.continue();
-  };
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const request = store.index("byOwner").openCursor(IDBKeyRange.only(ownerKey));
+    request.onerror = () => reject(idbError(request.error));
+    request.onsuccess = () => {
+      const cursor = request.result;
+      if (cursor == null) return resolve();
+      const nextRow = update(cursor.value as TRow);
+      if (nextRow != null) cursor.update(nextRow);
+      cursor.continue();
+    };
+  });
 }
 
 async function deleteMissingCatalogRows(
@@ -1199,6 +1263,7 @@ async function deleteMissingCatalogRows(
   storeName: string,
   incomingIds: ReadonlySet<string>,
   reconcileFence: number,
+  isWriteCurrent?: () => boolean,
 ): Promise<void> {
   const transaction = db.transaction(storeName, "readwrite");
   const index = transaction.objectStore(storeName).index("byOwner");
@@ -1206,7 +1271,7 @@ async function deleteMissingCatalogRows(
 
   request.onsuccess = () => {
     const cursor = request.result;
-    if (cursor == null) return;
+    if (cursor == null || isWriteCurrent?.() === false) return;
 
     const row = cursor.value as { id: string; cacheUpdatedAt?: number };
     const cacheUpdatedAt = row.cacheUpdatedAt ?? 0;
@@ -1271,6 +1336,7 @@ async function upsertTopics(
     stores.topics,
     rows,
     (store, previous, row) => {
+      if (options.shouldApply?.() === false) return;
       if (!shouldUpsertCatalogRow(previous, row.topic.updatedAt, options)) return;
       store.put({
         ...row,
@@ -1376,6 +1442,7 @@ async function upsertUsers(
     stores.users,
     rows,
     (store, previous, row) => {
+      if (options.shouldApply?.() === false) return;
       if (shouldUpsertCatalogRow(previous, row.user.updatedAt, options)) store.put(row);
     },
   );
@@ -1399,6 +1466,7 @@ async function upsertStreamBindings(
     stores.streamBindings,
     rows,
     (store, previous, row) => {
+      if (options.shouldApply?.() === false) return;
       if (shouldUpsertCatalogRow(previous, row.streamBinding.updatedAt, options)) store.put(row);
     },
   );
@@ -1419,10 +1487,13 @@ async function writeCatalogCollection<TItem>(
   options: WorkspaceMessengerCatalogCacheWriteOptions,
   reconcileFence: number,
 ): Promise<void> {
-  if (items === undefined) return;
+  if (items === undefined || options.isWriteCurrent?.() === false) return;
 
-  await upsert(db, ownerKey, items, options.mode === "reconcile" ? { reconcileFence } : undefined);
-  if (options.mode !== "reconcile") return;
+  await upsert(db, ownerKey, items, {
+    ...(options.mode === "reconcile" ? { reconcileFence } : {}),
+    shouldApply: options.isWriteCurrent,
+  });
+  if (options.mode !== "reconcile" || options.isWriteCurrent?.() === false) return;
 
   await deleteMissingCatalogRows(
     db,
@@ -1430,6 +1501,7 @@ async function writeCatalogCollection<TItem>(
     storeName,
     new Set(items.map((item) => getCacheId(ownerKey, item))),
     reconcileFence,
+    options.isWriteCurrent,
   );
 }
 
@@ -1482,25 +1554,19 @@ export async function writeMessengerCatalogCache(
   snapshot: WorkspaceMessengerCatalogCacheWriteSnapshot,
   options: WorkspaceMessengerCatalogCacheWriteOptions = {},
 ): Promise<void> {
-  if (!isIndexedDBAvailable()) return;
+  if (!isIndexedDBAvailable()) {
+    if (options.requireWrite) throw new Error("Messenger catalog cache is unavailable");
+    return;
+  }
 
   try {
     const db = await openWorkspaceMessengerCacheDb();
+    if (options.isWriteCurrent?.() === false) return;
     const stores = WORKSPACE_MESSENGER_CACHE_STORES;
     const reconcileFence =
       options.mode === "reconcile"
         ? (options.reconcileFence ?? createMessengerCatalogCacheReconcileFence())
         : 0;
-    const transaction = db.transaction(stores.ownerMeta, "readwrite");
-
-    transaction.objectStore(stores.ownerMeta).put({
-      ownerKey,
-      schemaVersion: DB_VERSION,
-      lastHydratedAt: snapshot.lastHydratedAt ?? Date.now(),
-      lastCompactedAt: null,
-    } satisfies WorkspaceMessengerCacheOwnerMetaRow);
-    await transactionDone(transaction);
-
     await Promise.all([
       writeCatalogCollection(
         db,
@@ -1563,8 +1629,30 @@ export async function writeMessengerCatalogCache(
         reconcileFence,
       ),
     ]);
-  } catch {
-    return;
+    if (options.isWriteCurrent?.() === false) return;
+    const transaction = db.transaction(stores.ownerMeta, "readwrite");
+    const meta = transaction.objectStore(stores.ownerMeta);
+    const previous = await requestToPromise<WorkspaceMessengerCacheOwnerMetaRow | undefined>(
+      meta.get(ownerKey),
+    );
+    const completeCatalog =
+      options.completeCatalog === true &&
+      snapshot.streams !== undefined &&
+      snapshot.topics !== undefined &&
+      snapshot.folders !== undefined &&
+      snapshot.folderItems !== undefined;
+    if (options.isWriteCurrent?.() !== false) {
+      meta.put({
+        ownerKey,
+        schemaVersion: DB_VERSION,
+        lastHydratedAt: snapshot.lastHydratedAt ?? Date.now(),
+        lastCompactedAt: null,
+        ...(completeCatalog || previous?.hasCompleteCatalog ? { hasCompleteCatalog: true } : {}),
+      } satisfies WorkspaceMessengerCacheOwnerMetaRow);
+    }
+    await transactionDone(transaction);
+  } catch (error) {
+    if (options.requireWrite) throw error;
   }
 }
 
@@ -1587,12 +1675,14 @@ export async function upsertMessengerStreamsCache(
 export async function upsertMessengerTopicsCache(
   ownerKey: string,
   topics: readonly WorkspaceMessengerCachedTopic[],
+  options: { shouldApply?: () => boolean } = {},
 ): Promise<void> {
   if (!isIndexedDBAvailable()) return;
 
   try {
     const db = await openWorkspaceMessengerCacheDb();
-    await upsertTopics(db, ownerKey, topics);
+    if (options.shouldApply?.() === false) return;
+    await upsertTopics(db, ownerKey, topics, options);
   } catch (error) {
     logCacheWriteFailure("upsert-topics", error);
   }
@@ -1651,12 +1741,14 @@ export async function upsertMessengerUsersCache(
 export async function upsertMessengerStreamBindingsCache(
   ownerKey: string,
   streamBindings: readonly WorkspaceMessengerCachedStreamBinding[],
+  options: { shouldApply?: () => boolean } = {},
 ): Promise<void> {
   if (!isIndexedDBAvailable()) return;
 
   try {
     const db = await openWorkspaceMessengerCacheDb();
-    await upsertStreamBindings(db, ownerKey, streamBindings);
+    if (options.shouldApply?.() === false) return;
+    await upsertStreamBindings(db, ownerKey, streamBindings, options);
   } catch {
     return;
   }
@@ -1666,19 +1758,17 @@ function folderWithRemovedItems(
   folder: WorkspaceMessengerCachedFolder,
   shouldRemove: (item: WorkspaceMessengerCachedFolderItem) => boolean,
 ): WorkspaceMessengerCachedFolder {
-  const folderWithItems = folder as WorkspaceMessengerCachedFolder & {
-    items?: WorkspaceMessengerCachedFolderItem[];
-  };
-  if (folderWithItems.items == null) return folder;
+  if (folder.items == null) return folder;
   return {
-    ...folderWithItems,
-    items: folderWithItems.items.filter((item) => !shouldRemove(item)),
+    ...folder,
+    items: folder.items.filter((item) => !shouldRemove(item)),
   };
 }
 
 export async function deleteMessengerStreamCatalogCache(
   ownerKey: string,
   streamUuid: string,
+  isWriteCurrent?: () => boolean,
 ): Promise<void> {
   if (!isIndexedDBAvailable()) return;
 
@@ -1700,6 +1790,7 @@ export async function deleteMessengerStreamCatalogCache(
     const folderItemIdsToDelete = folderItemRows
       .filter((row) => row.streamUuid === streamUuid)
       .map((row) => row.id);
+    if (isWriteCurrent?.() === false) return;
     const cacheUpdatedAt = nextCatalogCacheUpdatedAt();
     const transaction = db.transaction(
       [
@@ -1752,11 +1843,13 @@ export async function deleteMessengerStreamCatalogCache(
 export async function deleteMessengerStreamBindingCatalogCache(
   ownerKey: string,
   streamBindingUuid: string,
+  isWriteCurrent?: () => boolean,
 ): Promise<void> {
   if (!isIndexedDBAvailable()) return;
 
   try {
     const db = await openWorkspaceMessengerCacheDb();
+    if (isWriteCurrent?.() === false) return;
     const stores = WORKSPACE_MESSENGER_CACHE_STORES;
     const transaction = db.transaction(stores.streamBindings, "readwrite");
     transaction.objectStore(stores.streamBindings).delete(cacheRowId(ownerKey, streamBindingUuid));
@@ -1770,11 +1863,13 @@ export async function deleteMessengerTopicCatalogCache(
   ownerKey: string,
   topicUuid: string,
   streamUuid: string,
+  isWriteCurrent?: () => boolean,
 ): Promise<void> {
   if (!isIndexedDBAvailable()) return;
 
   try {
     const db = await openWorkspaceMessengerCacheDb();
+    if (isWriteCurrent?.() === false) return;
     const stores = WORKSPACE_MESSENGER_CACHE_STORES;
     const conversationId = topicConversationId(streamUuid, topicUuid);
     const transaction = db.transaction([stores.topics, stores.conversations], "readwrite");
@@ -1789,6 +1884,7 @@ export async function deleteMessengerTopicCatalogCache(
 export async function deleteMessengerFolderCatalogCache(
   ownerKey: string,
   folderUuid: string,
+  isWriteCurrent?: () => boolean,
 ): Promise<void> {
   if (!isIndexedDBAvailable()) return;
 
@@ -1800,6 +1896,7 @@ export async function deleteMessengerFolderCatalogCache(
       ownerKey,
       stores.folderItems,
     );
+    if (isWriteCurrent?.() === false) return;
     const transaction = db.transaction([stores.folders, stores.folderItems], "readwrite");
     transaction.objectStore(stores.folders).delete(cacheRowId(ownerKey, folderUuid));
     const folderItemStore = transaction.objectStore(stores.folderItems);
@@ -1817,6 +1914,7 @@ export async function deleteMessengerFolderCatalogCache(
 export async function deleteMessengerFolderItemCatalogCache(
   ownerKey: string,
   folderItemUuid: string,
+  isWriteCurrent?: () => boolean,
 ): Promise<void> {
   if (!isIndexedDBAvailable()) return;
 
@@ -1828,6 +1926,7 @@ export async function deleteMessengerFolderItemCatalogCache(
       ownerKey,
       stores.folders,
     );
+    if (isWriteCurrent?.() === false) return;
     const cacheUpdatedAt = nextCatalogCacheUpdatedAt();
     const transaction = db.transaction([stores.folderItems, stores.folders], "readwrite");
     transaction.objectStore(stores.folderItems).delete(cacheRowId(ownerKey, folderItemUuid));
@@ -1872,6 +1971,7 @@ export async function deleteCachedTopicMessageBuckets(
   ownerKey: string,
   streamUuid: string,
   topicUuid: string,
+  isWriteCurrent?: () => boolean,
 ): Promise<void> {
   if (!isIndexedDBAvailable()) return;
 
@@ -1902,6 +2002,7 @@ export async function deleteCachedTopicMessageBuckets(
       }
     }
     const stores = WORKSPACE_MESSENGER_CACHE_STORES;
+    if (isWriteCurrent?.() === false) return;
     if (bucketIdsToDelete.size === 0) {
       const transaction = db.transaction(stores.messageWindows, "readwrite");
       transaction
@@ -1927,6 +2028,7 @@ export async function deleteCachedTopicMessageBuckets(
     const remainingStreamBuckets = streamBuckets.filter(
       (bucket) => !bucketIdsToDelete.has(bucket.id),
     );
+    if (isWriteCurrent?.() === false) return;
     const transaction = db.transaction(
       [stores.messages, stores.messageBuckets, stores.messageWindows],
       "readwrite",
@@ -1950,7 +2052,8 @@ export async function deleteCachedTopicMessageBuckets(
       ),
     );
     await transactionDone(transaction);
-    await deleteOwnMessageReactionsForMessages(ownerKey, messageUuidsToDelete);
+    if (isWriteCurrent?.() !== false)
+      await deleteOwnMessageReactionsForMessages(ownerKey, messageUuidsToDelete, isWriteCurrent);
   } catch {
     return;
   }
@@ -1959,6 +2062,7 @@ export async function deleteCachedTopicMessageBuckets(
 export async function deleteCachedStreamMessageBuckets(
   ownerKey: string,
   streamUuid: string,
+  isWriteCurrent?: () => boolean,
 ): Promise<void> {
   if (!isIndexedDBAvailable()) return;
 
@@ -1991,6 +2095,7 @@ export async function deleteCachedStreamMessageBuckets(
       }
     }
 
+    if (isWriteCurrent?.() === false) return;
     const transaction = db.transaction(
       [stores.messages, stores.messageBuckets, stores.messageWindows],
       "readwrite",
@@ -2008,7 +2113,7 @@ export async function deleteCachedStreamMessageBuckets(
       windowStore.delete(cacheRowId(ownerKey, conversationId));
     }
     await transactionDone(transaction);
-    await deleteOwnMessageReactionsForMessages(ownerKey, [...messageUuidsToDelete]);
+    await deleteOwnMessageReactionsForMessages(ownerKey, [...messageUuidsToDelete], isWriteCurrent);
   } catch {
     return;
   }
@@ -2087,6 +2192,15 @@ export async function repairMessengerMessagePointerCache(
   ownerKey: string,
   message: WorkspaceMessengerCachedMessage,
   targets: WorkspaceMessengerMessagePointerCacheTargets,
+  {
+    isWriteCurrent = () => true,
+    requireExistingBody = false,
+    replacingDeletedUuid,
+  }: {
+    isWriteCurrent?: () => boolean;
+    requireExistingBody?: boolean;
+    replacingDeletedUuid?: string;
+  } = {},
 ): Promise<void> {
   const conversationIds = [...new Set(targets.conversationIds ?? [])];
   if (
@@ -2098,68 +2212,93 @@ export async function repairMessengerMessagePointerCache(
 
   try {
     const db = await openWorkspaceMessengerCacheDb();
+    if (!isWriteCurrent()) return;
     const stores = WORKSPACE_MESSENGER_CACHE_STORES;
     const transaction = db.transaction(
       [stores.messages, stores.streams, stores.topics, stores.conversations],
       "readwrite",
     );
     const messageStore = transaction.objectStore(stores.messages);
-    const messageRequest = messageStore.get(cacheRowId(ownerKey, message.uuid));
-    messageRequest.onsuccess = () => {
-      const previous = messageRequest.result as WorkspaceMessengerMessageCacheRow | undefined;
-      if (shouldReplaceCachedMessage(previous, message)) {
-        messageStore.put(toMessageRow(ownerKey, message, previous));
-      }
-    };
+    const previous = await requestToPromise<WorkspaceMessengerMessageCacheRow | undefined>(
+      messageStore.get(cacheRowId(ownerKey, message.uuid)),
+    );
+    // A cached fallback is no longer a valid replacement after deletion or a move.
+    if (
+      requireExistingBody &&
+      (previous?.message.streamUuid !== message.streamUuid ||
+        previous.message.topicUuid !== message.topicUuid)
+    ) {
+      await transactionDone(transaction);
+      return;
+    }
+    if (!requireExistingBody && shouldReplaceCachedMessage(previous, message)) {
+      messageStore.put(toMessageRow(ownerKey, message, previous));
+    }
 
     const cacheUpdatedAt = nextCatalogCacheUpdatedAt();
+    // Realtime can receive its replacement while deletion of the previous pointer is pending.
+    const shouldRepair = (
+      row: { updatedAt: string; lastMessageCreatedAt?: string | null },
+      pointer: string | null | undefined,
+    ) =>
+      (replacingDeletedUuid != null && pointer === replacingDeletedUuid) ||
+      shouldRepairMessagePointer(row, pointer, message);
+    const pointerWrites: Promise<void>[] = [];
     if (targets.stream === true) {
-      updateRowById<WorkspaceMessengerStreamCacheRow>(
-        transaction.objectStore(stores.streams),
-        cacheRowId(ownerKey, message.streamUuid),
-        (row) =>
-          shouldRepairMessagePointer(row, row.stream.lastMessageUuid, message)
-            ? {
-                ...row,
-                stream: { ...row.stream, lastMessageUuid: message.uuid },
-                lastMessageCreatedAt: message.createdAt,
-                cacheUpdatedAt,
-              }
-            : null,
+      pointerWrites.push(
+        updateRowById<WorkspaceMessengerStreamCacheRow>(
+          transaction.objectStore(stores.streams),
+          cacheRowId(ownerKey, message.streamUuid),
+          (row) =>
+            shouldRepair(row, row.stream.lastMessageUuid)
+              ? {
+                  ...row,
+                  stream: { ...row.stream, lastMessageUuid: message.uuid },
+                  lastMessageCreatedAt: message.createdAt,
+                  cacheUpdatedAt,
+                }
+              : null,
+        ),
       );
     }
     if (targets.topic === true) {
-      updateRowById<WorkspaceMessengerTopicCacheRow>(
-        transaction.objectStore(stores.topics),
-        cacheRowId(ownerKey, message.topicUuid),
-        (row) =>
-          shouldRepairMessagePointer(row, row.topic.lastMessageUuid, message)
-            ? {
-                ...row,
-                topic: { ...row.topic, lastMessageUuid: message.uuid },
-                lastMessageCreatedAt: message.createdAt,
-                cacheUpdatedAt,
-              }
-            : null,
+      pointerWrites.push(
+        updateRowById<WorkspaceMessengerTopicCacheRow>(
+          transaction.objectStore(stores.topics),
+          cacheRowId(ownerKey, message.topicUuid),
+          (row) =>
+            shouldRepair(row, row.topic.lastMessageUuid)
+              ? {
+                  ...row,
+                  topic: { ...row.topic, lastMessageUuid: message.uuid },
+                  lastMessageCreatedAt: message.createdAt,
+                  cacheUpdatedAt,
+                }
+              : null,
+        ),
       );
     }
     const conversationStore = transaction.objectStore(stores.conversations);
     for (const conversationId of conversationIds) {
-      updateRowById<WorkspaceMessengerConversationCacheRow>(
-        conversationStore,
-        cacheRowId(ownerKey, conversationId),
-        (row) =>
-          shouldRepairMessagePointer(row, row.lastMessageUuid, message)
-            ? {
-                ...row,
-                conversation: { ...row.conversation, lastMessageUuid: message.uuid },
-                lastMessageUuid: message.uuid,
-                lastMessageCreatedAt: message.createdAt,
-                cacheUpdatedAt,
-              }
-            : null,
+      pointerWrites.push(
+        updateRowById<WorkspaceMessengerConversationCacheRow>(
+          conversationStore,
+          cacheRowId(ownerKey, conversationId),
+          (row) =>
+            shouldRepair(row, row.lastMessageUuid)
+              ? {
+                  ...row,
+                  conversation: { ...row.conversation, lastMessageUuid: message.uuid },
+                  lastMessageUuid: message.uuid,
+                  lastMessageCreatedAt: message.createdAt,
+                  cacheUpdatedAt,
+                }
+              : null,
+        ),
       );
     }
+    await Promise.all(pointerWrites);
+    if (!isWriteCurrent()) transaction.abort();
     await transactionDone(transaction);
   } catch {
     return;
@@ -2169,11 +2308,13 @@ export async function repairMessengerMessagePointerCache(
 export async function clearMessengerMessagePointerCache(
   ownerKey: string,
   messageUuid: string,
+  isWriteCurrent: () => boolean = () => true,
 ): Promise<void> {
   if (!isIndexedDBAvailable()) return;
 
   try {
     const db = await openWorkspaceMessengerCacheDb();
+    if (!isWriteCurrent()) return;
     const stores = WORKSPACE_MESSENGER_CACHE_STORES;
     const transaction = db.transaction(
       [stores.streams, stores.topics, stores.conversations],
@@ -2181,27 +2322,35 @@ export async function clearMessengerMessagePointerCache(
     );
     const cacheUpdatedAt = nextCatalogCacheUpdatedAt();
     const streamStore = transaction.objectStore(stores.streams);
-    updateRowsByOwner<WorkspaceMessengerStreamCacheRow>(streamStore, ownerKey, (row) => {
-      if (row.stream.lastMessageUuid !== messageUuid) return null;
-      return {
-        ...row,
-        stream: { ...row.stream, lastMessageUuid: null },
-        lastMessageCreatedAt: null,
-        cacheUpdatedAt,
-      };
-    });
+    const streamWrite = updateRowsByOwner<WorkspaceMessengerStreamCacheRow>(
+      streamStore,
+      ownerKey,
+      (row) => {
+        if (row.stream.lastMessageUuid !== messageUuid) return null;
+        return {
+          ...row,
+          stream: { ...row.stream, lastMessageUuid: null },
+          lastMessageCreatedAt: null,
+          cacheUpdatedAt,
+        };
+      },
+    );
     const topicStore = transaction.objectStore(stores.topics);
-    updateRowsByOwner<WorkspaceMessengerTopicCacheRow>(topicStore, ownerKey, (row) => {
-      if (row.topic.lastMessageUuid !== messageUuid) return null;
-      return {
-        ...row,
-        topic: { ...row.topic, lastMessageUuid: null },
-        lastMessageCreatedAt: null,
-        cacheUpdatedAt,
-      };
-    });
+    const topicWrite = updateRowsByOwner<WorkspaceMessengerTopicCacheRow>(
+      topicStore,
+      ownerKey,
+      (row) => {
+        if (row.topic.lastMessageUuid !== messageUuid) return null;
+        return {
+          ...row,
+          topic: { ...row.topic, lastMessageUuid: null },
+          lastMessageCreatedAt: null,
+          cacheUpdatedAt,
+        };
+      },
+    );
     const conversationStore = transaction.objectStore(stores.conversations);
-    updateRowsByOwner<WorkspaceMessengerConversationCacheRow>(
+    const conversationWrite = updateRowsByOwner<WorkspaceMessengerConversationCacheRow>(
       conversationStore,
       ownerKey,
       (row) => {
@@ -2220,6 +2369,8 @@ export async function clearMessengerMessagePointerCache(
         };
       },
     );
+    await Promise.all([streamWrite, topicWrite, conversationWrite]);
+    if (!isWriteCurrent()) transaction.abort();
     await transactionDone(transaction);
   } catch {
     return;
@@ -2445,6 +2596,7 @@ export async function deleteOwnMessageReactionsForMessage(
 export async function deleteOwnMessageReactionsForMessages(
   ownerKey: string,
   messageUuids: readonly string[],
+  isWriteCurrent?: () => boolean,
 ): Promise<void> {
   if (!isIndexedDBAvailable() || messageUuids.length === 0) return;
 
@@ -2456,7 +2608,7 @@ export async function deleteOwnMessageReactionsForMessages(
       ),
     );
     const ids = rowsByMessage.flat().map((row) => row.id);
-    if (ids.length === 0) return;
+    if (ids.length === 0 || isWriteCurrent?.() === false) return;
 
     const transaction = db.transaction(
       WORKSPACE_MESSENGER_CACHE_STORES.ownMessageReactions,
@@ -2475,14 +2627,17 @@ export async function deleteOwnMessageReactionsForMessages(
 export async function upsertCachedMessages(
   ownerKey: string,
   messages: readonly WorkspaceMessengerCachedMessage[],
+  isWriteCurrent: () => boolean = () => true,
 ): Promise<void> {
   if (!isIndexedDBAvailable() || messages.length === 0) return;
 
   try {
     const db = await openWorkspaceMessengerCacheDb();
+    if (!isWriteCurrent()) return;
     const stores = WORKSPACE_MESSENGER_CACHE_STORES;
     const transaction = db.transaction([stores.messages, stores.readBoundaries], "readwrite");
     await putMessageRows(transaction, ownerKey, messages);
+    if (!isWriteCurrent()) transaction.abort();
     await transactionDone(transaction);
   } catch {
     return;
@@ -2753,9 +2908,11 @@ export async function patchCachedMessage(
   ownerKey: string,
   message: WorkspaceMessengerCachedMessage,
   isWriteCurrent: () => boolean = () => true,
+  getPollFallback?: () => WorkspaceMessengerCachedMessage | undefined,
 ): Promise<void> {
   if (!isIndexedDBAvailable()) return;
 
+  let retryPollFallback = false;
   try {
     const db = await openWorkspaceMessengerCacheDb();
     if (!isWriteCurrent()) return;
@@ -2764,24 +2921,52 @@ export async function patchCachedMessage(
       [stores.messages, stores.messageBuckets, stores.messageWindows, stores.readBoundaries],
       "readwrite",
     );
+    const messageStore = transaction.objectStore(stores.messages);
+    const previous = await requestToPromise<WorkspaceMessengerMessageCacheRow | undefined>(
+      messageStore.get(cacheRowId(ownerKey, message.uuid)),
+    );
+    const moved =
+      previous != null &&
+      (previous.message.streamUuid !== message.streamUuid ||
+        previous.message.topicUuid !== message.topicUuid);
+    if (getPollFallback != null && previous != null) {
+      // The row may already have the result of a concurrent read or reaction write.
+      if (!moved && previous.message.payload.kind === "poll") {
+        messageStore.put(
+          toMessageRow(
+            ownerKey,
+            {
+              ...previous.message,
+              payload: message.payload,
+              pollState: message.pollState,
+              updatedAt: message.updatedAt,
+            },
+            previous,
+          ),
+        );
+      }
+      if (!isWriteCurrent()) transaction.abort();
+      await transactionDone(transaction);
+      return;
+    }
+
     const existingBuckets = await requestToPromise<WorkspaceMessengerMessageBucketRow[]>(
       transaction
         .objectStore(stores.messageBuckets)
         .index("byMessage")
         .getAll([ownerKey, message.uuid]),
     );
-    const previous = await requestToPromise<WorkspaceMessengerMessageCacheRow | undefined>(
-      transaction.objectStore(stores.messages).get(cacheRowId(ownerKey, message.uuid)),
-    );
-    const moved =
-      previous != null &&
-      (previous.message.streamUuid !== message.streamUuid ||
-        previous.message.topicUuid !== message.topicUuid);
+    const fallback = getPollFallback?.();
+    if (getPollFallback != null && fallback == null) {
+      await transactionDone(transaction);
+      return;
+    }
+    const currentMessage = fallback ?? message;
     const targetConversationIds =
       previous != null && !moved
         ? existingBuckets.map((bucket) => bucket.conversationId)
-        : bucketConversationIdsForMessage(message);
-    await putMessageRows(transaction, ownerKey, [message]);
+        : bucketConversationIdsForMessage(currentMessage);
+    await putMessageRows(transaction, ownerKey, [currentMessage]);
     const bucketStore = transaction.objectStore(stores.messageBuckets);
     const changedConversations = new Set<string>();
     if (moved) {
@@ -2798,29 +2983,40 @@ export async function patchCachedMessage(
       );
       if (
         !hasMembership &&
-        !(await cachedMessageFitsWindow(transaction, ownerKey, bucketConversationId, message, {
-          allowUncached: false,
-        }))
+        !(await cachedMessageFitsWindow(
+          transaction,
+          ownerKey,
+          bucketConversationId,
+          currentMessage,
+          {
+            allowUncached: false,
+          },
+        ))
       )
         continue;
-      bucketStore.put(toBucketRow(ownerKey, bucketConversationId, message));
+      bucketStore.put(toBucketRow(ownerKey, bucketConversationId, currentMessage));
       if (!hasMembership) changedConversations.add(bucketConversationId);
     }
 
     for (const conversationId of changedConversations) {
       await retainConversationMessages(transaction, ownerKey, conversationId, 0);
     }
-    if (!isWriteCurrent()) transaction.abort();
+    const valid = isWriteCurrent();
+    retryPollFallback = valid && getPollFallback != null && getPollFallback() !== fallback;
+    if (!valid || retryPollFallback) transaction.abort();
     await transactionDone(transaction);
   } catch {
-    return;
+    // Aborting a superseded fallback lets its read or reaction update win on retry.
   }
+  if (retryPollFallback)
+    await patchCachedMessage(ownerKey, message, isWriteCurrent, getPollFallback);
 }
 
 export async function markCachedMessagesRead(
   ownerKey: string,
   messageUuids: readonly string[],
   conversationIds: readonly string[] = [],
+  isWriteCurrent: () => boolean = () => true,
 ): Promise<void> {
   if (!isIndexedDBAvailable() || (messageUuids.length === 0 && conversationIds.length === 0)) {
     return;
@@ -2828,6 +3024,7 @@ export async function markCachedMessagesRead(
 
   try {
     const db = await openWorkspaceMessengerCacheDb();
+    if (!isWriteCurrent()) return;
     const stores = WORKSPACE_MESSENGER_CACHE_STORES;
     const transaction = db.transaction([stores.messages, stores.messageBuckets], "readwrite");
     const messageStore = transaction.objectStore(stores.messages);
@@ -2868,6 +3065,7 @@ export async function markCachedMessagesRead(
       } satisfies WorkspaceMessengerMessageCacheRow);
     }
 
+    if (!isWriteCurrent()) transaction.abort();
     await transactionDone(transaction);
   } catch (error) {
     logCacheWriteFailure("mark-messages-read", error);
@@ -2949,11 +3147,13 @@ export async function deleteMessengerReadBoundaryCache(
 
 export async function advanceMessengerReadBoundaryCache(
   boundary: Omit<WorkspaceMessengerReadBoundaryCacheRow, "id">,
+  isWriteCurrent: () => boolean = () => true,
 ): Promise<void> {
   if (!isIndexedDBAvailable()) return;
 
   try {
     const db = await openWorkspaceMessengerCacheDb();
+    if (!isWriteCurrent()) return;
     const stores = WORKSPACE_MESSENGER_CACHE_STORES;
     const transaction = db.transaction(
       [stores.readBoundaries, stores.messages, stores.messageBuckets],
@@ -2968,6 +3168,7 @@ export async function advanceMessengerReadBoundaryCache(
     boundaryStore.put({ ...effective, materialized: true });
 
     if (previous?.materialized === true && compareReadBoundaryOrder(previous, effective) >= 0) {
+      if (!isWriteCurrent()) transaction.abort();
       await transactionDone(transaction);
       return;
     }
@@ -3006,7 +3207,13 @@ export async function advanceMessengerReadBoundaryCache(
       ),
     );
     for (const row of rows) {
-      if (row?.ownerKey !== effective.ownerKey || row.message.read === true) continue;
+      if (
+        row?.ownerKey !== effective.ownerKey ||
+        row.message.read === true ||
+        row.message.streamUuid !== effective.streamUuid ||
+        row.message.topicUuid !== effective.topicUuid
+      )
+        continue;
       messageStore.put({
         ...row,
         message: { ...row.message, read: true },
@@ -3014,6 +3221,7 @@ export async function advanceMessengerReadBoundaryCache(
       } satisfies WorkspaceMessengerMessageCacheRow);
     }
 
+    if (!isWriteCurrent()) transaction.abort();
     await transactionDone(transaction);
   } catch (error) {
     logCacheWriteFailure("advance-read-boundary", error);
@@ -3024,50 +3232,80 @@ export async function deleteCachedMessage(
   ownerKey: string,
   messageUuid: string,
   conversationIds: readonly string[],
+  isWriteCurrent: () => boolean = () => true,
 ): Promise<void> {
   if (!isIndexedDBAvailable()) return;
 
   try {
     const db = await openWorkspaceMessengerCacheDb();
-    const existingBuckets = await readMessageBucketsByMessage(db, ownerKey, messageUuid);
-    const targetConversationIds =
-      conversationIds.length > 0
-        ? new Set(conversationIds)
-        : new Set(existingBuckets.map((bucket) => bucket.conversationId));
-    const bucketsToDelete = existingBuckets.filter((bucket) =>
-      targetConversationIds.has(bucket.conversationId),
+    if (!isWriteCurrent()) return;
+    const allMemberships = conversationIds.length === 0;
+    const stores = WORKSPACE_MESSENGER_CACHE_STORES;
+    const names: string[] = [stores.messages, stores.messageBuckets, stores.ownMessageReactions];
+    if (allMemberships) names.push(stores.messageWindows);
+    const transaction = db.transaction(names, "readwrite");
+    const bucketStore = transaction.objectStore(stores.messageBuckets);
+    const byMessage = IDBKeyRange.only([ownerKey, messageUuid]);
+    // Read membership in the write transaction so a move cannot slip between read and delete.
+    const existingBuckets = await requestToPromise<WorkspaceMessengerMessageBucketRow[]>(
+      bucketStore.index("byMessage").getAll(byMessage),
+    );
+    const targetConversationIds = new Set(conversationIds);
+    const bucketsToDelete = existingBuckets.filter(
+      (bucket) => allMemberships || targetConversationIds.has(bucket.conversationId),
     );
     const shouldDeleteBody = bucketsToDelete.length === existingBuckets.length;
-    const stores = WORKSPACE_MESSENGER_CACHE_STORES;
-    const transaction = db.transaction([stores.messages, stores.messageBuckets], "readwrite");
-    const bucketStore = transaction.objectStore(stores.messageBuckets);
 
     for (const bucket of bucketsToDelete) {
       bucketStore.delete(bucket.id);
     }
     if (shouldDeleteBody) {
       transaction.objectStore(stores.messages).delete(cacheRowId(ownerKey, messageUuid));
+      const reactionStore = transaction.objectStore(stores.ownMessageReactions);
+      const keys = await requestToPromise(
+        reactionStore.index("byOwnerMessage").getAllKeys(byMessage),
+      );
+      for (const key of keys) reactionStore.delete(key);
+    }
+    if (allMemberships) {
+      const affected = new Set(bucketsToDelete.map((bucket) => bucket.conversationId));
+      await Promise.all(
+        [...affected].map((id) => retainConversationMessages(transaction, ownerKey, id, 0)),
+      );
     }
 
+    if (!isWriteCurrent()) transaction.abort();
     await transactionDone(transaction);
-    if (shouldDeleteBody) {
-      await deleteOwnMessageReactionsForMessage(ownerKey, messageUuid);
-    }
   } catch {
     return;
   }
 }
 
-export async function writeRealtimeCursor(ownerKey: string, epochVersion: number): Promise<void> {
+export async function writeRealtimeCursor(
+  ownerKey: string,
+  epochVersion: number,
+  isWriteCurrent?: () => boolean,
+): Promise<void> {
   if (!isIndexedDBAvailable()) return;
 
   try {
     const db = await openWorkspaceMessengerCacheDb();
+    if (isWriteCurrent?.() === false) return;
     const transaction = db.transaction(
       WORKSPACE_MESSENGER_CACHE_STORES.realtimeCursor,
       "readwrite",
     );
-    transaction.objectStore(WORKSPACE_MESSENGER_CACHE_STORES.realtimeCursor).put({
+    const store = transaction.objectStore(WORKSPACE_MESSENGER_CACHE_STORES.realtimeCursor);
+    if (isWriteCurrent != null) {
+      const previous = await requestToPromise<WorkspaceMessengerRealtimeCursorRow | undefined>(
+        store.get(ownerKey),
+      );
+      if (!isWriteCurrent() || (previous?.epochVersion ?? 0) > epochVersion) {
+        await transactionDone(transaction);
+        return;
+      }
+    }
+    store.put({
       ownerKey,
       epochVersion,
       updatedAt: Date.now(),
@@ -3126,11 +3364,13 @@ export async function readWorkspaceComposerDraftRecords<TContent>(
 export async function writeWorkspaceComposerDraftRecord<TContent>(
   ownerKey: string,
   draft: WorkspaceMessengerComposerDraftRecordCacheWrite<TContent>,
+  isWriteCurrent?: () => boolean,
 ): Promise<void> {
   if (!isIndexedDBAvailable()) return;
 
   try {
     const db = await openWorkspaceMessengerCacheDb();
+    if (isWriteCurrent?.() === false) return;
     const transaction = db.transaction(
       WORKSPACE_MESSENGER_CACHE_STORES.composerDrafts,
       "readwrite",
@@ -3154,22 +3394,32 @@ export async function migrateWorkspaceComposerDraftToRecord<TContent>(
   ownerKey: string,
   conversationId: string,
   draft: WorkspaceMessengerComposerDraftRecordCacheWrite<TContent>,
+  isWriteCurrent?: () => boolean,
 ): Promise<boolean> {
   if (!isIndexedDBAvailable()) return false;
 
   try {
     const db = await openWorkspaceMessengerCacheDb();
+    if (isWriteCurrent?.() === false) return false;
     const transaction = db.transaction(
       WORKSPACE_MESSENGER_CACHE_STORES.composerDrafts,
       "readwrite",
     );
     const store = transaction.objectStore(WORKSPACE_MESSENGER_CACHE_STORES.composerDrafts);
+    const legacyRowId = composerDraftId(ownerKey, conversationId);
+    const legacy = await requestToPromise<
+      WorkspaceMessengerComposerDraftCacheRow<TContent> | undefined
+    >(store.get(legacyRowId));
+    if (legacy?.snapshotId !== draft.snapshotId || isWriteCurrent?.() === false) {
+      await transactionDone(transaction);
+      return false;
+    }
     store.put({
       id: composerDraftRecordId(ownerKey, draft.draftUuid),
       ownerKey,
       ...draft,
     } satisfies WorkspaceMessengerComposerDraftRecordCacheRow<TContent>);
-    store.delete(composerDraftId(ownerKey, conversationId));
+    store.delete(legacyRowId);
     await transactionDone(transaction);
     return true;
   } catch {
@@ -3180,11 +3430,13 @@ export async function migrateWorkspaceComposerDraftToRecord<TContent>(
 export async function deleteWorkspaceComposerDraftRecord(
   ownerKey: string,
   draftUuid: string,
+  isWriteCurrent?: () => boolean,
 ): Promise<void> {
   if (!isIndexedDBAvailable()) return;
 
   try {
     const db = await openWorkspaceMessengerCacheDb();
+    if (isWriteCurrent?.() === false) return;
     const transaction = db.transaction(
       WORKSPACE_MESSENGER_CACHE_STORES.composerDrafts,
       "readwrite",
@@ -3201,6 +3453,7 @@ export async function deleteWorkspaceComposerDraftRecord(
 export async function deleteWorkspaceComposerDraftRecordsForStream(
   ownerKey: string,
   streamUuid: string,
+  isWriteCurrent?: () => boolean,
 ): Promise<void> {
   if (!isIndexedDBAvailable()) return;
 
@@ -3228,7 +3481,7 @@ export async function deleteWorkspaceComposerDraftRecordsForStream(
           row.conversationId === `stream:${streamUuid}` ||
           row.conversationId?.startsWith(`topic:${streamUuid}:`) === true),
     );
-    if (matchingRows.length === 0) return;
+    if (matchingRows.length === 0 || isWriteCurrent?.() === false) return;
     const transaction = db.transaction(
       WORKSPACE_MESSENGER_CACHE_STORES.composerDrafts,
       "readwrite",
@@ -3315,13 +3568,17 @@ export async function deleteExpiredMessengerSearchResults(
   }
 }
 
-export async function deleteMessengerSearchResultsForOwner(ownerKey: string): Promise<void> {
+export async function deleteMessengerSearchResultsForOwner(
+  ownerKey: string,
+  isWriteCurrent?: () => boolean,
+): Promise<void> {
   if (!isIndexedDBAvailable()) return;
 
   try {
     const db = await openWorkspaceMessengerCacheDb();
     const storeName = WORKSPACE_MESSENGER_CACHE_STORES.searchResults;
     const rowIds = await readRowIdsByOwner(db, ownerKey, storeName);
+    if (isWriteCurrent?.() === false) return;
     if (rowIds.length === 0) return;
     const transaction = db.transaction(storeName, "readwrite");
     const store = transaction.objectStore(storeName);

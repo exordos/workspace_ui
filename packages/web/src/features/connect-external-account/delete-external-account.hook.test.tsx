@@ -1,13 +1,13 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { useMessengerStore } from "~/applications/messenger/model/chats/messenger.model";
 import { useExternalAccountStore } from "~/entities/external-account/external-account.model";
 import type { ExternalAccount } from "~/entities/external-account/external-account.types";
 import { externalChatScopeKey } from "~/entities/external-chat/external-chat-loader.lib";
 import { useExternalChatsStore } from "~/entities/external-chat/external-chat.model";
 import type { ExternalChat } from "~/entities/external-chat/external-chat.types";
-import { useMessengerStore } from "~/entities/messenger/messenger.model";
-import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
-import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
+import { workspaceRuntimeOwnerKey } from "~/platform/sessions/workspace-runtime.lib";
+import type { WorkspaceRuntimeContext } from "~/platform/sessions/workspace-runtime.types";
 import { useDeleteExternalAccount } from "./delete-external-account.hook";
 
 const runtimeContext: WorkspaceRuntimeContext = {

@@ -1,8 +1,9 @@
-import React from "react";
-import type { WorkspaceRightPanelDirectPrivateDetailId } from "~/entities/messenger/messenger-right-panel.lib";
+import React, { useCallback } from "react";
+import type { WorkspaceRightPanelDirectPrivateDetailId } from "~/applications/messenger/features/chat-details/messenger-right-panel.lib";
 import type { ProfileEditableField } from "~/features/user-profile/user-profile-editor.lib";
 import { ProfileEditorField } from "~/features/user-profile/user-profile-editor.ui";
 import { t } from "~/i18n/i18n";
+import { writeText } from "~/platform/desktop/clipboard";
 import { Copyable } from "~/shared/ui/copyable";
 import { Icon, type IconName } from "~/shared/ui/icon";
 import type { RightPanelUserProfileDetailsProps } from "./right-panel-user-profile.types";
@@ -95,6 +96,7 @@ function ProfileDetailRow({
   multiline = false,
 }: Readonly<ProfileDetailRowProps>) {
   const editable = editing != null;
+  const copyValue = useCallback(() => writeText(value), [value]);
   return (
     <li
       className={`flex justify-between gap-3 ${editable || multiline ? "min-h-9 items-start" : "h-9 items-end"}`}
@@ -123,7 +125,7 @@ function ProfileDetailRow({
       </div>
       {!editable && !unavailable && !multiline ? (
         <Copyable
-          value={value}
+          onCopy={copyValue}
           showOnHover={false}
           iconSize={PROFILE_DETAIL_COPY_ICON_SIZE}
           className="shrink-0"

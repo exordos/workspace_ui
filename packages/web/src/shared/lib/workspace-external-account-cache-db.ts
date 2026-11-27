@@ -84,9 +84,14 @@ function deleteOwnerRowsInStore(
   store: IDBObjectStore,
   ownerKey: string,
   onDeleted?: () => void,
+  isWriteCurrent?: () => boolean,
 ): void {
   const request = store.index(INDEX_BY_OWNER).openCursor(IDBKeyRange.only(ownerKey));
   request.onsuccess = () => {
+    if (isWriteCurrent?.() === false) {
+      store.transaction.abort();
+      return;
+    }
     const cursor = request.result;
     if (cursor == null) {
       onDeleted?.();
@@ -151,8 +156,13 @@ export async function replaceWorkspaceExternalAccountCache(
   ownerKey: string,
   accounts: readonly WorkspaceExternalAccountCacheProfile[],
   isOwnerCurrent: () => boolean = () => true,
+  requireWrite = false,
 ): Promise<void> {
-  if (!isIndexedDBAvailable() || !isOwnerCurrent()) return;
+  if (!isOwnerCurrent()) return;
+  if (!isIndexedDBAvailable()) {
+    if (requireWrite) throw new Error("External accounts snapshot storage unavailable");
+    return;
+  }
   try {
     const db = await openWorkspaceExternalAccountCacheDb();
     if (!isOwnerCurrent()) return;
@@ -175,17 +185,27 @@ export async function replaceWorkspaceExternalAccountCache(
       }
     });
     await transactionDone(transaction);
-  } catch {
+  } catch (error) {
+    if (requireWrite && isOwnerCurrent()) throw error;
     // Cache persistence is best-effort.
   }
 }
 
-export async function deleteWorkspaceExternalAccountOwnerCache(ownerKey: string): Promise<void> {
+export async function deleteWorkspaceExternalAccountOwnerCache(
+  ownerKey: string,
+  isWriteCurrent?: () => boolean,
+): Promise<void> {
   if (!isIndexedDBAvailable()) return;
   try {
     const db = await openWorkspaceExternalAccountCacheDb();
+    if (isWriteCurrent?.() === false) return;
     const transaction = db.transaction(STORE_ACCOUNTS, "readwrite");
-    deleteOwnerRowsInStore(transaction.objectStore(STORE_ACCOUNTS), ownerKey);
+    deleteOwnerRowsInStore(
+      transaction.objectStore(STORE_ACCOUNTS),
+      ownerKey,
+      undefined,
+      isWriteCurrent,
+    );
     await transactionDone(transaction);
   } catch {
     // Cache cleanup is best-effort.

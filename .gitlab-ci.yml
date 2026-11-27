@@ -40,12 +40,13 @@ build-heic-decoder:
 check-web:
   stage: check
   needs: [build-heic-decoder]
-  script: |
-    npm install
-    npm run typecheck
-    npm run lint
-    npm run test
-    npm run knip --workspace=web || true
+  script:
+    - npm install
+    - npm run arch:check
+    - npm run typecheck
+    - npm run lint
+    - npm run test
+    - npm run knip --workspace=web || true
   artifacts:
     expire_in: 1 day
 

@@ -2,7 +2,7 @@ import type {
   MessengerMessage,
   MessengerStream,
   MessengerTopic,
-} from "~/entities/messenger/messenger.types";
+} from "~/applications/messenger/model/messenger.types";
 import { FloatingLoadingOverlay } from "~/shared/ui/loading";
 import { ActivityMessageCard } from "./activity-message-card.ui";
 import type { RefObject, UIEventHandler } from "react";

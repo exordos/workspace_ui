@@ -8,13 +8,14 @@
  *   __dev__.logs("error")
  */
 
+import { useSidebarConfigStore } from "~/applications/messenger/features/sidebar/sidebar-config.model";
+import { readChatCatalogDiagnostics } from "~/applications/messenger/model/chats/chats";
+import { readActiveMessageIndex } from "~/applications/messenger/model/messages/messages-consumers";
 import { useCallParticipantsStore } from "~/entities/call/call.model";
-import { useMessengerStore } from "~/entities/messenger/messenger.model";
-import { useWorkspaceMessageStore } from "~/entities/message/message.model";
 import { useThemeStore } from "~/entities/theme/theme.model";
-import { useUsersStore } from "~/entities/user/user.model";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { t, setLocale, getLocale, getSupportedLocales } from "~/i18n/i18n";
+import { readActiveUsers } from "~/modules/users/users";
 import { initConsoleCapture } from "~/shared/lib/console-capture.lib";
 import { env } from "~/shared/lib/env";
 import {
@@ -30,13 +31,12 @@ import {
   setPipelineTrace,
   type PipelineTraceChannel,
 } from "~/shared/lib/pipeline-trace.lib";
-import { useSidebarConfigStore } from "~/widgets/sidebar/sidebar-config.model";
 
 interface DevTools {
   stores: {
-    messenger: typeof useMessengerStore;
-    messages: typeof useWorkspaceMessageStore;
-    users: typeof useUsersStore;
+    messenger: { getState: typeof readChatCatalogDiagnostics };
+    messages: { getState: typeof readMessageDiagnostics };
+    users: { getState: typeof readActiveUsers };
     workspaceAuth: typeof useWorkspaceAuthStore;
     theme: typeof useThemeStore;
     sidebar: typeof useSidebarConfigStore;
@@ -68,6 +68,25 @@ interface DevTools {
 
 let consoleCaptureCleanup: (() => void) | undefined;
 
+// Window generations are internal Symbols. The remaining fields can be detached for inspection.
+function readMessageDiagnostics() {
+  const index = readActiveMessageIndex();
+  const conversationWindowsById = Object.fromEntries(
+    Object.entries(index.conversationWindowsById).map(([conversationId, window]) => [
+      conversationId,
+      {
+        mode: window.mode,
+        anchorMessageUuid: window.anchorMessageUuid,
+        messageUuids: window.messageUuids,
+        beforePageMarker: window.beforePageMarker,
+        afterPageMarker: window.afterPageMarker,
+        revision: window.revision,
+      },
+    ]),
+  );
+  return structuredClone({ ...index, conversationWindowsById });
+}
+
 export function installDevTools(): void {
   if (!import.meta.env.DEV) return;
   if (typeof window === "undefined") return;
@@ -77,9 +96,9 @@ export function installDevTools(): void {
 
   const devtools: DevTools = {
     stores: {
-      messenger: useMessengerStore,
-      messages: useWorkspaceMessageStore,
-      users: useUsersStore,
+      messenger: { getState: () => structuredClone(readChatCatalogDiagnostics()) },
+      messages: { getState: readMessageDiagnostics },
+      users: { getState: () => structuredClone(readActiveUsers()) },
       workspaceAuth: useWorkspaceAuthStore,
       theme: useThemeStore,
       sidebar: useSidebarConfigStore,
@@ -128,7 +147,7 @@ Log scopes: app, api, realtime, connection-health, action, store:<name>, trace:*
   __dev__.logs() / __dev__.logs("error")
   __dev__.clearLogs()
 
-  __dev__.stores.<name>.getState()   — Zustand store snapshot
+  __dev__.stores.<name>.getState()   — state snapshot (messenger, messages and users are read-only)
   __dev__.theme.toggle() / __dev__.theme.setPalette("blue-cold")
   __dev__.i18n.setLocale("en")
   __dev__.perf.startTimer("label")

@@ -2,13 +2,12 @@
  * Tests for the Electron runtime detection and IPC helpers.
  *
  * The app runs in both browser and Electron. This module detects the
- * runtime via window.electronAPI (injected by preload.ts) and provides
- * cross-runtime helpers like showDesktopNotification. Incorrect detection
+ * runtime via window.electronAPI (injected by preload.ts). Incorrect detection
  * would call missing IPC methods or skip native features in Electron.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { getElectronAPI, isElectron, isElectronDarwin, showDesktopNotification } from "./electron";
+import { getElectronAPI, isElectron, isElectronDarwin } from "./electron";
 
 describe("electron", () => {
   const originalElectronAPI = window.electronAPI;
@@ -93,73 +92,6 @@ describe("electron", () => {
     it("returns null when electronAPI is undefined", () => {
       (window as unknown as Record<string, unknown>).electronAPI = undefined;
       expect(getElectronAPI()).toBeNull();
-    });
-  });
-
-  // showDesktopNotification abstracts Electron IPC vs Web Notification API
-  describe("showDesktopNotification", () => {
-    // In Electron, notifications go through IPC to the main process for native OS notifications
-    it("calls electron notifications.show when electronAPI is available", async () => {
-      const showFn = vi.fn().mockResolvedValue(undefined);
-      (window as unknown as Record<string, unknown>).electronAPI = {
-        notifications: { show: showFn },
-      };
-
-      await showDesktopNotification("Title", "Body text");
-      expect(showFn).toHaveBeenCalledWith("Title", "Body text");
-    });
-
-    // In browser with granted permission, use the Web Notification API
-    it("falls back to Web Notification API when not in Electron and permission granted", async () => {
-      const NotificationSpy = vi.fn();
-      vi.stubGlobal("Notification", NotificationSpy);
-      Object.defineProperty(Notification, "permission", { value: "granted", configurable: true });
-
-      await showDesktopNotification("Hello", "World");
-      expect(NotificationSpy).toHaveBeenCalledWith("Hello", { body: "World" });
-
-      vi.unstubAllGlobals();
-    });
-
-    // Denied permission means the user explicitly blocked notifications — respect their choice
-    it("does nothing when not in Electron and notification permission is denied", async () => {
-      const NotificationSpy = vi.fn();
-      vi.stubGlobal("Notification", NotificationSpy);
-      Object.defineProperty(Notification, "permission", { value: "denied", configurable: true });
-
-      await showDesktopNotification("Hello", "World");
-      expect(NotificationSpy).not.toHaveBeenCalled();
-
-      vi.unstubAllGlobals();
-    });
-
-    // "default" means the user hasn't been asked yet — don't show unsolicited notifications
-    it("does nothing when not in Electron and notification permission is default", async () => {
-      const NotificationSpy = vi.fn();
-      vi.stubGlobal("Notification", NotificationSpy);
-      Object.defineProperty(Notification, "permission", { value: "default", configurable: true });
-
-      await showDesktopNotification("Hello", "World");
-      expect(NotificationSpy).not.toHaveBeenCalled();
-
-      vi.unstubAllGlobals();
-    });
-
-    // When both APIs are available (e.g. in dev), Electron IPC takes priority
-    it("prefers Electron API over Web Notifications", async () => {
-      const showFn = vi.fn().mockResolvedValue(undefined);
-      (window as unknown as Record<string, unknown>).electronAPI = {
-        notifications: { show: showFn },
-      };
-      const NotificationSpy = vi.fn();
-      vi.stubGlobal("Notification", NotificationSpy);
-      Object.defineProperty(Notification, "permission", { value: "granted", configurable: true });
-
-      await showDesktopNotification("Title", "Body");
-      expect(showFn).toHaveBeenCalledWith("Title", "Body");
-      expect(NotificationSpy).not.toHaveBeenCalled();
-
-      vi.unstubAllGlobals();
     });
   });
 });

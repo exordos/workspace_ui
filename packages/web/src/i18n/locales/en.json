@@ -1460,6 +1460,10 @@
     "topic": "Topic: {{topic}}"
   },
   "mediaViewer": {
+    "zoomIn": "Zoom in",
+    "zoomOut": "Zoom out",
+    "panHint": "Move the enlarged image: Shift + arrow keys",
+    "resetZoom": "Reset zoom",
     "openVideo": "Open video viewer",
     "videoQueued": "Video",
     "videoLoading": "Video is loading…",

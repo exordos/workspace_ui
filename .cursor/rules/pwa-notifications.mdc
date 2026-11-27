@@ -3,13 +3,14 @@ description: "Use when changing PWA installation, browser notifications, or desk
 alwaysApply: false
 globs:
   - "packages/web/src/shared/lib/pwa*"
-  - "packages/web/src/shared/lib/notifications*"
+  - "packages/web/src/platform/notifications/**"
+  - "packages/web/src/shared/lib/notifications-policy*"
   - "packages/web/src/shared/lib/workspace-desktop-notifications*"
 ---
 
 # PWA and notifications
 
-Sources: `packages/web/src/shared/lib/pwa.ts`, `notifications.ts`, `notifications-policy.ts`, `workspace-desktop-notifications.lib.ts`, and `packages/web/vite.config.ts`.
+Sources: `packages/web/src/shared/lib/pwa.ts`, `packages/web/src/platform/notifications/notifications.ts`, `packages/web/src/shared/lib/notifications-policy.ts`, `packages/web/src/shared/lib/workspace-desktop-notifications.lib.ts`, and `packages/web/vite.config.ts`.
 
 - Reuse the current runtime abstraction and notification policy. Browser, installed PWA, and Electron permissions/lifecycle differ.
 - Request permissions through the existing user interaction, preserve mute/do-not-disturb policy, and deduplicate notifications at the established owner.

@@ -5,8 +5,8 @@ import { adaptWorkspaceExternalAccountDto } from "~/entities/external-account/ex
 import { useExternalAccountStore } from "~/entities/external-account/external-account.model";
 import type { ExternalAccount } from "~/entities/external-account/external-account.types";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
-import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
-import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
+import { workspaceRuntimeOwnerKey } from "~/platform/sessions/workspace-runtime.lib";
+import type { WorkspaceRuntimeContext } from "~/platform/sessions/workspace-runtime.types";
 import { replaceWorkspaceExternalAccountCache } from "~/shared/lib/workspace-external-account-cache-db";
 import { renderWithProviders } from "~/test/render";
 import { ConnectExternalAccountDialog } from "./connect-external-account-dialog.ui";

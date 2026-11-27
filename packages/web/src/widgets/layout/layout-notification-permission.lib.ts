@@ -2,7 +2,7 @@
  * When to show the in-app notification permission prompt.
  */
 
-import type { NotificationPermissionStatus } from "~/shared/lib/notifications";
+import type { NotificationPermissionStatus } from "~/platform/notifications/notifications";
 
 const DISMISS_STORAGE_PREFIX = "workspace-notification-prompt-dismissed:";
 

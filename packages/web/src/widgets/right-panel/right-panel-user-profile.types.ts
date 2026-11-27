@@ -2,13 +2,13 @@ import type {
   WorkspaceRightPanelDirectPrivateDetailView,
   WorkspaceRightPanelDirectPrivateInfoView,
   WorkspaceRightPanelUserProfileInfoView,
-} from "~/entities/messenger/messenger-right-panel.lib";
-import type { MessengerUuid } from "~/entities/messenger/messenger.types";
-import type { User } from "~/entities/user/user.types";
+} from "~/applications/messenger/features/chat-details/messenger-right-panel.lib";
+import type { MessengerUuid } from "~/applications/messenger/model/messenger.types";
 import type {
   ProfileDraft,
   ProfileEditableField,
 } from "~/features/user-profile/user-profile-editor.lib";
+import type { User } from "~/modules/users/users-types";
 import type { IconName } from "~/shared/ui/icon";
 
 export type RightPanelUserProfileInfo =

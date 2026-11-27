@@ -1,6 +1,12 @@
 import { create } from "zustand";
-import { isWorkspaceRuntimeRequestContextCurrent } from "~/entities/workspace-runtime/workspace-runtime.lib";
-import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
+import {
+  isWorkspaceRuntimeRequestContextCurrent,
+  workspaceRuntimeOwnerKey,
+} from "~/platform/sessions/workspace-runtime.lib";
+import type {
+  WorkspaceRuntimeContext,
+  WorkspaceRuntimeOwner,
+} from "~/platform/sessions/workspace-runtime.types";
 import { logStoreAction } from "~/shared/lib/logger";
 import {
   WORKSPACE_AUTH_CURRENT_ACCOUNT_KEY,
@@ -21,21 +27,30 @@ export interface WorkspaceAuthSession extends WorkspaceRuntimeContext {
   login: string;
   profile: WorkspaceAuthProfile;
   expiresAtMs?: number;
+  incarnationGeneration?: number; // A login replaces the live owner even when it keeps the durable key.
+  screenGeneration?: number; // The most recent selection or active token refresh for this owner.
 }
+
+type NewWorkspaceAuthSession = Omit<
+  WorkspaceAuthSession,
+  "runtimeGeneration" | "screenGeneration" | "incarnationGeneration" | "ownerRuntimeGeneration"
+>;
 
 interface StoredWorkspaceAuthState {
   sessions: WorkspaceAuthSession[];
   currentAccountId: string | null;
 }
 
-// The auth store keeps all accounts, but exposes only one active runtime.
+// The auth store exposes every credential context and a separate selected-screen context.
 export interface WorkspaceAuthState {
   sessions: WorkspaceAuthSession[];
   currentAccountId: string | null;
-  runtimeGeneration: number;
+  runtimeGeneration: number; // Selected-screen generation for UI subscribers.
+  runtimeGenerationSequence: number; // Sequence shared by credential and selection changes.
   // Unlike runtimeGeneration, this does not change during token refresh.
   sessionSelectionGeneration: number;
-  setSession: (session: Omit<WorkspaceAuthSession, "runtimeGeneration">) => void;
+  runtimeSuspended: boolean; // Revokes this document's owner contexts until a cold reload.
+  setSession: (session: NewWorkspaceAuthSession) => void;
   updateProfileForRuntime: (
     runtime: WorkspaceRuntimeContext,
     profile: WorkspaceAuthProfile,
@@ -50,6 +65,7 @@ export interface WorkspaceAuthState {
   clear: () => void;
   getCurrentSession: () => WorkspaceAuthSession | null;
   getCurrentRuntimeContext: () => WorkspaceRuntimeContext | null;
+  getRuntimeContextForOwner: (owner: WorkspaceRuntimeOwner) => WorkspaceAuthSession | null;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -119,6 +135,7 @@ function normalizeStoredSessions(value: unknown): WorkspaceAuthSession[] {
     ) {
       continue;
     }
+    const runtimeGeneration = numberField(item, "runtimeGeneration") ?? 0;
     sessions.push({
       accountId,
       instanceId,
@@ -131,7 +148,9 @@ function normalizeStoredSessions(value: unknown): WorkspaceAuthSession[] {
       profile,
       refreshToken: stringField(item, "refreshToken"),
       expiresAtMs: numberField(item, "expiresAtMs"),
-      runtimeGeneration: numberField(item, "runtimeGeneration") ?? 0,
+      runtimeGeneration,
+      incarnationGeneration: numberField(item, "incarnationGeneration") ?? runtimeGeneration,
+      screenGeneration: numberField(item, "screenGeneration") ?? runtimeGeneration,
     });
   }
   return sessions;
@@ -169,38 +188,55 @@ function persist(sessions: WorkspaceAuthSession[], currentAccountId: string | nu
   }
 }
 
-function nextGeneration(current: number): number {
-  return current + 1;
+function latestSessionGeneration(sessions: readonly WorkspaceAuthSession[]): number {
+  return sessions.reduce(
+    (latest, session) => Math.max(latest, session.runtimeGeneration, session.screenGeneration ?? 0),
+    0,
+  );
 }
 
-// Generation changes make old async messenger requests harmless.
-function withGeneration(
-  session: Omit<WorkspaceAuthSession, "runtimeGeneration">,
-  runtimeGeneration: number,
-): WorkspaceAuthSession {
-  return { ...session, runtimeGeneration };
+function nextRuntimeGeneration(state: WorkspaceAuthState): number {
+  return (
+    Math.max(
+      state.runtimeGeneration,
+      state.runtimeGenerationSequence,
+      latestSessionGeneration(state.sessions),
+    ) + 1
+  );
 }
+
+// Credential refresh keeps the incarnation introduced by login stable.
+export function workspaceAuthSessionIncarnation(session: WorkspaceAuthSession): number {
+  return session.incarnationGeneration ?? session.runtimeGeneration;
+}
+
+const selectedRuntimeContexts = new WeakMap<WorkspaceAuthSession, WorkspaceRuntimeContext>();
+const initialState = loadFromStorage();
 
 export const useWorkspaceAuthStore = create<WorkspaceAuthState>((set, get) => ({
-  ...loadFromStorage(),
-  runtimeGeneration: 0,
+  ...initialState,
+  runtimeGeneration: selectCurrentWorkspaceRuntimeContext(initialState)?.runtimeGeneration ?? 0,
+  runtimeGenerationSequence: latestSessionGeneration(initialState.sessions),
   sessionSelectionGeneration: 0,
+  runtimeSuspended: false,
 
   setSession: (session) => {
     set((state) => {
-      const runtimeGeneration = nextGeneration(state.runtimeGeneration);
+      const runtimeGeneration = nextRuntimeGeneration(state);
       const existing = state.sessions.find((item) => item.accountId === session.accountId);
-      const nextSession = withGeneration(session, runtimeGeneration);
-      const sessions = state.sessions.some((item) => item.accountId === session.accountId)
-        ? state.sessions.map((item) =>
-            item.accountId === session.accountId
-              ? {
-                  ...nextSession,
-                  instanceId: existing?.instanceId ?? nextSession.instanceId,
-                }
-              : item,
-          )
-        : [...state.sessions, nextSession];
+      const nextSession: WorkspaceAuthSession = {
+        ...session,
+        instanceId: existing?.instanceId ?? session.instanceId,
+        runtimeGeneration,
+        incarnationGeneration: runtimeGeneration,
+        screenGeneration: runtimeGeneration,
+      };
+      const sessions =
+        existing != null
+          ? state.sessions.map((item) =>
+              item.accountId === session.accountId ? nextSession : item,
+            )
+          : [...state.sessions, nextSession];
       const currentAccountId = session.accountId;
 
       logStoreAction("workspaceAuth", "setSession", {
@@ -215,7 +251,8 @@ export const useWorkspaceAuthStore = create<WorkspaceAuthState>((set, get) => ({
         sessions,
         currentAccountId,
         runtimeGeneration,
-        sessionSelectionGeneration: nextGeneration(state.sessionSelectionGeneration),
+        runtimeGenerationSequence: runtimeGeneration,
+        sessionSelectionGeneration: state.sessionSelectionGeneration + 1,
       };
     });
   },
@@ -227,9 +264,11 @@ export const useWorkspaceAuthStore = create<WorkspaceAuthState>((set, get) => ({
         return state;
       }
 
-      const runtimeGeneration = nextGeneration(state.runtimeGeneration);
+      const runtimeGeneration = nextRuntimeGeneration(state);
       const sessions = state.sessions.map((session) =>
-        session.accountId === accountId ? { ...session, runtimeGeneration } : session,
+        session.accountId === accountId
+          ? { ...session, screenGeneration: runtimeGeneration }
+          : session,
       );
 
       logStoreAction("workspaceAuth", "setCurrentAccountId", { accountId });
@@ -238,8 +277,9 @@ export const useWorkspaceAuthStore = create<WorkspaceAuthState>((set, get) => ({
       return {
         currentAccountId: accountId,
         runtimeGeneration,
+        runtimeGenerationSequence: runtimeGeneration,
         sessions,
-        sessionSelectionGeneration: nextGeneration(state.sessionSelectionGeneration),
+        sessionSelectionGeneration: state.sessionSelectionGeneration + 1,
       };
     });
   },
@@ -276,10 +316,8 @@ export const useWorkspaceAuthStore = create<WorkspaceAuthState>((set, get) => ({
     set((state) => {
       if (!state.sessions.some((session) => session.accountId === accountId)) return state;
 
-      const runtimeGeneration =
-        state.currentAccountId === accountId
-          ? nextGeneration(state.runtimeGeneration)
-          : state.runtimeGeneration;
+      const credentialGeneration = nextRuntimeGeneration(state);
+      const active = state.currentAccountId === accountId;
       const sessions = state.sessions.map((session) =>
         session.accountId === accountId
           ? {
@@ -287,10 +325,11 @@ export const useWorkspaceAuthStore = create<WorkspaceAuthState>((set, get) => ({
               accessToken: tokens.accessToken,
               refreshToken: tokens.refreshToken ?? session.refreshToken,
               expiresAtMs: tokens.expiresAtMs ?? session.expiresAtMs,
-              runtimeGeneration:
-                state.currentAccountId === accountId
-                  ? runtimeGeneration
-                  : session.runtimeGeneration,
+              runtimeGeneration: credentialGeneration,
+              incarnationGeneration: workspaceAuthSessionIncarnation(session),
+              screenGeneration: active
+                ? credentialGeneration
+                : (session.screenGeneration ?? session.runtimeGeneration),
             }
           : session,
       );
@@ -298,7 +337,11 @@ export const useWorkspaceAuthStore = create<WorkspaceAuthState>((set, get) => ({
       logStoreAction("workspaceAuth", "updateTokens", { accountId });
 
       persist(sessions, state.currentAccountId);
-      return { sessions, runtimeGeneration };
+      return {
+        sessions,
+        runtimeGeneration: active ? credentialGeneration : state.runtimeGeneration,
+        runtimeGenerationSequence: credentialGeneration,
+      };
     });
   },
 
@@ -307,14 +350,16 @@ export const useWorkspaceAuthStore = create<WorkspaceAuthState>((set, get) => ({
       if (!state.sessions.some((session) => session.accountId === accountId)) return state;
 
       const sessions = state.sessions.filter((session) => session.accountId !== accountId);
-      const currentAccountId =
-        state.currentAccountId === accountId
-          ? (sessions[0]?.accountId ?? null)
-          : state.currentAccountId;
-      const runtimeGeneration = nextGeneration(state.runtimeGeneration);
-      const nextSessions = sessions.map((session) =>
-        session.accountId === currentAccountId ? { ...session, runtimeGeneration } : session,
-      );
+      const active = state.currentAccountId === accountId;
+      const currentAccountId = active ? (sessions[0]?.accountId ?? null) : state.currentAccountId;
+      const runtimeGeneration = active ? nextRuntimeGeneration(state) : state.runtimeGeneration;
+      const nextSessions = active
+        ? sessions.map((session) =>
+            session.accountId === currentAccountId
+              ? { ...session, screenGeneration: runtimeGeneration }
+              : session,
+          )
+        : sessions;
 
       logStoreAction("workspaceAuth", "removeSession", { accountId });
 
@@ -323,10 +368,8 @@ export const useWorkspaceAuthStore = create<WorkspaceAuthState>((set, get) => ({
         sessions: nextSessions,
         currentAccountId,
         runtimeGeneration,
-        sessionSelectionGeneration:
-          state.currentAccountId === accountId
-            ? nextGeneration(state.sessionSelectionGeneration)
-            : state.sessionSelectionGeneration,
+        runtimeGenerationSequence: active ? runtimeGeneration : state.runtimeGenerationSequence,
+        sessionSelectionGeneration: state.sessionSelectionGeneration + (active ? 1 : 0),
       };
     });
   },
@@ -334,14 +377,15 @@ export const useWorkspaceAuthStore = create<WorkspaceAuthState>((set, get) => ({
   clear: () => {
     set((state) => {
       if (state.sessions.length === 0 && state.currentAccountId == null) return state;
-      const runtimeGeneration = nextGeneration(state.runtimeGeneration);
+      const runtimeGeneration = nextRuntimeGeneration(state);
       logStoreAction("workspaceAuth", "clear", {});
       persist([], null);
       return {
         sessions: [],
         currentAccountId: null,
         runtimeGeneration,
-        sessionSelectionGeneration: nextGeneration(state.sessionSelectionGeneration),
+        runtimeGenerationSequence: runtimeGeneration,
+        sessionSelectionGeneration: state.sessionSelectionGeneration + 1,
       };
     });
   },
@@ -354,14 +398,30 @@ export const useWorkspaceAuthStore = create<WorkspaceAuthState>((set, get) => ({
   getCurrentRuntimeContext: () => {
     return selectCurrentWorkspaceRuntimeContext(get());
   },
+
+  getRuntimeContextForOwner: (owner) => {
+    const state = get();
+    if (state.runtimeSuspended) return null;
+    const key = workspaceRuntimeOwnerKey(owner);
+    return state.sessions.find((session) => workspaceRuntimeOwnerKey(session) === key) ?? null;
+  },
 }));
 
+// Revoke all request contexts without persisting any change to the IAM sessions.
+export function suspendWorkspaceRuntimeForColdStart(): void {
+  useWorkspaceAuthStore.setState({ runtimeSuspended: true });
+}
+
 export function selectCurrentWorkspaceRuntimeContext(
-  state: Pick<WorkspaceAuthState, "sessions" | "currentAccountId">,
+  state: Pick<WorkspaceAuthState, "sessions" | "currentAccountId"> &
+    Partial<Pick<WorkspaceAuthState, "runtimeSuspended">>,
 ): WorkspaceRuntimeContext | null {
+  if (state.runtimeSuspended) return null;
   const session = state.sessions.find((item) => item.accountId === state.currentAccountId) ?? null;
   if (session == null) return null;
-  return {
+  const cached = selectedRuntimeContexts.get(session);
+  if (cached != null) return cached;
+  const context = {
     accountId: session.accountId,
     instanceId: session.instanceId,
     organizationId: session.organizationId,
@@ -370,6 +430,26 @@ export function selectCurrentWorkspaceRuntimeContext(
     userUuid: session.userUuid,
     accessToken: session.accessToken,
     refreshToken: session.refreshToken,
-    runtimeGeneration: session.runtimeGeneration,
+    runtimeGeneration: session.screenGeneration ?? session.runtimeGeneration,
+    ownerRuntimeGeneration: session.runtimeGeneration,
   };
+  // Background changes keep the same selected request context and its subscriptions.
+  selectedRuntimeContexts.set(session, context);
+  return context;
+}
+
+// Accept either a live credential context or the current screen's request, then bind it to its owner.
+export function resolveWorkspaceOwnerRuntimeForRequest(
+  request: WorkspaceRuntimeContext,
+): WorkspaceAuthSession | null {
+  const auth = useWorkspaceAuthStore.getState();
+  const owner = auth.getRuntimeContextForOwner(request);
+  if (owner == null) return null;
+  if (request.ownerRuntimeGeneration == null) {
+    return owner.runtimeGeneration === request.runtimeGeneration ? owner : null;
+  }
+  return owner.runtimeGeneration === request.ownerRuntimeGeneration &&
+    isWorkspaceRuntimeRequestContextCurrent(request, auth.getCurrentRuntimeContext)
+    ? owner
+    : null;
 }

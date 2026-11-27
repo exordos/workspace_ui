@@ -19,12 +19,12 @@
  *   __ai__.commands.register("summarize-chat", handler)
  */
 
-import { selectMessengerSidebarActivityCounts } from "~/entities/messenger/messenger-sidebar.lib";
-import { useMessengerStore } from "~/entities/messenger/messenger.model";
+import { selectMessengerSidebarActivityCounts } from "~/applications/messenger/features/sidebar/messenger-sidebar.lib";
+import { readActiveChats } from "~/applications/messenger/model/chats/chats";
 import { useThemeStore } from "~/entities/theme/theme.model";
-import { useUsersStore } from "~/entities/user/user.model";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { getLocale } from "~/i18n/i18n";
+import { readActiveUser } from "~/modules/users/users";
 import { createLogger } from "~/shared/lib/logger";
 
 const log = createLogger("ai-context");
@@ -85,7 +85,7 @@ function getCurrentChat(): AiChatContext {
 function getCurrentUser(): AiUserContext {
   const session = useWorkspaceAuthStore.getState().getCurrentSession();
   const userUuid = session?.userUuid;
-  const user = userUuid != null ? useUsersStore.getState().getUser(userUuid) : undefined;
+  const user = userUuid != null ? readActiveUser(userUuid) : undefined;
   const sessionFullName = [session?.profile.firstName, session?.profile.lastName]
     .filter(Boolean)
     .join(" ")
@@ -103,7 +103,7 @@ function getCurrentUser(): AiUserContext {
 
 function getAppState(): AiAppState {
   const theme = useThemeStore.getState();
-  const counts = selectMessengerSidebarActivityCounts(useMessengerStore.getState());
+  const counts = selectMessengerSidebarActivityCounts(readActiveChats());
 
   return {
     locale: getLocale(),

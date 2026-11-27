@@ -220,9 +220,9 @@ Frontend — локальная ветка `feat/messenger-polls`, ревизи�
 
 ### Опорные исходники
 
-- [Форма создания](../../packages/web/src/features/workspace-message-poll/create-poll-dialog.ui.tsx), [вопрос и inline-вариант](../../packages/web/src/features/workspace-message-poll/workspace-message-poll-question.ui.tsx), [карточка опроса](../../packages/web/src/features/workspace-message-poll/workspace-message-poll.ui.tsx).
-- [Меню сообщения](../../packages/web/src/widgets/workspace-message-list/workspace-message-bubble-menu.ui.tsx), [права управления и таймер карточки](../../packages/web/src/widgets/workspace-message-list/workspace-poll-message-bubble.ui.tsx).
-- [Серверные действия и запись кэша](../../packages/web/src/entities/messenger/messenger-poll-actions.lib.ts), [загрузка превью голосовавших](../../packages/web/src/features/workspace-message-poll/workspace-poll-voter-previews.hook.ts), [runtime safety](../ORG_SCOPED_ASYNC_SAFETY.md).
+- [Форма создания](../../packages/web/src/applications/messenger/features/polls/create-poll-dialog.ui.tsx), [вопрос и inline-вариант](../../packages/web/src/applications/messenger/features/polls/workspace-message-poll-question.ui.tsx), [карточка опроса](../../packages/web/src/applications/messenger/features/polls/workspace-message-poll.ui.tsx).
+- [Меню сообщения](../../packages/web/src/applications/messenger/features/timeline/workspace-message-bubble-menu.ui.tsx), [права управления и таймер карточки](../../packages/web/src/applications/messenger/features/polls/workspace-poll-message-bubble.ui.tsx).
+- [Серверные действия и запись кэша](../../packages/web/src/applications/messenger/model/messages/polls/messenger-poll-actions.lib.ts), [загрузка превью голосовавших](../../packages/web/src/applications/messenger/features/polls/workspace-poll-voter-previews.hook.ts), [runtime safety](../ORG_SCOPED_ASYNC_SAFETY.md).
 
 ## Ретест встроенных превью (PR №322)
 

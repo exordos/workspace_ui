@@ -1,6 +1,8 @@
 import { create } from "zustand";
-import type { MessengerUuid } from "~/entities/messenger/messenger.types";
-import type { EncryptedChatInfoScreen } from "~/features/encrypted-chat-info/encrypted-chat-info.types";
+import type { EncryptedChatInfoScreen } from "~/applications/messenger/features/chat-details/encrypted-chat-info/encrypted-chat-info.types";
+import type { MessengerUuid } from "~/applications/messenger/model/messenger.types";
+import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
+import { workspaceRuntimeOwnerKey } from "~/platform/sessions/workspace-runtime.lib";
 import { logStoreAction } from "~/shared/lib/logger";
 
 export type RightDrawerMode = "info" | "settings" | "user-menu" | "about" | "personal-info";
@@ -13,7 +15,7 @@ export type RightDrawerAccountScreen =
   | "personal-info";
 export type RightDrawerProfileOverride =
   | { kind: "legacy-user-id"; userId: number }
-  | { kind: "workspace-user-uuid"; userUuid: MessengerUuid };
+  | { kind: "workspace-user-uuid"; userUuid: MessengerUuid; ownerKey?: string };
 
 export interface RightDrawerChatScope {
   readonly ownerKey: string;
@@ -58,6 +60,7 @@ interface RightDrawerState {
   chatScreen: RightDrawerChatScreen | null;
   userIdOverride: number | null;
   workspaceUserUuidOverride: MessengerUuid | null;
+  workspaceUserOwnerKey: string | null; // Prevent a previous owner's profile from rendering during a switch.
 
   setOpen: (open: boolean) => void;
   toggleVisibility: () => void;
@@ -107,6 +110,8 @@ function project(open: boolean, layers: RightDrawerLayer[]) {
     userIdOverride: profileOverride?.kind === "legacy-user-id" ? profileOverride.userId : null,
     workspaceUserUuidOverride:
       profileOverride?.kind === "workspace-user-uuid" ? profileOverride.userUuid : null,
+    workspaceUserOwnerKey:
+      profileOverride?.kind === "workspace-user-uuid" ? (profileOverride.ownerKey ?? null) : null,
   };
 }
 
@@ -123,7 +128,11 @@ function sameProfileOverride(
   if (left.kind === "legacy-user-id") {
     return right.kind === "legacy-user-id" && left.userId === right.userId;
   }
-  return right.kind === "workspace-user-uuid" && left.userUuid === right.userUuid;
+  return (
+    right.kind === "workspace-user-uuid" &&
+    left.userUuid === right.userUuid &&
+    left.ownerKey === right.ownerKey
+  );
 }
 
 function sameScreen(left: RightDrawerScreen | undefined, right: RightDrawerScreen): boolean {
@@ -310,7 +319,12 @@ export const useRightDrawerStore = create<RightDrawerState>((set, get) => ({
   openWorkspaceUserProfile(userUuid) {
     logStoreAction("rightDrawer", "openWorkspaceUserProfile", { userUuid });
     const state = get();
-    const screen = profileScreen({ kind: "workspace-user-uuid", userUuid });
+    const runtime = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
+    const screen = profileScreen({
+      kind: "workspace-user-uuid",
+      userUuid,
+      ownerKey: runtime == null ? undefined : workspaceRuntimeOwnerKey(runtime),
+    });
     if (state.layers.at(-1)?.kind === "chat-info") state.openScreen(screen);
     else {
       state.openLayer({ kind: "chat-info", screens: [CHAT_INFO_SCREEN] });

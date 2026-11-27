@@ -13,7 +13,12 @@
  */
 import { expect, test } from "./fixtures";
 import { e2eOrgBasePath, E2E_STREAM_UUID, E2E_TOPIC_UUID } from "./helpers/navigate-messenger";
-import { E2E_PROJECT_ID, E2E_USER_UUID } from "./mocks/workspace-default-responses";
+import { installWorkspaceReadyRealtime } from "./helpers/workspace-ready-realtime";
+import {
+  E2E_MESSAGE_UUID,
+  E2E_PROJECT_ID,
+  E2E_USER_UUID,
+} from "./mocks/workspace-default-responses";
 import type { Page, Route } from "@playwright/test";
 
 // Layout shift is sensitive to whatever else the machine is doing, and each of these
@@ -22,7 +27,6 @@ import type { Page, Route } from "@playwright/test";
 // (`npm run e2e:measure`).
 test.describe.configure({ mode: "serial" });
 
-const CREATED_AT = "2026-07-16T10:00:00.000Z";
 const MESSAGE_COUNT = 6;
 const SCROLL_MESSAGE_COUNT = 60;
 const IMAGE_WIDTH = 400;
@@ -34,12 +38,13 @@ function svgBytes(): string {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${IMAGE_WIDTH}" height="${IMAGE_HEIGHT}"><rect width="100%" height="100%" fill="#4477aa"/></svg>`;
 }
 
-function imageMessage(index: number, withDimensions: boolean) {
+function imageMessage(index: number, withDimensions: boolean, last: boolean) {
   const suffix = String(index).padStart(4, "0");
   const fileUuid = `${suffix}0000-0000-4000-8000-0000${suffix}0000`;
   const dimensions = withDimensions ? `&w=${IMAGE_WIDTH}&h=${IMAGE_HEIGHT}` : "";
+  const createdAt = new Date(Date.UTC(2026, 6, 16, 10, index)).toISOString();
   return {
-    uuid: `${suffix}1111-1111-4111-8111-1111${suffix}1111`,
+    uuid: last ? E2E_MESSAGE_UUID : `${suffix}1111-1111-4111-8111-1111${suffix}1111`,
     project_id: E2E_PROJECT_ID,
     stream_uuid: E2E_STREAM_UUID,
     topic_uuid: E2E_TOPIC_UUID,
@@ -55,8 +60,8 @@ function imageMessage(index: number, withDimensions: boolean) {
     is_own: false,
     reactions: {},
     reaction_users: {},
-    created_at: CREATED_AT,
-    updated_at: CREATED_AT,
+    created_at: createdAt,
+    updated_at: createdAt,
   };
 }
 
@@ -65,6 +70,10 @@ async function installImageConversation(
   withDimensions: boolean,
   messageCount = MESSAGE_COUNT,
 ): Promise<void> {
+  await installWorkspaceReadyRealtime(page);
+  const messages = Array.from({ length: messageCount }, (_unused, index) =>
+    imageMessage(index + 1, withDimensions, index === messageCount - 1),
+  );
   // Its own route, so a download can never fall through to another handler: a failed
   // preview reverts the placeholder, which is a shift of its own and would be
   // measured as if it were the defect.
@@ -78,15 +87,20 @@ async function installImageConversation(
     const url = new URL(route.request().url());
 
     if (route.request().method() === "GET" && /\/messages\/?$/.test(url.pathname)) {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify(
-          Array.from({ length: messageCount }, (_unused, index) =>
-            imageMessage(index + 1, withDimensions),
-          ),
-        ),
-      });
+      const { searchParams } = url;
+      if (searchParams.get("read") === "false" || searchParams.get("mentioned") === "true") {
+        return route.fulfill({ json: [] });
+      }
+      const requestedUuids = searchParams.getAll("uuid");
+      const requestedMessages =
+        requestedUuids.length === 0
+          ? messages
+          : messages.filter(({ uuid }) => requestedUuids.includes(uuid));
+      const items =
+        searchParams.get("sort_dir") === "desc"
+          ? [...requestedMessages].reverse()
+          : requestedMessages;
+      await route.fulfill({ json: items });
       return;
     }
 

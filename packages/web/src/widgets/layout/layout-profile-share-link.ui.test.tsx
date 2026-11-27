@@ -1,14 +1,14 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, useLocation, useNavigate } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { adaptWorkspaceMessengerUserDto } from "~/entities/user/user-adapters.lib";
-import { toWorkspaceUserCacheProfile } from "~/entities/user/user-sync.lib";
-import { useUsersStore } from "~/entities/user/user.model";
 import {
   useWorkspaceAuthStore,
   type WorkspaceAuthSession,
 } from "~/entities/workspace-auth/workspace-auth.model";
-import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
+import { adaptWorkspaceMessengerUserDto } from "~/modules/users/user-adapters.lib";
+import { toWorkspaceUserCacheProfile } from "~/modules/users/user-sync.lib";
+import { getSelectedUsersStore, useUsersStore } from "~/modules/users/user.model";
+import { workspaceRuntimeOwnerKey } from "~/platform/sessions/workspace-runtime.lib";
 import type { WorkspaceMessengerUserDto } from "~/shared/api/messenger.types";
 import type * as WorkspaceUserCacheModule from "~/shared/lib/workspace-user-cache-db";
 import { useRightDrawerStore } from "~/widgets/right-panel/right-drawer.model";
@@ -18,9 +18,13 @@ import { useLayoutResetRightDrawerOnOwnerChange } from "./layout-reset-right-dra
 const getUser = vi.hoisted(() => vi.fn());
 vi.mock("~/shared/api/workspace-client", () => ({ getUser }));
 const readUserCacheProfile = vi.hoisted(() => vi.fn());
+const upsertWorkspaceUserCache = vi.hoisted(() =>
+  vi.fn<typeof WorkspaceUserCacheModule.upsertWorkspaceUserCache>(),
+);
 vi.mock("~/shared/lib/workspace-user-cache-db", async (importOriginal) => ({
   ...(await importOriginal<typeof WorkspaceUserCacheModule>()),
   readWorkspaceUserCacheProfile: readUserCacheProfile,
+  upsertWorkspaceUserCache,
 }));
 const USER = "33333333-3333-4333-8333-333333333333";
 const SESSION: WorkspaceAuthSession = {
@@ -97,6 +101,7 @@ describe("LayoutProfileShareLink", () => {
   beforeEach(() => {
     getUser.mockReset().mockResolvedValue(DTO);
     readUserCacheProfile.mockReset().mockResolvedValue(null);
+    upsertWorkspaceUserCache.mockReset().mockResolvedValue(undefined);
     useWorkspaceAuthStore.setState({ sessions: [SESSION], currentAccountId: SESSION.accountId });
     useUsersStore.getState().clear();
     useUsersStore.getState().startOwnerSync(workspaceRuntimeOwnerKey(SESSION));
@@ -111,10 +116,25 @@ describe("LayoutProfileShareLink", () => {
     expect(getUser).toHaveBeenCalledWith(expect.objectContaining({ projectId: "project-a" }), USER);
     expect(useUsersStore.getState().usersById[USER]?.displayName).toBe("Alice Smith");
     expect(screen.getByTestId("hash")).toBeEmptyDOMElement();
+    expect(upsertWorkspaceUserCache).toHaveBeenCalledExactlyOnceWith(
+      workspaceRuntimeOwnerKey(SESSION),
+      [expect.objectContaining({ uuid: USER })],
+      expect.any(Function),
+    );
     act(() => useRightDrawerStore.getState().close());
     act(() => useUsersStore.getState().setLoadStatus("ready"));
     expect(useRightDrawerStore.getState().open).toBe(false);
     expect(getUser).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps a queued refresh write valid after consuming the link until the session ends", async () => {
+    mount();
+    await waitFor(() => expect(screen.getByTestId("hash")).toBeEmptyDOMElement());
+    const isWriteCurrent = upsertWorkspaceUserCache.mock.calls[0]?.[2];
+    expect(isWriteCurrent?.()).toBe(true);
+
+    act(() => useWorkspaceAuthStore.setState({ sessions: [], currentAccountId: null }));
+    expect(isWriteCurrent?.()).toBe(false);
   });
 
   it.each(["#user/not-a-uuid", "#message-123", ""])(
@@ -152,6 +172,7 @@ describe("LayoutProfileShareLink", () => {
     });
     expect(useRightDrawerStore.getState().open).toBe(false);
     expect(useUsersStore.getState().usersById[USER]).toBeUndefined();
+    expect(upsertWorkspaceUserCache).not.toHaveBeenCalled();
   });
 
   it("does not start a request from props that no longer match the live account", () => {
@@ -413,39 +434,41 @@ describe("LayoutProfileShareLink", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
-  it.each(["unmount", "account change"])(
-    "aborts a cached profile's refresh on %s",
-    async (reason) => {
-      useUsersStore
-        .getState()
-        .upsertUserForOwner(workspaceRuntimeOwnerKey(SESSION), adaptWorkspaceMessengerUserDto(DTO));
-      let resolve!: (value: typeof DTO) => void;
-      getUser.mockImplementation(
-        () =>
-          new Promise((done) => {
-            resolve = done;
-          }),
-      );
-      const view = render(
-        <MemoryRouter initialEntries={[`/org/org-a/project/project-a/inbox#user/${USER}`]}>
-          <ActiveAccountLink />
-          <Probe />
-        </MemoryRouter>,
-      );
-      await waitFor(() => expect(getUser).toHaveBeenCalledTimes(1));
-      const signal = getUser.mock.calls[0]?.[0].signal as AbortSignal;
-      expect(screen.getByTestId("hash")).toBeEmptyDOMElement();
-      expect(signal.aborted).toBe(false);
-      if (reason === "unmount") view.unmount();
-      else act(() => useWorkspaceAuthStore.setState({ sessions: [], currentAccountId: null }));
-      expect(signal.aborted).toBe(true);
-      await act(() => {
-        resolve({ ...DTO, first_name: "Stale", updated_at: "2026-09-02T10:00:00Z" });
-        return Promise.resolve();
-      });
-      expect(useUsersStore.getState().usersById[USER]?.displayName).toBe("Alice Smith");
-    },
-  );
+  it.each(["unmount", "logout"])("aborts a cached profile's refresh on %s", async (reason) => {
+    const ownerStore = getSelectedUsersStore();
+    useUsersStore
+      .getState()
+      .upsertUserForOwner(workspaceRuntimeOwnerKey(SESSION), adaptWorkspaceMessengerUserDto(DTO));
+    let resolve!: (value: typeof DTO) => void;
+    getUser.mockImplementation(
+      () =>
+        new Promise((done) => {
+          resolve = done;
+        }),
+    );
+    const view = render(
+      <MemoryRouter initialEntries={[`/org/org-a/project/project-a/inbox#user/${USER}`]}>
+        <ActiveAccountLink />
+        <Probe />
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(getUser).toHaveBeenCalledTimes(1));
+    const signal = getUser.mock.calls[0]?.[0].signal as AbortSignal;
+    expect(screen.getByTestId("hash")).toBeEmptyDOMElement();
+    expect(signal.aborted).toBe(false);
+    if (reason === "unmount") view.unmount();
+    else act(() => useWorkspaceAuthStore.getState().removeSession(SESSION.accountId));
+    expect(signal.aborted).toBe(true);
+    await act(() => {
+      resolve({ ...DTO, first_name: "Stale", updated_at: "2026-09-02T10:00:00Z" });
+      return Promise.resolve();
+    });
+    expect(ownerStore.getState().usersById[USER]?.displayName).toBe("Alice Smith");
+    expect(upsertWorkspaceUserCache).not.toHaveBeenCalled();
+    if (reason === "logout") {
+      expect(useUsersStore.getState().usersById[USER]).toBeUndefined();
+    }
+  });
 
   it("cancels the cached refresh when a new profile link arrives", async () => {
     useUsersStore

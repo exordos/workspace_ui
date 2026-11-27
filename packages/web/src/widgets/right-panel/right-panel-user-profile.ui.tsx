@@ -1,18 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { runWorkspaceDirectStreamCreate } from "~/entities/messenger/messenger-create-chat-actions.lib";
-import { useMessengerStore } from "~/entities/messenger/messenger.model";
-import {
-  resolveUserPresenceVisual,
-  selectUserStatusLabel,
-} from "~/entities/user/user-selectors.lib";
-import { useUsersStore } from "~/entities/user/user.model";
+import { useChatDmCallBridgeStore } from "~/applications/messenger/features/chat-details/call-bridge/chat-dm-call-bridge.model";
+import { chatCommands } from "~/applications/messenger/model/chats/chat-commands";
+import { readActiveChats } from "~/applications/messenger/model/chats/chats";
 import {
   selectCurrentWorkspaceRuntimeContext,
   useWorkspaceAuthStore,
 } from "~/entities/workspace-auth/workspace-auth.model";
-import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
-import { useChatDmCallBridgeStore } from "~/features/chat-dm-call-bridge/chat-dm-call-bridge.model";
 import { useOwnProfileEditor } from "~/features/user-profile/user-profile-editor.hook";
 import { profileDraftDisplayName } from "~/features/user-profile/user-profile-editor.lib";
 import { ProfileEditorFeedback } from "~/features/user-profile/user-profile-editor.ui";
@@ -23,7 +17,13 @@ import {
 } from "~/features/user-profile/user-profile.api";
 import { WorkspaceAvatar } from "~/features/workspace-avatar/workspace-avatar.ui";
 import { t } from "~/i18n/i18n";
-import { writeText } from "~/shared/lib/clipboard";
+import { useUserById } from "~/modules/users/users";
+import { resolveUserPresenceVisual, selectUserStatusLabel } from "~/modules/users/users-selectors";
+import { writeText } from "~/platform/desktop/clipboard";
+import {
+  isWorkspaceRuntimeRequestContextCurrent,
+  workspaceRuntimeOwnerKey,
+} from "~/platform/sessions/workspace-runtime.lib";
 import { createLogger } from "~/shared/lib/logger";
 import { validateFileUpload } from "~/shared/lib/validation";
 import { buildWorkspaceDefaultAvatarUrn } from "~/shared/lib/workspace-avatar-urn.lib";
@@ -163,7 +163,7 @@ export const RightPanelUserProfile: React.FC<RightPanelUserProfileProps> = ({
   );
   const profileBusy = avatarBusy || editor.saving;
   // Custom status (emoji + text) — same signal as top-bar / chat header, live from users store.
-  const profileUser = useUsersStore((state) => state.usersById[profile.userUuid]);
+  const profileUser = useUserById(profile.userUuid);
   const customStatusLabel = useMemo(() => selectUserStatusLabel(profileUser), [profileUser]);
   const resolvedAvatarUrl = profileUser?.avatarUrl ?? profile.avatarUrl;
   const resetAvatarUrn = useMemo(
@@ -403,9 +403,18 @@ export const RightPanelUserProfile: React.FC<RightPanelUserProfileProps> = ({
     });
   }, [editor, handleSaveAvatar, profileBusy]);
 
+  // Profile actions use the session that rendered the selected user, even across sync bridge listeners.
+  const isCurrentProfileRuntime = useCallback(
+    () =>
+      isWorkspaceRuntimeRequestContextCurrent(runtimeContext, () =>
+        useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
+      ),
+    [runtimeContext],
+  );
+
   const navigateToDefaultTopic = useCallback(
     (streamUuid: string, topicUuid: string) => {
-      if (runtimeContext == null) return;
+      if (runtimeContext == null || !isCurrentProfileRuntime()) return;
       void navigate(
         workspaceMessengerTopicRoute({
           orgId: runtimeContext.organizationId,
@@ -415,13 +424,20 @@ export const RightPanelUserProfile: React.FC<RightPanelUserProfileProps> = ({
         }),
       );
     },
-    [navigate, runtimeContext],
+    [isCurrentProfileRuntime, navigate, runtimeContext],
   );
 
   const handleMessage = useCallback(() => {
-    if (messagePending || callPending || runtimeContext == null || profile.isOwnProfile) return;
+    if (
+      messagePending ||
+      callPending ||
+      runtimeContext == null ||
+      profile.isOwnProfile ||
+      !isCurrentProfileRuntime()
+    )
+      return;
 
-    const messengerState = useMessengerStore.getState();
+    const messengerState = readActiveChats();
     const target = resolveDirectProfileChatNavigation({
       directUserUuid: profile.userUuid,
       streamsById: messengerState.streamsById,
@@ -446,7 +462,8 @@ export const RightPanelUserProfile: React.FC<RightPanelUserProfileProps> = ({
 
     // stream-missing → создаём ЛС и открываем его default topic.
     setMessagePending(true);
-    void runWorkspaceDirectStreamCreate({ directUserUuid: profile.userUuid })
+    void chatCommands
+      .openDirectForRuntime({ directUserUuid: profile.userUuid, runtimeContext })
       .then((result) => {
         if (result.status !== "applied") return;
         navigateToDefaultTopic(result.stream.uuid, result.defaultTopic.uuid);
@@ -462,6 +479,7 @@ export const RightPanelUserProfile: React.FC<RightPanelUserProfileProps> = ({
   }, [
     callPending,
     currentMessengerRoute,
+    isCurrentProfileRuntime,
     messagePending,
     navigateToDefaultTopic,
     profile.isOwnProfile,
@@ -471,9 +489,16 @@ export const RightPanelUserProfile: React.FC<RightPanelUserProfileProps> = ({
 
   // Звонок: та же навигация, что у «Написать», плюс pending → ChatPage шлёт в текущий/default топик.
   const handleCall = useCallback(() => {
-    if (messagePending || callPending || runtimeContext == null || profile.isOwnProfile) return;
+    if (
+      messagePending ||
+      callPending ||
+      runtimeContext == null ||
+      profile.isOwnProfile ||
+      !isCurrentProfileRuntime()
+    )
+      return;
 
-    const messengerState = useMessengerStore.getState();
+    const messengerState = readActiveChats();
     const target = resolveDirectProfileChatNavigation({
       directUserUuid: profile.userUuid,
       streamsById: messengerState.streamsById,
@@ -488,7 +513,17 @@ export const RightPanelUserProfile: React.FC<RightPanelUserProfileProps> = ({
       return;
     }
 
-    useChatDmCallBridgeStore.getState().setPendingDmCallPartnerUserUuid(profile.userUuid);
+    const bridge = useChatDmCallBridgeStore.getState();
+    const request = {
+      partnerUserUuid: profile.userUuid,
+      ownerKey: workspaceRuntimeOwnerKey(runtimeContext),
+      runtimeGeneration: runtimeContext.runtimeGeneration,
+    };
+    bridge.setPendingDmCall(request);
+    if (!isCurrentProfileRuntime()) {
+      bridge.clearPendingDmCall(request);
+      return;
+    }
 
     if (target.status === "already-open") {
       // Остаёмся в текущем топике/stream — ChatPage подхватит pending и resolveSendTarget.
@@ -501,16 +536,17 @@ export const RightPanelUserProfile: React.FC<RightPanelUserProfileProps> = ({
     }
 
     setCallPending(true);
-    void runWorkspaceDirectStreamCreate({ directUserUuid: profile.userUuid })
+    void chatCommands
+      .openDirectForRuntime({ directUserUuid: profile.userUuid, runtimeContext })
       .then((result) => {
-        if (result.status !== "applied") {
-          useChatDmCallBridgeStore.getState().clearPendingDmCallPartner();
+        if (result.status !== "applied" || !isCurrentProfileRuntime()) {
+          bridge.clearPendingDmCall(request);
           return;
         }
         navigateToDefaultTopic(result.stream.uuid, result.defaultTopic.uuid);
       })
       .catch((error) => {
-        useChatDmCallBridgeStore.getState().clearPendingDmCallPartner();
+        bridge.clearPendingDmCall(request);
         log.error("Failed to open direct call from profile", {
           error: error instanceof Error ? error.message : String(error),
         });
@@ -521,6 +557,7 @@ export const RightPanelUserProfile: React.FC<RightPanelUserProfileProps> = ({
   }, [
     callPending,
     currentMessengerRoute,
+    isCurrentProfileRuntime,
     messagePending,
     navigateToDefaultTopic,
     profile.isOwnProfile,

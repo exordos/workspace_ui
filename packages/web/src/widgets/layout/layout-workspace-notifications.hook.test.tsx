@@ -1,26 +1,38 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useWorkspaceNotificationOwners } from "~/app/workspace-session/workspace-session-notifications.hook";
+import type { WorkspaceConversationMetadata } from "~/applications/messenger/model/chats/messenger-conversation-metadata.lib";
+import { useMessengerStore } from "~/applications/messenger/model/chats/messenger.model";
+import { conversationIdForTopic } from "~/applications/messenger/model/messenger-ids.lib";
+import type {
+  MessengerStream,
+  MessengerTopic,
+} from "~/applications/messenger/model/messenger.types";
+import { useMessengerBackgroundProjectionStore } from "~/applications/messenger/runtime/sync/messenger-background-projection.model";
 import type {
   MessengerBackgroundNotificationCandidate,
   MessengerBackgroundProjection,
   MessengerBackgroundMessageIdSnapshot,
-} from "~/entities/messenger/messenger-background-projection.model";
-import { useMessengerBackgroundProjectionStore } from "~/entities/messenger/messenger-background-projection.model";
-import type { WorkspaceConversationMetadata } from "~/entities/messenger/messenger-conversation-metadata.lib";
-import { conversationIdForTopic } from "~/entities/messenger/messenger-ids.lib";
-import { useMessengerStore } from "~/entities/messenger/messenger.model";
-import type { MessengerStream, MessengerTopic } from "~/entities/messenger/messenger.types";
+} from "~/applications/messenger/runtime/sync/messenger-background-projection.model";
 import type { WorkspaceAuthSession } from "~/entities/workspace-auth/workspace-auth.model";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
-import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { useSettingsStore } from "~/features/settings/settings.model";
 import { t } from "~/i18n/i18n";
+import type { NotificationOptions } from "~/platform/notifications/notifications";
+import { workspaceRuntimeOwnerKey } from "~/platform/sessions/workspace-runtime.lib";
 import { clearNotifiedMessageIds } from "~/shared/lib/notification-dedup.lib";
-import type { NotificationOptions } from "~/shared/lib/notifications";
 import type { shouldWorkspaceDesktopNotify } from "~/shared/lib/workspace-desktop-notifications.lib";
 import { workspaceMessengerTopicRoute } from "~/shared/lib/workspace-messenger-route.lib";
-import { useLayoutWorkspaceNotifications } from "./layout-workspace-notifications.hook";
+import { useLayoutWorkspaceNotifications as useNotificationEffects } from "./layout-workspace-notifications.hook";
 import { clearNotificationAggregateRegistry } from "./notification-aggregate-registry.lib";
+
+// Exercise the real session-to-shell binding while keeping platform effects mocked.
+function useLayoutWorkspaceNotifications(
+  options: Omit<Parameters<typeof useNotificationEffects>[0], "owners">,
+): void {
+  const owners = useWorkspaceNotificationOwners();
+  useNotificationEffects({ ...options, owners });
+}
 
 /** A route that is not the candidates' conversation, so the on-screen rule never fires. */
 const OTHER_CONVERSATION_PATHNAME = "/org/org/project/project/messenger";
@@ -54,7 +66,7 @@ const resolveConversationMetadataMock = vi.hoisted(() =>
   ),
 );
 
-vi.mock("~/shared/lib/notifications", () => ({
+vi.mock("~/platform/notifications/notifications", () => ({
   notificationService: {
     show: (...args: Parameters<typeof showNotificationMock>) => showNotificationMock(...args),
     closeByTag: (...args: Parameters<typeof closeNotificationMock>) =>
@@ -67,7 +79,7 @@ vi.mock("~/shared/lib/notification-sound", () => ({
     playNotificationSoundMock(...args),
 }));
 
-vi.mock("~/shared/lib/os-integration", () => ({
+vi.mock("~/platform/desktop/os-integration", () => ({
   osIntegration: {
     requestAttention: (...args: Parameters<typeof requestAttentionMock>) =>
       requestAttentionMock(...args),
@@ -79,13 +91,13 @@ vi.mock("~/shared/lib/electron", async (importOriginal) => ({
   isElectronDarwin: isElectronDarwinMock,
 }));
 
-vi.mock("~/entities/messenger/messenger-conversation-metadata.lib", () => ({
+vi.mock("~/applications/messenger/model/chats/messenger-conversation-metadata.lib", () => ({
   resolveWorkspaceConversationMetadata: (
     ...args: Parameters<typeof resolveConversationMetadataMock>
   ) => resolveConversationMetadataMock(...args),
 }));
 
-vi.mock("~/entities/user/user-sync.lib", () => ({
+vi.mock("~/modules/users/users-runtime", () => ({
   resolveCachedWorkspaceUser: (...args: Parameters<typeof resolveCachedWorkspaceUserMock>) =>
     resolveCachedWorkspaceUserMock(...args),
 }));
@@ -213,8 +225,6 @@ function createProjection(
     messageIdSnapshotsById: options.messageIdSnapshotsById ?? {},
     recentEvents: [],
     notificationCandidates: options.notificationCandidates ?? [],
-    skippedEvents: [],
-    lastTransportState: null,
   };
 }
 
@@ -248,12 +258,13 @@ describe("useLayoutWorkspaceNotifications", () => {
     useMessengerStore.getState().clear();
   });
 
-  it("shows notifications for candidates from different ownerKey values", async () => {
+  it("shows owner-scoped notifications and opens the background owner's topic", async () => {
     const sessionA = createSession("a");
     const sessionB = createSession("b");
     const ownerKeyA = workspaceRuntimeOwnerKey(sessionA);
     const ownerKeyB = workspaceRuntimeOwnerKey(sessionB);
     const sharedMessageUuid = "shared-message";
+    const navigate = vi.fn();
 
     useWorkspaceAuthStore.setState({
       sessions: [sessionA, sessionB],
@@ -290,7 +301,7 @@ describe("useLayoutWorkspaceNotifications", () => {
     renderHook(() =>
       useLayoutWorkspaceNotifications({
         enabled: true,
-        navigate: vi.fn(),
+        navigate,
         pathname: OTHER_CONVERSATION_PATHNAME,
       }),
     );
@@ -314,6 +325,12 @@ describe("useLayoutWorkspaceNotifications", () => {
     );
     expect(resolveCachedWorkspaceUserMock).toHaveBeenCalledTimes(2);
     expect(shouldWorkspaceDesktopNotifyMock).toHaveBeenCalledTimes(2);
+
+    const backgroundNotification = showNotificationMock.mock.calls[1]?.[0];
+    expect(backgroundNotification?.onClick).toEqual(expect.any(Function));
+    backgroundNotification?.onClick?.();
+    expect(navigate).toHaveBeenCalledOnce();
+    expect(navigate).toHaveBeenCalledWith(`/topics/${ownerKeyB}/topic-1`);
   });
 
   it("opens private and channel notifications in the topic", async () => {

@@ -1,17 +1,19 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { buildWorkspaceRequestOptions } from "~/entities/messenger/messenger-request-options.lib";
-import { applyBootstrapUsers, resolveCachedWorkspaceUser } from "~/entities/user/user-sync.lib";
-import { useUsersStore } from "~/entities/user/user.model";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
+import { t } from "~/i18n/i18n";
+import { readActiveUser, readActiveUsers, useUsersOwnerKey } from "~/modules/users/users";
+import {
+  prepareSharedUserProfile,
+  refreshSharedUserProfile,
+  restoreSharedUserProfile,
+} from "~/modules/users/users-profile";
 import {
   captureWorkspaceRuntimeRequestContext,
   isWorkspaceRuntimeRequestInvalidated,
   workspaceRuntimeOwnerKey,
-} from "~/entities/workspace-runtime/workspace-runtime.lib";
-import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
-import { t } from "~/i18n/i18n";
-import { getUser } from "~/shared/api/workspace-client";
+} from "~/platform/sessions/workspace-runtime.lib";
+import type { WorkspaceRuntimeContext } from "~/platform/sessions/workspace-runtime.types";
 import { parseWorkspaceProfileShareHash } from "~/shared/lib/workspace-profile-link.lib";
 import { Button } from "~/shared/ui/button";
 import { useRightDrawerStore } from "~/widgets/right-panel/right-drawer.model";
@@ -37,7 +39,7 @@ export function LayoutProfileShareLink({
 }) {
   const location = useLocation();
   const navigate = useNavigate();
-  const usersOwnerKey = useUsersStore((state) => state.ownerKey);
+  const usersOwnerKey = useUsersOwnerKey();
   const ownerKey = runtimeContext == null ? null : workspaceRuntimeOwnerKey(runtimeContext);
   const userUuid = parseWorkspaceProfileShareHash(location.hash);
   const [outcome, setOutcome] = useState<ProfileShareOutcome>({ revision: 0, failed: false });
@@ -53,17 +55,13 @@ export function LayoutProfileShareLink({
   useEffect(() => {
     if (!routeReady || runtimeContext == null || ownerKey == null || userUuid == null) return;
     const requestContext = captureWorkspaceRuntimeRequestContext(() => runtimeContext);
-    if (isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext)) return;
-    if (useUsersStore.getState().ownerKey !== ownerKey) {
-      // Cached profiles belong to the persisted owner even when token refresh is offline.
-      useUsersStore.getState().startOwnerSync(ownerKey);
-      return;
-    }
+    if (!prepareSharedUserProfile(runtimeContext)) return;
     const request: ProfileShareRequest = { controller: new AbortController(), opened: false };
     const { controller } = request;
+    const isLinkCurrent = () => requestRef.current === request && !controller.signal.aborted;
     const isInvalidated = () =>
-      requestRef.current !== request ||
-      useUsersStore.getState().ownerKey !== ownerKey ||
+      !isLinkCurrent() ||
+      readActiveUsers().ownerKey !== ownerKey ||
       isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, controller.signal);
     requestRef.current?.controller.abort();
     requestRef.current = request;
@@ -86,42 +84,18 @@ export function LayoutProfileShareLink({
 
     const loadProfile = async () => {
       try {
-        if (useUsersStore.getState().usersById[userUuid] != null) {
+        const available =
+          readActiveUser(userUuid, ownerKey) ??
+          (await restoreSharedUserProfile(runtimeContext, userUuid, isLinkCurrent));
+        if (available != null) openProfile();
+        if (
+          await refreshSharedUserProfile(runtimeContext, userUuid, controller.signal, isLinkCurrent)
+        ) {
           openProfile();
-        } else {
-          const cachedUser = await resolveCachedWorkspaceUser({ ownerKey, userUuid }).catch(
-            () => null,
-          );
-          if (isInvalidated()) return;
-          if (
-            useUsersStore.getState().usersById[userUuid] != null ||
-            (cachedUser?.uuid === userUuid &&
-              useUsersStore.getState().upsertUserForOwner(ownerKey, cachedUser))
-          ) {
-            openProfile();
-          }
         }
-        if (isInvalidated()) return;
-        const user = await getUser(
-          buildWorkspaceRequestOptions(runtimeContext, undefined, controller.signal),
-          userUuid,
-        );
-        if (isInvalidated()) return;
-        if (user.uuid !== userUuid) {
-          throw new Error("Shared profile response does not match the requested user");
-        }
-        const result = applyBootstrapUsers([user], {
-          runtimeContext,
-          requestContext,
-          getRuntimeContext,
-          signal: controller.signal,
-          mode: "upsert",
-        });
-        if (result.status !== "applied") return;
-        openProfile();
       } catch {
         if (!request.opened && !isInvalidated()) {
-          if (useUsersStore.getState().usersById[userUuid] != null) {
+          if (readActiveUser(userUuid, ownerKey) != null) {
             openProfile();
             return;
           }

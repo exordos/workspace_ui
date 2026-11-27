@@ -1,0 +1,1787 @@
+import {
+  captureWorkspaceRuntimeRequestContext,
+  isWorkspaceRuntimeRequestInvalidated,
+  workspaceRuntimeOwnerKey,
+} from "~/platform/sessions/workspace-runtime.lib";
+import type { WorkspaceRuntimeContextGetter } from "~/platform/sessions/workspace-runtime.lib";
+import type { WorkspaceRuntimeContext } from "~/platform/sessions/workspace-runtime.types";
+import {
+  getMessagesPage as defaultGetMessagesPage,
+  MessengerApiError,
+  type MessengerCollectionPage,
+  type MessengerClientOptions,
+} from "~/shared/api/messenger-client";
+import {
+  getMessage as defaultGetMessage,
+  getMessagePagesAroundResolvedMessage as defaultGetMessagePagesAroundResolvedMessage,
+} from "~/shared/api/messenger-messages.api";
+import type { WorkspaceMessengerMessageDto } from "~/shared/api/messenger.types";
+import { createLogger } from "~/shared/lib/logger";
+import {
+  readMessengerConversationWindowCache as defaultReadMessengerConversationWindowCache,
+  readMessengerCachedReadBoundaries as defaultReadMessengerCachedReadBoundaries,
+  deleteMessengerCachedReadBoundary as defaultDeleteMessengerCachedReadBoundary,
+  withoutOptimisticMessageReactionCounts,
+  withoutRuntimeReactionState,
+  writeMessengerConversationWindowCache as defaultWriteMessengerConversationWindowCache,
+  type MessengerConversationCacheWindow,
+} from "../../messenger-cache.lib";
+import {
+  conversationIdForStream,
+  conversationIdForTopic,
+  isMessengerUuid,
+  parseMessengerConversationId,
+} from "../../messenger-ids.lib";
+import {
+  buildMessengerRequestOptions,
+  type MessengerRequestOptionsOverrides,
+} from "../../messenger-request-options.lib";
+import {
+  getSelectedWorkspaceMessageStore,
+  getWorkspaceMessageStoreForOwner,
+  type useWorkspaceMessageStore,
+  type WorkspaceConversationWindow,
+  type WorkspaceConversationWindowBoundary,
+} from "../message.model";
+import { acceptServerMessages } from "../messages-accept-server.lib";
+import { adaptMessengerMessage } from "../messenger-message-adapter.lib";
+import {
+  hydrateMessengerOwnMessageReactionsFromCache as defaultHydrateMessengerOwnMessageReactionsFromCache,
+  syncMessengerOwnerOwnMessageReactions as defaultSyncMessengerOwnerOwnMessageReactions,
+} from "../messenger-message-reactions-actions.lib";
+import {
+  applyMessengerReadBoundaries,
+  compareMessengerMessageOrder,
+  discardMessengerReadBoundary,
+  readMessengerReadBoundary,
+  restoreMessengerReadBoundaries,
+  type MessengerReadBoundary,
+} from "../messenger-read-boundary.lib";
+import {
+  settleMessengerOutgoingMessage,
+  settleMessengerOutgoingMessages,
+} from "../outgoing/messenger-outbox.model";
+import type {
+  MessengerConversationId,
+  MessengerMessage,
+  MessengerUuid,
+} from "../../messenger.types";
+import type { ResolvedConversationHistoryWindow } from "../messages-accept-history.lib";
+
+// The first message page is loaded only after the user opens a conversation.
+const DEFAULT_MESSAGES_PAGE_LIMIT = 50;
+const log = createLogger("messenger-messages-loader");
+
+export interface MessengerMessagesClientDeps {
+  getMessagesPage?: (
+    options: MessengerClientOptions,
+    query: MessengerMessagesPageQuery,
+  ) => Promise<MessengerCollectionPage<WorkspaceMessengerMessageDto>>;
+  getMessage?: typeof defaultGetMessage;
+  getMessagePagesAroundResolvedMessage?: typeof defaultGetMessagePagesAroundResolvedMessage;
+}
+
+interface MessengerMessagesPageQuery {
+  streamUuid?: string;
+  topicUuid?: string;
+  pageLimit?: number;
+  pageMarker?: string | number;
+  sortKey?: "created_at";
+  sortDir?: "asc" | "desc";
+  read?: boolean;
+}
+
+export interface MessengerMessagesCacheDeps {
+  readReadBoundaries?: (
+    ownerKey: string,
+  ) => ReturnType<typeof defaultReadMessengerCachedReadBoundaries>;
+  deleteReadBoundary?: typeof defaultDeleteMessengerCachedReadBoundary;
+  readConversationMessageWindow?: (
+    ownerKey: string,
+    conversationId: MessengerConversationId,
+  ) => Promise<MessengerConversationCacheWindow>;
+  writeConversationMessagePage?: (
+    ownerKey: string,
+    conversationId: MessengerConversationId,
+    page: {
+      messages: ReturnType<typeof adaptMessengerMessage>[];
+      nextPageMarker: string | null;
+      hasMore: boolean;
+    },
+    isWriteCurrent?: () => boolean,
+  ) => Promise<void> | void;
+}
+
+export interface MessengerReadBoundaryCacheDeps {
+  readReadBoundaries?: (
+    ownerKey: string,
+  ) => ReturnType<typeof defaultReadMessengerCachedReadBoundaries>;
+}
+
+export interface MessengerMessagesOwnReactionSyncDeps {
+  hydrateFromCache?: typeof defaultHydrateMessengerOwnMessageReactionsFromCache;
+  syncOwner?: typeof defaultSyncMessengerOwnerOwnMessageReactions;
+}
+
+export interface MessengerMessagesStoreApi {
+  getState: () => Pick<
+    ReturnType<typeof useWorkspaceMessageStore.getState>,
+    | "ownerKey"
+    | "messagesLoadingByConversationId"
+    | "setMessagesLoading"
+    | "setMessagesError"
+    | "upsertMessageBodyFromSnapshot"
+    | "replaceConversationWindow"
+    | "mergeConversationWindowPage"
+    | "conversationWindowsById"
+    | "messageMutationRevision"
+    | "deletedMessageRevisionById"
+    | "messagesById"
+  >;
+}
+
+export type MessengerConversationMessagesResult =
+  | {
+      status: "applied";
+      ownerKey: string;
+      conversationId: MessengerConversationId;
+      nextPageMarker: string | null;
+      hasMore: boolean;
+      pageLimit: number | null;
+    }
+  | {
+      status: "skipped";
+      ownerKey: string | null;
+      reason: "missing-context" | "stale-owner" | "stale-window" | "invalid-conversation";
+    }
+  | {
+      status: "failed";
+      ownerKey: string;
+      conversationId: MessengerConversationId;
+      error: string;
+    };
+
+export type MessengerMessageAnchorResolveResult =
+  | {
+      status: "resolved";
+      ownerKey: string;
+      conversationId: MessengerConversationId;
+      message: MessengerMessage;
+    }
+  | {
+      status: "skipped";
+      ownerKey: string | null;
+      reason: "missing-context" | "stale-owner" | "stale-window";
+    }
+  | {
+      status: "failed";
+      ownerKey: string;
+      conversationId: MessengerConversationId | null;
+      error: string;
+      reason?: "not-found" | "access-denied";
+    };
+
+export interface MessengerFetchedMessageWindow {
+  ownerKey: string;
+  conversationId: MessengerConversationId;
+  anchorUuid: MessengerUuid;
+  messages: MessengerMessage[];
+  beforePageMarker: string | null;
+  afterPageMarker: string | null;
+  expectedWindowRevision: number | null;
+  capturedMutationRevision: number;
+}
+
+export type MessengerMessageWindowFetchResult =
+  | { status: "fetched"; window: MessengerFetchedMessageWindow }
+  | {
+      status: "skipped";
+      ownerKey: string | null;
+      reason: "missing-context" | "stale-owner" | "stale-window";
+    }
+  | {
+      status: "failed";
+      ownerKey: string;
+      conversationId: MessengerConversationId;
+      error: string;
+      reason?: "not-found" | "access-denied";
+    };
+
+export type MessengerMessageWindowApplyResult =
+  | {
+      status: "applied";
+      ownerKey: string;
+      conversationId: MessengerConversationId;
+      anchorUuid: MessengerUuid;
+    }
+  | {
+      status: "skipped";
+      ownerKey: string | null;
+      reason: "missing-context" | "stale-owner" | "stale-window";
+    }
+  | {
+      status: "failed";
+      ownerKey: string;
+      conversationId: MessengerConversationId;
+      error: string;
+    };
+
+export type MessengerMessageWindowPageDirection = "before" | "after";
+
+export type MessengerMessageWindowPageResult =
+  | {
+      status: "applied";
+      ownerKey: string;
+      conversationId: MessengerConversationId;
+      direction: MessengerMessageWindowPageDirection;
+      nextPageMarker: string | null;
+      pageLimit: number | null;
+    }
+  | {
+      status: "skipped";
+      ownerKey: string | null;
+      reason: "missing-context" | "stale-owner" | "stale-window" | "invalid-conversation";
+    }
+  | {
+      status: "failed";
+      ownerKey: string;
+      conversationId: MessengerConversationId;
+      direction: MessengerMessageWindowPageDirection;
+      error: string;
+    };
+
+export interface LoadMessengerConversationMessagesOptions {
+  runtimeContext: WorkspaceRuntimeContext;
+  conversationId: MessengerConversationId;
+  pageLimit?: number;
+  boundary?: WorkspaceConversationWindowBoundary; // Верхняя страница хвоста, если это догрузка.
+  resolveUnreadBoundary?: boolean;
+  openingAnchorUuid?: MessengerUuid;
+  retainCurrentWindow?: () => boolean;
+  onServerWindowApplied?: () => void;
+  getRuntimeContext?: WorkspaceRuntimeContextGetter;
+  client?: MessengerMessagesClientDeps;
+  cache?: MessengerMessagesCacheDeps;
+  ownReactionSync?: MessengerMessagesOwnReactionSyncDeps;
+  clientOptions?: MessengerRequestOptionsOverrides;
+  signal?: AbortSignal;
+  store?: MessengerMessagesStoreApi;
+}
+
+export interface ResolveMessengerMessageAnchorOptions {
+  runtimeContext: WorkspaceRuntimeContext;
+  messageUuid: MessengerUuid;
+  getRuntimeContext?: WorkspaceRuntimeContextGetter;
+  client?: MessengerMessagesClientDeps;
+  clientOptions?: MessengerRequestOptionsOverrides;
+  signal?: AbortSignal;
+  store?: MessengerMessagesStoreApi;
+}
+
+export interface FetchMessengerMessageWindowOptions {
+  runtimeContext: WorkspaceRuntimeContext;
+  anchor: Extract<MessengerMessageAnchorResolveResult, { status: "resolved" }>;
+  targetConversationId: MessengerConversationId;
+  beforeLimit?: number;
+  afterLimit?: number;
+  getRuntimeContext?: WorkspaceRuntimeContextGetter;
+  client?: MessengerMessagesClientDeps;
+  clientOptions?: MessengerRequestOptionsOverrides;
+  signal?: AbortSignal;
+  store?: MessengerMessagesStoreApi;
+}
+
+export interface ApplyMessengerMessageWindowOptions {
+  runtimeContext: WorkspaceRuntimeContext;
+  window: MessengerFetchedMessageWindow;
+  isRequestCurrent: () => boolean;
+  mode?: "around-anchor" | "tail";
+  getRuntimeContext?: WorkspaceRuntimeContextGetter;
+  boundaryCache?: MessengerReadBoundaryCacheDeps;
+  ownReactionSync?: MessengerMessagesOwnReactionSyncDeps;
+  clientOptions?: MessengerRequestOptionsOverrides;
+  signal?: AbortSignal;
+  store?: MessengerMessagesStoreApi;
+}
+
+export interface LoadMessengerMessageWindowPageOptions {
+  runtimeContext: WorkspaceRuntimeContext;
+  conversationId: MessengerConversationId;
+  boundary: WorkspaceConversationWindowBoundary; // Снимок выбранной стороны до запроса.
+  pageLimit?: number;
+  getRuntimeContext?: WorkspaceRuntimeContextGetter;
+  client?: MessengerMessagesClientDeps;
+  boundaryCache?: MessengerReadBoundaryCacheDeps;
+  ownReactionSync?: MessengerMessagesOwnReactionSyncDeps;
+  clientOptions?: MessengerRequestOptionsOverrides;
+  signal?: AbortSignal;
+  store?: MessengerMessagesStoreApi;
+}
+
+function normalizeMessagesError(error: unknown): string {
+  if (error instanceof Error && error.message.trim().length > 0) {
+    return error.message;
+  }
+  return "Messenger messages loading failed";
+}
+
+function messageAnchorFailure(error: unknown): {
+  error: string;
+  reason?: "not-found" | "access-denied";
+} {
+  if (error instanceof MessengerApiError && (error.status === 403 || error.status === 404)) {
+    return {
+      error: "Message unavailable",
+      reason: error.status === 403 ? "access-denied" : "not-found",
+    };
+  }
+  return { error: normalizeMessagesError(error) };
+}
+
+async function restoreReadBoundariesForRequest({
+  ownerKey,
+  boundaryCache,
+  isRequestStale,
+}: {
+  ownerKey: string;
+  boundaryCache: MessengerReadBoundaryCacheDeps | undefined;
+  isRequestStale: () => boolean;
+}): Promise<boolean> {
+  try {
+    const boundaries = await (
+      boundaryCache?.readReadBoundaries ?? defaultReadMessengerCachedReadBoundaries
+    )(ownerKey);
+    if (isRequestStale()) return false;
+    restoreMessengerReadBoundaries(boundaries);
+  } catch {
+    // Boundary cache is an accelerator; the server request remains usable without it.
+  }
+  return !isRequestStale();
+}
+
+function writeMessagesCacheBestEffort(write: () => Promise<void> | void): void {
+  try {
+    const result = write();
+    if (result instanceof Promise) {
+      void result.catch(() => undefined);
+    }
+  } catch {
+    // Cache failures must not block message loading.
+  }
+}
+
+function conversationIdFromMessageAnchor(
+  anchor: WorkspaceMessengerMessageDto,
+): MessengerConversationId | null {
+  if (!isMessengerUuid(anchor.stream_uuid)) {
+    return null;
+  }
+  if (isMessengerUuid(anchor.topic_uuid)) {
+    return conversationIdForTopic(anchor.stream_uuid, anchor.topic_uuid);
+  }
+  return conversationIdForStream(anchor.stream_uuid);
+}
+
+interface MessageLoadingRequestOwner {
+  token: symbol;
+  ownerKey: string | null;
+}
+
+const messageLoadingRequestOwners = new WeakMap<
+  MessengerMessagesStoreApi,
+  Map<MessengerConversationId, MessageLoadingRequestOwner>
+>();
+
+function messageLoadingRequestOwnerMap(
+  store: MessengerMessagesStoreApi,
+): Map<MessengerConversationId, MessageLoadingRequestOwner> {
+  const existing = messageLoadingRequestOwners.get(store);
+  if (existing != null) return existing;
+
+  const created = new Map<MessengerConversationId, MessageLoadingRequestOwner>();
+  messageLoadingRequestOwners.set(store, created);
+  return created;
+}
+
+function claimMessageLoadingRequest(
+  store: MessengerMessagesStoreApi,
+  conversationId: MessengerConversationId,
+  requestToken: symbol,
+): void {
+  messageLoadingRequestOwnerMap(store).set(conversationId, {
+    token: requestToken,
+    ownerKey: store.getState().ownerKey,
+  });
+}
+
+function ownsMessageLoadingRequest(
+  store: MessengerMessagesStoreApi,
+  conversationId: MessengerConversationId,
+  requestToken: symbol,
+): boolean {
+  return messageLoadingRequestOwners.get(store)?.get(conversationId)?.token === requestToken;
+}
+
+function releaseMessageLoadingRequest(
+  store: MessengerMessagesStoreApi,
+  conversationId: MessengerConversationId,
+  requestToken: symbol,
+): void {
+  const owners = messageLoadingRequestOwners.get(store);
+  if (owners?.get(conversationId)?.token !== requestToken) return;
+  owners.delete(conversationId);
+  if (owners.size === 0) {
+    messageLoadingRequestOwners.delete(store);
+  }
+}
+
+function finishMessageLoadingRequest(
+  store: MessengerMessagesStoreApi,
+  conversationId: MessengerConversationId,
+  requestToken: symbol,
+  error: string | null | undefined,
+): boolean {
+  const request = messageLoadingRequestOwners.get(store)?.get(conversationId);
+  if (request?.token !== requestToken) return false;
+
+  releaseMessageLoadingRequest(store, conversationId, requestToken);
+  const messageStore = store.getState();
+  // Сброс владельца удаляет запись загрузки. После публикации окна запись может
+  // содержать false, пока запрос ещё способен завершиться ошибкой.
+  if (
+    messageStore.ownerKey !== request.ownerKey ||
+    !Object.hasOwn(messageStore.messagesLoadingByConversationId, conversationId)
+  ) {
+    return false;
+  }
+  messageStore.setMessagesLoading(conversationId, false);
+  if (error !== undefined) {
+    messageStore.setMessagesError(conversationId, error);
+  }
+  return true;
+}
+
+function isMessageLoadingRequestStale({
+  conversationId,
+  isInvalidated,
+  requestToken,
+  store,
+}: {
+  conversationId: MessengerConversationId;
+  isInvalidated: () => boolean;
+  requestToken: symbol;
+  store: MessengerMessagesStoreApi;
+}): boolean {
+  if (isInvalidated()) {
+    finishMessageLoadingRequest(store, conversationId, requestToken, undefined);
+    return true;
+  }
+  return !ownsMessageLoadingRequest(store, conversationId, requestToken);
+}
+
+function messageUuidsForOwnReactionSync(messages: readonly MessengerMessage[]): MessengerUuid[] {
+  // Own-reaction projection lives outside the message aggregate, so sync only
+  // needs visible UUIDs and does not require loader knowledge of cache rows.
+  return messages.map((message) => message.uuid);
+}
+
+function haveSameMessageUuids(
+  left: readonly MessengerUuid[],
+  right: readonly MessengerUuid[],
+): boolean {
+  if (left.length !== right.length) return false;
+
+  const leftUuids = new Set(left);
+  const rightUuids = new Set(right);
+  if (leftUuids.size !== rightUuids.size) return false;
+
+  return left.every((uuid) => rightUuids.has(uuid));
+}
+
+async function hydrateVisibleOwnReactionsFromCache({
+  runtimeContext,
+  getRuntimeContext,
+  signal,
+  ownReactionSync,
+  messages,
+  isRequestCurrent,
+}: {
+  runtimeContext: WorkspaceRuntimeContext;
+  getRuntimeContext: WorkspaceRuntimeContextGetter;
+  signal: AbortSignal | undefined;
+  ownReactionSync: MessengerMessagesOwnReactionSyncDeps | undefined;
+  messages: readonly MessengerMessage[];
+  isRequestCurrent?: () => boolean;
+}): Promise<MessengerUuid[]> {
+  const messageUuids = messageUuidsForOwnReactionSync(messages);
+  if (messageUuids.length === 0) return [];
+
+  const hydrate =
+    ownReactionSync?.hydrateFromCache ?? defaultHydrateMessengerOwnMessageReactionsFromCache;
+  try {
+    await hydrate({
+      runtimeContext,
+      getRuntimeContext,
+      signal,
+      messageUuids,
+      isRequestCurrent,
+    });
+  } catch {
+    // IDB hydration failures must not break message history; server sync can
+    // still restore current own-reaction rows.
+  }
+  if (isRequestCurrent?.() === false) return [];
+  return messageUuids;
+}
+
+function scheduleVisibleOwnReactionSync({
+  runtimeContext,
+  getRuntimeContext,
+  clientOptions,
+  signal,
+  ownReactionSync,
+  messageUuids,
+  isRequestCurrent,
+}: {
+  runtimeContext: WorkspaceRuntimeContext;
+  getRuntimeContext: WorkspaceRuntimeContextGetter;
+  clientOptions: MessengerRequestOptionsOverrides | undefined;
+  signal: AbortSignal | undefined;
+  ownReactionSync: MessengerMessagesOwnReactionSyncDeps | undefined;
+  messageUuids: readonly MessengerUuid[];
+  isRequestCurrent?: () => boolean;
+}): Promise<void> {
+  // Server sync is intentionally backgrounded: cache hydration should restore
+  // highlighting quickly after reload, and server checks must not block opening.
+  const syncOwner = ownReactionSync?.syncOwner ?? defaultSyncMessengerOwnerOwnMessageReactions;
+  return syncOwner({
+    runtimeContext,
+    getRuntimeContext,
+    clientOptions,
+    signal,
+    messageUuids,
+    isRequestCurrent,
+  })
+    .then(() => undefined)
+    .catch(() => {
+      log.warn("Failed to synchronize visible own reactions");
+    });
+}
+
+async function syncVisibleOwnReactionsFromCacheThenServer({
+  runtimeContext,
+  getRuntimeContext,
+  clientOptions,
+  signal,
+  ownReactionSync,
+  messages,
+}: {
+  runtimeContext: WorkspaceRuntimeContext;
+  getRuntimeContext: WorkspaceRuntimeContextGetter;
+  clientOptions: MessengerRequestOptionsOverrides | undefined;
+  signal: AbortSignal | undefined;
+  ownReactionSync: MessengerMessagesOwnReactionSyncDeps | undefined;
+  messages: readonly MessengerMessage[];
+}): Promise<void> {
+  const messageUuids = await hydrateVisibleOwnReactionsFromCache({
+    runtimeContext,
+    getRuntimeContext,
+    signal,
+    ownReactionSync,
+    messages,
+  });
+  if (messageUuids.length === 0) return;
+
+  void scheduleVisibleOwnReactionSync({
+    runtimeContext,
+    getRuntimeContext,
+    clientOptions,
+    signal,
+    ownReactionSync,
+    messageUuids,
+  });
+}
+
+async function restoreCachedConversationMessages({
+  ownerKey,
+  conversationId,
+  runtimeContext,
+  getRuntimeContext,
+  signal,
+  cache,
+  ownReactionSync,
+  clientOptions,
+  store,
+  isRequestStale,
+  onCacheReadError,
+}: {
+  ownerKey: string;
+  conversationId: MessengerConversationId;
+  runtimeContext: WorkspaceRuntimeContext;
+  getRuntimeContext: WorkspaceRuntimeContextGetter;
+  signal: AbortSignal | undefined;
+  cache: MessengerMessagesCacheDeps;
+  ownReactionSync: MessengerMessagesOwnReactionSyncDeps | undefined;
+  clientOptions: MessengerRequestOptionsOverrides | undefined;
+  store: MessengerMessagesStoreApi;
+  isRequestStale: () => boolean;
+  onCacheReadError: () => void;
+}): Promise<MessengerConversationCacheWindow | null> {
+  const initialStoreState = store.getState();
+  const expectedRevision =
+    initialStoreState.conversationWindowsById[conversationId]?.revision ?? null;
+  const capturedMutationRevision = initialStoreState.messageMutationRevision;
+  let cachedWindow: MessengerConversationCacheWindow;
+  try {
+    cachedWindow = await (
+      cache.readConversationMessageWindow ?? defaultReadMessengerConversationWindowCache
+    )(ownerKey, conversationId);
+  } catch (error) {
+    if (isRequestStale()) return null;
+    onCacheReadError();
+    throw error;
+  }
+  if (isRequestStale()) return null;
+
+  const effectiveMessages = applyMessengerReadBoundaries(cachedWindow.messages, ownerKey);
+  const effectiveWindow = effectiveMessages.every(
+    (message, index) => message === cachedWindow.messages[index],
+  )
+    ? cachedWindow
+    : { ...cachedWindow, messages: effectiveMessages };
+
+  // The cache exists to fill an empty conversation quickly. When one is already on
+  // screen — reopening it, reloading it, retrying — replacing it with whatever the
+  // cache happens to hold takes messages away from the reader for as long as the
+  // server page takes to arrive: the list collapses to a handful of messages and
+  // comes back a fifth of a second later.
+  const hasLoadedWindow =
+    (initialStoreState.conversationWindowsById[conversationId]?.messageUuids.length ?? 0) > 0;
+
+  if (!hasLoadedWindow) {
+    const cachedStore = store.getState();
+    const cachedAppliedWindow = cachedStore.replaceConversationWindow({
+      conversationId,
+      expectedRevision,
+      capturedMutationRevision,
+      mode: "tail",
+      anchorMessageUuid: null,
+      messages: effectiveMessages,
+      markers: {
+        beforePageMarker: cachedWindow.nextPageMarker,
+        afterPageMarker: null,
+      },
+    });
+    if (cachedAppliedWindow != null) {
+      settleMessengerOutgoingMessages(ownerKey, effectiveMessages);
+    }
+  }
+  const cachedOwnReactionSyncUuids = await hydrateVisibleOwnReactionsFromCache({
+    runtimeContext,
+    getRuntimeContext,
+    signal,
+    ownReactionSync,
+    messages: effectiveMessages,
+  });
+  if (isRequestStale()) return null;
+  if (cachedOwnReactionSyncUuids.length > 0) {
+    void scheduleVisibleOwnReactionSync({
+      runtimeContext,
+      getRuntimeContext,
+      clientOptions,
+      signal,
+      ownReactionSync,
+      messageUuids: cachedOwnReactionSyncUuids,
+    });
+  }
+  return effectiveWindow;
+}
+
+function buildMessengerMessagesPageQuery({
+  conversation,
+  pageLimit,
+  pageMarker,
+  sortDir,
+}: {
+  conversation: NonNullable<ReturnType<typeof parseMessengerConversationId>>;
+  pageLimit: number;
+  pageMarker: string | number | undefined;
+  sortDir: "asc" | "desc";
+}): MessengerMessagesPageQuery {
+  const baseQuery = {
+    streamUuid: conversation.streamUuid,
+    pageLimit,
+    pageMarker,
+    sortKey: "created_at" as const,
+    sortDir,
+  };
+  return conversation.kind === "topic"
+    ? { ...baseQuery, topicUuid: conversation.topicUuid }
+    : baseQuery;
+}
+
+async function synchronizeLoadedConversationMessages({
+  runtimeContext,
+  getRuntimeContext,
+  clientOptions,
+  signal,
+  ownReactionSync,
+  messages,
+  cachedMessages,
+}: {
+  runtimeContext: WorkspaceRuntimeContext;
+  getRuntimeContext: WorkspaceRuntimeContextGetter;
+  clientOptions: MessengerRequestOptionsOverrides | undefined;
+  signal: AbortSignal | undefined;
+  ownReactionSync: MessengerMessagesOwnReactionSyncDeps | undefined;
+  messages: readonly MessengerMessage[];
+  cachedMessages: readonly MessengerMessage[];
+}): Promise<void> {
+  const serverMessageUuids = messageUuidsForOwnReactionSync(messages);
+  const cachedMessageUuids = messageUuidsForOwnReactionSync(cachedMessages);
+  if (
+    serverMessageUuids.length === 0 ||
+    haveSameMessageUuids(serverMessageUuids, cachedMessageUuids)
+  ) {
+    return;
+  }
+  await syncVisibleOwnReactionsFromCacheThenServer({
+    runtimeContext,
+    getRuntimeContext,
+    clientOptions,
+    signal,
+    ownReactionSync,
+    messages,
+  });
+}
+
+// Для хвостовой догрузки собирает актуальное окно, пока применённая верхняя граница на месте.
+function writeLoadedConversationMessagesCache({
+  ownerKey,
+  conversationId,
+  appliedWindow,
+  isOlderPage,
+  cache,
+  store,
+  isRequestStale,
+}: {
+  ownerKey: string;
+  conversationId: MessengerConversationId;
+  appliedWindow: WorkspaceConversationWindow;
+  isOlderPage: boolean;
+  cache: MessengerMessagesCacheDeps;
+  store: MessengerMessagesStoreApi;
+  isRequestStale: () => boolean;
+}): void {
+  const cacheStoreState = store.getState();
+  const cacheWindow = cacheStoreState.conversationWindowsById[conversationId];
+  if (cacheWindow?.mode !== "tail" || cacheWindow.generation !== appliedWindow.generation) return;
+  if (
+    isOlderPage
+      ? cacheWindow.beforePageMarker !== appliedWindow.beforePageMarker ||
+        cacheWindow.messageUuids[0] !== appliedWindow.messageUuids[0]
+      : cacheWindow.revision !== appliedWindow.revision
+  ) {
+    return;
+  }
+
+  const effectiveMessages = cacheWindow.messageUuids
+    .map((messageUuid) => cacheStoreState.messagesById[messageUuid])
+    .filter((message): message is MessengerMessage => message != null)
+    .map((message) => withoutRuntimeReactionState(withoutOptimisticMessageReactionCounts(message)));
+  const cacheMutationRevision = cacheStoreState.messageMutationRevision;
+  writeMessagesCacheBestEffort(() =>
+    (cache.writeConversationMessagePage ?? defaultWriteMessengerConversationWindowCache)(
+      ownerKey,
+      conversationId,
+      {
+        messages: effectiveMessages,
+        nextPageMarker: cacheWindow.beforePageMarker,
+        hasMore: cacheWindow.beforePageMarker != null,
+      },
+      () => {
+        const currentState = store.getState();
+        const currentWindow = currentState.conversationWindowsById[conversationId];
+        return (
+          !isRequestStale() &&
+          currentState.messageMutationRevision === cacheMutationRevision &&
+          currentWindow?.revision === cacheWindow.revision &&
+          currentWindow.generation === cacheWindow.generation
+        );
+      },
+    ),
+  );
+}
+
+/** Resolve a bounded opening target before the caller applies the guarded window. */
+async function resolveOpeningMessageWindow({
+  serverTail,
+  initialNextPageMarker,
+  unreadPage,
+  ownerKey,
+  openingAnchorUuid,
+  shouldRetainWindow,
+  store,
+  client,
+  requestOptions,
+  parsedConversationId,
+  pageLimit,
+  isRequestStale,
+}: {
+  serverTail: readonly MessengerMessage[]; // Нормализованные сообщения основной страницы.
+  initialNextPageMarker: string | null; // Следующая верхняя граница основной страницы.
+  unreadPage: MessengerCollectionPage<WorkspaceMessengerMessageDto> | null;
+  ownerKey: string;
+  openingAnchorUuid: MessengerUuid | undefined;
+  shouldRetainWindow: () => boolean;
+  store: MessengerMessagesStoreApi;
+  client: MessengerMessagesClientDeps;
+  requestOptions: MessengerClientOptions;
+  parsedConversationId: NonNullable<ReturnType<typeof parseMessengerConversationId>>;
+  pageLimit: number;
+  isRequestStale: () => boolean;
+}): Promise<
+  | ({ status: "resolved" } & ResolvedConversationHistoryWindow)
+  | { status: "retry" }
+  | { status: "stale" }
+> {
+  let nextPageMarker = initialNextPageMarker;
+  let afterPageMarker: string | null = null;
+  let messages = applyMessengerReadBoundaries(serverTail, ownerKey);
+  let mode: "tail" | "around-anchor" = "tail";
+  let anchorMessageUuid: string | null = null;
+  const unreadDto = unreadPage?.items[0];
+  const unreadMessage =
+    unreadDto == null
+      ? null
+      : (applyMessengerReadBoundaries([adaptMessengerMessage(unreadDto)], ownerKey)[0] ?? null);
+  // A read event can overtake the HTTP snapshot. Retry once instead of opening
+  // at an anchor already consumed on another device.
+  if (
+    !shouldRetainWindow() &&
+    (unreadMessage?.read ||
+      (unreadPage != null &&
+        messages.some(
+          (message) =>
+            !message.read &&
+            store.getState().messagesById[message.uuid]?.read !== true &&
+            (unreadMessage == null ||
+              compareMessengerMessageOrder(
+                { createdAt: message.createdAt, messageUuid: message.uuid },
+                { createdAt: unreadMessage.createdAt, messageUuid: unreadMessage.uuid },
+              ) < 0),
+        )))
+  ) {
+    return { status: "retry" };
+  }
+  let savedAnchor =
+    openingAnchorUuid == null ? null : (store.getState().messagesById[openingAnchorUuid] ?? null);
+  if (openingAnchorUuid != null && savedAnchor == null && !shouldRetainWindow()) {
+    savedAnchor = adaptMessengerMessage(
+      await (client.getMessage ?? defaultGetMessage)(requestOptions, openingAnchorUuid),
+    );
+    if (isRequestStale()) return { status: "stale" };
+    if (
+      savedAnchor.streamUuid !== parsedConversationId.streamUuid ||
+      (parsedConversationId.kind === "topic" &&
+        savedAnchor.topicUuid !== parsedConversationId.topicUuid)
+    ) {
+      throw new Error("Saved position does not belong to the conversation");
+    }
+  }
+  const windowAnchor = savedAnchor ?? unreadMessage;
+  if (
+    windowAnchor != null &&
+    !messages.some((message) => message.uuid === windowAnchor.uuid) &&
+    !shouldRetainWindow()
+  ) {
+    const around = await (
+      client.getMessagePagesAroundResolvedMessage ?? defaultGetMessagePagesAroundResolvedMessage
+    )(requestOptions, {
+      messageUuid: windowAnchor.uuid,
+      streamUuid: parsedConversationId.streamUuid,
+      topicUuid: parsedConversationId.kind === "topic" ? parsedConversationId.topicUuid : undefined,
+      beforeLimit: pageLimit,
+      afterLimit: pageLimit,
+    });
+    if (isRequestStale()) return { status: "stale" };
+    messages = applyMessengerReadBoundaries(
+      [
+        ...around.before.map(adaptMessengerMessage),
+        windowAnchor,
+        ...around.after.map(adaptMessengerMessage),
+      ],
+      ownerKey,
+    );
+    mode = "around-anchor";
+    anchorMessageUuid = windowAnchor.uuid;
+    nextPageMarker = around.beforePageMarker;
+    afterPageMarker = around.afterPageMarker;
+  }
+  // Around-window requests may be overtaken by cross-device read events too.
+  if (
+    !shouldRetainWindow() &&
+    unreadMessage != null &&
+    applyMessengerReadBoundaries([unreadMessage], ownerKey)[0]?.read
+  ) {
+    return { status: "retry" };
+  }
+  return {
+    status: "resolved",
+    messages,
+    mode,
+    anchorMessageUuid,
+    nextPageMarker,
+    afterPageMarker,
+    unreadMessage,
+  };
+}
+
+async function loadConversationMessagesFromServer({
+  runtimeContext,
+  conversationId,
+  pageLimit,
+  boundary,
+  parsedConversationId,
+  ownerKey,
+  requestToken,
+  isRequestStale,
+  getRuntimeContext,
+  client,
+  cache,
+  ownReactionSync,
+  clientOptions,
+  signal,
+  store,
+  cachedWindow,
+  resolveUnreadBoundary,
+  openingAnchorUuid,
+  retainCurrentWindow,
+  onServerWindowApplied,
+}: {
+  runtimeContext: WorkspaceRuntimeContext;
+  conversationId: MessengerConversationId;
+  pageLimit: number;
+  boundary: WorkspaceConversationWindowBoundary | undefined;
+  parsedConversationId: NonNullable<ReturnType<typeof parseMessengerConversationId>>;
+  ownerKey: string;
+  requestToken: symbol;
+  isRequestStale: () => boolean;
+  getRuntimeContext: WorkspaceRuntimeContextGetter;
+  client: MessengerMessagesClientDeps;
+  cache: MessengerMessagesCacheDeps;
+  ownReactionSync: MessengerMessagesOwnReactionSyncDeps | undefined;
+  clientOptions: MessengerRequestOptionsOverrides | undefined;
+  signal: AbortSignal | undefined;
+  store: MessengerMessagesStoreApi;
+  cachedWindow: MessengerConversationCacheWindow;
+  resolveUnreadBoundary: boolean;
+  openingAnchorUuid: MessengerUuid | undefined;
+  retainCurrentWindow: (() => boolean) | undefined;
+  onServerWindowApplied: (() => void) | undefined;
+}): Promise<MessengerConversationMessagesResult> {
+  const pageMarker = boundary?.pageMarker;
+  const requestOptions = buildMessengerRequestOptions(runtimeContext, clientOptions, signal);
+  const query = buildMessengerMessagesPageQuery({
+    conversation: parsedConversationId,
+    pageLimit,
+    pageMarker,
+    sortDir: "desc",
+  });
+  // Intent alone cannot retain an absent window. Recheck after every async stage.
+  const shouldRetainWindow = (): boolean =>
+    pageMarker == null &&
+    retainCurrentWindow?.() === true &&
+    (store.getState().conversationWindowsById[conversationId]?.messageUuids.length ?? 0) > 0;
+  interface RejectedUnreadBoundary {
+    messageUuid: MessengerUuid;
+    boundary: MessengerReadBoundary;
+    mutationRevision: number;
+  }
+  const retryState: { rejectedUnreadBoundary?: RejectedUnreadBoundary } = {};
+  try {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const requestStoreState = store.getState();
+      const expectedWindowRevision =
+        requestStoreState.conversationWindowsById[conversationId]?.revision ?? null;
+      const capturedMutationRevision = requestStoreState.messageMutationRevision;
+      const getPage = client.getMessagesPage ?? defaultGetMessagesPage;
+      const [page, unreadPage] = await Promise.all([
+        getPage(requestOptions, query),
+        resolveUnreadBoundary && pageMarker == null && !shouldRetainWindow()
+          ? getPage(requestOptions, { ...query, read: false, sortDir: "asc", pageLimit: 1 })
+          : Promise.resolve(null),
+      ]);
+
+      if (isRequestStale()) {
+        return { status: "skipped", ownerKey, reason: "stale-owner" };
+      }
+
+      const unreadDto = unreadPage?.items[0];
+      const rejected = retryState.rejectedUnreadBoundary;
+      const canDiscardBoundary = (): boolean => {
+        if (rejected == null || isRequestStale()) return false;
+        if (store.getState().messageMutationRevision !== rejected.mutationRevision) return false;
+        return (
+          readMessengerReadBoundary(
+            ownerKey,
+            rejected.boundary.streamUuid,
+            rejected.boundary.topicUuid,
+          ) === rejected.boundary
+        );
+      };
+      if (
+        rejected != null &&
+        unreadDto?.uuid === rejected.messageUuid &&
+        unreadDto.read === false &&
+        canDiscardBoundary()
+      ) {
+        // A repeated server-unread frontier overrides only the unchanged local cursor.
+        await (cache.deleteReadBoundary ?? defaultDeleteMessengerCachedReadBoundary)(
+          rejected.boundary,
+          canDiscardBoundary,
+        );
+        if (isRequestStale()) return { status: "skipped", ownerKey, reason: "stale-owner" };
+        if (canDiscardBoundary()) discardMessengerReadBoundary(rejected.boundary);
+      }
+
+      const serverTail = page.items.map(adaptMessengerMessage);
+      const resolved = await resolveOpeningMessageWindow({
+        serverTail,
+        initialNextPageMarker: page.nextPageMarker,
+        unreadPage,
+        ownerKey,
+        openingAnchorUuid,
+        shouldRetainWindow,
+        store,
+        client,
+        requestOptions,
+        parsedConversationId,
+        pageLimit,
+        isRequestStale,
+      });
+      if (isRequestStale() || resolved.status === "stale")
+        return { status: "skipped", ownerKey, reason: "stale-owner" };
+      if (resolved.status === "retry") {
+        if (attempt === 0) {
+          if (
+            unreadDto?.read === false &&
+            applyMessengerReadBoundaries([adaptMessengerMessage(unreadDto)], ownerKey)[0]?.read
+          ) {
+            const boundary = readMessengerReadBoundary(
+              ownerKey,
+              unreadDto.stream_uuid,
+              unreadDto.topic_uuid,
+            );
+            if (boundary != null) {
+              retryState.rejectedUnreadBoundary = {
+                messageUuid: unreadDto.uuid,
+                boundary,
+                mutationRevision: store.getState().messageMutationRevision,
+              };
+            }
+          }
+          continue;
+        }
+        throw new Error("Unread boundary changed while opening the conversation");
+      }
+      const applied = acceptServerMessages({
+        source: "history",
+        resolved,
+        store,
+        conversationId,
+        capturedMutationRevision,
+        ownerKey,
+        isCurrent: () => !isRequestStale(),
+        target:
+          boundary == null
+            ? {
+                kind: "opening",
+                expectedRevision: expectedWindowRevision,
+                shouldRetainWindow,
+                serverTail,
+              }
+            : { kind: "before", boundary },
+      });
+      if (applied.status === "stale-owner") {
+        return { status: "skipped", ownerKey, reason: "stale-owner" };
+      }
+      if (applied.status === "changed-boundary") {
+        if (attempt === 0) continue;
+        throw new Error("Unread boundary changed while opening the conversation");
+      }
+      if (applied.status === "stale-window") {
+        if (pageMarker == null) {
+          if (attempt === 0) continue;
+          throw new Error("Message window changed while opening the conversation");
+        }
+        finishMessageLoadingRequest(store, conversationId, requestToken, undefined);
+        return { status: "skipped", ownerKey, reason: "stale-window" };
+      }
+      const { messages, nextPageMarker, hasMore, appliedWindow } = applied;
+      onServerWindowApplied?.();
+
+      await synchronizeLoadedConversationMessages({
+        runtimeContext,
+        getRuntimeContext,
+        clientOptions,
+        signal,
+        ownReactionSync,
+        messages,
+        cachedMessages: cachedWindow.messages,
+      });
+      if (isRequestStale()) {
+        return { status: "skipped", ownerKey, reason: "stale-owner" };
+      }
+
+      writeLoadedConversationMessagesCache({
+        ownerKey,
+        conversationId,
+        appliedWindow,
+        isOlderPage: boundary != null,
+        cache,
+        store,
+        // A completed request releases its loading token before IndexedDB commits.
+        isRequestStale: () =>
+          isWorkspaceRuntimeRequestInvalidated(runtimeContext, getRuntimeContext, signal),
+      });
+      finishMessageLoadingRequest(store, conversationId, requestToken, null);
+      return {
+        status: "applied",
+        ownerKey,
+        conversationId,
+        nextPageMarker,
+        hasMore,
+        pageLimit: page.pageLimit,
+      };
+    }
+    finishMessageLoadingRequest(store, conversationId, requestToken, undefined);
+    return { status: "skipped", ownerKey, reason: "stale-window" };
+  } catch (error) {
+    if (isRequestStale()) {
+      return { status: "skipped", ownerKey, reason: "stale-owner" };
+    }
+
+    const message = normalizeMessagesError(error);
+    finishMessageLoadingRequest(store, conversationId, requestToken, message);
+    return {
+      status: "failed",
+      ownerKey,
+      conversationId,
+      error: message,
+    };
+  }
+}
+
+// Stream conversations load by stream UUID; topic conversations add topic UUID.
+export async function loadMessengerConversationMessages({
+  runtimeContext,
+  conversationId,
+  pageLimit = DEFAULT_MESSAGES_PAGE_LIMIT,
+  boundary,
+  resolveUnreadBoundary = false,
+  openingAnchorUuid,
+  retainCurrentWindow,
+  onServerWindowApplied,
+  getRuntimeContext = () => runtimeContext,
+  client = {},
+  cache = {
+    readConversationMessageWindow: defaultReadMessengerConversationWindowCache,
+    writeConversationMessagePage: defaultWriteMessengerConversationWindowCache,
+  },
+  ownReactionSync,
+  clientOptions,
+  signal,
+  store = getWorkspaceMessageStoreForOwner(workspaceRuntimeOwnerKey(runtimeContext)) ??
+    getSelectedWorkspaceMessageStore(),
+}: LoadMessengerConversationMessagesOptions): Promise<MessengerConversationMessagesResult> {
+  const requestContext = captureWorkspaceRuntimeRequestContext(() => runtimeContext);
+  if (requestContext == null) {
+    return { status: "skipped", ownerKey: null, reason: "missing-context" };
+  }
+
+  const ownerKey = workspaceRuntimeOwnerKey(requestContext);
+  const parsedConversationId = parseMessengerConversationId(conversationId);
+  if (parsedConversationId == null) {
+    return { status: "skipped", ownerKey, reason: "invalid-conversation" };
+  }
+
+  if (isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, signal)) {
+    return { status: "skipped", ownerKey, reason: "stale-owner" };
+  }
+
+  // Обычный загрузчик запрашивает страницы сверху. Нижняя граница принадлежит явному окну.
+  if (boundary?.direction === "after") {
+    return { status: "skipped", ownerKey, reason: "stale-window" };
+  }
+
+  const requestToken = Symbol("conversation-messages-request");
+  claimMessageLoadingRequest(store, conversationId, requestToken);
+  store.getState().setMessagesLoading(conversationId, true);
+  store.getState().setMessagesError(conversationId, null);
+  const isRequestStale = (): boolean =>
+    isMessageLoadingRequestStale({
+      conversationId,
+      isInvalidated: () =>
+        isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, signal),
+      requestToken,
+      store,
+    });
+
+  if (
+    !(await restoreReadBoundariesForRequest({
+      ownerKey,
+      boundaryCache: cache,
+      isRequestStale,
+    }))
+  ) {
+    return { status: "skipped", ownerKey, reason: "stale-owner" };
+  }
+
+  const cachedWindow =
+    boundary == null
+      ? await restoreCachedConversationMessages({
+          ownerKey,
+          conversationId,
+          runtimeContext,
+          getRuntimeContext,
+          signal,
+          cache,
+          ownReactionSync,
+          clientOptions,
+          store,
+          isRequestStale,
+          onCacheReadError: () =>
+            finishMessageLoadingRequest(store, conversationId, requestToken, undefined),
+        })
+      : { messages: [], nextPageMarker: null, hasMore: false };
+  if (cachedWindow == null || isRequestStale()) {
+    return { status: "skipped", ownerKey, reason: "stale-owner" };
+  }
+
+  return loadConversationMessagesFromServer({
+    runtimeContext,
+    conversationId,
+    pageLimit,
+    boundary,
+    parsedConversationId,
+    ownerKey,
+    requestToken,
+    isRequestStale,
+    getRuntimeContext,
+    client,
+    cache,
+    ownReactionSync,
+    clientOptions,
+    signal,
+    store,
+    cachedWindow,
+    resolveUnreadBoundary,
+    openingAnchorUuid,
+    retainCurrentWindow,
+    onServerWindowApplied,
+  });
+}
+
+export async function resolveMessengerMessageAnchor({
+  runtimeContext,
+  messageUuid,
+  getRuntimeContext = () => runtimeContext,
+  client = {},
+  clientOptions,
+  signal,
+  store = getWorkspaceMessageStoreForOwner(workspaceRuntimeOwnerKey(runtimeContext)) ??
+    getSelectedWorkspaceMessageStore(),
+}: ResolveMessengerMessageAnchorOptions): Promise<MessengerMessageAnchorResolveResult> {
+  const requestContext = captureWorkspaceRuntimeRequestContext(() => runtimeContext);
+  if (requestContext == null) {
+    return { status: "skipped", ownerKey: null, reason: "missing-context" };
+  }
+
+  const ownerKey = workspaceRuntimeOwnerKey(requestContext);
+  if (isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, signal)) {
+    return { status: "skipped", ownerKey, reason: "stale-owner" };
+  }
+
+  const capturedMutationRevision = store.getState().messageMutationRevision;
+  const requestOptions = buildMessengerRequestOptions(runtimeContext, clientOptions, signal);
+  try {
+    const anchorDto = await (client.getMessage ?? defaultGetMessage)(requestOptions, messageUuid);
+    if (isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, signal)) {
+      return { status: "skipped", ownerKey, reason: "stale-owner" };
+    }
+    if (anchorDto.project_id !== runtimeContext.projectId || anchorDto.uuid !== messageUuid) {
+      return {
+        status: "failed",
+        ownerKey,
+        conversationId: null,
+        error: "Message anchor does not belong to the current project",
+      };
+    }
+    const conversationId = conversationIdFromMessageAnchor(anchorDto);
+    if (conversationId == null) {
+      return {
+        status: "failed",
+        ownerKey,
+        conversationId: null,
+        error: "Expected message anchor with valid stream uuid",
+      };
+    }
+    const message = adaptMessengerMessage(anchorDto);
+    const messageStore = store.getState();
+    const snapshotApplied = messageStore.upsertMessageBodyFromSnapshot(
+      message,
+      capturedMutationRevision,
+    );
+    const effectiveMessage = snapshotApplied
+      ? message
+      : (store.getState().messagesById[messageUuid] ?? null);
+    if (effectiveMessage == null) {
+      return { status: "skipped", ownerKey, reason: "stale-window" };
+    }
+    return {
+      status: "resolved",
+      ownerKey,
+      conversationId: effectiveMessage.conversationId,
+      message: effectiveMessage,
+    };
+  } catch (error) {
+    if (isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, signal)) {
+      return { status: "skipped", ownerKey, reason: "stale-owner" };
+    }
+    return {
+      status: "failed",
+      ownerKey,
+      conversationId: null,
+      ...messageAnchorFailure(error),
+    };
+  }
+}
+
+export async function fetchMessengerMessageWindow({
+  runtimeContext,
+  anchor,
+  targetConversationId,
+  beforeLimit,
+  afterLimit,
+  getRuntimeContext = () => runtimeContext,
+  client = {},
+  clientOptions,
+  signal,
+  store = getWorkspaceMessageStoreForOwner(workspaceRuntimeOwnerKey(runtimeContext)) ??
+    getSelectedWorkspaceMessageStore(),
+}: FetchMessengerMessageWindowOptions): Promise<MessengerMessageWindowFetchResult> {
+  const requestContext = captureWorkspaceRuntimeRequestContext(() => runtimeContext);
+  if (requestContext == null) {
+    return { status: "skipped", ownerKey: null, reason: "missing-context" };
+  }
+
+  const ownerKey = workspaceRuntimeOwnerKey(requestContext);
+  const isStale = (): boolean =>
+    ownerKey !== anchor.ownerKey ||
+    isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, signal);
+  if (isStale()) {
+    return { status: "skipped", ownerKey, reason: "stale-owner" };
+  }
+
+  const parsedConversationId = parseMessengerConversationId(targetConversationId);
+  const targetStreamMismatch = parsedConversationId?.streamUuid !== anchor.message.streamUuid;
+  const targetTopicMismatch =
+    parsedConversationId?.kind === "topic" &&
+    anchor.message.topicUuid !== parsedConversationId.topicUuid;
+  if (targetStreamMismatch || targetTopicMismatch || parsedConversationId == null) {
+    return {
+      status: "failed",
+      ownerKey,
+      conversationId: targetConversationId,
+      error: "Message anchor does not belong to the target conversation",
+    };
+  }
+
+  const requestOptions = buildMessengerRequestOptions(runtimeContext, clientOptions, signal);
+  const query = {
+    messageUuid: anchor.message.uuid,
+    streamUuid: parsedConversationId.streamUuid,
+    topicUuid: parsedConversationId.kind === "topic" ? parsedConversationId.topicUuid : undefined,
+    beforeLimit,
+    afterLimit,
+  };
+  const requestStoreState = store.getState();
+  const expectedWindowRevision =
+    requestStoreState.conversationWindowsById[targetConversationId]?.revision ?? null;
+  const capturedMutationRevision = requestStoreState.messageMutationRevision;
+
+  try {
+    const pages = await (
+      client.getMessagePagesAroundResolvedMessage ?? defaultGetMessagePagesAroundResolvedMessage
+    )(requestOptions, query);
+    if (isStale()) {
+      return { status: "skipped", ownerKey, reason: "stale-owner" };
+    }
+
+    const messagesByUuid = new Map<MessengerUuid, MessengerMessage>();
+    for (const dto of pages.before) {
+      const message = adaptMessengerMessage(dto);
+      messagesByUuid.set(message.uuid, message);
+    }
+    messagesByUuid.set(anchor.message.uuid, anchor.message);
+    for (const dto of pages.after) {
+      const message = adaptMessengerMessage(dto);
+      messagesByUuid.set(message.uuid, message);
+    }
+
+    return {
+      status: "fetched",
+      window: {
+        ownerKey,
+        conversationId: targetConversationId,
+        anchorUuid: anchor.message.uuid,
+        messages: [...messagesByUuid.values()],
+        beforePageMarker: pages.beforePageMarker,
+        afterPageMarker: pages.afterPageMarker,
+        expectedWindowRevision,
+        capturedMutationRevision,
+      },
+    };
+  } catch (error) {
+    if (isStale()) {
+      return { status: "skipped", ownerKey, reason: "stale-owner" };
+    }
+    return {
+      status: "failed",
+      ownerKey,
+      conversationId: targetConversationId,
+      ...messageAnchorFailure(error),
+    };
+  }
+}
+
+const claimedMessageWindows = new WeakSet<MessengerFetchedMessageWindow>();
+
+export async function applyMessengerMessageWindow({
+  runtimeContext,
+  window,
+  isRequestCurrent,
+  mode = "around-anchor",
+  getRuntimeContext = () => runtimeContext,
+  boundaryCache,
+  ownReactionSync,
+  clientOptions,
+  signal,
+  store = getWorkspaceMessageStoreForOwner(workspaceRuntimeOwnerKey(runtimeContext)) ??
+    getSelectedWorkspaceMessageStore(),
+}: ApplyMessengerMessageWindowOptions): Promise<MessengerMessageWindowApplyResult> {
+  const requestContext = captureWorkspaceRuntimeRequestContext(() => runtimeContext);
+  if (requestContext == null) {
+    return { status: "skipped", ownerKey: null, reason: "missing-context" };
+  }
+
+  const ownerKey = workspaceRuntimeOwnerKey(requestContext);
+  const requestToken = Symbol("message-window-apply-request");
+  const isStale = (): boolean =>
+    !isRequestCurrent() ||
+    ownerKey !== window.ownerKey ||
+    isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, signal);
+  if (isStale()) {
+    return { status: "skipped", ownerKey, reason: "stale-owner" };
+  }
+  if (claimedMessageWindows.has(window)) {
+    return { status: "skipped", ownerKey, reason: "stale-owner" };
+  }
+  claimedMessageWindows.add(window);
+
+  if (
+    !(await restoreReadBoundariesForRequest({
+      ownerKey,
+      boundaryCache,
+      isRequestStale: isStale,
+    })) ||
+    isStale()
+  ) {
+    return { status: "skipped", ownerKey, reason: "stale-owner" };
+  }
+
+  const currentState = store.getState();
+  const currentAnchor = currentState.messagesById[window.anchorUuid];
+  // Смена темы или удаление якоря во время чтения кеша требует нового окна.
+  if (
+    (currentState.deletedMessageRevisionById[window.anchorUuid] ?? 0) >
+      window.capturedMutationRevision ||
+    (currentAnchor != null && !conversationContainsAnchor(window.conversationId, currentAnchor))
+  ) {
+    return { status: "skipped", ownerKey, reason: "stale-window" };
+  }
+
+  const messages = applyMessengerReadBoundaries(window.messages, ownerKey);
+  claimMessageLoadingRequest(store, window.conversationId, requestToken);
+  if (isStale() || !ownsMessageLoadingRequest(store, window.conversationId, requestToken)) {
+    releaseMessageLoadingRequest(store, window.conversationId, requestToken);
+    return { status: "skipped", ownerKey, reason: "stale-owner" };
+  }
+
+  try {
+    const appliedWindow = store.getState().replaceConversationWindow({
+      conversationId: window.conversationId,
+      expectedRevision: window.expectedWindowRevision,
+      capturedMutationRevision: window.capturedMutationRevision,
+      mode,
+      anchorMessageUuid: mode === "around-anchor" ? window.anchorUuid : null,
+      messages,
+      markers: {
+        beforePageMarker: window.beforePageMarker,
+        afterPageMarker: window.afterPageMarker,
+      },
+    });
+    if (appliedWindow == null) {
+      releaseMessageLoadingRequest(store, window.conversationId, requestToken);
+      return { status: "skipped", ownerKey, reason: "stale-window" };
+    }
+    if (isStale() || !ownsMessageLoadingRequest(store, window.conversationId, requestToken)) {
+      releaseMessageLoadingRequest(store, window.conversationId, requestToken);
+      return { status: "skipped", ownerKey, reason: "stale-owner" };
+    }
+    settleMessengerOutgoingMessages(ownerKey, messages);
+    const isReactionRequestCurrent = (): boolean =>
+      !isStale() && ownsMessageLoadingRequest(store, window.conversationId, requestToken);
+    void hydrateVisibleOwnReactionsFromCache({
+      runtimeContext,
+      getRuntimeContext,
+      signal,
+      ownReactionSync,
+      messages,
+      isRequestCurrent: isReactionRequestCurrent,
+    })
+      .then((messageUuids) => {
+        if (messageUuids.length === 0 || !isReactionRequestCurrent()) return;
+        return scheduleVisibleOwnReactionSync({
+          runtimeContext,
+          getRuntimeContext,
+          clientOptions,
+          signal,
+          ownReactionSync,
+          messageUuids,
+          isRequestCurrent: isReactionRequestCurrent,
+        });
+      })
+      .finally(() => {
+        releaseMessageLoadingRequest(store, window.conversationId, requestToken);
+      })
+      .catch(() => {
+        log.warn("Failed to complete visible own reaction synchronization");
+      });
+    return {
+      status: "applied",
+      ownerKey,
+      conversationId: window.conversationId,
+      anchorUuid: window.anchorUuid,
+    };
+  } catch (error) {
+    releaseMessageLoadingRequest(store, window.conversationId, requestToken);
+    if (isStale()) {
+      return { status: "skipped", ownerKey, reason: "stale-owner" };
+    }
+    return {
+      status: "failed",
+      ownerKey,
+      conversationId: window.conversationId,
+      error: normalizeMessagesError(error),
+    };
+  }
+}
+
+// Сохраняет представление стрима из ссылки, если сообщение по-прежнему ему принадлежит.
+export function conversationContainsAnchor(
+  conversationId: MessengerConversationId | null,
+  anchor: MessengerMessage,
+): boolean {
+  const hint = conversationId == null ? null : parseMessengerConversationId(conversationId);
+  return (
+    hint?.streamUuid === anchor.streamUuid &&
+    (hint.kind === "stream" || hint.topicUuid === anchor.topicUuid)
+  );
+}
+
+async function applyLoadedMessengerMessageWindowPage({
+  runtimeContext,
+  conversationId,
+  boundary,
+  page,
+  boundariesReady,
+  isRequestInvalidated,
+  ownerKey,
+  requestToken,
+  capturedMutationRevision,
+  getRuntimeContext,
+  ownReactionSync,
+  clientOptions,
+  signal,
+  store,
+}: {
+  runtimeContext: WorkspaceRuntimeContext;
+  conversationId: MessengerConversationId;
+  boundary: WorkspaceConversationWindowBoundary;
+  page: MessengerCollectionPage<WorkspaceMessengerMessageDto>;
+  boundariesReady: Promise<boolean>;
+  isRequestInvalidated: () => boolean;
+  ownerKey: string;
+  requestToken: symbol;
+  capturedMutationRevision: number;
+  getRuntimeContext: WorkspaceRuntimeContextGetter;
+  ownReactionSync: MessengerMessagesOwnReactionSyncDeps | undefined;
+  clientOptions: MessengerRequestOptionsOverrides | undefined;
+  signal: AbortSignal | undefined;
+  store: MessengerMessagesStoreApi;
+}): Promise<MessengerMessageWindowPageResult> {
+  const isPageCurrent = () =>
+    !isRequestInvalidated() &&
+    store.getState().ownerKey === ownerKey &&
+    ownsMessageLoadingRequest(store, conversationId, requestToken);
+  const skipStalePage = (): MessengerMessageWindowPageResult => {
+    finishMessageLoadingRequest(store, conversationId, requestToken, undefined);
+    return { status: "skipped", ownerKey, reason: "stale-owner" };
+  };
+  if (!(await boundariesReady) || !isPageCurrent()) return skipStalePage();
+
+  const { direction } = boundary;
+  const pageItems = direction === "before" ? [...page.items].reverse() : page.items;
+  const messages = applyMessengerReadBoundaries(pageItems.map(adaptMessengerMessage), ownerKey);
+  const nextPageMarker = page.nextPageMarker;
+  const appliedWindow = store.getState().mergeConversationWindowPage({
+    conversationId,
+    boundary,
+    capturedMutationRevision,
+    messages,
+    pageMarker: nextPageMarker,
+  });
+  if (appliedWindow == null) {
+    finishMessageLoadingRequest(store, conversationId, requestToken, undefined);
+    return { status: "skipped", ownerKey, reason: "stale-window" };
+  }
+  // Публикация окна и каждой квитанции синхронно уведомляет подписчиков.
+  if (!isPageCurrent()) return skipStalePage();
+  for (const message of messages) {
+    if (settleMessengerOutgoingMessage(ownerKey, message) && !isPageCurrent())
+      return skipStalePage();
+  }
+
+  const reactionRequest = {
+    runtimeContext,
+    getRuntimeContext,
+    clientOptions,
+    signal,
+    ownReactionSync,
+    isRequestCurrent: isPageCurrent,
+  };
+  const messageUuids = await hydrateVisibleOwnReactionsFromCache({ ...reactionRequest, messages });
+  if (!isPageCurrent()) return skipStalePage();
+
+  if (messageUuids.length === 0) {
+    finishMessageLoadingRequest(store, conversationId, requestToken, null);
+  } else {
+    // Лента готова после чтения кеша. Фоновая сверка держит токен до своего завершения.
+    void scheduleVisibleOwnReactionSync({ ...reactionRequest, messageUuids }).finally(() =>
+      releaseMessageLoadingRequest(store, conversationId, requestToken),
+    );
+    if (!isPageCurrent()) return skipStalePage();
+    store.getState().setMessagesLoading(conversationId, false);
+  }
+  return {
+    status: "applied",
+    ownerKey,
+    conversationId,
+    direction,
+    nextPageMarker,
+    pageLimit: page.pageLimit,
+  };
+}
+
+export async function loadMessengerMessageWindowPage({
+  runtimeContext,
+  conversationId,
+  boundary,
+  pageLimit = DEFAULT_MESSAGES_PAGE_LIMIT,
+  getRuntimeContext = () => runtimeContext,
+  client = {},
+  boundaryCache,
+  ownReactionSync,
+  clientOptions,
+  signal,
+  store = getWorkspaceMessageStoreForOwner(workspaceRuntimeOwnerKey(runtimeContext)) ??
+    getSelectedWorkspaceMessageStore(),
+}: LoadMessengerMessageWindowPageOptions): Promise<MessengerMessageWindowPageResult> {
+  const requestContext = captureWorkspaceRuntimeRequestContext(() => runtimeContext);
+  if (requestContext == null) {
+    return { status: "skipped", ownerKey: null, reason: "missing-context" };
+  }
+
+  const ownerKey = workspaceRuntimeOwnerKey(requestContext);
+  const parsedConversationId = parseMessengerConversationId(conversationId);
+  if (parsedConversationId == null) {
+    return { status: "skipped", ownerKey, reason: "invalid-conversation" };
+  }
+
+  if (isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, signal)) {
+    return { status: "skipped", ownerKey, reason: "stale-owner" };
+  }
+
+  const boundariesReady = restoreReadBoundariesForRequest({
+    ownerKey,
+    boundaryCache,
+    isRequestStale: () =>
+      isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, signal),
+  });
+
+  const requestToken = Symbol("message-window-page-request");
+  claimMessageLoadingRequest(store, conversationId, requestToken);
+  store.getState().setMessagesLoading(conversationId, true);
+  store.getState().setMessagesError(conversationId, null);
+  const capturedMutationRevision = store.getState().messageMutationRevision;
+
+  const { direction, pageMarker } = boundary;
+  const requestOptions = buildMessengerRequestOptions(runtimeContext, clientOptions, signal);
+  const query = buildMessengerMessagesPageQuery({
+    conversation: parsedConversationId,
+    pageLimit,
+    pageMarker,
+    sortDir: direction === "before" ? "desc" : "asc",
+  });
+
+  try {
+    const page = await (client.getMessagesPage ?? defaultGetMessagesPage)(requestOptions, query);
+    return await applyLoadedMessengerMessageWindowPage({
+      runtimeContext,
+      conversationId,
+      boundary,
+      page,
+      boundariesReady,
+      isRequestInvalidated: () =>
+        isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, signal),
+      ownerKey,
+      requestToken,
+      capturedMutationRevision,
+      getRuntimeContext,
+      ownReactionSync,
+      clientOptions,
+      signal,
+      store,
+    });
+  } catch (error) {
+    if (isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, signal)) {
+      finishMessageLoadingRequest(store, conversationId, requestToken, undefined);
+      return { status: "skipped", ownerKey, reason: "stale-owner" };
+    }
+    if (!ownsMessageLoadingRequest(store, conversationId, requestToken)) {
+      return { status: "skipped", ownerKey, reason: "stale-owner" };
+    }
+
+    const message = normalizeMessagesError(error);
+    finishMessageLoadingRequest(store, conversationId, requestToken, message);
+    return {
+      status: "failed",
+      ownerKey,
+      conversationId,
+      direction,
+      error: message,
+    };
+  }
+}

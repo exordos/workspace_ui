@@ -1,14 +1,14 @@
 import { useExternalChatsStore } from "~/entities/external-chat/external-chat.model";
+import type {
+  WorkspaceRealtimeEventApplier,
+  WorkspaceRealtimeEventContext,
+  WorkspaceRealtimeRuntimeOwner,
+} from "~/platform/realtime/workspace-realtime-runtime.lib";
 import type { WorkspaceRealtimeEvent } from "~/shared/api/messenger.types";
 import {
   readWorkspaceExternalAccountCache,
   replaceWorkspaceExternalAccountCache,
 } from "~/shared/lib/workspace-external-account-cache-db";
-import type {
-  WorkspaceRealtimeEventApplier,
-  WorkspaceRealtimeEventContext,
-  WorkspaceRealtimeRuntimeOwner,
-} from "~/shared/lib/workspace-realtime/workspace-realtime-runtime.lib";
 import {
   adaptCachedExternalAccount,
   adaptWorkspaceExternalAccountDto,

@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 interface AttachmentCardBaseProps {
   fileName: string;
   className?: string;
+  onOpen?: () => void; // Opens the attachment from the card body.
 }
 
 interface AttachmentCardRemovableProps {

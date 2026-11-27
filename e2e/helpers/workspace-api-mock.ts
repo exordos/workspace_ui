@@ -1,6 +1,6 @@
 /** Playwright route mock for the public Workspace REST contract. */
 import type { Page, Route } from "@playwright/test";
-import { createMessengerPlacementUuid } from "../../packages/web/src/entities/messenger/messenger-message-identity.lib";
+import { createMessengerPlacementUuid } from "../../packages/web/src/applications/messenger/model/messages/messenger-message-identity.lib";
 import {
   E2E_MESSAGE_UUID,
   E2E_PROJECT_ID,

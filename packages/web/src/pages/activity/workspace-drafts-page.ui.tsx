@@ -1,22 +1,22 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useChatsCatalog } from "~/applications/messenger/model/chats/chats";
 import {
   acceptWorkspaceComposerDraftServerVersion,
   deleteWorkspaceComposerDraft,
   keepWorkspaceComposerDraftLocalVersion,
   refreshWorkspaceComposerDrafts,
-} from "~/entities/composer-draft/composer-draft-actions.lib";
-import { useWorkspaceComposerDraftStore } from "~/entities/composer-draft/composer-draft.model";
-import type { WorkspaceComposerDraft } from "~/entities/composer-draft/composer-draft.types";
-import { useMessengerStore } from "~/entities/messenger/messenger.model";
-import { useUsersStore } from "~/entities/user/user.model";
+  useWorkspaceDraftList,
+} from "~/applications/messenger/model/drafts/composer-draft-actions.lib";
+import type { WorkspaceComposerDraft } from "~/applications/messenger/model/drafts/composer-draft.types";
 import {
   selectCurrentWorkspaceRuntimeContext,
   useWorkspaceAuthStore,
 } from "~/entities/workspace-auth/workspace-auth.model";
-import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { WorkspaceAvatar } from "~/features/workspace-avatar/workspace-avatar.ui";
 import { t } from "~/i18n/i18n";
+import { useUserById } from "~/modules/users/users";
+import { workspaceRuntimeOwnerKey } from "~/platform/sessions/workspace-runtime.lib";
 import { formatActivityItemTime } from "~/shared/lib/datetime.lib";
 import { workspaceMessengerTopicRoute } from "~/shared/lib/workspace-messenger-route.lib";
 import { Icon } from "~/shared/ui/icon";
@@ -69,12 +69,10 @@ function DraftCard({
   onAcceptServer: (draft: WorkspaceComposerDraft) => void;
   onKeepLocal: (draft: WorkspaceComposerDraft) => void;
 }>): React.ReactElement {
-  const stream = useMessengerStore((state) => state.streamsById[draft.streamUuid]);
-  const topic = useMessengerStore((state) => state.topicsById[draft.topicUuid]);
+  const stream = useChatsCatalog((state) => state.streamsById[draft.streamUuid]);
+  const topic = useChatsCatalog((state) => state.topicsById[draft.topicUuid]);
   const directUserUuid = stream?.directUserUuid ?? null;
-  const directUser = useUsersStore((state) =>
-    directUserUuid == null ? null : (state.usersById[directUserUuid] ?? null),
-  );
+  const directUser = useUserById(directUserUuid) ?? null;
   const streamName = stream?.name.trim() || draft.streamUuid;
   const topicName = topic?.name.trim() || draft.topicUuid;
   const isDirect = directUserUuid != null;
@@ -194,16 +192,7 @@ export const WorkspaceDraftsPage: React.FC = () => {
     [currentAccountId, sessions],
   );
   const ownerKey = runtimeContext == null ? null : workspaceRuntimeOwnerKey(runtimeContext);
-  const draftsByKey = useWorkspaceComposerDraftStore((state) => state.draftsByKey);
-  const drafts = useMemo(
-    () =>
-      ownerKey == null
-        ? []
-        : Object.values(draftsByKey)
-            .filter((draft) => draft.ownerKey === ownerKey)
-            .sort((left, right) => right.updatedAt - left.updatedAt),
-    [draftsByKey, ownerKey],
-  );
+  const drafts = useWorkspaceDraftList(ownerKey);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [hasLoadError, setHasLoadError] = useState(false);
 

@@ -5,20 +5,17 @@
  * uuid-based user store cutover.
  */
 
-import { buildWorkspaceRequestOptions } from "~/entities/messenger/messenger-request-options.lib";
-import { adaptWorkspaceMessengerUserDto } from "~/entities/user/user-adapters.lib";
-import { writeUsersToCacheForOwner } from "~/entities/user/user-sync.lib";
-import { useUsersStore } from "~/entities/user/user.model";
+import { buildWorkspaceRequestOptions } from "~/entities/workspace-auth/workspace-auth.lib";
 import {
   selectCurrentWorkspaceRuntimeContext,
   useWorkspaceAuthStore,
 } from "~/entities/workspace-auth/workspace-auth.model";
+import { applyOwnUserProjection } from "~/modules/users/users-profile";
 import {
   captureWorkspaceRuntimeRequestContext,
   isWorkspaceRuntimeRequestInvalidated,
-  workspaceRuntimeOwnerKey,
-} from "~/entities/workspace-runtime/workspace-runtime.lib";
-import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
+} from "~/platform/sessions/workspace-runtime.lib";
+import type { WorkspaceRuntimeContext } from "~/platform/sessions/workspace-runtime.types";
 import { MessengerApiError } from "~/shared/api/messenger-transport.internal";
 import type { WorkspaceMessengerUserDto } from "~/shared/api/messenger.types";
 import type { OwnProfile, OwnProfileApi, OwnProfilePatch } from "~/shared/api/own-profile.types";
@@ -144,14 +141,8 @@ export async function updateOwnProfile(
     ) {
       return { ok: true, profile, refreshPending: true };
     }
-    const user = adaptWorkspaceMessengerUserDto(dto);
-    const store = useUsersStore.getState();
-    const ownerKey = workspaceRuntimeOwnerKey(runtime);
-    if (store.ownerKey == null) store.upsertUser(user);
-    else if (!store.upsertUserForOwner(ownerKey, user))
-      return { ok: true, profile, refreshPending: true };
-    writeUsersToCacheForOwner(ownerKey, [user]);
-    return { ok: true, profile, refreshPending: false };
+    const user = applyOwnUserProjection(dto, runtime, () => !invalidated());
+    return { ok: true, profile, refreshPending: user == null };
   } catch {
     if (invalidated()) return { ok: false, kind: "stale" };
     // IAM has already saved the edit. A failed projection read must not report a failed save.
@@ -206,18 +197,10 @@ function classifyAvatarMutationError(error: unknown): OwnAvatarMutationResult {
 function applyOwnAvatarResponse(
   runtimeContext: WorkspaceRuntimeContext,
   userDto: WorkspaceMessengerUserDto,
+  isCurrent: () => boolean,
 ): OwnAvatarMutationResult {
-  const ownerKey = workspaceRuntimeOwnerKey(runtimeContext);
-  const user = adaptWorkspaceMessengerUserDto(userDto);
-  const state = useUsersStore.getState();
-  let applied = true;
-  if (state.ownerKey == null) {
-    state.upsertUser(user);
-  } else {
-    applied = state.upsertUserForOwner(ownerKey, user);
-  }
-
-  if (!applied) {
+  const user = applyOwnUserProjection(userDto, runtimeContext, isCurrent);
+  if (user == null) {
     return {
       ok: false,
       kind: "transient",
@@ -225,7 +208,6 @@ function applyOwnAvatarResponse(
     };
   }
 
-  writeUsersToCacheForOwner(ownerKey, [user]);
   return { ok: true, avatarUrl: user.avatarUrl };
 }
 
@@ -238,20 +220,22 @@ async function mutateOwnAvatar(
   ) => Promise<WorkspaceMessengerUserDto>,
 ): Promise<OwnAvatarMutationResult> {
   const requestContext = captureWorkspaceRuntimeRequestContext(() => runtimeContext);
+  const isCurrent = () =>
+    !isWorkspaceRuntimeRequestInvalidated(requestContext, getCurrentRuntimeContext, signal);
 
   try {
     const userDto = await request(
       buildWorkspaceRequestOptions(runtimeContext, undefined, signal),
       runtimeContext.userUuid,
     );
-    if (isWorkspaceRuntimeRequestInvalidated(requestContext, getCurrentRuntimeContext, signal)) {
+    if (!isCurrent()) {
       return {
         ok: false,
         kind: "transient",
         message: STALE_AVATAR_MUTATION_MESSAGE,
       };
     }
-    return applyOwnAvatarResponse(runtimeContext, userDto);
+    return applyOwnAvatarResponse(runtimeContext, userDto, isCurrent);
   } catch (error) {
     if (signal?.aborted !== true) {
       log.warn("Workspace avatar mutation failed", {

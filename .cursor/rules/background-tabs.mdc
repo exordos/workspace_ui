@@ -3,7 +3,7 @@ description: "Use when changing tab visibility, resume, periodic work, or backgr
 alwaysApply: false
 globs:
   - "packages/web/src/shared/lib/visibility*"
-  - "packages/web/src/shared/lib/workspace-realtime/**"
+  - "packages/web/src/platform/realtime/**"
 ---
 
 # Background tabs
@@ -12,6 +12,6 @@ Read `docs/POWER_BUDGET.md`; inspect `packages/web/src/shared/lib/visibility.ts`
 
 - Browser timers can be delayed or suspended. Treat elapsed time as elapsed wall-clock time, not a count of timer ticks.
 - Reuse existing visibility/resume utilities when they fit. Preserve deliberately slower background polling; do not introduce an unconditional resume/poll loop.
-- Workspace realtime lives in `packages/web/src/shared/lib/workspace-realtime/`. Preserve ordered REST catch-up, cursor generation, WebSocket lifecycle, and runtime ownership.
+- Workspace realtime lives in `packages/web/src/platform/realtime/`. Preserve ordered REST catch-up, cursor generation, WebSocket lifecycle, and runtime ownership.
 - Coalesce resume/reconnect triggers and prevent parallel duplicate refreshes. Dispose listeners, timers, and in-flight work when the owner changes.
 - Report browser/native validation separately from unit tests when changing background behavior.

@@ -6,11 +6,11 @@ import {
   selectCurrentWorkspaceRuntimeContext,
   useWorkspaceAuthStore,
 } from "~/entities/workspace-auth/workspace-auth.model";
-import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
-import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import { ConnectExternalAccountDialog } from "~/features/connect-external-account/connect-external-account-dialog.ui";
 import { DeleteExternalAccountDialog } from "~/features/connect-external-account/delete-external-account-dialog.ui";
 import { useTranslation } from "~/i18n/i18n";
+import { workspaceRuntimeOwnerKey } from "~/platform/sessions/workspace-runtime.lib";
+import type { WorkspaceRuntimeContext } from "~/platform/sessions/workspace-runtime.types";
 import ZulipExternalAccountIcon from "~/shared/assets/icons/zulip-external-account.svg?react";
 import { Button } from "~/shared/ui/button";
 import { DropdownMenu, type DropdownMenuItem } from "~/shared/ui/dropdown-menu";

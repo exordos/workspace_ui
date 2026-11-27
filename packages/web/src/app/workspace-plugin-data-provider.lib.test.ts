@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { useMessengerStore } from "~/entities/messenger/messenger.model";
-import type { MessengerStream } from "~/entities/messenger/messenger.types";
+import { useMessengerStore } from "~/applications/messenger/model/chats/messenger.model";
+import type { MessengerStream } from "~/applications/messenger/model/messenger.types";
 import {
   useWorkspaceAuthStore,
   type WorkspaceAuthSession,
 } from "~/entities/workspace-auth/workspace-auth.model";
-import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
+import { workspaceRuntimeOwnerKey } from "~/platform/sessions/workspace-runtime.lib";
 import { createWorkspacePluginDataProvider } from "./workspace-plugin-data-provider.lib";
 
 const USER_UUID = "a225223c-637c-4afa-918f-5f2798b9305f";

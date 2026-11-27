@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useUsersStore } from "~/entities/user/user.model";
 import {
   useWorkspaceAuthStore,
   type WorkspaceAuthSession,
 } from "~/entities/workspace-auth/workspace-auth.model";
-import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
-import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
+import { useUsersStore } from "~/modules/users/user.model";
+import { workspaceRuntimeOwnerKey } from "~/platform/sessions/workspace-runtime.lib";
+import type { WorkspaceRuntimeContext } from "~/platform/sessions/workspace-runtime.types";
 import { MessengerApiError } from "~/shared/api/messenger-transport.internal";
 import type { WorkspaceMessengerUserDto } from "~/shared/api/messenger.types";
 import type { OwnProfile, OwnProfileApi } from "~/shared/api/own-profile.types";
@@ -22,7 +22,7 @@ vi.mock("~/shared/api/workspace-client", () => ({
   resetUserAvatar: (...args: unknown[]) => resetUserAvatarMock(...args),
 }));
 
-vi.mock("~/entities/user/user-sync.lib", () => ({
+vi.mock("~/modules/users/user-sync.lib", () => ({
   writeUsersToCacheForOwner: (...args: unknown[]) => writeUsersToCacheForOwnerMock(...args),
 }));
 
@@ -142,9 +142,12 @@ describe("Workspace own avatar API", () => {
       runtime.runtimeGeneration,
     );
     expect(useUsersStore.getState().usersById[USER_UUID]?.displayName).toBe("Alicia");
-    expect(writeUsersToCacheForOwnerMock).toHaveBeenCalledWith(workspaceRuntimeOwnerKey(runtime), [
-      expect.objectContaining({ firstName: "Alicia" }),
-    ]);
+    expect(writeUsersToCacheForOwnerMock).toHaveBeenCalledWith(
+      workspaceRuntimeOwnerKey(runtime),
+      [expect.objectContaining({ firstName: "Alicia" })],
+      undefined,
+      expect.any(Function),
+    );
   });
 
   it("reports saved-but-not-refreshed when Workspace is unavailable or returns old identity", async () => {
@@ -204,9 +207,48 @@ describe("Workspace own avatar API", () => {
       file,
     );
     expect(useUsersStore.getState().usersById[USER_UUID]?.avatarUrl).toBe(avatar);
-    expect(writeUsersToCacheForOwnerMock).toHaveBeenCalledWith(workspaceRuntimeOwnerKey(runtime), [
-      expect.objectContaining({ uuid: USER_UUID, avatarUrl: avatar }),
-    ]);
+    expect(writeUsersToCacheForOwnerMock).toHaveBeenCalledWith(
+      workspaceRuntimeOwnerKey(runtime),
+      [expect.objectContaining({ uuid: USER_UUID, avatarUrl: avatar })],
+      undefined,
+      expect.any(Function),
+    );
+  });
+
+  it("can apply an own avatar before the selected catalog is initialized", async () => {
+    useUsersStore.getState().clear();
+    const avatar = "urn:image:33333333-3333-4333-8333-333333333333";
+    uploadUserAvatarMock.mockResolvedValue(createUserDto(avatar));
+
+    await expect(uploadOwnAvatar(runtime, new File(["avatar"], "avatar.png"))).resolves.toEqual({
+      ok: true,
+      avatarUrl: avatar,
+    });
+    expect(useUsersStore.getState().ownerKey).toBeNull();
+    expect(useUsersStore.getState().usersById[USER_UUID]?.avatarUrl).toBe(avatar);
+    expect(writeUsersToCacheForOwnerMock).toHaveBeenCalledWith(
+      workspaceRuntimeOwnerKey(runtime),
+      [expect.objectContaining({ uuid: USER_UUID })],
+      undefined,
+      expect.any(Function),
+    );
+  });
+
+  it("does not write another user's avatar response to the selected catalog", async () => {
+    const anotherUserUuid = "33333333-3333-4333-8333-333333333333";
+    uploadUserAvatarMock.mockResolvedValue({
+      ...createUserDto("urn:image:44444444-4444-4444-8444-444444444444"),
+      uuid: anotherUserUuid,
+    });
+
+    await expect(
+      uploadOwnAvatar(runtime, new File(["avatar"], "avatar.png")),
+    ).resolves.toMatchObject({
+      ok: false,
+      kind: "transient",
+    });
+    expect(useUsersStore.getState().usersById[anotherUserUuid]).toBeUndefined();
+    expect(writeUsersToCacheForOwnerMock).not.toHaveBeenCalled();
   });
 
   it("keeps the default avatar returned by reset instead of clearing it locally", async () => {

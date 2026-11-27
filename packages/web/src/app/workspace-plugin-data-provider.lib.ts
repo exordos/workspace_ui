@@ -1,7 +1,7 @@
-import { useMessengerStore } from "~/entities/messenger/messenger.model";
-import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
-import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
+import { readActiveChats } from "~/applications/messenger/model/chats/chats";
 import { useThemeStore } from "~/entities/theme/theme.model";
+import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
+import { workspaceRuntimeOwnerKey } from "~/platform/sessions/workspace-runtime.lib";
 import type { PluginDataProvider } from "~/shared/lib/plugins/api";
 
 export function createWorkspacePluginDataProvider(): PluginDataProvider {
@@ -12,7 +12,7 @@ export function createWorkspacePluginDataProvider(): PluginDataProvider {
       if (session == null) return [];
 
       const ownerKey = workspaceRuntimeOwnerKey(session);
-      const messengerState = useMessengerStore.getState();
+      const messengerState = readActiveChats();
       if (messengerState.ownerKey !== ownerKey) return [];
 
       return messengerState.streamIds.flatMap((streamUuid) => {

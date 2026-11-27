@@ -1,5 +1,5 @@
 import type { ExternalAccount } from "~/entities/external-account/external-account.types";
-import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
+import type { WorkspaceRuntimeContext } from "~/platform/sessions/workspace-runtime.types";
 
 export type ConnectExternalAccountProvider = "zulip";
 export type ConnectExternalAccountError =

@@ -17,6 +17,7 @@
  */
 import { expect, test } from "./fixtures";
 import { e2eOrgBasePath, E2E_STREAM_UUID, E2E_TOPIC_UUID } from "./helpers/navigate-messenger";
+import { installWorkspaceReadyRealtime } from "./helpers/workspace-ready-realtime";
 import {
   E2E_MESSAGE_UUID,
   E2E_PROJECT_ID,
@@ -82,6 +83,7 @@ function messageDto(content: string, index: number) {
 }
 
 async function installConversation(page: Page): Promise<() => void> {
+  await installWorkspaceReadyRealtime(page);
   // The bytes land when the test says so, so the two readings below cannot straddle
   // anything else the list does while it settles.
   let release: () => void = () => undefined;
@@ -97,7 +99,16 @@ async function installConversation(page: Page): Promise<() => void> {
   await page.route(/\/api\/workspace\/v1(?:\/|$)/, async (route: Route) => {
     const url = new URL(route.request().url());
     if (route.request().method() === "GET" && /\/messages\/?$/.test(url.pathname)) {
-      const items = CONTENTS.map(messageDto);
+      if (
+        url.searchParams.get("read") === "false" ||
+        url.searchParams.get("mentioned") === "true"
+      ) {
+        return route.fulfill({ json: [] });
+      }
+      const requestedUuids = url.searchParams.getAll("uuid");
+      const items = CONTENTS.map(messageDto).filter(
+        ({ uuid }) => requestedUuids.length === 0 || requestedUuids.includes(uuid),
+      );
       const sortDir = url.searchParams.get("sort_dir") ?? "asc";
       await route.fulfill({
         status: 200,

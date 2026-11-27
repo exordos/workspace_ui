@@ -1,41 +1,41 @@
 import React, { useEffect, useLayoutEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
+import { ChatChannelHeader } from "~/applications/messenger/features/conversation-header/chat-header-channel.ui";
+import { encryptedMessageLabel } from "~/applications/messenger/features/decrypted-message/encrypted-chat-message/encrypted-message-label.lib";
+import { useWorkspaceForwardMessageStore } from "~/applications/messenger/features/timeline/forward/workspace-forward-message.model";
+import { useChatsCatalog } from "~/applications/messenger/model/chats/chats";
 import { fetchFeedMessages, hydrateFeedMessagesFromCache } from "~/entities/feed/feed.api";
 import { useFeedStore } from "~/entities/feed/feed.model";
-import { useMessengerStore } from "~/entities/messenger/messenger.model";
-import { selectUserDisplayName } from "~/entities/user/user-selectors.lib";
-import { useUsersStore } from "~/entities/user/user.model";
 import {
   selectCurrentWorkspaceRuntimeContext,
   useWorkspaceAuthStore,
 } from "~/entities/workspace-auth/workspace-auth.model";
+import { t } from "~/i18n/i18n";
+import { useUserById } from "~/modules/users/users";
+import { selectUserDisplayName } from "~/modules/users/users-selectors";
 import {
   isWorkspaceRuntimeRequestContextCurrent,
   workspaceRuntimeOwnerKey,
-} from "~/entities/workspace-runtime/workspace-runtime.lib";
-import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
-import { encryptedMessageLabel } from "~/features/encrypted-chat-message/encrypted-message-label.lib";
-import { useWorkspaceForwardMessageStore } from "~/features/workspace-forward-message/workspace-forward-message.model";
-import { t } from "~/i18n/i18n";
+} from "~/platform/sessions/workspace-runtime.lib";
+import type { WorkspaceRuntimeContext } from "~/platform/sessions/workspace-runtime.types";
 import { useOpenSearch } from "~/shared/contexts/open-search";
 import { formatMessageTimeWithDate } from "~/shared/lib/datetime.lib";
 import { createLogger } from "~/shared/lib/logger";
 import { runInFlightDeduped } from "~/shared/lib/request-lifecycle.lib";
 import { scrollToBottom } from "~/shared/lib/scroll-position.lib";
-import { useCacheFirstPageLoad } from "~/shared/lib/use-cache-first-page.hook";
 import type { WorkspaceMessageSummaryOptions } from "~/shared/lib/workspace-message-render/workspace-message-document.types";
 import { summarizeWorkspaceMessageMarkdown } from "~/shared/lib/workspace-message-render/workspace-message-summary.lib";
 import { workspaceMessengerTopicRoute } from "~/shared/lib/workspace-messenger-route.lib";
 import { FloatingScrollToBottomButton } from "~/shared/ui/floating-scroll-to-bottom-button";
 import { Icon } from "~/shared/ui/icon";
 import { FloatingLoadingOverlay } from "~/shared/ui/loading";
-import { ChatChannelHeader } from "~/widgets/chat-view/chat-header-channel.ui";
 import { computeFeedScrollTopAfterPrepend, shouldRequestOlderFeedPage } from "./feed-scroll.lib";
+import { useCacheFirstPageLoad } from "./use-cache-first-page.hook";
 
 const log = createLogger("feed-page");
 
 function FeedSenderName({ authorUuid, fallback }: { authorUuid: string; fallback: string }) {
-  const user = useUsersStore((s) => s.usersById[authorUuid]);
+  const user = useUserById(authorUuid);
   return <>{selectUserDisplayName(user, fallback)}</>;
 }
 
@@ -98,8 +98,8 @@ export const FeedPage: React.FC = () => {
   const setMessagesIfActual = useFeedStore((s) => s.setMessagesIfActual);
   const setError = useFeedStore((s) => s.setError);
   const startRequest = useFeedStore((s) => s.startRequest);
-  const streamsById = useMessengerStore((s) => s.streamsById);
-  const topicsById = useMessengerStore((s) => s.topicsById);
+  const streamsById = useChatsCatalog((s) => s.streamsById);
+  const topicsById = useChatsCatalog((s) => s.topicsById);
   const listRef = useRef<HTMLUListElement>(null);
   const initialScrollPositionKeyRef = useRef<string | null>(null);
   const pendingScrollRestoreRef = useRef<{ scrollTop: number; scrollHeight: number } | null>(null);

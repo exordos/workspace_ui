@@ -1,14 +1,19 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useUsersStore } from "~/entities/user/user.model";
+import { useChatDmCallBridgeStore } from "~/applications/messenger/features/chat-details/call-bridge/chat-dm-call-bridge.model";
 import {
   useWorkspaceAuthStore,
   type WorkspaceAuthSession,
 } from "~/entities/workspace-auth/workspace-auth.model";
 import { t } from "~/i18n/i18n";
+import { useUsersStore } from "~/modules/users/user.model";
+import type * as UsersProfileModule from "~/modules/users/users-profile";
+import { workspaceRuntimeOwnerKey } from "~/platform/sessions/workspace-runtime.lib";
+import * as messengerStreamsApi from "~/shared/api/messenger-streams.api";
 import { renderWithProviders } from "~/test/render";
 import { RightPanelShell as ProductionRightPanelShell } from "./right-panel-shell.ui";
+import { RightPanelUserProfile } from "./right-panel-user-profile.ui";
 import type { RightPanelAccountScreen, RightPanelProps } from "./right-panel.types";
 
 function RightPanelShell(
@@ -42,7 +47,7 @@ const avatarCapabilitiesMock = vi.hoisted(() => vi.fn());
 const removeOwnAvatarMock = vi.hoisted(() => vi.fn());
 const uploadOwnAvatarMock = vi.hoisted(() => vi.fn());
 
-vi.mock("~/shared/lib/clipboard", () => ({
+vi.mock("~/platform/desktop/clipboard", () => ({
   writeText: (...args: unknown[]) => writeTextMock(...args),
 }));
 
@@ -55,7 +60,8 @@ vi.mock("~/features/manage-external-provider/manage-external-provider-entry.ui",
   ManageExternalProviderEntry: () => null,
 }));
 
-vi.mock("~/entities/user/user-workspace-status-actions.lib", () => ({
+vi.mock("~/modules/users/users-profile", async (importOriginal) => ({
+  ...(await importOriginal<typeof UsersProfileModule>()),
   updateWorkspaceOwnStatus: vi.fn().mockResolvedValue({ ok: true, user: null }),
 }));
 
@@ -165,6 +171,57 @@ describe("RightPanelShell personal-info subview", () => {
     useUsersStore.getState().clear();
     vi.restoreAllMocks();
   });
+
+  it.each([false, true])(
+    "cancels a profile call when pending publication switches owners (replacement call: %s)",
+    (replacePendingCall) => {
+      const partnerUserUuid = "b225223c-637c-4afa-918f-5f2798b9305f";
+      const firstSession = useWorkspaceAuthStore.getState().sessions[0]!;
+      const createDirect = vi.spyOn(messengerStreamsApi, "createStreamWithDefaultTopic");
+      const bridge = useChatDmCallBridgeStore.getState();
+      const unsubscribe = useChatDmCallBridgeStore.subscribe((state) => {
+        if (state.pendingDmCall?.partnerUserUuid !== partnerUserUuid) return;
+        unsubscribe();
+        useWorkspaceAuthStore.setState({
+          currentAccountId: "account-b",
+          runtimeGeneration: 2,
+          sessions: [{ ...firstSession, accountId: "account-b", runtimeGeneration: 2 }],
+        });
+        if (replacePendingCall) {
+          const runtime = useWorkspaceAuthStore.getState().getCurrentRuntimeContext()!;
+          bridge.setPendingDmCall({
+            partnerUserUuid,
+            ownerKey: workspaceRuntimeOwnerKey(runtime),
+            runtimeGeneration: runtime.runtimeGeneration,
+          });
+        }
+      });
+      try {
+        renderWithProviders(
+          <RightPanelUserProfile
+            info={{
+              kind: "userProfile",
+              userUuid: partnerUserUuid,
+              title: "Partner",
+              avatarUrl: null,
+              status: null,
+              isOwnProfile: false,
+              details: [],
+            }}
+          />,
+        );
+        fireEvent.click(screen.getByTestId("right-panel-profile-call"));
+        expect(useWorkspaceAuthStore.getState().currentAccountId).toBe("account-b");
+        expect(createDirect).not.toHaveBeenCalled();
+        expect(useChatDmCallBridgeStore.getState().pendingDmCall?.partnerUserUuid).toBe(
+          replacePendingCall ? partnerUserUuid : undefined,
+        );
+      } finally {
+        unsubscribe();
+        bridge.clearPendingDmCall();
+      }
+    },
+  );
 
   it("opens personal info inside the right panel without changing the route", () => {
     renderWithProviders(

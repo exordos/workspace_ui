@@ -8,7 +8,10 @@ const focusOutlineStyles = readFileSync(
 );
 const appStyles = readFileSync(resolve(import.meta.dirname, "app.styles.css"), "utf8");
 const workspaceMessageBodySource = readFileSync(
-  resolve(import.meta.dirname, "../entities/messenger/messenger-workspace-message-body.ui.tsx"),
+  resolve(
+    import.meta.dirname,
+    "../applications/messenger/features/timeline/messenger-workspace-message-body.ui.tsx",
+  ),
   "utf8",
 );
 const fileDownloadErrorIcon = readFileSync(

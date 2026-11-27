@@ -2,21 +2,24 @@ import { Theme, type EmojiClickData } from "emoji-picker-react";
 import React, { useCallback, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useThemeStore } from "~/entities/theme/theme.model";
-import { readManualStatus } from "~/entities/user/user-manual-status.lib";
-import { selectUserStatusLabel } from "~/entities/user/user-selectors.lib";
-import { updateWorkspaceOwnStatus } from "~/entities/user/user-workspace-status-actions.lib";
-import { useUsersStore } from "~/entities/user/user.model";
 import { removeWorkspaceSession } from "~/entities/workspace-auth/workspace-auth.lib";
-import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
+import {
+  selectCurrentWorkspaceRuntimeContext,
+  useWorkspaceAuthStore,
+} from "~/entities/workspace-auth/workspace-auth.model";
 import { resolveWorkspacePostLogoutRoute } from "~/entities/workspace-auth/workspace-post-logout-route.lib";
 import { ManageExternalProviderEntry } from "~/features/manage-external-provider/manage-external-provider-entry.ui";
 import { useTranslation } from "~/i18n/i18n";
+import { useUserById } from "~/modules/users/users";
+import { readManualStatus, updateWorkspaceOwnStatus } from "~/modules/users/users-profile";
+import { selectUserStatusLabel } from "~/modules/users/users-selectors";
 import { IS_CONNECTION_DIAGNOSTICS_ENABLED } from "~/shared/config/constants";
 import { useRightDrawer } from "~/shared/contexts/right-drawer";
 import { performApplicationColdStart } from "~/shared/lib/local-reset";
 import { createLogger } from "~/shared/lib/logger";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { toast } from "~/shared/lib/toast/toast";
+import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
 import { Icon } from "~/shared/ui/icon";
 import { PanelMenuRow } from "~/shared/ui/panel-menu-row";
 import { ScrollArea } from "~/shared/ui/scroll-area";
@@ -65,11 +68,8 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
       : undefined;
   });
   const getCurrentWorkspaceSession = useWorkspaceAuthStore((s) => s.getCurrentSession);
-  const currentWorkspaceUser = useUsersStore((s) =>
-    currentWorkspaceSession?.userUuid != null
-      ? s.usersById[currentWorkspaceSession.userUuid]
-      : undefined,
-  );
+  const currentWorkspaceRuntime = useWorkspaceAuthStore(selectCurrentWorkspaceRuntimeContext);
+  const currentWorkspaceUser = useUserById(currentWorkspaceSession?.userUuid);
   const currentThemeMode = useThemeStore((s) => s.mode);
   const [externalAccountsOpen, setExternalAccountsOpen] = useState(false);
   const [statusDialogOpen, setStatusDialogOpen] = useState(false);
@@ -153,27 +153,27 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
   }, []);
 
   const handleSaveStatus = useCallback(async () => {
-    if (currentWorkspaceSession == null) {
+    if (currentWorkspaceRuntime == null) {
       toast.error(t("settings.statusUpdateError"));
       return;
     }
     setStatusSubmitting(true);
     try {
       const result = await updateWorkspaceOwnStatus({
-        runtimeContext: currentWorkspaceSession,
+        runtimeContext: currentWorkspaceRuntime,
         statusText: statusTextDraft,
         statusEmoji: statusEmojiDraft,
         away: statusAwayDraft,
       });
       if (!result.ok) {
-        toast.error(t("settings.statusUpdateError"));
+        if (result.kind === "transient") toast.error(t("settings.statusUpdateError"));
         return;
       }
       setStatusDialogOpen(false);
     } finally {
       setStatusSubmitting(false);
     }
-  }, [currentWorkspaceSession, statusAwayDraft, statusEmojiDraft, statusTextDraft, t]);
+  }, [currentWorkspaceRuntime, statusAwayDraft, statusEmojiDraft, statusTextDraft, t]);
 
   const openPersonalInfo = useCallback(() => {
     onOpenPersonalInfo?.();
@@ -210,13 +210,19 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
     window.location.reload();
   }, [t]);
 
-  const handleLogoutFromCurrentOrg = useCallback(async () => {
+  const handleLogoutFromCurrentOrg = useCallback(() => {
     if (currentWorkspaceSession == null) return;
     const confirmed = window.confirm(
       t("auth.logoutFromOrgConfirm", { server: currentServerLabel }),
     );
     if (!confirmed) return;
-    await removeWorkspaceSession(currentWorkspaceSession.accountId);
+    const accountId = currentWorkspaceSession.accountId;
+    const wasSelected = useWorkspaceAuthStore.getState().currentAccountId === accountId;
+    void removeWorkspaceSession(accountId).catch((error: unknown) => {
+      reportUnexpectedError("workspace-auth:logout", error);
+    });
+    if (!wasSelected || useWorkspaceAuthStore.getState().currentAccountId === accountId) return;
+    // Apply this UI intent while the synchronous selection change still belongs to the click.
     void navigate(resolveWorkspacePostLogoutRoute(getCurrentWorkspaceSession()), { replace: true });
     closeDrawer();
   }, [

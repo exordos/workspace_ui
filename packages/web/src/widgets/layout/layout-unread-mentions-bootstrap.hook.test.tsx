@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useActivityStore, type ActivityUnreadMention } from "~/entities/activity/activity.model";
 import type { WorkspaceAuthSession } from "~/entities/workspace-auth/workspace-auth.model";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
-import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
+import { workspaceRuntimeOwnerKey } from "~/platform/sessions/workspace-runtime.lib";
 import { useLayoutUnreadMentionsBootstrap } from "./layout-unread-mentions-bootstrap.hook";
 
 const fetchUnreadMentionsMock = vi.hoisted(() => vi.fn());

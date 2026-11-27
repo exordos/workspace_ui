@@ -1,10 +1,7 @@
 import { expect, test } from "./fixtures";
-import { seedAuthStorage } from "./helpers/seed-auth";
+import { realtimeCursorStorageKey, seedAuthStorage } from "./helpers/seed-auth";
 import { e2eOrgBasePath, E2E_STREAM_UUID, E2E_TOPIC_UUID } from "./helpers/navigate-messenger";
 import {
-  E2E_ACCOUNT_ID,
-  E2E_INSTANCE_ID,
-  E2E_ORGANIZATION_ID,
   E2E_PROJECT_ID,
   E2E_USER_UUID,
   foldersSuccess,
@@ -26,22 +23,6 @@ const RECOVERED_CURSOR = {
   epochGeneration: "e2e-generation-1",
   epochVersion: 0,
 };
-
-function realtimeCursorStorageKey(): string {
-  return [
-    "workspace-realtime:cursor",
-    "account",
-    E2E_ACCOUNT_ID,
-    "instance",
-    E2E_INSTANCE_ID,
-    "organization",
-    E2E_ORGANIZATION_ID,
-    "project",
-    E2E_PROJECT_ID,
-    "user",
-    E2E_USER_UUID,
-  ].join(":");
-}
 
 function createGate() {
   let release = () => {};
@@ -210,6 +191,8 @@ test.describe("Workspace realtime @mock", () => {
     const sockets: WebSocketRoute[] = [];
     let epochRequests = 0;
     let recoveringFromExpiredCursor = false;
+    let externalSnapshotRequests = 0;
+    const externalSnapshotGate = createGate();
 
     await page.route(
       (url) => url.pathname.endsWith("/epoch/"),
@@ -231,6 +214,26 @@ test.describe("Workspace realtime @mock", () => {
         epochRequests += 1;
       }
     });
+
+    await page.route(
+      (url) => url.pathname.endsWith("/external_accounts/"),
+      async (route) => {
+        if (!recoveringFromExpiredCursor || route.request().method() !== "GET") {
+          await route.fallback();
+          return;
+        }
+        externalSnapshotRequests += 1;
+        if (externalSnapshotRequests === 1) {
+          await route.fulfill({
+            status: 503,
+            json: { message: "Snapshot temporarily unavailable" },
+          });
+          return;
+        }
+        await externalSnapshotGate.promise;
+        await route.fulfill({ json: [] });
+      },
+    );
 
     await page.routeWebSocket(
       (url) => url.pathname === WORKSPACE_EVENTS_SOCKET_PATH,
@@ -286,9 +289,13 @@ test.describe("Workspace realtime @mock", () => {
     recoveringFromExpiredCursor = true;
     await activeSocket.close({ code: 4410, reason: "epoch_pruned" });
 
-    await expect
-      .poll(() => epochRequests, { timeout: 20_000 })
-      .toBeGreaterThan(epochRequestsBeforeRecovery);
+    try {
+      await expect.poll(() => externalSnapshotRequests, { timeout: 20_000 }).toBe(2);
+      expect(epochRequests).toBeGreaterThanOrEqual(epochRequestsBeforeRecovery + 2);
+      expect(socketUrls.length).toBe(connectionsBeforeRecovery);
+    } finally {
+      externalSnapshotGate.release();
+    }
     await expect
       .poll(() => socketUrls.length, { timeout: 20_000 })
       .toBeGreaterThan(connectionsBeforeRecovery);
@@ -300,5 +307,19 @@ test.describe("Workspace realtime @mock", () => {
         ),
       )
       .toEqual(RECOVERED_CURSOR);
+  });
+
+  test("starts the authorized session when opening a non-Messenger route", async ({ page }) => {
+    const sockets: string[] = [];
+    await page.routeWebSocket(
+      (url) => url.pathname === WORKSPACE_EVENTS_SOCKET_PATH,
+      (socket) => {
+        sockets.push(socket.url());
+      },
+    );
+    await seedAuthStorage(page);
+    await page.goto("/calendar");
+    await expect(page).toHaveURL(/\/calendar$/);
+    await expect.poll(() => sockets.length).toBe(1);
   });
 });

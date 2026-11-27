@@ -1,0 +1,295 @@
+import { describe, expect, it } from "vitest";
+import type { MessengerOutgoingMessage } from "~/applications/messenger/model/messages/outgoing/messenger-outbox.types";
+import type { MessengerMessage } from "~/applications/messenger/model/messenger.types";
+import {
+  createWorkspaceMessageListOutgoingItem,
+  createWorkspaceMessageListServerItem,
+  groupWorkspaceMessagesByDayAndAuthor,
+  isWorkspaceServiceMessage,
+} from "./workspace-message-list-grouping.lib";
+
+type MessageOverrides = Omit<Partial<MessengerMessage>, "payload"> & {
+  markdown?: string;
+  payload?: MessengerMessage["payload"];
+};
+
+function createWorkspaceMessage(overrides: MessageOverrides = {}): MessengerMessage {
+  const { markdown, payload, ...rest } = overrides;
+  return {
+    uuid: "message-uuid-1",
+    conversationId: "topic:stream-uuid-1:topic-uuid-1",
+    projectId: "project-uuid-1",
+    streamUuid: "stream-uuid-1",
+    topicUuid: "topic-uuid-1",
+    authorUuid: "author-uuid-1",
+    userUuid: "author-uuid-1",
+    payload: payload ?? { kind: "markdown", content: markdown ?? "Workspace text message" },
+    read: false,
+    pinned: false,
+    starred: false,
+    isOwn: false,
+    reactions: {},
+    reactionUserUuidsByEmojiName: {},
+    ownReactionUuidsByEmojiName: {},
+    createdAt: "2026-07-03T09:00:00.000Z",
+    updatedAt: "2026-07-03T09:00:00.000Z",
+    ...rest,
+  };
+}
+
+function createOutgoingMessage(
+  overrides: Partial<MessengerOutgoingMessage> = {},
+): MessengerOutgoingMessage {
+  return {
+    canonicalMessageUuid: "canonical-message-uuid-1",
+    placementUuid: "placement-message-uuid-1",
+    ownerKey: "owner-key-1",
+    conversationId: "topic:stream-uuid-1:topic-uuid-1",
+    projectId: "project-uuid-1",
+    streamUuid: "stream-uuid-1",
+    topicUuid: "topic-uuid-1",
+    authorUuid: "author-uuid-1",
+    markdown: "Outgoing text",
+    sourceMarkdown: "Outgoing text",
+    status: "sending",
+    createdAt: "2026-07-03T09:00:00.000Z",
+    updatedAt: "2026-07-03T09:00:00.000Z",
+    attempt: 1,
+    error: null,
+    includeStreamConversation: false,
+    ...overrides,
+  };
+}
+
+function createIsoStringFromLocalTime(
+  year: number,
+  monthIndex: number,
+  day: number,
+  hours: number,
+  minutes: number,
+): string {
+  return new Date(year, monthIndex, day, hours, minutes, 0, 0).toISOString();
+}
+
+describe("groupWorkspaceMessagesByDayAndAuthor", () => {
+  it("renders polls as messages, not service event groups", () => {
+    const payload: MessengerMessage["payload"] = {
+      kind: "poll",
+      questions: [],
+      multipleAnswers: false,
+      isAnonymous: false,
+      allowRevote: false,
+      resultsVisibility: "always",
+      allowAddingOptions: false,
+      closesAt: null,
+      closedAt: null,
+    };
+    expect(
+      isWorkspaceServiceMessage(
+        createWorkspaceMessageListServerItem(createWorkspaceMessage({ payload })),
+      ),
+    ).toBe(false);
+  });
+  it("groups adjacent service events across authors and separates them from text and encrypted text", () => {
+    const payloads: MessengerMessage["payload"][] = [
+      { kind: "key_announced", keyUuid: "generation" },
+      { kind: "key_announced", keyUuid: "generation" },
+      { kind: "markdown", content: "A reply" },
+      { kind: "key_announced", keyUuid: "generation" },
+      { kind: "e2ee", keyUuid: "generation", content: "ciphertext" },
+      { kind: "key_announced", keyUuid: "generation" },
+    ];
+    const groups = groupWorkspaceMessagesByDayAndAuthor(
+      payloads.map((payload, index) =>
+        createWorkspaceMessageListServerItem(
+          createWorkspaceMessage({
+            uuid: `message-${index}`,
+            authorUuid: `author-${index}`,
+            payload,
+          }),
+        ),
+      ),
+    );
+    expect(
+      groups[0]?.authorGroups.map((group) => group.messages.map((message) => message.key)),
+    ).toEqual([
+      ["message-0", "message-1"],
+      ["message-2"],
+      ["message-3"],
+      ["message-4"],
+      ["message-5"],
+    ]);
+  });
+
+  it("splits service runs at topic and day boundaries", () => {
+    const groups = groupWorkspaceMessagesByDayAndAuthor(
+      [
+        { uuid: "first", topicUuid: "topic-a", createdAt: "2026-07-03T12:00:00Z" },
+        { uuid: "second", topicUuid: "topic-b", createdAt: "2026-07-03T13:00:00Z" },
+        { uuid: "third", topicUuid: "topic-b", createdAt: "2026-07-04T12:00:00Z" },
+      ].map((overrides) =>
+        createWorkspaceMessageListServerItem(
+          createWorkspaceMessage({
+            ...overrides,
+            payload: { kind: "key_announced", keyUuid: "generation" },
+          }),
+        ),
+      ),
+    );
+    expect(groups).toHaveLength(2);
+    expect(groups[0]?.authorGroups.map((group) => group.messages.map((item) => item.key))).toEqual([
+      ["first"],
+      ["second"],
+    ]);
+    expect(groups[1]?.authorGroups[0]?.messages.map((item) => item.key)).toEqual(["third"]);
+  });
+
+  it("uses the placement UUID as the outgoing render key", () => {
+    const item = createWorkspaceMessageListOutgoingItem(
+      createOutgoingMessage({ placementUuid: "stable-placement-uuid" }),
+    );
+
+    expect(item.key).toBe("stable-placement-uuid");
+  });
+
+  it("sorts by createdAt and uuid without mutating the source array", () => {
+    const sourceMessages = [
+      createWorkspaceMessage({
+        uuid: "message-c",
+        createdAt: "2026-07-03T09:02:00.000Z",
+      }),
+      createWorkspaceMessage({
+        uuid: "message-b",
+        createdAt: "2026-07-03T09:01:00.000Z",
+      }),
+      createWorkspaceMessage({
+        uuid: "message-a",
+        createdAt: "2026-07-03T09:01:00.000Z",
+      }),
+    ];
+
+    const groupedMessages = groupWorkspaceMessagesByDayAndAuthor(
+      sourceMessages.map((message) => createWorkspaceMessageListServerItem(message)),
+    );
+
+    expect(sourceMessages.map((message) => message.uuid)).toEqual([
+      "message-c",
+      "message-b",
+      "message-a",
+    ]);
+    expect(
+      groupedMessages.flatMap((dayGroup) =>
+        dayGroup.authorGroups.flatMap((authorGroup) =>
+          authorGroup.messages.map((message) => message.key),
+        ),
+      ),
+    ).toEqual(["message-a", "message-b", "message-c"]);
+  });
+
+  it("splits calendar days and only groups neighboring messages from the same author", () => {
+    const groupedMessages = groupWorkspaceMessagesByDayAndAuthor([
+      createWorkspaceMessageListServerItem(
+        createWorkspaceMessage({
+          uuid: "day-one-author-a-first",
+          authorUuid: "author-a",
+          createdAt: "2026-07-03T09:00:00.000Z",
+        }),
+      ),
+      createWorkspaceMessageListServerItem(
+        createWorkspaceMessage({
+          uuid: "day-one-author-a-second",
+          authorUuid: "author-a",
+          createdAt: "2026-07-03T09:01:00.000Z",
+        }),
+      ),
+      createWorkspaceMessageListServerItem(
+        createWorkspaceMessage({
+          uuid: "day-one-author-b",
+          authorUuid: "author-b",
+          createdAt: "2026-07-03T09:02:00.000Z",
+        }),
+      ),
+      createWorkspaceMessageListServerItem(
+        createWorkspaceMessage({
+          uuid: "day-one-author-a-third",
+          authorUuid: "author-a",
+          createdAt: "2026-07-03T09:03:00.000Z",
+        }),
+      ),
+      createWorkspaceMessageListServerItem(
+        createWorkspaceMessage({
+          uuid: "day-two-author-a",
+          authorUuid: "author-a",
+          createdAt: "2026-07-04T09:00:00.000Z",
+        }),
+      ),
+    ]);
+
+    expect(groupedMessages).toHaveLength(2);
+    expect(groupedMessages[0]?.dateKey).toBe("2026-07-03");
+    expect(groupedMessages[0]?.authorGroups).toHaveLength(3);
+    expect(groupedMessages[0]?.authorGroups.map((group) => group.authorUuid)).toEqual([
+      "author-a",
+      "author-b",
+      "author-a",
+    ]);
+    expect(groupedMessages[0]?.authorGroups[0]?.messages.map((message) => message.key)).toEqual([
+      "day-one-author-a-first",
+      "day-one-author-a-second",
+    ]);
+    expect(groupedMessages[1]?.dateKey).toBe("2026-07-04");
+    expect(groupedMessages[1]?.authorGroups).toHaveLength(1);
+  });
+
+  it("uses the local calendar day near a day boundary", () => {
+    const groupedMessages = groupWorkspaceMessagesByDayAndAuthor([
+      createWorkspaceMessageListServerItem(
+        createWorkspaceMessage({
+          uuid: "local-day-start-message",
+          createdAt: createIsoStringFromLocalTime(2026, 6, 3, 0, 30),
+        }),
+      ),
+      createWorkspaceMessageListServerItem(
+        createWorkspaceMessage({
+          uuid: "local-day-end-message",
+          createdAt: createIsoStringFromLocalTime(2026, 6, 3, 23, 30),
+        }),
+      ),
+    ]);
+
+    expect(groupedMessages).toHaveLength(1);
+    expect(groupedMessages[0]?.dateKey).toBe("2026-07-03");
+    expect(groupedMessages[0]?.authorGroups[0]?.messages.map((message) => message.key)).toEqual([
+      "local-day-start-message",
+      "local-day-end-message",
+    ]);
+  });
+
+  it("starts a new author group whenever neighboring messages change topic", () => {
+    const groupedMessages = groupWorkspaceMessagesByDayAndAuthor([
+      createWorkspaceMessageListServerItem(
+        createWorkspaceMessage({ uuid: "topic-a-first", topicUuid: "topic-a" }),
+      ),
+      createWorkspaceMessageListServerItem(
+        createWorkspaceMessage({
+          uuid: "topic-b",
+          topicUuid: "topic-b",
+          createdAt: "2026-07-03T09:01:00.000Z",
+        }),
+      ),
+      createWorkspaceMessageListServerItem(
+        createWorkspaceMessage({
+          uuid: "topic-a-second",
+          topicUuid: "topic-a",
+          createdAt: "2026-07-03T09:02:00.000Z",
+        }),
+      ),
+    ]);
+
+    expect(groupedMessages[0]?.authorGroups).toMatchObject([
+      { topicUuid: "topic-a", startsTopicRun: false },
+      { topicUuid: "topic-b", startsTopicRun: true },
+      { topicUuid: "topic-a", startsTopicRun: true },
+    ]);
+  });
+});

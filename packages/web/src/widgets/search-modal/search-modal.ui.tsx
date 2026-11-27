@@ -1,15 +1,15 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import React, { useCallback, useEffect, useMemo, useRef } from "react";
+import { t } from "~/i18n/i18n";
+import { useUserIds, useUsersById } from "~/modules/users/users";
 import {
   resolveUserPresenceVisual,
   selectSelectableWorkspaceUsers,
   selectUserDisplayName,
   selectUserStatusLabel,
   selectUsersByIds,
-} from "~/entities/user/user-selectors.lib";
-import { useUsersStore } from "~/entities/user/user.model";
-import type { User } from "~/entities/user/user.types";
-import { t } from "~/i18n/i18n";
+} from "~/modules/users/users-selectors";
+import type { User } from "~/modules/users/users-types";
 import { AppDialogShell, APP_DIALOG_CONTENT_BASE_CLASS } from "~/shared/ui/app-dialog";
 import { ScrollArea } from "~/shared/ui/scroll-area";
 import { SearchInput } from "~/shared/ui/search-input";
@@ -48,8 +48,8 @@ export const SearchModal: React.FC<SearchModalProps> = ({
   const query = useSearchModalStore((s) => s.query);
   const setQuery = useSearchModalStore((s) => s.setQuery);
   const resetStore = useSearchModalStore((s) => s.reset);
-  const usersById = useUsersStore((s) => s.usersById);
-  const userIds = useUsersStore((s) => s.userIds);
+  const usersById = useUsersById();
+  const userIds = useUserIds();
   const inputRef = useRef<HTMLInputElement>(null);
   const workspaceMode = mode === "workspace";
   const allUsers = useMemo(

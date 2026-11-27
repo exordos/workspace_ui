@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import { createMessengerPlacementUuid } from "../packages/web/src/entities/messenger/messenger-message-identity.lib";
+import { createMessengerPlacementUuid } from "../packages/web/src/applications/messenger/model/messages/messenger-message-identity.lib";
 import { test, expect } from "./fixtures";
 import { e2eOrgBasePath } from "./helpers/navigate-messenger";
 import { seedAuthStorage } from "./helpers/seed-auth";
@@ -24,14 +24,14 @@ async function expandKeyEvents(page: Page): Promise<void> {
 
 for (const savedDeviceName of [null, "Workspace browser"] as const) {
   test(`new key request resolves the browser name with ${savedDeviceName ? "a legacy" : "a fresh"} identity`, async ({
-    authenticated: page,
+    authenticatedPage: page,
   }) => {
     const readIdentity = () =>
       page.evaluate(async () => {
         const { useWorkspaceAuthStore } =
           await import("/src/entities/workspace-auth/workspace-auth.model.ts");
         const { realChatKeyStorage } =
-          await import("/src/entities/messenger/chat-crypto-resources.lib.ts");
+          await import("/src/applications/messenger/model/crypto/chat-crypto-resources.lib.ts");
         const runtime = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
         if (!runtime) throw new Error("Missing test runtime");
         return realChatKeyStorage.readDeviceIdentity(runtime);
@@ -43,7 +43,7 @@ for (const savedDeviceName of [null, "Workspace browser"] as const) {
         const { useWorkspaceAuthStore } =
           await import("/src/entities/workspace-auth/workspace-auth.model.ts");
         const { realChatKeyStorage } =
-          await import("/src/entities/messenger/chat-crypto-resources.lib.ts");
+          await import("/src/applications/messenger/model/crypto/chat-crypto-resources.lib.ts");
         const runtime = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
         if (!runtime) throw new Error("Missing test runtime");
         await realChatKeyStorage.writeDeviceIdentity(runtime, {
@@ -116,17 +116,17 @@ for (const savedDeviceName of [null, "Workspace browser"] as const) {
 
 for (const role of ["owner", "member"] as const) {
   test(`one ${role} account on two devices keeps device-specific key rendering and existing grant rights`, async ({
-    authenticated: source,
+    authenticatedPage: source,
     browser,
+    baseURL,
   }, testInfo) => {
-    const context = await browser.newContext({ baseURL: "http://localhost:5173" });
+    const context = await browser.newContext({ baseURL });
     try {
       const target = await context.newPage();
       const api = new WorkspaceApiMock(target);
       await api.install();
       await seedAuthStorage(target);
-      await target.goto(`${e2eOrgBasePath()}/messenger`);
-      await target.waitForSelector("[data-focus-zone='topbar']");
+      await target.goto("/embeds/calendar-placeholder.html");
       const keyUuid = crypto.randomUUID();
       const stream = {
         ...streamsSuccess()[0],
@@ -147,7 +147,7 @@ for (const role of ["owner", "member"] as const) {
             const { useWorkspaceAuthStore } =
               await import("/src/entities/workspace-auth/workspace-auth.model.ts");
             const { realChatKeyStorage, realChatCryptoProvider } =
-              await import("/src/entities/messenger/chat-crypto-resources.lib.ts");
+              await import("/src/applications/messenger/model/crypto/chat-crypto-resources.lib.ts");
             const { getDeviceName } = await import("/src/shared/lib/device-name.lib.ts");
             const runtime = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
             if (!runtime) throw new Error("Missing test runtime");
@@ -381,7 +381,7 @@ for (const role of ["owner", "member"] as const) {
 }
 
 test("encrypted chat header explains message and media protection on hover and keyboard focus", async ({
-  authenticated,
+  authenticatedPage: authenticated,
 }, testInfo) => {
   const page = authenticated;
   const stream = {
@@ -439,7 +439,7 @@ test("encrypted chat header explains message and media protection on hover and k
 });
 
 test("encrypted channel owner adds and removes a participant through the shared membership actions", async ({
-  authenticated,
+  authenticatedPage: authenticated,
 }) => {
   const page = authenticated;
   const newUserUuid = crypto.randomUUID();
@@ -521,7 +521,7 @@ test("encrypted channel owner adds and removes a participant through the shared 
 
 for (const encryption of [false, true]) {
   test(`${encryption ? "encrypted" : "ordinary"} channel member cannot open the add-members picker`, async ({
-    authenticated,
+    authenticatedPage: authenticated,
   }) => {
     const page = authenticated;
     const stream = {
@@ -559,7 +559,7 @@ for (const encryption of [false, true]) {
 }
 
 test("local key manager separates current metadata from saved keys and deletes only the selected key", async ({
-  authenticated,
+  authenticatedPage: authenticated,
 }, testInfo) => {
   const page = authenticated;
   const currentKeyUuid = crypto.randomUUID();
@@ -574,7 +574,7 @@ test("local key manager separates current metadata from saved keys and deletes o
       const { useWorkspaceAuthStore } =
         await import("/src/entities/workspace-auth/workspace-auth.model.ts");
       const { realChatKeyStorage, realChatCryptoProvider, ensureChatDeviceIdentity } =
-        await import("/src/entities/messenger/chat-crypto-resources.lib.ts");
+        await import("/src/applications/messenger/model/crypto/chat-crypto-resources.lib.ts");
       const runtime = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
       if (!runtime) throw new Error("Missing test runtime");
       const device = await ensureChatDeviceIdentity(runtime, () => true);

@@ -1,11 +1,15 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useMessengerStore } from "~/entities/messenger/messenger.model";
-import type { MessengerStream, MessengerTopic } from "~/entities/messenger/messenger.types";
-import { useUsersStore } from "~/entities/user/user.model";
-import type { User } from "~/entities/user/user.types";
+import { useMessengerStore } from "~/applications/messenger/model/chats/messenger.model";
+import type {
+  MessengerStream,
+  MessengerTopic,
+} from "~/applications/messenger/model/messenger.types";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
+import { useUsersStore } from "~/modules/users/user.model";
+import type { User } from "~/modules/users/users-types";
+import { workspaceRuntimeOwnerKey } from "~/platform/sessions/workspace-runtime.lib";
 import {
   workspaceInboxRoute,
   workspaceMessengerStreamRoute,
@@ -133,8 +137,9 @@ function seedWorkspaceInbox(input?: {
     },
   });
   useUsersStore.getState().replaceUsers(input?.users ?? [user()]);
+  const runtime = useWorkspaceAuthStore.getState().getCurrentRuntimeContext()!;
   useMessengerStore.setState({
-    ownerKey: "account",
+    ownerKey: workspaceRuntimeOwnerKey(runtime),
     isLoading: false,
     error: null,
     streamsById: Object.fromEntries((input?.streams ?? []).map((item) => [item.uuid, item])),

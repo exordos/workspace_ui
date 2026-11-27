@@ -1,13 +1,13 @@
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useMessengerStore } from "~/entities/messenger/messenger.model";
-import type { MessengerBootstrapPayload } from "~/entities/messenger/messenger.types";
-import { useUsersStore } from "~/entities/user/user.model";
+import { useMessengerStore } from "~/applications/messenger/model/chats/messenger.model";
+import type { MessengerBootstrapPayload } from "~/applications/messenger/model/messenger.types";
 import {
   useWorkspaceAuthStore,
   type WorkspaceAuthSession,
 } from "~/entities/workspace-auth/workspace-auth.model";
-import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
+import { getUsersStoreForOwner, useUsersStore } from "~/modules/users/user.model";
+import { workspaceRuntimeOwnerKey } from "~/platform/sessions/workspace-runtime.lib";
 import { createUser } from "~/test/factories";
 import { useLayoutRightPanelShell } from "./layout-right-panel-shell.hook";
 import type { UseLayoutRightPanelShellParams } from "./layout-right-panel-shell.hook";
@@ -288,6 +288,7 @@ describe("useLayoutRightPanelShell", () => {
               streamUuid: STREAM_UUID,
             },
             rightDrawerWorkspaceUserUuidOverride: DIRECT_USER_UUID,
+            rightDrawerWorkspaceUserOwnerKey: OWNER_KEY,
           }),
         ),
       );
@@ -301,7 +302,8 @@ describe("useLayoutRightPanelShell", () => {
         });
       });
 
-      expect(useUsersStore.getState().ownerKey).toBe(OWNER_KEY);
+      expect(getUsersStoreForOwner(OWNER_KEY)?.getState().ownerKey).toBe(OWNER_KEY);
+      expect(useUsersStore.getState().usersById[DIRECT_USER_UUID]).toBeUndefined();
       expect(result.current.workspaceRightPanelInfo?.kind).not.toBe("userProfile");
       expect(result.current.rightPanelTitleResolved).not.toBe("Cora Lane");
     },

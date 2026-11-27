@@ -4,16 +4,16 @@ The Workspace cache is implemented. Its original [July plan](archive/WORKSPACE_M
 
 ## Sources
 
-| Concern                                     | Source                                                                                                                                                                                                         |
-| ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| IndexedDB repository, database name/version | [workspace-messenger-cache-db.ts](../packages/web/src/shared/lib/workspace-messenger-cache-db.ts)                                                                                                              |
-| Schema and upgrades                         | [workspace-messenger-cache-db-upgrade.lib.ts](../packages/web/src/shared/lib/workspace-messenger-cache-db-upgrade.lib.ts)                                                                                      |
-| Domain adapters and writes                  | [messenger-cache.lib.ts](../packages/web/src/entities/messenger/messenger-cache.lib.ts)                                                                                                                        |
-| Catalog hydration and server refresh        | [messenger-bootstrap.lib.ts](../packages/web/src/entities/messenger/messenger-bootstrap.lib.ts)                                                                                                                |
-| Message windows and pagination              | [messenger-messages-loader.lib.ts](../packages/web/src/entities/messenger/messenger-messages-loader.lib.ts)                                                                                                    |
-| Store projections                           | [messenger.model.ts](../packages/web/src/entities/messenger/messenger.model.ts), [message.model.ts](../packages/web/src/entities/message/message.model.ts)                                                     |
-| Realtime/cursor ownership                   | [workspace-runtime.types.ts](../packages/web/src/entities/workspace-runtime/workspace-runtime.types.ts), [realtime runtime](../packages/web/src/shared/lib/workspace-realtime/)                                |
-| Cache regression tests                      | [workspace-messenger-cache-db.test.ts](../packages/web/src/shared/lib/workspace-messenger-cache-db.test.ts), [messenger-cache.lib.test.ts](../packages/web/src/entities/messenger/messenger-cache.lib.test.ts) |
+| Concern                                     | Source                                                                                                                                                                                                                   |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| IndexedDB repository, database name/version | [workspace-messenger-cache-db.ts](../packages/web/src/shared/lib/workspace-messenger-cache-db.ts)                                                                                                                        |
+| Schema and upgrades                         | [workspace-messenger-cache-db-upgrade.lib.ts](../packages/web/src/shared/lib/workspace-messenger-cache-db-upgrade.lib.ts)                                                                                                |
+| Domain adapters and writes                  | [messenger-cache.lib.ts](../packages/web/src/applications/messenger/model/messenger-cache.lib.ts)                                                                                                                        |
+| Catalog hydration and server refresh        | [messenger-bootstrap.lib.ts](../packages/web/src/applications/messenger/runtime/sync/messenger-bootstrap.lib.ts)                                                                                                         |
+| Message windows and pagination              | [messenger-messages-loader.lib.ts](../packages/web/src/applications/messenger/model/messages/history/messenger-messages-loader.lib.ts)                                                                                   |
+| Store projections                           | [messenger.model.ts](../packages/web/src/applications/messenger/model/chats/messenger.model.ts), [message.model.ts](../packages/web/src/applications/messenger/model/messages/message.model.ts)                          |
+| Realtime/cursor ownership                   | [workspace-runtime.types.ts](../packages/web/src/platform/sessions/workspace-runtime.types.ts), [realtime runtime](../packages/web/src/platform/realtime/)                                                               |
+| Cache regression tests                      | [workspace-messenger-cache-db.test.ts](../packages/web/src/shared/lib/workspace-messenger-cache-db.test.ts), [messenger-cache.lib.test.ts](../packages/web/src/applications/messenger/model/messenger-cache.lib.test.ts) |
 
 ## Invariants
 
@@ -47,6 +47,6 @@ Topic grouping reuses one index per immutable catalog snapshot through weak keys
 
 ## Capability limits
 
-Search-result storage helpers do not imply a working server search API. Check the current [API map](API_CLIENT_REFERENCE.md), [use cases](USE_CASES.md) and backend contracts before adding search or message-window behavior. Anchor navigation already has a [Workspace feature](../packages/web/src/features/workspace-message-anchor-navigation/); distinguish its implemented loading strategy from a server-provided page-around-message endpoint.
+Search-result storage helpers do not imply a working server search API. Check the current [API map](API_CLIENT_REFERENCE.md), [use cases](USE_CASES.md) and backend contracts before adding search or message-window behavior. Anchor navigation already has a [Workspace feature](../packages/web/src/applications/messenger/pages/messenger/anchor-navigation/workspace-message-anchor-navigation.hook.ts); distinguish its implemented loading strategy from a server-provided page-around-message endpoint.
 
 For cache changes, test affected persistence and owner-switch races. For hydration/scroll changes, also verify the relevant user flow and state the limits of browser/native validation.

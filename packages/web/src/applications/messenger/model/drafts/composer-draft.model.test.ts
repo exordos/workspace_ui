@@ -1,0 +1,674 @@
+import "fake-indexeddb/auto";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  deleteWorkspaceMessengerCacheDatabase,
+  openWorkspaceMessengerCacheDb,
+  readWorkspaceComposerDraft,
+  readWorkspaceComposerDraftRecords,
+  resetWorkspaceMessengerCacheDbSingletonForTests,
+} from "~/shared/lib/workspace-messenger-cache-db";
+import type { WorkspaceMessengerComposerDraftCacheRow } from "~/shared/lib/workspace-messenger-cache-db";
+import { createWorkspaceComposerDrafts } from "./composer-draft-actions.lib";
+import { resetWorkspaceComposerDraftSyncForTests } from "./composer-draft-sync.lib";
+import { EMPTY_WORKSPACE_COMPOSER_DRAFT_REPLY_SESSION } from "./composer-draft.lib";
+import {
+  resetWorkspaceComposerDraftStoreForTests,
+  selectWorkspaceComposerDraft,
+  useWorkspaceComposerDraftStore,
+} from "./composer-draft.model";
+import type { WorkspaceComposerDraftContent } from "./composer-draft.types";
+
+const OWNER = "account:a:instance:i:organization:o:project:p:user:u";
+const OTHER_OWNER = "account:b:instance:i:organization:o:project:p:user:u";
+const CONVERSATION = "topic:stream-a:topic-a";
+
+function content(text: string): WorkspaceComposerDraftContent {
+  return {
+    text,
+    replySession: EMPTY_WORKSPACE_COMPOSER_DRAFT_REPLY_SESSION,
+  };
+}
+
+async function seedLegacyComposerDraft<TContent>(
+  ownerKey: string,
+  conversationId: string,
+  draft: Omit<
+    WorkspaceMessengerComposerDraftCacheRow<TContent>,
+    "id" | "ownerKey" | "conversationId"
+  >,
+): Promise<void> {
+  const db = await openWorkspaceMessengerCacheDb();
+  const transaction = db.transaction("composerDrafts", "readwrite");
+  transaction.objectStore("composerDrafts").put({
+    id: `${ownerKey}:${conversationId}`,
+    ownerKey,
+    conversationId,
+    ...draft,
+  } satisfies WorkspaceMessengerComposerDraftCacheRow<TContent>);
+  await new Promise<void>((resolve, reject) => {
+    transaction.addEventListener("complete", () => resolve());
+    transaction.addEventListener("error", () =>
+      reject(new Error(transaction.error?.message ?? "Cannot seed legacy composer draft")),
+    );
+    transaction.addEventListener("abort", () =>
+      reject(new Error(transaction.error?.message ?? "Cannot seed legacy composer draft")),
+    );
+  });
+}
+
+beforeEach(() => {
+  resetWorkspaceComposerDraftStoreForTests();
+});
+
+afterEach(async () => {
+  try {
+    const db = await openWorkspaceMessengerCacheDb();
+    db.close();
+  } catch {
+    // no open DB
+  }
+  resetWorkspaceMessengerCacheDbSingletonForTests();
+  await deleteWorkspaceMessengerCacheDatabase();
+  resetWorkspaceComposerDraftStoreForTests();
+});
+
+describe("workspace composer drafts", () => {
+  it("keeps private shadows only in memory per owner and conversation", async () => {
+    const store = useWorkspaceComposerDraftStore.getState();
+    const first = content("Public :::private A::: tail");
+    const second = content(":::private B:::");
+    store.setPrivateDraftShadow(OWNER, CONVERSATION, first);
+    store.setPrivateDraftShadow(OWNER, "topic:stream-b:topic-b", second);
+    store.setPrivateDraftShadow(OTHER_OWNER, CONVERSATION, second);
+    store.leaveConversation(OWNER, CONVERSATION);
+    expect(await store.hydrateDraft(OWNER, CONVERSATION)).toBeNull();
+    expect(
+      useWorkspaceComposerDraftStore.getState().privateShadowsByConversationKey[
+        `${OWNER}:${CONVERSATION}`
+      ]?.content,
+    ).toEqual(first);
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 450);
+    });
+    expect(await readWorkspaceComposerDraftRecords(OWNER)).toEqual([]);
+    expect(await readWorkspaceComposerDraftRecords(OTHER_OWNER)).toEqual([]);
+    store.setPrivateDraftShadow(OWNER, CONVERSATION, content("now ordinary"));
+    expect(
+      useWorkspaceComposerDraftStore.getState().privateShadowsByConversationKey[
+        `${OWNER}:${CONVERSATION}`
+      ],
+    ).toBeUndefined();
+    await store.disposeOwner(OWNER);
+    expect(
+      Object.values(useWorkspaceComposerDraftStore.getState().privateShadowsByConversationKey),
+    ).toEqual([expect.objectContaining({ ownerKey: OTHER_OWNER })]);
+    resetWorkspaceComposerDraftStoreForTests();
+    expect(await store.hydrateDraft(OTHER_OWNER, CONVERSATION)).toBeNull();
+    expect(useWorkspaceComposerDraftStore.getState().privateShadowsByConversationKey).toEqual({});
+  });
+
+  it.each(["clear", "plain replacement"] as const)(
+    "preserves a protected update published synchronously during %s",
+    async (operation) => {
+      const runtimeContext = {
+        accountId: "a",
+        instanceId: "i",
+        organizationId: "o",
+        organizationOrigin: "https://workspace.example.com",
+        projectId: "p",
+        userUuid: "u",
+        accessToken: "test-token",
+        runtimeGeneration: 1,
+      };
+      const drafts = createWorkspaceComposerDrafts(
+        { runtimeContext, getRuntimeContext: () => runtimeContext },
+        CONVERSATION,
+      );
+      const store = useWorkspaceComposerDraftStore;
+      const first = store.getState().setDraft(OWNER, CONVERSATION, content("initial text"));
+      if (first == null) throw new Error("Expected an active draft");
+      const secret = content(":::new protected version:::");
+      const unsubscribe = store.subscribe((state) => {
+        const published = state.draftsByKey[first.key];
+        if (
+          operation === "clear"
+            ? published?.disposition !== "consumed"
+            : published?.content.text !== "plain replacement"
+        )
+          return;
+        unsubscribe();
+        drafts.update(() => secret);
+      });
+
+      try {
+        expect(drafts.update(() => content(operation === "clear" ? "" : operation))).toBe(true);
+        expect(drafts.getSnapshot().content).toBe(secret);
+        expect(drafts.getSnapshot()).toBe(drafts.getSnapshot());
+        await store.getState().flushDraft(OWNER, first.draftUuid);
+        expect(await readWorkspaceComposerDraftRecords(OWNER)).not.toContainEqual(
+          expect.objectContaining({ disposition: "editable" }),
+        );
+      } finally {
+        unsubscribe();
+        resetWorkspaceComposerDraftSyncForTests();
+      }
+    },
+  );
+
+  it("keeps one current draft per owner and conversation and writes after debounce", async () => {
+    const first = useWorkspaceComposerDraftStore
+      .getState()
+      .setDraft(OWNER, CONVERSATION, content("Первая"));
+    const second = useWorkspaceComposerDraftStore
+      .getState()
+      .setDraft(OWNER, CONVERSATION, content("Вторая"));
+
+    expect(first).not.toBeNull();
+    expect(second).not.toBeNull();
+    expect(second?.snapshotId).not.toBe(first?.snapshotId);
+    expect(
+      selectWorkspaceComposerDraft(useWorkspaceComposerDraftStore.getState(), OWNER, CONVERSATION),
+    ).toMatchObject({ snapshotId: second?.snapshotId, content: { text: "Вторая" } });
+
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 450);
+    });
+
+    await expect(
+      readWorkspaceComposerDraftRecords<WorkspaceComposerDraftContent>(OWNER),
+    ).resolves.toContainEqual(
+      expect.objectContaining({
+        snapshotId: second?.snapshotId,
+        content: expect.objectContaining({ text: "Вторая" }),
+      }),
+    );
+  });
+
+  it("selects a new active draft after an earlier draft completed the same visit", () => {
+    const sentDraft = useWorkspaceComposerDraftStore
+      .getState()
+      .setDraft(OWNER, CONVERSATION, content("Первое сообщение"));
+    expect(sentDraft).not.toBeNull();
+
+    useWorkspaceComposerDraftStore
+      .getState()
+      .completeDraftVisit(OWNER, CONVERSATION, sentDraft!.draftUuid);
+    const nextDraft = useWorkspaceComposerDraftStore
+      .getState()
+      .setDraft(OWNER, CONVERSATION, content("Второе сообщение"));
+    expect(nextDraft).not.toBeNull();
+
+    expect(
+      selectWorkspaceComposerDraft(useWorkspaceComposerDraftStore.getState(), OWNER, CONVERSATION),
+    ).toEqual(nextDraft);
+  });
+
+  it("hydrates persisted reply tabs together with ordinary composer text", async () => {
+    await seedLegacyComposerDraft(OWNER, CONVERSATION, {
+      snapshotId: "snapshot-a",
+      updatedAt: 42,
+      content: {
+        text: "Обычный текст",
+        replySession: {
+          activeTabId: "tab-a",
+          tabs: [
+            {
+              id: "tab-a",
+              messageUuid: "message-a",
+              senderUuid: "user-a",
+              senderName: "Алексей",
+              quotedContent: "Исходный текст",
+              selectedText: " фрагмент\nс переносом ",
+              createdAt: "2026-07-15T09:00:00.000Z",
+              answer: "Ответ",
+            },
+          ],
+        },
+      },
+    });
+
+    await expect(
+      useWorkspaceComposerDraftStore.getState().hydrateDraft(OWNER, CONVERSATION),
+    ).resolves.toMatchObject({
+      ownerKey: OWNER,
+      conversationId: CONVERSATION,
+      snapshotId: "snapshot-a",
+      streamUuid: "stream-a",
+      topicUuid: "topic-a",
+      content: {
+        text: "Обычный текст",
+        replySession: {
+          activeTabId: "tab-a",
+          tabs: [
+            {
+              id: "tab-a",
+              messageUuid: "message-a",
+              senderUuid: "user-a",
+              senderName: "Алексей",
+              quotedContent: "Исходный текст",
+              selectedText: " фрагмент\nс переносом ",
+              createdAt: "2026-07-15T09:00:00.000Z",
+              answer: "Ответ",
+            },
+          ],
+        },
+      },
+    });
+
+    await expect(readWorkspaceComposerDraft(OWNER, CONVERSATION)).resolves.toBeNull();
+    await expect(readWorkspaceComposerDraftRecords(OWNER)).resolves.toHaveLength(1);
+  });
+
+  it("hydrates malformed persisted content as an empty draft", async () => {
+    await seedLegacyComposerDraft<unknown>(OWNER, CONVERSATION, {
+      snapshotId: "snapshot-a",
+      updatedAt: 42,
+      content: {
+        text: 42,
+        replySession: {
+          activeTabId: {},
+          tabs: "not-an-array",
+        },
+      },
+    });
+
+    await expect(
+      useWorkspaceComposerDraftStore.getState().hydrateDraft(OWNER, CONVERSATION),
+    ).resolves.toMatchObject({
+      content: {
+        text: "",
+        replySession: EMPTY_WORKSPACE_COMPOSER_DRAFT_REPLY_SESSION,
+      },
+    });
+  });
+
+  it("drops malformed reply tabs while preserving valid persisted tabs", async () => {
+    await seedLegacyComposerDraft<unknown>(OWNER, CONVERSATION, {
+      snapshotId: "snapshot-a",
+      updatedAt: 42,
+      content: {
+        text: "Черновик",
+        replySession: {
+          activeTabId: "tab-a",
+          tabs: [
+            null,
+            {
+              id: "tab-invalid",
+              messageUuid: 42,
+              senderUuid: "user-invalid",
+              senderName: "Некорректный",
+              quotedContent: "Текст",
+              createdAt: "2026-07-15T09:00:00.000Z",
+              answer: "Ответ",
+            },
+            {
+              id: " tab-a ",
+              messageUuid: "message-a",
+              senderUuid: "user-a",
+              senderName: "Алексей",
+              quotedContent: 42,
+              selectedText: null,
+              createdAt: "2026-07-15T09:00:00.000Z",
+              answer: null,
+            },
+          ],
+        },
+      },
+    });
+
+    await expect(
+      useWorkspaceComposerDraftStore.getState().hydrateDraft(OWNER, CONVERSATION),
+    ).resolves.toMatchObject({
+      content: {
+        text: "Черновик",
+        replySession: {
+          activeTabId: "tab-a",
+          tabs: [
+            {
+              id: "tab-a",
+              messageUuid: "message-a",
+              quotedContent: "",
+              selectedText: undefined,
+              answer: "",
+            },
+          ],
+        },
+      },
+    });
+  });
+
+  it("does not let a late hydration overwrite local input", async () => {
+    await seedLegacyComposerDraft(OWNER, CONVERSATION, {
+      snapshotId: "persisted-snapshot",
+      updatedAt: 1,
+      content: content("Старый текст"),
+    });
+
+    const hydrate = useWorkspaceComposerDraftStore.getState().hydrateDraft(OWNER, CONVERSATION);
+    const localDraft = useWorkspaceComposerDraftStore
+      .getState()
+      .setDraft(OWNER, CONVERSATION, content("Новый текст"));
+
+    await expect(hydrate).resolves.toEqual(localDraft);
+    expect(
+      selectWorkspaceComposerDraft(useWorkspaceComposerDraftStore.getState(), OWNER, CONVERSATION),
+    ).toEqual(localDraft);
+  });
+
+  it.each(["visit", "runtime"] as const)(
+    "guards selection and persistence when the %s ends during legacy migration",
+    async (ended) => {
+      await seedLegacyComposerDraft(OWNER, CONVERSATION, {
+        snapshotId: "legacy-snapshot",
+        updatedAt: 1,
+        content: content("Legacy text"),
+      });
+      const db = await openWorkspaceMessengerCacheDb();
+      const transaction = db.transaction.bind(db);
+      let visitCurrent = true;
+      let runtimeCurrent = true;
+      const watch = vi.spyOn(db, "transaction").mockImplementation((...args) => {
+        if (args[1] === "readwrite") {
+          if (ended === "visit") visitCurrent = false;
+          else runtimeCurrent = false;
+        }
+        return transaction(...args);
+      });
+
+      try {
+        await expect(
+          useWorkspaceComposerDraftStore.getState().hydrateDraft(OWNER, CONVERSATION, null, {
+            isRuntimeCurrent: () => runtimeCurrent,
+            isVisitCurrent: () => visitCurrent,
+          }),
+        ).resolves.toBeNull();
+      } finally {
+        watch.mockRestore();
+      }
+
+      const state = useWorkspaceComposerDraftStore.getState();
+      expect(state.activeDraftUuidByConversationKey).toEqual({});
+      if (ended === "runtime") {
+        expect(state.draftsByKey).toEqual({});
+        await expect(readWorkspaceComposerDraftRecords(OWNER)).resolves.toEqual([]);
+        await expect(readWorkspaceComposerDraft(OWNER, CONVERSATION)).resolves.toMatchObject({
+          snapshotId: "legacy-snapshot",
+        });
+      } else {
+        expect(Object.values(state.draftsByKey)).toEqual([
+          expect.objectContaining({ snapshotId: "legacy-snapshot" }),
+        ]);
+        await expect(readWorkspaceComposerDraft(OWNER, CONVERSATION)).resolves.toBeNull();
+      }
+    },
+  );
+
+  it("does not restore a persisted deleting draft after reload", async () => {
+    const sentDraft = useWorkspaceComposerDraftStore
+      .getState()
+      .setDraft(OWNER, CONVERSATION, content("Уже отправлено"));
+    expect(sentDraft).not.toBeNull();
+
+    useWorkspaceComposerDraftStore.getState().markDraftDeleting(OWNER, sentDraft!.draftUuid);
+    expect(
+      selectWorkspaceComposerDraft(useWorkspaceComposerDraftStore.getState(), OWNER, CONVERSATION),
+    ).toBeNull();
+    await useWorkspaceComposerDraftStore.getState().flushDraft(OWNER, sentDraft!.draftUuid);
+    await expect(
+      readWorkspaceComposerDraftRecords<WorkspaceComposerDraftContent>(OWNER),
+    ).resolves.toContainEqual(
+      expect.objectContaining({
+        draftUuid: sentDraft!.draftUuid,
+        syncStatus: "deleting",
+        disposition: "consumed",
+      }),
+    );
+
+    // A reload must retain the durable deletion tombstone without putting its
+    // already-sent content back into the composer.
+    resetWorkspaceComposerDraftStoreForTests();
+
+    await expect(
+      useWorkspaceComposerDraftStore.getState().hydrateDraft(OWNER, CONVERSATION),
+    ).resolves.toBeNull();
+    expect(
+      selectWorkspaceComposerDraft(useWorkspaceComposerDraftStore.getState(), OWNER, CONVERSATION),
+    ).toBeNull();
+  });
+
+  it.each(["failed", "conflict"] as const)(
+    "restores an editable %s draft after leaving the conversation",
+    (syncStatus) => {
+      const draft = useWorkspaceComposerDraftStore
+        .getState()
+        .setDraft(OWNER, CONVERSATION, content("Неотправленный черновик"));
+      expect(draft).not.toBeNull();
+
+      if (syncStatus === "failed") {
+        useWorkspaceComposerDraftStore.getState().markDraftSyncFailed(OWNER, draft!.draftUuid);
+      } else {
+        useWorkspaceComposerDraftStore
+          .getState()
+          .markDraftConflict(OWNER, draft!.draftUuid, content("Версия сервера"), "etag-server");
+      }
+      useWorkspaceComposerDraftStore.getState().leaveConversation(OWNER, CONVERSATION);
+
+      expect(
+        selectWorkspaceComposerDraft(
+          useWorkspaceComposerDraftStore.getState(),
+          OWNER,
+          CONVERSATION,
+        ),
+      ).toMatchObject({
+        draftUuid: draft!.draftUuid,
+        syncStatus,
+        disposition: "editable",
+      });
+    },
+  );
+
+  it("keeps a consumed failed draft hidden after leaving and IndexedDB hydration", async () => {
+    const sentDraft = useWorkspaceComposerDraftStore
+      .getState()
+      .setDraft(OWNER, CONVERSATION, content("Уже отправлено"));
+    expect(sentDraft).not.toBeNull();
+
+    useWorkspaceComposerDraftStore.getState().markDraftDeleting(OWNER, sentDraft!.draftUuid);
+    useWorkspaceComposerDraftStore.getState().markDraftSyncFailed(OWNER, sentDraft!.draftUuid);
+    useWorkspaceComposerDraftStore.getState().leaveConversation(OWNER, CONVERSATION);
+
+    expect(
+      selectWorkspaceComposerDraft(useWorkspaceComposerDraftStore.getState(), OWNER, CONVERSATION),
+    ).toBeNull();
+    await useWorkspaceComposerDraftStore.getState().flushDraft(OWNER, sentDraft!.draftUuid);
+    await expect(
+      readWorkspaceComposerDraftRecords<WorkspaceComposerDraftContent>(OWNER),
+    ).resolves.toContainEqual(
+      expect.objectContaining({
+        draftUuid: sentDraft!.draftUuid,
+        syncStatus: "failed",
+        disposition: "consumed",
+      }),
+    );
+
+    resetWorkspaceComposerDraftStoreForTests();
+
+    await expect(
+      useWorkspaceComposerDraftStore.getState().hydrateDraft(OWNER, CONVERSATION),
+    ).resolves.toBeNull();
+    expect(useWorkspaceComposerDraftStore.getState().draftsByKey).toEqual(
+      expect.objectContaining({
+        [sentDraft!.key]: expect.objectContaining({
+          syncStatus: "failed",
+          disposition: "consumed",
+        }),
+      }),
+    );
+  });
+
+  it("restores the next editable draft instead of a newer deletion tombstone", async () => {
+    const editableDraft = useWorkspaceComposerDraftStore
+      .getState()
+      .setDraft(OWNER, CONVERSATION, content("Оставшийся черновик"));
+    expect(editableDraft).not.toBeNull();
+    useWorkspaceComposerDraftStore.getState().leaveConversation(OWNER, CONVERSATION);
+
+    const sentDraft = useWorkspaceComposerDraftStore
+      .getState()
+      .setDraft(OWNER, CONVERSATION, content("Уже отправлено"));
+    expect(sentDraft).not.toBeNull();
+    useWorkspaceComposerDraftStore.getState().markDraftDeleting(OWNER, sentDraft!.draftUuid);
+
+    await useWorkspaceComposerDraftStore.getState().flushDraft(OWNER, editableDraft!.draftUuid);
+    await useWorkspaceComposerDraftStore.getState().flushDraft(OWNER, sentDraft!.draftUuid);
+    resetWorkspaceComposerDraftStoreForTests();
+
+    await expect(
+      useWorkspaceComposerDraftStore.getState().hydrateDraft(OWNER, CONVERSATION),
+    ).resolves.toMatchObject({
+      draftUuid: editableDraft!.draftUuid,
+      content: { text: "Оставшийся черновик" },
+    });
+  });
+
+  it("clears only the snapshot that was sent", async () => {
+    const sentDraft = useWorkspaceComposerDraftStore
+      .getState()
+      .setDraft(OWNER, CONVERSATION, content("Первое сообщение"));
+    await useWorkspaceComposerDraftStore.getState().flushDraft(OWNER, CONVERSATION);
+    const nextDraft = useWorkspaceComposerDraftStore
+      .getState()
+      .setDraft(OWNER, CONVERSATION, content("Следующее сообщение"));
+
+    expect(
+      useWorkspaceComposerDraftStore
+        .getState()
+        .clearDraftIfSnapshotMatches(OWNER, CONVERSATION, sentDraft!.snapshotId),
+    ).toBe(false);
+    expect(
+      selectWorkspaceComposerDraft(useWorkspaceComposerDraftStore.getState(), OWNER, CONVERSATION),
+    ).toEqual(nextDraft);
+
+    expect(
+      useWorkspaceComposerDraftStore
+        .getState()
+        .clearDraftIfSnapshotMatches(OWNER, CONVERSATION, nextDraft!.snapshotId),
+    ).toBe(true);
+    await useWorkspaceComposerDraftStore.getState().flushDraft(OWNER, CONVERSATION);
+    await expect(readWorkspaceComposerDraft(OWNER, CONVERSATION)).resolves.toBeNull();
+  });
+
+  it("keeps the remaining draft out of the composer until the next chat visit", () => {
+    const first = useWorkspaceComposerDraftStore
+      .getState()
+      .setDraft(OWNER, CONVERSATION, content("Первый"));
+    useWorkspaceComposerDraftStore.getState().leaveConversation(OWNER, CONVERSATION);
+    const second = useWorkspaceComposerDraftStore
+      .getState()
+      .setDraft(OWNER, CONVERSATION, content("Второй"));
+    useWorkspaceComposerDraftStore.getState().leaveConversation(OWNER, CONVERSATION);
+
+    const selected = useWorkspaceComposerDraftStore
+      .getState()
+      .selectDraftForConversation(OWNER, CONVERSATION);
+    expect(selected?.draftUuid).toBe(second?.draftUuid);
+
+    useWorkspaceComposerDraftStore
+      .getState()
+      .clearDraftIfSnapshotMatches(OWNER, CONVERSATION, second?.snapshotId ?? "");
+    expect(
+      useWorkspaceComposerDraftStore.getState().selectDraftForConversation(OWNER, CONVERSATION),
+    ).toBeNull();
+
+    useWorkspaceComposerDraftStore.getState().leaveConversation(OWNER, CONVERSATION);
+    expect(
+      useWorkspaceComposerDraftStore.getState().selectDraftForConversation(OWNER, CONVERSATION)
+        ?.draftUuid,
+    ).toBe(first?.draftUuid);
+  });
+
+  it("accepts the server version of a conflicted draft together with its ETag", () => {
+    const draft = useWorkspaceComposerDraftStore
+      .getState()
+      .setDraft(OWNER, CONVERSATION, content("Локальная версия"));
+    expect(draft).not.toBeNull();
+    useWorkspaceComposerDraftStore
+      .getState()
+      .markDraftConflict(OWNER, draft!.draftUuid, content("Версия сервера"), "etag-server");
+
+    const accepted = useWorkspaceComposerDraftStore
+      .getState()
+      .acceptDraftConflictServerVersion(OWNER, draft!.draftUuid);
+
+    expect(accepted).toMatchObject({
+      content: { text: "Версия сервера" },
+      etag: "etag-server",
+      disposition: "editable",
+      syncStatus: "saved",
+    });
+    expect(accepted).not.toHaveProperty("conflictServerContent");
+    expect(accepted).not.toHaveProperty("conflictServerEtag");
+  });
+
+  it("retries a conflicted local version with the server ETag", () => {
+    const draft = useWorkspaceComposerDraftStore
+      .getState()
+      .setDraft(OWNER, CONVERSATION, content("Локальная версия"));
+    expect(draft).not.toBeNull();
+    useWorkspaceComposerDraftStore
+      .getState()
+      .markDraftConflict(OWNER, draft!.draftUuid, content("Версия сервера"), "etag-server");
+
+    const retried = useWorkspaceComposerDraftStore
+      .getState()
+      .retryDraftConflictWithLocalVersion(OWNER, draft!.draftUuid);
+
+    expect(retried).toMatchObject({
+      content: { text: "Локальная версия" },
+      etag: "etag-server",
+      disposition: "editable",
+      syncStatus: "local",
+    });
+    expect(retried).not.toHaveProperty("conflictServerContent");
+    expect(retried).not.toHaveProperty("conflictServerEtag");
+  });
+
+  it("deletes a conflicted draft using the current server ETag", () => {
+    const draft = useWorkspaceComposerDraftStore
+      .getState()
+      .setDraft(OWNER, CONVERSATION, content("Локальная версия"));
+    expect(draft).not.toBeNull();
+    useWorkspaceComposerDraftStore
+      .getState()
+      .markDraftConflict(OWNER, draft!.draftUuid, content("Версия сервера"), "etag-server");
+
+    const deleting = useWorkspaceComposerDraftStore
+      .getState()
+      .deleteDraftConflictWithServerVersion(OWNER, draft!.draftUuid);
+
+    expect(deleting).toMatchObject({ etag: "etag-server", syncStatus: "deleting" });
+    expect(deleting).not.toHaveProperty("conflictServerContent");
+    expect(deleting).not.toHaveProperty("conflictServerEtag");
+  });
+
+  it("drops delayed owner writes after owner disposal", async () => {
+    useWorkspaceComposerDraftStore.getState().setDraft(OWNER, CONVERSATION, content("Черновик"));
+    await useWorkspaceComposerDraftStore.getState().disposeOwner(OWNER);
+
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 450);
+    });
+
+    await expect(readWorkspaceComposerDraft(OWNER, CONVERSATION)).resolves.toBeNull();
+    expect(
+      selectWorkspaceComposerDraft(useWorkspaceComposerDraftStore.getState(), OWNER, CONVERSATION),
+    ).toBeNull();
+    expect(
+      selectWorkspaceComposerDraft(
+        useWorkspaceComposerDraftStore.getState(),
+        OTHER_OWNER,
+        CONVERSATION,
+      ),
+    ).toBeNull();
+  });
+});

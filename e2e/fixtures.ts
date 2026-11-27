@@ -18,6 +18,7 @@ import { e2eOrgBasePath } from "./helpers/navigate-messenger";
 interface TestFixtures {
   loginAs: (email: string, password: string, organizationUrl: string) => Promise<void>;
   guestPage: Page;
+  authenticatedPage: Page;
   authenticatedMocked: Page;
   authenticated: Page;
 }
@@ -87,6 +88,14 @@ export const test = base.extend<TestFixtures>({
 
   guestPage: async ({ page }, use) => {
     await clearAppStorage(page);
+    await use(page);
+  },
+
+  // Prepare a session without opening Messenger so tests can install their routes first.
+  authenticatedPage: async ({ page }, use) => {
+    await seedAuthStorage(page);
+    // Reload modules with the seeded session without mounting the application shell.
+    await page.goto("/embeds/calendar-placeholder.html");
     await use(page);
   },
 

@@ -15,31 +15,38 @@ The release version is in [lerna.json](../lerna.json); use `npm run version:prin
 
 All paths below are relative to `packages/web/src`.
 
-| Concern                                 | Source                                                                                                      |
-| --------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| Routes                                  | [app/app.tsx](../packages/web/src/app/app.tsx)                                                              |
-| IAM sessions and current runtime        | [workspace-auth.model.ts](../packages/web/src/entities/workspace-auth/workspace-auth.model.ts)              |
-| Owner keys and request validity         | [workspace-runtime.lib.ts](../packages/web/src/entities/workspace-runtime/workspace-runtime.lib.ts)         |
-| Catalogs, conversations, domain actions | [entities/messenger](../packages/web/src/entities/messenger/)                                               |
-| Workspace message store                 | [message.model.ts](../packages/web/src/entities/message/message.model.ts)                                   |
-| Users and presence                      | [entities/user](../packages/web/src/entities/user/)                                                         |
-| Messenger REST                          | [messenger-client.ts](../packages/web/src/shared/api/messenger-client.ts) and adjacent `messenger-*.api.ts` |
-| Common Workspace REST                   | [workspace-client.ts](../packages/web/src/shared/api/workspace-client.ts)                                   |
-| IAM token requests                      | [workspace-iam-auth.ts](../packages/web/src/shared/api/workspace-iam-auth.ts)                               |
-| Realtime transport                      | [shared/lib/workspace-realtime](../packages/web/src/shared/lib/workspace-realtime/)                         |
-| Shared encrypted chat sessions          | [chat-crypto-session.lib.ts](../packages/web/src/entities/messenger/chat-crypto-session.lib.ts)             |
-| Messenger cache                         | [workspace-messenger-cache-db.ts](../packages/web/src/shared/lib/workspace-messenger-cache-db.ts)           |
-| Message rendering                       | [shared/lib/workspace-message-render](../packages/web/src/shared/lib/workspace-message-render/)             |
-| Shell lifecycle                         | [widgets/layout](../packages/web/src/widgets/layout/)                                                       |
-| Message list                            | [widgets/workspace-message-list](../packages/web/src/widgets/workspace-message-list/)                       |
+| Concern                                 | Source                                                                                                                 |
+| --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| Routes                                  | [app/app.tsx](../packages/web/src/app/app.tsx)                                                                         |
+| IAM sessions and current runtime        | [workspace-auth.model.ts](../packages/web/src/entities/workspace-auth/workspace-auth.model.ts)                         |
+| Owner keys and request validity         | [workspace-runtime.lib.ts](../packages/web/src/platform/sessions/workspace-runtime.lib.ts)                             |
+| Session startup and recovery            | [app/workspace-session](../packages/web/src/app/workspace-session/)                                                    |
+| Messenger route and Favorites           | [messenger.ts](../packages/web/src/applications/messenger/messenger.ts)                                                |
+| Catalogs, conversations, domain actions | [model/chats](../packages/web/src/applications/messenger/model/chats/)                                                 |
+| Workspace message store                 | [message.model.ts](../packages/web/src/applications/messenger/model/messages/message.model.ts)                         |
+| Users and presence                      | [modules/users](../packages/web/src/modules/users/)                                                                    |
+| Clipboard access                        | [platform/desktop/clipboard.ts](../packages/web/src/platform/desktop/clipboard.ts)                                     |
+| OS integration                          | [platform/desktop/os-integration.ts](../packages/web/src/platform/desktop/os-integration.ts)                           |
+| System notifications                    | [platform/notifications/notifications.ts](../packages/web/src/platform/notifications/notifications.ts)                 |
+| Messenger REST                          | [messenger-client.ts](../packages/web/src/shared/api/messenger-client.ts) and adjacent `messenger-*.api.ts`            |
+| Common Workspace REST                   | [workspace-client.ts](../packages/web/src/shared/api/workspace-client.ts)                                              |
+| IAM token requests                      | [workspace-iam-auth.ts](../packages/web/src/shared/api/workspace-iam-auth.ts)                                          |
+| Realtime transport                      | [platform/realtime](../packages/web/src/platform/realtime/)                                                            |
+| Shared encrypted chat sessions          | [chat-crypto-session.lib.ts](../packages/web/src/applications/messenger/model/crypto/chat-crypto-session.lib.ts)       |
+| Messenger cache                         | [workspace-messenger-cache-db.ts](../packages/web/src/shared/lib/workspace-messenger-cache-db.ts)                      |
+| Message rendering                       | [shared/lib/workspace-message-render](../packages/web/src/shared/lib/workspace-message-render/)                        |
+| Messenger drafts                        | [composer-draft-actions.lib.ts](../packages/web/src/applications/messenger/model/drafts/composer-draft-actions.lib.ts) |
+| Messenger domain sync                   | [runtime/sync](../packages/web/src/applications/messenger/runtime/sync/)                                               |
+| Shell lifecycle                         | [widgets/layout](../packages/web/src/widgets/layout/)                                                                  |
+| Message list                            | [features/timeline](../packages/web/src/applications/messenger/features/timeline/)                                     |
 
-Do not infer a module's backend from its old name. In particular, `entities/message` is Workspace-native. Remaining `zulip-*` helpers are not the default integration path for new messenger work.
+Messenger `model/messages` uses Workspace UUIDs and the Workspace API. Remaining `zulip-*` helpers serve their existing legacy integrations.
 
 User references use `[Name](urn:user:UUID)`. The exact Markdown title `"silent"`, as in `[Name](urn:user:UUID "silent")`, keeps the link label without an `@` prefix in message bodies and previews. It uses the same UUID profile action and does not count as a mention in the local desktop notification fallback. Other notification reasons, such as a direct message or a followed topic, retain their existing policy.
 
 Quote and forward content enable the same user profile links when the enclosing message exposes its UUID profile callback, including nested snapshots. Without that callback they remain text. Opening a user profile does not activate the quote's message navigation.
 
-Global message times use the bare URN `urn:time:2026-10-13T10:02:00Z` as an explicit Markdown extension; like every other Workspace URN, it carries no surrounding delimiters. The composer clock action opens the shared DateTimePicker and inserts UTC ISO 8601 (`Z`) at the current selection. Reading also accepts ISO values with an explicit numeric offset; zone-less dates and invalid calendar values stay literal. Rendering, previews and compact summaries display the instant in the reader's local time zone and application locale. Code literals and escaped syntax stay literal. The original Markdown retains the instant through editing, quoting and forwarding. The time chip's tooltip describes the reader's zone for that date, including its daylight-saving offset. [Interactive example](../packages/web/src/widgets/message-composer/message-composer-time.stories.tsx).
+Global message times use the bare URN `urn:time:2026-10-13T10:02:00Z` as an explicit Markdown extension; like every other Workspace URN, it carries no surrounding delimiters. The composer clock action opens the shared DateTimePicker and inserts UTC ISO 8601 (`Z`) at the current selection. Reading also accepts ISO values with an explicit numeric offset; zone-less dates and invalid calendar values stay literal. Rendering, previews and compact summaries display the instant in the reader's local time zone and application locale. Code literals and escaped syntax stay literal. The original Markdown retains the instant through editing, quoting and forwarding. The time chip's tooltip describes the reader's zone for that date, including its daylight-saving offset. [Interactive example](../packages/web/src/applications/messenger/features/composer/message-composer-time.stories.tsx).
 
 ## Backend contracts
 
@@ -120,7 +127,8 @@ Run commands from the repository root unless stated otherwise.
 | Storybook bundling            | `npm run build-storybook` (outputs `packages/web/storybook-static`)                              |
 | Focused web behavior          | `npm run test --workspace=web -- src/path/to/file.test.ts` (replace the path)                    |
 | Type/API/store contracts      | `npm run typecheck` (web and Electron)                                                           |
-| All unit tests                | `npm run test` (web Vitest and Electron script tests)                                            |
+| Web import boundaries         | `npm run arch:check`                                                                             |
+| All unit tests                | `npm run test` (architecture checker, web Vitest and Electron script tests)                      |
 | Broad web quality gate        | `npm run check` (web typecheck, lint, format, coverage; complexity report; npm audit)            |
 | Electron scripts              | `npm run test --workspace=exordos-workspace`                                                     |
 | User flow or route regression | Focused Playwright spec, e.g. `npm run e2e -- e2e/workspace-realtime.spec.ts --project=chromium` |

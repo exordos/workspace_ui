@@ -47,7 +47,7 @@ async function expectConversationFocusStyle(item: Locator) {
 
 test.describe("Sidebar", () => {
   test("switches chat-card navigation to the latest topic and keeps avatar navigation @mock", async ({
-    authenticated: page,
+    authenticatedPage: page,
   }, testInfo) => {
     const latestTopicUuid = "66666666-6666-4666-8666-666666666666";
     const latestMessageUuid = "77777777-7777-4777-8777-777777777777";
@@ -74,23 +74,27 @@ test.describe("Sidebar", () => {
             : defaultTopic,
       });
     });
-    await page.route(/\/messenger\/messages\/?(?:[^?]*)?(?:\?.*)?$/, (route) => {
-      const messages = [
-        messageSuccess("General message"),
-        {
-          ...messageSuccess("Latest release message", latestMessageUuid),
-          topic_uuid: latestTopicUuid,
-        },
-      ];
-      const url = new URL(route.request().url());
-      const path = url.pathname.replace(/\/$/, "");
-      const topicUuid = url.searchParams.get("topic_uuid");
-      return route.fulfill({
-        json: path.endsWith("/messages")
-          ? messages.filter((message) => topicUuid == null || message.topic_uuid === topicUuid)
-          : (messages.find((message) => path.endsWith(message.uuid)) ?? messages[1]),
-      });
-    });
+    await page.route(
+      /\/api\/workspace\/v1\/messenger\/messages(?:\/[0-9a-f-]{36})?\/?(?:\?.*)?$/i,
+      (route) => {
+        if (route.request().method() !== "GET") return route.fallback();
+        const messages = [
+          messageSuccess("General message"),
+          {
+            ...messageSuccess("Latest release message", latestMessageUuid),
+            topic_uuid: latestTopicUuid,
+          },
+        ];
+        const url = new URL(route.request().url());
+        const path = url.pathname.replace(/\/$/, "");
+        const topicUuid = url.searchParams.get("topic_uuid");
+        return route.fulfill({
+          json: path.endsWith("/messages")
+            ? messages.filter((message) => topicUuid == null || message.topic_uuid === topicUuid)
+            : (messages.find((message) => path.endsWith(message.uuid)) ?? messages[1]),
+        });
+      },
+    );
     await page.goto(`${e2eOrgBasePath()}/messenger`);
 
     const sidebar = page.getByRole("navigation", { name: "Chat list" });
@@ -112,9 +116,7 @@ test.describe("Sidebar", () => {
     await page.getByRole("button", { name: /профиль|profile/i }).click();
     await page.getByTestId("user-menu-settings-row").click();
     await page.getByTestId("right-panel-settings-chat-click-trigger").click();
-    await page
-      .getByRole("button", { name: /Последний топик|Latest topic/ })
-      .click();
+    await page.getByRole("button", { name: /Последний топик|Latest topic/ }).click();
     await page.screenshot({ path: testInfo.outputPath("chat-click-settings.png") });
     await page.reload();
     await expect(title).toHaveAttribute("href", latestPath);
@@ -203,7 +205,7 @@ test.describe("Sidebar", () => {
   });
 
   test("opens a chat or visible topic from search results with the keyboard @mock", async ({
-    authenticated: page,
+    authenticatedPage: page,
   }) => {
     const streamPath = `${e2eOrgBasePath()}/stream/${E2E_STREAM_UUID}`;
     const topicPath = `${streamPath}/topic/${E2E_TOPIC_UUID}`;
@@ -265,6 +267,10 @@ test.describe("Sidebar", () => {
     await expect(matchingNotes).toBeVisible();
     await expect(extraTopic).toHaveCount(0);
     await expect(otherTopics).toHaveCount(0);
+    // Hydrating the latest message can move General ahead of General Support.
+    await expect(results.locator("[data-sidebar-search-item]").first()).toHaveAccessibleName(
+      "General",
+    );
     await search.press("ArrowDown");
     await expect(chat).toBeFocused();
     await expectConversationFocusStyle(chat);
@@ -345,7 +351,7 @@ test.describe("Sidebar", () => {
   });
 
   test("finds direct streams by name, username and email while preserving group and topic search", async ({
-    authenticated: page,
+    authenticatedPage: page,
   }) => {
     const userUuid = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
     const directUuid = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";

@@ -17,6 +17,13 @@
  */
 import { expect, test } from "./fixtures";
 import { e2eOrgBasePath, E2E_STREAM_UUID, E2E_TOPIC_UUID } from "./helpers/navigate-messenger";
+import { realtimeCursorStorageKey, seedAuthStorage } from "./helpers/seed-auth";
+import {
+  installTimelineProbe,
+  readTimelineCpu,
+  type TimelineCpu,
+} from "./helpers/timeline-performance";
+import { installWorkspaceReadyRealtime } from "./helpers/workspace-ready-realtime";
 import {
   E2E_MESSAGE_UUID,
   E2E_PROJECT_ID,
@@ -29,7 +36,7 @@ import {
   REAL_CONVERSATION_SAMPLE,
   type RealConversationSampleMessage,
 } from "./mocks/real-conversation-sample";
-import type { Page, Route } from "@playwright/test";
+import type { Locator, Page, Route, WebSocketRoute } from "@playwright/test";
 
 test.describe.configure({ mode: "serial" });
 
@@ -96,32 +103,20 @@ function userDto(uuid: string, index: number) {
   };
 }
 
-const WORKSPACE_EVENTS_SOCKET_PATH = "/api/workspace/v1/events/ws";
-
-/** The realtime socket, answering after the list has already been painted. */
-async function installRealtime(page: Page, readyDelayMs: number): Promise<void> {
-  await page.routeWebSocket(
-    (url) => url.pathname === WORKSPACE_EVENTS_SOCKET_PATH,
-    (socket) => {
-      setTimeout(() => {
-        socket.send(
-          JSON.stringify({
-            type: "ready",
-            epoch_generation: "e2e-generation-1",
-            epoch_version: 1,
-          }),
-        );
-      }, readyDelayMs);
-    },
-  );
-}
-
 async function installConversation(
   page: Page,
-  options: { unreadTail?: number; messageCount?: number; historyGate?: Promise<void> } = {},
+  options: {
+    unreadTail?: number;
+    messageCount?: number;
+    historyGate?: Promise<void>;
+    historyPageSize?: number;
+    olderPageGate?: (pageMarker: string) => Promise<void> | undefined;
+    sample?: readonly RealConversationSampleMessage[];
+  } = {},
 ): Promise<void> {
   const unreadTail = options.unreadTail ?? 0;
-  const unreadFrom = REAL_CONVERSATION_SAMPLE.length - unreadTail;
+  const sample = options.sample ?? REAL_CONVERSATION_SAMPLE;
+  const unreadFrom = sample.length - unreadTail;
 
   await page.route(/\/actions\/download(?:\?|$)/, async (route: Route) => {
     await new Promise((resolve) => setTimeout(resolve, RESPONSE_DELAY_MS));
@@ -132,7 +127,7 @@ async function installConversation(
     const url = new URL(route.request().url());
 
     if (route.request().method() === "GET" && /\/(streams|topics)\/?$/.test(url.pathname)) {
-      const tail = REAL_CONVERSATION_SAMPLE.slice(0, options.messageCount).at(-1);
+      const tail = sample.slice(0, options.messageCount).at(-1);
       const items = url.pathname.includes("/topics") ? topicsSuccess() : streamsSuccess();
       await route.fulfill({
         json: items.map((item) => ({
@@ -167,7 +162,7 @@ async function installConversation(
           status: 200,
           contentType: "application/json",
           body: JSON.stringify(
-            [...REAL_CONVERSATION_SAMPLE, OUT_OF_WINDOW_QUOTED_MESSAGE]
+            [...sample, OUT_OF_WINDOW_QUOTED_MESSAGE]
               .filter((message) => requestedUuids.includes(message.uuid))
               .map((message) => messageDto(message, false)),
           ),
@@ -177,25 +172,32 @@ async function installConversation(
 
       await options.historyGate;
       const sortDir = url.searchParams.get("sort_dir") ?? "asc";
-      const pageLimit = Number(url.searchParams.get("page_limit") ?? "0");
+      const requestedPageLimit = Number(url.searchParams.get("page_limit") ?? "0");
+      const pageLimit = Math.min(requestedPageLimit, options.historyPageSize ?? requestedPageLimit);
       const pageMarker = url.searchParams.get("page_marker");
-      let items = REAL_CONVERSATION_SAMPLE.slice(0, options.messageCount).map((message, index) =>
-        messageDto(message, unreadTail > 0 && index >= unreadFrom),
-      );
+      let items = sample
+        .slice(0, options.messageCount)
+        .map((message, index) => messageDto(message, unreadTail > 0 && index >= unreadFrom));
       if (url.searchParams.get("read") === "false") {
         items = items.filter((item) => !item.read);
       }
       if (pageMarker != null) {
+        await options.olderPageGate?.(pageMarker);
         const markerIndex = items.findIndex((item) => item.uuid === pageMarker);
         if (markerIndex >= 0) {
           items = sortDir === "desc" ? items.slice(0, markerIndex) : items.slice(markerIndex + 1);
         }
       }
       if (sortDir === "desc") items = [...items].reverse();
+      const nextPageMarker =
+        options.historyPageSize != null && pageLimit > 0 && items.length > pageLimit
+          ? items[pageLimit - 1]?.uuid
+          : undefined;
       if (pageLimit > 0) items = items.slice(0, pageLimit);
       await route.fulfill({
         status: 200,
         contentType: "application/json",
+        headers: nextPageMarker == null ? undefined : { "X-Pagination-Marker": nextPageMarker },
         body: JSON.stringify(items),
       });
       return;
@@ -316,11 +318,114 @@ function driftAllowance(painted: TracePoint[]): number {
   return Math.round((painted.at(0)?.clientHeight ?? 0) / 4);
 }
 
+// Capture the visible row relative to the feed viewport, even if its top is clipped.
+function readVisibleTimelineRow(scroller: Locator) {
+  return scroller.evaluate((root) => {
+    const viewport = root.getBoundingClientRect();
+    for (const row of root.querySelectorAll("[data-message-uuid]")) {
+      const rect = row.getBoundingClientRect();
+      if (rect.bottom > viewport.top && rect.top < viewport.bottom) {
+        return {
+          uuid: row.getAttribute("data-message-uuid"),
+          offset: rect.top - viewport.top,
+        };
+      }
+    }
+    return null;
+  });
+}
+
 test.describe("Conversation open position @mock", () => {
+  test("prepending a delayed older page preserves the reader's row and offset", async ({
+    authenticatedMocked: page,
+  }, testInfo) => {
+    let releaseOlderPage = () => {};
+    const olderPageGate = new Promise<void>((resolve) => {
+      releaseOlderPage = resolve;
+    });
+    const pageSize = 15;
+    const oldestInFirstPage = REAL_CONVERSATION_SAMPLE.at(-pageSize);
+    const expectedOlder = REAL_CONVERSATION_SAMPLE.at(-pageSize - 1);
+    if (oldestInFirstPage == null || expectedOlder == null) {
+      throw new Error("Expected enough sample messages for two history pages");
+    }
+    await installWorkspaceReadyRealtime(page);
+    await installConversation(page, {
+      historyPageSize: pageSize,
+      olderPageGate: () => olderPageGate,
+    });
+
+    try {
+      await page.goto(TOPIC_PATH);
+      const scroller = page.locator("[data-workspace-scroll-controller='true']");
+      const olderRow = scroller.locator(`[data-message-uuid="${sampleUuid(expectedOlder)}"]`);
+      await expect(scroller.locator(`[data-message-uuid="${E2E_MESSAGE_UUID}"]`)).toBeInViewport();
+      await expect(olderRow).toHaveCount(0);
+      const beforeRequest = page.waitForRequest(
+        (request) =>
+          new URL(request.url()).searchParams.get("page_marker") === sampleUuid(oldestInFirstPage),
+      );
+      await scroller.hover();
+      await page.mouse.wheel(0, -10000);
+      await beforeRequest;
+
+      const previousScrollTop = await scroller.evaluate((root) => root.scrollTop);
+      await page.mouse.wheel(0, 180);
+      await expect
+        .poll(() => scroller.evaluate((root) => root.scrollTop))
+        .toBeGreaterThan(previousScrollTop);
+
+      const before = await readVisibleTimelineRow(scroller);
+      if (before?.uuid == null) throw new Error("Expected a visible history row after scrolling");
+
+      const positionTrace = await scroller.evaluateHandle(
+        (root, { anchorUuid, olderUuid, offset }) => ({
+          result: new Promise<number[]>((resolve) => {
+            const start = performance.now();
+            const offsets: number[] = [];
+            let framesAfterPrepend = 0;
+            function sample(): void {
+              const anchor = root.querySelector(`[data-message-uuid="${anchorUuid}"]`);
+              if (anchor != null) {
+                offsets.push(
+                  anchor.getBoundingClientRect().top - root.getBoundingClientRect().top - offset,
+                );
+              }
+              if (root.querySelector(`[data-message-uuid="${olderUuid}"]`) != null) {
+                framesAfterPrepend += 1;
+              }
+              if (framesAfterPrepend >= 3 || performance.now() - start > 10_000) {
+                resolve(offsets);
+              } else {
+                requestAnimationFrame(sample);
+              }
+            }
+            requestAnimationFrame(sample);
+          }),
+        }),
+        { anchorUuid: before.uuid, olderUuid: sampleUuid(expectedOlder), offset: before.offset },
+      );
+
+      releaseOlderPage();
+      await expect(olderRow).toBeAttached();
+      const after = await readVisibleTimelineRow(scroller);
+      const offsetDeltaPx = (after?.offset ?? Number.NaN) - before.offset;
+      const frameOffsetsPx = await positionTrace.evaluate((trace) => trace.result);
+      await testInfo.attach("delayed-prepend-position", {
+        contentType: "application/json",
+        body: JSON.stringify({ before, after, offsetDeltaPx, frameOffsetsPx }),
+      });
+      expect(after?.uuid).toBe(before.uuid);
+      expect(Math.abs(offsetDeltaPx)).toBeLessThanOrEqual(1);
+    } finally {
+      releaseOlderPage();
+    }
+  });
+
   test("cached tail stays provisional until delayed unread history chooses its boundary", async ({
     authenticatedMocked: page,
   }) => {
-    await installRealtime(page, 0);
+    await installWorkspaceReadyRealtime(page);
     await installConversation(page, { messageCount: REAL_CONVERSATION_SAMPLE.length - 12 });
     await page.goto(TOPIC_PATH);
     const cachedTail = REAL_CONVERSATION_SAMPLE.at(-13);
@@ -397,7 +502,7 @@ test.describe("Conversation open position @mock", () => {
   }) => {
     await installScrollTrace(page);
     // Late, the way a socket connects on the first conversation of a session.
-    await installRealtime(page, 1500);
+    await installWorkspaceReadyRealtime(page, { readyDelayMs: 1500 });
     await installConversation(page);
 
     await page.goto(TOPIC_PATH);
@@ -420,7 +525,7 @@ test.describe("Conversation open position @mock", () => {
     authenticatedMocked: page,
   }) => {
     await installScrollTrace(page);
-    await installRealtime(page, 1500);
+    await installWorkspaceReadyRealtime(page, { readyDelayMs: 1500 });
     await installConversation(page, { unreadTail: 12 });
 
     await page.goto(TOPIC_PATH);
@@ -439,7 +544,7 @@ test.describe("Conversation open position @mock", () => {
     authenticatedMocked: page,
   }) => {
     await installScrollTrace(page);
-    await installRealtime(page, 1500);
+    await installWorkspaceReadyRealtime(page, { readyDelayMs: 1500 });
     await installConversation(page);
 
     await page.goto(TOPIC_PATH);
@@ -461,4 +566,187 @@ test.describe("Conversation open position @mock", () => {
       `the list moved after it appeared\n${formatTrace(painted)}`,
     ).toBeLessThan(driftAllowance(painted));
   });
+});
+
+const INBOX_PATH = `${e2eOrgBasePath()}/inbox`;
+const TIMELINE_SAMPLE_COUNT = 3;
+
+// Text-only messages isolate render and scroll costs from protected file resolution.
+function timelineSample(count: number): RealConversationSampleMessage[] {
+  return Array.from({ length: count }, (_unused, index) => ({
+    uuid:
+      index === count - 1
+        ? E2E_MESSAGE_UUID
+        : `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+    author_uuid: REAL_CONVERSATION_AUTHOR_UUIDS[index % REAL_CONVERSATION_AUTHOR_UUIDS.length]!,
+    is_own: index % 4 === 0,
+    created_at: new Date(Date.UTC(2026, 7, 28, 17, index)).toISOString(),
+    reactions: {},
+    content: `Timeline message ${index}\n\n${"A representative short text. ".repeat(1 + (index % 4))}`,
+  }));
+}
+
+// Browser CPU counters are monotonically increasing during a test page's lifetime.
+function cpuDelta(before: TimelineCpu, after: TimelineCpu): TimelineCpu {
+  return {
+    taskMs: after.taskMs - before.taskMs,
+    scriptMs: after.scriptMs - before.scriptMs,
+    layoutMs: after.layoutMs - before.layoutMs,
+  };
+}
+
+test.describe("Timeline performance @mock", () => {
+  for (const windowSize of [50, 200]) {
+    test(`records opening and editing a ${windowSize}-row window`, async ({ page }, testInfo) => {
+      test.setTimeout(60_000);
+      await installTimelineProbe(page);
+      const sample = timelineSample(windowSize);
+      const tail = sample.at(-1)!;
+      const pageSize = windowSize === 50 ? 25 : 50;
+      const finalPrependMarker = sampleUuid(sample[pageSize]!);
+      let releaseFinalPrepend: () => void = () => undefined;
+      const finalPrepend = new Promise<void>((resolve) => {
+        releaseFinalPrepend = resolve;
+      });
+      let activeSocket: WebSocketRoute | undefined;
+      await installWorkspaceReadyRealtime(page, {
+        onConnection: (socket) => {
+          activeSocket = socket;
+        },
+      });
+      await installConversation(page, {
+        sample,
+        historyPageSize: pageSize,
+        olderPageGate: (marker) => (marker === finalPrependMarker ? finalPrepend : undefined),
+      });
+      await seedAuthStorage(page);
+      await page.goto(TOPIC_PATH);
+
+      const scroller = page.locator("[data-workspace-scroll-controller='true']");
+      const rows = scroller.locator("[data-message-uuid]");
+      await expect(rows).toHaveCount(pageSize);
+      await expect(rows.last()).toBeInViewport();
+      await expect.poll(() => activeSocket?.url()).toBeDefined();
+      for (let loaded = pageSize; loaded + pageSize < windowSize; loaded += pageSize) {
+        await scroller.hover();
+        await page.mouse.wheel(0, -100_000);
+        await expect(rows).toHaveCount(loaded + pageSize);
+      }
+      const finalRequest = page.waitForRequest(
+        (request) => new URL(request.url()).searchParams.get("page_marker") === finalPrependMarker,
+      );
+      await scroller.hover();
+      await page.mouse.wheel(0, -100_000);
+      await finalRequest;
+      const scrollTop = await scroller.evaluate((root) => root.scrollTop);
+      await page.mouse.wheel(0, 180);
+      await expect
+        .poll(() => scroller.evaluate((root) => root.scrollTop))
+        .toBeGreaterThan(scrollTop);
+      const beforePrepend = await readVisibleTimelineRow(scroller);
+      if (beforePrepend?.uuid == null) throw new Error("Expected a visible history row");
+      releaseFinalPrepend();
+      await expect(rows).toHaveCount(windowSize);
+      const afterPrepend = await readVisibleTimelineRow(scroller);
+      expect(afterPrepend?.uuid).toBe(beforePrepend.uuid);
+      const offsetDeltaPx = (afterPrepend?.offset ?? Number.NaN) - beforePrepend.offset;
+      expect(Math.abs(offsetDeltaPx)).toBeLessThanOrEqual(1);
+
+      const cdp = await page.context().newCDPSession(page);
+      await cdp.send("Performance.enable");
+      const inboxLink = page.locator(`a[href="${INBOX_PATH}"]`).first();
+      const topicLink = page.locator(`a[href="${TOPIC_PATH}"]`).first();
+      const openings = [];
+      for (let index = 0; index < TIMELINE_SAMPLE_COUNT; index += 1) {
+        await inboxLink.click();
+        await expect(rows).toHaveCount(0);
+        const openingStart = await readTimelineCpu(cdp);
+        await topicLink.evaluate((link, count) => {
+          if (!(link instanceof HTMLAnchorElement)) throw new Error("Expected a topic link");
+          window.__timelineMeasurement.begin(count);
+          link.click();
+        }, windowSize);
+        const opening = await page.evaluate(() => window.__timelineMeasurement.finish());
+        const openingCpu = cpuDelta(openingStart, await readTimelineCpu(cdp));
+        expect(opening.changedRowUuids).toHaveLength(windowSize);
+        const { changedRowUuids, ...metrics } = opening;
+        openings.push({ ...metrics, distinctRows: changedRowUuids.length, ...openingCpu });
+      }
+
+      // Measure edits separately, on a visible row after the conversation settles at the tail.
+      await scroller.hover();
+      await page.mouse.wheel(0, 100_000);
+      await expect(rows.last()).toBeInViewport();
+      const edits = [];
+      for (let index = 0; index < TIMELINE_SAMPLE_COUNT; index += 1) {
+        await page.evaluate(
+          () =>
+            new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+        );
+        const text = `Updated timeline message ${index}`;
+        const updatedAt = new Date(Date.UTC(2026, 7, 29, 17, index)).toISOString();
+        const epochVersion = index + 2;
+        const editStart = await readTimelineCpu(cdp);
+        await page.evaluate(({ count, edit }) => window.__timelineMeasurement.begin(count, edit), {
+          count: windowSize,
+          edit: { uuid: E2E_MESSAGE_UUID, text },
+        });
+        if (activeSocket == null) throw new Error("Workspace realtime socket was not connected");
+        activeSocket.send(
+          JSON.stringify({
+            schema_version: 1,
+            epoch_version: epochVersion,
+            uuid: `11111111-1111-4111-8111-${String(index).padStart(12, "0")}`,
+            project_id: E2E_PROJECT_ID,
+            user_uuid: E2E_USER_UUID,
+            object_type: "message",
+            action: "updated",
+            payload: {
+              ...messageDto({ ...tail, content: text }, false),
+              kind: "message.updated",
+              updated_at: updatedAt,
+            },
+            created_at: tail.created_at,
+            updated_at: updatedAt,
+          }),
+        );
+        const edit = await page.evaluate(() => window.__timelineMeasurement.finish());
+        const editCpu = cpuDelta(editStart, await readTimelineCpu(cdp));
+        await page.waitForFunction(
+          ({ key, epoch }) => {
+            const raw = localStorage.getItem(key);
+            return raw != null && JSON.parse(raw).epochVersion === epoch;
+          },
+          { key: realtimeCursorStorageKey(), epoch: epochVersion },
+          { timeout: 10_000 },
+        );
+        const settledWork = await page.evaluate(async () => {
+          await new Promise<void>((resolve) =>
+            requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+          );
+          return window.__timelineMeasurement.finishEdit();
+        });
+        expect(settledWork.changedRowUuids).toEqual([E2E_MESSAGE_UUID]);
+        const { changedRowUuids, ...metrics } = settledWork;
+        edits.push({
+          ...edit,
+          ...metrics,
+          changedRowUuids,
+          distinctRows: changedRowUuids.length,
+          ...editCpu,
+        });
+      }
+      const results = JSON.stringify({
+        windowSize,
+        openings,
+        edits,
+        prepend: { before: beforePrepend, after: afterPrepend, offsetDeltaPx },
+      });
+      await testInfo.attach("timeline-performance", {
+        contentType: "application/json",
+        body: results,
+      });
+      console.log(`[timeline-performance] ${results}`);
+    });
+  }
 });

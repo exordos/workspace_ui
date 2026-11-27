@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo } from "react";
+import React, { useCallback, useId, useMemo } from "react";
 import { t } from "~/i18n/i18n";
 import { isElectron } from "~/shared/lib/electron";
 import { AUTH_IMAGE_PLACEHOLDER_SRC } from "~/shared/lib/media-display-url.lib";
@@ -38,6 +38,7 @@ function MediaViewerResourcePlaceholder({
 }
 
 export const MediaViewerOverlay: React.FC = () => {
+  const panHintId = useId();
   const isOpen = useMediaViewerStore((s) => s.isOpen);
   const items = useMediaViewerStore((s) => s.items);
   const currentIndex = useMediaViewerStore((s) => s.currentIndex);
@@ -46,7 +47,6 @@ export const MediaViewerOverlay: React.FC = () => {
   const prev = useMediaViewerStore((s) => s.prev);
   const goTo = useMediaViewerStore((s) => s.goTo);
   const replaceItem = useMediaViewerStore((s) => s.replaceItem);
-  const { zoom, onWheel } = useMediaViewerZoom({ currentIndex });
   const item = items[currentIndex] ?? null;
   const displayUrl = useMemo(() => {
     const url = item?.url;
@@ -59,6 +59,19 @@ export const MediaViewerOverlay: React.FC = () => {
     (displayUrl != null || (item?.type === "image" && item.previewUrl != null)
       ? "ready"
       : "loading");
+
+  const imageReady = item?.type === "image" && resourceState === "ready";
+  const {
+    view,
+    viewportRef,
+    imageRef,
+    zoomIn,
+    zoomOut,
+    reset,
+    onPointerDown,
+    onPointerMove,
+    onPointerEnd,
+  } = useMediaViewerZoom({ currentIndex, isOpen, enabled: imageReady });
 
   const actionsEnabled = useMemo(() => canUseMediaViewerDisplayUrl(displayUrl), [displayUrl]);
   const downloadEnabled =
@@ -129,7 +142,10 @@ export const MediaViewerOverlay: React.FC = () => {
           onCopy={handleCopy}
           onClose={handleClose}
         />
-        <div className="relative flex min-h-0 w-full flex-1 items-center justify-center px-16 pb-28 pt-14">
+        <div
+          ref={viewportRef}
+          className="relative flex min-h-0 w-full flex-1 items-center justify-center overflow-hidden px-16 pb-28 pt-14"
+        >
           {resourceState === "loading" ? (
             <MediaViewerResourcePlaceholder
               state="loading"
@@ -167,15 +183,68 @@ export const MediaViewerOverlay: React.FC = () => {
             />
           ) : (
             <img
+              ref={imageRef}
               src={imageSrc}
               alt={item.alt ?? ""}
               role="presentation"
-              className="max-h-[calc(100vh-12rem)] max-w-full object-contain transition-transform"
-              style={{ transform: `scale(${zoom})` }}
+              draggable={false}
+              className="max-h-[calc(100vh-12rem)] max-w-full select-none object-contain"
+              style={{
+                transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})`,
+                touchAction: "none",
+                cursor: view.scale > 1 ? "grab" : "default",
+              }}
               onClick={(e) => e.stopPropagation()}
-              onWheel={onWheel}
+              onPointerDown={onPointerDown}
+              onPointerMove={onPointerMove}
+              onPointerUp={onPointerEnd}
+              onPointerCancel={onPointerEnd}
             />
           )}
+          {imageReady ? (
+            <div className="bg-bg-elevated/80 absolute bottom-4 left-1/2 z-float flex -translate-x-1/2 items-center gap-1 rounded-lg p-1">
+              <span id={panHintId} className="sr-only">
+                {t("mediaViewer.panHint")}
+              </span>
+              <button
+                type="button"
+                className="h-9 w-9 rounded text-xl text-text-primary hover:bg-bg-elevated disabled:opacity-40"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  zoomOut();
+                }}
+                disabled={view.scale <= 1}
+                aria-label={t("mediaViewer.zoomOut")}
+              >
+                −
+              </button>
+              <button
+                type="button"
+                className="min-w-14 rounded px-1 text-sm text-text-primary hover:bg-bg-elevated"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  reset();
+                }}
+                aria-label={t("mediaViewer.resetZoom")}
+                aria-describedby={panHintId}
+                title={t("mediaViewer.panHint")}
+              >
+                {Math.round(view.scale * 100)}%
+              </button>
+              <button
+                type="button"
+                className="h-9 w-9 rounded text-xl text-text-primary hover:bg-bg-elevated disabled:opacity-40"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  zoomIn();
+                }}
+                disabled={view.scale >= 5}
+                aria-label={t("mediaViewer.zoomIn")}
+              >
+                +
+              </button>
+            </div>
+          ) : null}
           <MediaViewerControls show={hasMultipleItems} onPrev={handlePrev} onNext={handleNext} />
         </div>
         <MediaViewerThumbnails items={items} currentIndex={currentIndex} onSelect={handleSelect} />

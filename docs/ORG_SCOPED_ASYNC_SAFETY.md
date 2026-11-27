@@ -4,13 +4,27 @@ An async result may arrive after account, organization, project or user changes,
 
 ## Source of truth
 
-- [workspace-runtime.types.ts](../packages/web/src/entities/workspace-runtime/workspace-runtime.types.ts): owner and request-context types.
-- [workspace-runtime.lib.ts](../packages/web/src/entities/workspace-runtime/workspace-runtime.lib.ts): capture, comparison and owner keys.
+- [workspace-runtime.types.ts](../packages/web/src/platform/sessions/workspace-runtime.types.ts): owner and request-context types.
+- [workspace-runtime.lib.ts](../packages/web/src/platform/sessions/workspace-runtime.lib.ts): capture, comparison and owner keys.
 - [workspace-auth.model.ts](../packages/web/src/entities/workspace-auth/workspace-auth.model.ts): current session, runtime context and generation transitions.
 
 `WorkspaceRuntimeOwner` contains `accountId`, `instanceId`, `organizationId`, `projectId`, and `userUuid`. A request snapshot adds `runtimeGeneration`. Comparing only organization or instance is insufficient: returning to the same owner must not revive old callbacks.
 
 `workspaceRuntimeOwnerKey()` is the stable identity for persisted data. Generation identifies a live runtime and must be checked before commits; it is not part of the durable cache/cursor key.
+
+## Selected screen and owner operations
+
+The selected screen captures its generation through `getCurrentRuntimeContext`.
+Returning to a previous account creates a new screen generation. A different
+account's refresh or removal leaves the selected context's identity unchanged.
+
+The session host and accepted background operations use an owner context with
+the owner's current credential generation. Account selection leaves that
+generation unchanged. Credential refresh fences requests using older credentials
+while retaining the models of the same login. Logout and re-authentication end
+the old login incarnation and detach its in-memory work. A delayed cleanup must
+recheck the durable owner identity before writing in case a new login reused it.
+See the [session model scenario](plans/messenger-architecture/workspace-runtime.md#шаг-13-модели-владельца-и-время-жизни-операций).
 
 ## Active runtime work
 
@@ -23,7 +37,7 @@ An async result may arrive after account, organization, project or user changes,
 
 The getter used for validation must return the **current** runtime, not always the captured snapshot. Pass it down from the owning layer; shared modules should not import the auth store.
 
-See [catalog bootstrap](../packages/web/src/entities/messenger/messenger-bootstrap.lib.ts) and [message loaders](../packages/web/src/entities/messenger/messenger-messages-loader.lib.ts) for working examples. Prefer extending these flows rather than copying a new lifecycle into a page.
+See [catalog bootstrap](../packages/web/src/applications/messenger/runtime/sync/messenger-bootstrap.lib.ts) and [message loaders](../packages/web/src/applications/messenger/model/messages/history/messenger-messages-loader.lib.ts) for working examples. Prefer extending these flows rather than copying a new lifecycle into a page.
 
 ## Login completion
 
@@ -44,10 +58,10 @@ UI mutations need the same protection as loaders: edit, delete, read, react, dra
 
 ## Cleanup and background work
 
-The shell's [bootstrap hook](../packages/web/src/widgets/layout/layout-workspace-messenger-bootstrap.hook.ts) and [realtime hook](../packages/web/src/widgets/layout/layout-workspace-realtime.hook.ts) compose current lifecycle cleanup. Invalidate pending writes, abort owned work, release subscriptions and reset coordination when the runtime ends, including transition to no session.
+The [Workspace session host](../packages/web/src/app/workspace-session/workspace-session.hook.ts) reconciles authorized owners. The [realtime manager](../packages/web/src/platform/realtime/workspace-realtime-manager.lib.ts) aborts replaced or removed attempts independently. Invalidate pending writes, abort owned work, release subscriptions and reset coordination when the runtime ends, including transition to no session.
 
-Background multi-owner work has a different lifecycle. Check the explicit owner and lifecycle supplied to the job, rather than requiring it to equal the active UI selection. The [realtime runtime](../packages/web/src/shared/lib/workspace-realtime/) supports separate active/background surfaces; neither may write into another owner's active store.
+Background multi-owner work has a different lifecycle. Check the explicit owner and lifecycle supplied to the job, rather than requiring it to equal the active UI selection. The [realtime runtime](../packages/web/src/platform/realtime/) supports separate active/background surfaces; neither may write into another owner's active store.
 
 ## Verification scenarios
 
-For changed async behavior, cover the relevant races: owner A to B; A to no session; A to B to A; project/user changes; older request finishing after a newer request; pending cache write after cleanup. Verify both store and durable writes where affected. Reuse the [runtime helper tests](../packages/web/src/entities/workspace-runtime/workspace-runtime.lib.test.ts).
+For changed async behavior, cover the relevant races: owner A to B; A to no session; A to B to A; project/user changes; older request finishing after a newer request; pending cache write after cleanup. Verify both store and durable writes where affected. Reuse the [runtime helper tests](../packages/web/src/platform/sessions/workspace-runtime.lib.test.ts).

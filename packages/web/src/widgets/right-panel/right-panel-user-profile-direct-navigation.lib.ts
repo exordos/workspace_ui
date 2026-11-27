@@ -5,7 +5,10 @@
  * - already on this DM stream (stream view OR any topic) → stay
  * - otherwise → open the stream's default topic
  */
-import type { MessengerStream, MessengerTopic } from "~/entities/messenger/messenger.types";
+import type {
+  MessengerStream,
+  MessengerTopic,
+} from "~/applications/messenger/model/messenger.types";
 import type { WorkspaceMessengerRouteMatch } from "~/shared/lib/workspace-messenger-route.lib";
 
 export type DirectProfileChatNavigationResult =

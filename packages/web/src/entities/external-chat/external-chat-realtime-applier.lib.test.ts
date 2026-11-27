@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { WorkspaceRealtimeEventContext } from "~/platform/realtime/workspace-realtime-runtime.lib";
 import type { WorkspaceExternalChatDto } from "~/shared/api/messenger-external-chats.types";
-import type { WorkspaceRealtimeEventContext } from "~/shared/lib/workspace-realtime/workspace-realtime-runtime.lib";
 import { adaptWorkspaceExternalChatDto } from "./external-chat-adapters.lib";
 import { createExternalChatRealtimeApplier } from "./external-chat-realtime-applier.lib";
 import { useExternalChatsStore } from "./external-chat.model";
@@ -137,15 +137,11 @@ describe("external chat realtime applier", () => {
         external_chat: snapshot(4, ACCOUNT_UUID, STREAM_UUID),
       };
 
-      applier.applyEvent(deletedEvent, context(surface));
+      const eventContext = context(surface);
+      applier.applyEvent(deletedEvent, eventContext);
       await vi.waitFor(() => expect(removeProjection).toHaveBeenCalledOnce());
 
-      expect(removeProjection).toHaveBeenCalledWith({
-        ownerKey: OWNER_KEY,
-        streamUuid: STREAM_UUID,
-        removeActiveProjection: surface === "active",
-        isOwnerCurrent: expect.any(Function),
-      });
+      expect(removeProjection).toHaveBeenCalledWith(STREAM_UUID, eventContext);
     },
   );
 

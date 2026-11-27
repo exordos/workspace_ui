@@ -1,12 +1,12 @@
+import { encryptedMessageLabel } from "~/applications/messenger/features/decrypted-message/encrypted-chat-message/encrypted-message-label.lib";
 import type {
   MessengerMessage,
   MessengerStream,
   MessengerTopic,
-} from "~/entities/messenger/messenger.types";
-import { selectUserDisplayName } from "~/entities/user/user-selectors.lib";
-import { useUsersStore } from "~/entities/user/user.model";
-import { encryptedMessageLabel } from "~/features/encrypted-chat-message/encrypted-message-label.lib";
+} from "~/applications/messenger/model/messenger.types";
 import { t } from "~/i18n/i18n";
+import { useUserById } from "~/modules/users/users";
+import { selectUserDisplayName } from "~/modules/users/users-selectors";
 import { formatActivityItemTime } from "~/shared/lib/datetime.lib";
 import type { WorkspaceMessageSummaryOptions } from "~/shared/lib/workspace-message-render/workspace-message-document.types";
 import { summarizeWorkspaceMessageMarkdown } from "~/shared/lib/workspace-message-render/workspace-message-summary.lib";
@@ -30,7 +30,7 @@ function ActivityMessageSenderName({
 }: Readonly<{
   authorUuid: string;
 }>) {
-  const user = useUsersStore((state) => state.usersById[authorUuid]);
+  const user = useUserById(authorUuid);
   return <>{selectUserDisplayName(user, "")}</>;
 }
 

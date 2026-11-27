@@ -29,6 +29,7 @@ import {
   readOwnMessageReaction,
   readOwnMessageReactions,
   readMessengerSearchResults,
+  readWorkspaceMessengerCacheDiagnostics,
   replaceOwnMessageReactionsForOwner,
   replaceOwnMessageReactionsForMessage,
   repairMessengerMessagePointerCache,
@@ -118,6 +119,38 @@ afterEach(async () => {
 });
 
 describe("workspace-messenger-cache-db", () => {
+  it("reports footprint counts for the requested owner only", async () => {
+    const updatedAt = "2026-07-01T08:00:00.000Z";
+    await writeMessengerCatalogCache(OWNER, {
+      streams: [{ uuid: STREAM, updatedAt }],
+      conversations: [{ id: STREAM_CONVERSATION, streamUuid: STREAM, title: "Channel", updatedAt }],
+      folders: [{ uuid: "folder-a", updatedAt }],
+    });
+    await upsertCachedMessages(OWNER, [message("message-a", updatedAt)]);
+    await upsertCachedMessages(OTHER_OWNER, [
+      message("message-a", updatedAt),
+      message("message-b", updatedAt),
+    ]);
+
+    await expect(readWorkspaceMessengerCacheDiagnostics(OWNER)).resolves.toEqual({
+      ownerKey: OWNER,
+      hasOwnerMeta: true,
+      ownerMetaLastHydratedAt: expect.any(Number),
+      streamsCount: 1,
+      conversationsCount: 1,
+      messagesCount: 1,
+      foldersCount: 1,
+    });
+    await expect(readWorkspaceMessengerCacheDiagnostics(OTHER_OWNER)).resolves.toEqual({
+      ownerKey: OTHER_OWNER,
+      hasOwnerMeta: false,
+      ownerMetaLastHydratedAt: null,
+      streamsCount: 0,
+      conversationsCount: 0,
+      messagesCount: 2,
+      foldersCount: 0,
+    });
+  });
   it.each(["database-open", "row-read"] as const)(
     "rejects catalog writes invalidated during %s",
     async (phase) => {
@@ -302,6 +335,42 @@ describe("workspace-messenger-cache-db", () => {
       readWorkspaceComposerDraft(OTHER_OWNER, TOPIC_CONVERSATION),
     ).resolves.toMatchObject({
       snapshotId: "snapshot-b",
+    });
+  });
+
+  it("resets a complete owner snapshot after a cursor gap without deleting drafts", async () => {
+    await writeMessengerCatalogCache(
+      OWNER,
+      { streams: [{ uuid: STREAM }], topics: [], folders: [], folderItems: [] },
+      { completeCatalog: true },
+    );
+    await seedLegacyComposerDraft(OWNER, TOPIC_CONVERSATION, {
+      snapshotId: "unsynced-draft",
+      content: { text: "Offline draft" },
+      updatedAt: 100,
+    });
+
+    const invalidated = vi.fn().mockReturnValueOnce(true).mockReturnValue(false);
+    await deleteWorkspaceMessengerOwnerCache(OWNER, {
+      preserveDrafts: true,
+      isWriteCurrent: invalidated,
+    });
+    expect(await readMessengerCatalogCache(OWNER)).toMatchObject({
+      ownerMeta: { hasCompleteCatalog: true },
+      streams: [{ uuid: STREAM }],
+    });
+
+    await deleteWorkspaceMessengerOwnerCache(OWNER, {
+      preserveDrafts: true,
+      isWriteCurrent: () => true,
+      requireWrite: true,
+    });
+    expect(await readMessengerCatalogCache(OWNER)).toMatchObject({
+      ownerMeta: null,
+      streams: [],
+    });
+    await expect(readWorkspaceComposerDraft(OWNER, TOPIC_CONVERSATION)).resolves.toMatchObject({
+      snapshotId: "unsynced-draft",
     });
   });
 

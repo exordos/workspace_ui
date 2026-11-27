@@ -1,14 +1,14 @@
 import React from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { useMessengerBackgroundProjectionStore } from "~/entities/messenger/messenger-background-projection.model";
+import { useMessengerBackgroundProjectionStore } from "~/applications/messenger/runtime/sync/messenger-background-projection.model";
 import { removeWorkspaceSession } from "~/entities/workspace-auth/workspace-auth.lib";
 import {
   useWorkspaceAuthStore,
   type WorkspaceAuthSession,
 } from "~/entities/workspace-auth/workspace-auth.model";
 import { resolveWorkspacePostLogoutRoute } from "~/entities/workspace-auth/workspace-post-logout-route.lib";
-import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { t } from "~/i18n/i18n";
+import { workspaceRuntimeOwnerKey } from "~/platform/sessions/workspace-runtime.lib";
 import { UNREAD_COUNT_DISPLAY_LIMIT } from "~/shared/lib/count-format.lib";
 import { resolveMessengerNavigationPath } from "~/shared/lib/last-messenger-route.lib";
 import { withOrgRoutePrefix } from "~/shared/lib/org-route";
@@ -16,6 +16,7 @@ import {
   getOrganizationFallbackLogoUrl,
   getOrganizationLogoSrc,
 } from "~/shared/lib/organization-branding";
+import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
 import { AppTooltip } from "~/shared/ui/app-tooltip";
 import { Badge } from "~/shared/ui/badge";
 import { DropdownMenu, type DropdownMenuItem } from "~/shared/ui/dropdown-menu";
@@ -257,15 +258,22 @@ export const InstanceSwitcher: React.FC = () => {
                     t("auth.logoutFromOrgConfirm", { server: title }),
                   );
                   if (!confirmed) return;
-                  const removedCurrentSession = session.accountId === currentWorkspaceAccountId;
-                  void removeWorkspaceSession(session.accountId).then(() => {
-                    if (!removedCurrentSession) return;
-                    const nextRoute = resolveWorkspacePostLogoutRoute(getCurrentWorkspaceSession());
-                    const currentPath = `${location.pathname}${location.search}${location.hash}`;
-                    if (nextRoute !== currentPath) {
-                      void navigate(nextRoute, { replace: true });
-                    }
+                  const wasSelected =
+                    useWorkspaceAuthStore.getState().currentAccountId === session.accountId;
+                  void removeWorkspaceSession(session.accountId).catch((error: unknown) => {
+                    reportUnexpectedError("workspace-auth:logout", error);
                   });
+                  if (
+                    !wasSelected ||
+                    useWorkspaceAuthStore.getState().currentAccountId === session.accountId
+                  )
+                    return;
+                  // Auth revokes the selection synchronously. Cache cleanup has no navigation effect.
+                  const nextRoute = resolveWorkspacePostLogoutRoute(getCurrentWorkspaceSession());
+                  const currentPath = `${location.pathname}${location.search}${location.hash}`;
+                  if (nextRoute !== currentPath) {
+                    void navigate(nextRoute, { replace: true });
+                  }
                 }}
                 className="hover:bg-notice-base/20 border-notice-base/40 bg-notice-base/10 ml-1 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md border text-notice-base transition-colors"
                 aria-label={t("auth.logoutFromOrg")}

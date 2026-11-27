@@ -2,7 +2,7 @@
 description: "Use when changing Workspace presence reporting, status display, or avatar indicators."
 alwaysApply: false
 globs:
-  - "packages/web/src/entities/user/*presence*"
+  - "packages/web/src/modules/users/*presence*"
   - "packages/web/src/shared/lib/presence*"
   - "packages/web/src/features/workspace-avatar/**"
   - "packages/web/src/shared/ui/presence-indicator/**"
@@ -12,7 +12,7 @@ globs:
 
 Read `docs/PRESENCE_AND_STATUS.md` and `docs/POWER_BUDGET.md`.
 
-- Workspace reporting is owned by `packages/web/src/entities/user/user-workspace-presence-reporter.lib.ts`; preserve activity/visibility-dependent timing and owner cancellation.
+- Workspace reporting is owned by `packages/web/src/modules/users/user-workspace-presence-reporter.lib.ts`; preserve activity/visibility-dependent timing and owner cancellation.
 - Presence, user-selected status, and account deactivation are distinct inputs. Do not synthesize online state from an unrelated field.
 - Shared Avatar/PresenceIndicator own visual geometry. WorkspaceAvatar adapts Workspace user data; do not duplicate status-dot placement in consumers.
 - Use the current Workspace presence API and UUID identity. Legacy helpers or fixed timer examples are not the reporting contract.

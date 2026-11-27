@@ -16,13 +16,13 @@ Use the relevant [Workspace API module](API_CLIENT_REFERENCE.md) and existing ru
 
 For persistent data, preserve cache-first rendering where supported: restore the owner's cache, refresh from the server, then update the active state and the appropriate cache. Use a stricter loading policy only when showing stale data would violate the feature's contract, and record why.
 
-Before async work starts, capture `captureWorkspaceRuntimeRequestContext()` from [workspace-runtime.lib.ts](../packages/web/src/entities/workspace-runtime/workspace-runtime.lib.ts). Before applying results, use `isWorkspaceRuntimeRequestInvalidated()` with the current-context getter and the request's abort signal. Owner fields and `runtimeGeneration` matter even if the request was not aborted. Guard success, error/finally state, cache writes and optimistic rollback. Read [ORG_SCOPED_ASYNC_SAFETY.md](ORG_SCOPED_ASYNC_SAFETY.md) for the full invariant.
+Before async work starts, capture `captureWorkspaceRuntimeRequestContext()` from [workspace-runtime.lib.ts](../packages/web/src/platform/sessions/workspace-runtime.lib.ts). Before applying results, use `isWorkspaceRuntimeRequestInvalidated()` with the current-context getter and the request's abort signal. Owner fields and `runtimeGeneration` matter even if the request was not aborted. Guard success, error/finally state, cache writes and optimistic rollback. Read [ORG_SCOPED_ASYNC_SAFETY.md](ORG_SCOPED_ASYNC_SAFETY.md) for the full invariant.
 
 Use narrow selectors and keep derived values stable. Do not introduce a second store for data already owned by the messenger or message store.
 
 ## 3. Connect realtime only when the feature needs it
 
-Inspect the current [layout realtime hook](../packages/web/src/widgets/layout/layout-workspace-realtime.hook.ts), [event API](../packages/web/src/shared/api/messenger-realtime.api.ts), [event applier](../packages/web/src/entities/messenger/messenger-realtime-applier.lib.ts) and [cache application](../packages/web/src/entities/messenger/messenger-realtime-cache.lib.ts). Extend the existing event path instead of adding the legacy Zulip event loop.
+Inspect the [Workspace session composition](../packages/web/src/app/workspace-session/workspace-session.lib.ts), [event API](../packages/web/src/shared/api/messenger-realtime.api.ts), [owner event applier](../packages/web/src/applications/messenger/runtime/sync/messenger-realtime-applier.lib.ts) and [cache operations](../packages/web/src/applications/messenger/model/messenger-cache.lib.ts). Extend the existing Workspace event path.
 
 Preserve REST catch-up ordering, epoch generation/version cursor semantics, deduplication, active conversation updates and background projections. Bind listeners and cleanup to the runtime that created them. A newly visible message must not bypass existing unread/read or notification policy.
 
@@ -34,7 +34,7 @@ Keep domain presentation in entities/features and composition in widgets/pages; 
 
 For new shared UI or changed public behavior/appearance, add or update adjacent `*.stories.tsx` examples and the catalog entry when selection guidance changes. Include relevant default, disabled/loading/error, empty/long-content and interactive states rather than every possible prop combination. Use the application themes and localized labels; use synthetic local fixtures rather than private data, credentials or production API calls. Source and tests define the implementation; stories document representative contracts and are not evidence of backend support.
 
-The [composer](../packages/web/src/widgets/message-composer/message-composer.ui.tsx) receives explicit capabilities. Keep read-only and unsupported states visible; adding a button or local state does not establish backend support. Message HTML/markdown must remain in the existing sanitized [render path](../packages/web/src/shared/lib/workspace-message-render/workspace-message-render.lib.ts).
+The [composer](../packages/web/src/applications/messenger/features/composer/message-composer.ui.tsx) receives explicit capabilities. Keep read-only and unsupported states visible; adding a button or local state does not establish backend support. Message HTML/markdown must remain in the existing sanitized [render path](../packages/web/src/shared/lib/workspace-message-render/workspace-message-render.lib.ts).
 
 ## 5. Verify the changed behavior
 

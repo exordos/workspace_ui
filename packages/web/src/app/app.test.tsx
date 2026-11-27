@@ -18,7 +18,7 @@ vi.mock("~/pages/licenses/licenses-page.ui", () => ({
   LicensesPage: () => <div>licenses-page</div>,
 }));
 
-vi.mock("~/pages/chat/chat-page.ui", () => ({
+vi.mock("~/applications/messenger/messenger", () => ({
   ChatPage: () => <div data-testid="chat-page">chat-page</div>,
 }));
 
@@ -34,6 +34,10 @@ vi.mock("~/widgets/layout/layout.ui", () => {
     },
   };
 });
+
+vi.mock("./workspace-session/workspace-session.hook", () => ({
+  useWorkspaceSessionRuntime: () => vi.fn(),
+}));
 
 vi.mock("~/shared/lib/updater", () => ({
   useAppUpdate: () => ({

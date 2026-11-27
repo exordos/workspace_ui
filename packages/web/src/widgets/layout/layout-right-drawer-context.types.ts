@@ -1,5 +1,8 @@
+import type {
+  SidebarChat,
+  StreamWithLast,
+} from "~/applications/messenger/features/sidebar/sidebar.types";
 import type { RightDrawerMode } from "~/widgets/right-panel/right-drawer.model";
-import type { SidebarChat, StreamWithLast } from "~/widgets/sidebar/sidebar.types";
 
 export interface LayoutRightDrawerContext {
   title: string;

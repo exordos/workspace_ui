@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { MessengerMessage } from "~/entities/messenger/messenger.types";
+import type { MessengerMessage } from "~/applications/messenger/model/messenger.types";
 
 export interface ActivityUnreadMention {
   uuid: string;

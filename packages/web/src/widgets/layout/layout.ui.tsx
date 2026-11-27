@@ -1,18 +1,23 @@
-// Root app layout: shell, store orchestration, background syncs for the active instance.
+// Root app layout: window state and presentation for the selected Workspace session.
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
+import type { EncryptedChatInfoScreen } from "~/applications/messenger/features/chat-details/encrypted-chat-info/encrypted-chat-info.types";
+import { selectMessengerSidebarActivityCounts } from "~/applications/messenger/features/sidebar/messenger-sidebar.lib";
+import type {
+  SidebarChat,
+  SidebarSearchHandle,
+  StreamWithLast,
+} from "~/applications/messenger/features/sidebar/sidebar.types";
+import { WorkspaceForwardMessageDialog } from "~/applications/messenger/features/timeline/forward/workspace-forward-message.ui";
+import { useChatsCatalog } from "~/applications/messenger/model/chats/chats";
 import { useActivityStore } from "~/entities/activity/activity.model";
-import { selectMessengerSidebarActivityCounts } from "~/entities/messenger/messenger-sidebar.lib";
-import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import {
   selectCurrentWorkspaceRuntimeContext,
   useWorkspaceAuthStore,
 } from "~/entities/workspace-auth/workspace-auth.model";
-import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
-import type { EncryptedChatInfoScreen } from "~/features/encrypted-chat-info/encrypted-chat-info.types";
 import { JitsiActiveCallHost } from "~/features/jitsi-call/jitsi-call-shell.ui";
 import { useSettingsStore } from "~/features/settings/settings.model";
-import { WorkspaceForwardMessageDialog } from "~/features/workspace-forward-message/workspace-forward-message.ui";
+import { workspaceRuntimeOwnerKey } from "~/platform/sessions/workspace-runtime.lib";
 import { parseWorkspaceMessengerRoute } from "~/shared/lib/workspace-messenger-route.lib";
 import type { StreamEntryInternal } from "~/shared/types/sidebar-chat";
 import {
@@ -21,11 +26,6 @@ import {
   type RightDrawerAccountScreen,
 } from "~/widgets/right-panel/right-drawer.model";
 import { useSearchModalStore } from "~/widgets/search-modal/search-modal.model";
-import type {
-  SidebarChat,
-  SidebarSearchHandle,
-  StreamWithLast,
-} from "~/widgets/sidebar/sidebar.types";
 import { getSectionFromPathname } from "~/widgets/top-bar/top-bar.lib";
 import { useLayoutAppIconBadge } from "./layout-app-icon-badge.hook";
 import { LayoutAppShell } from "./layout-app-shell.ui";
@@ -49,9 +49,10 @@ import { resolveLayoutTopBannerKind } from "./layout-top-banner.lib";
 import { useLayoutUnreadMentionsBootstrap } from "./layout-unread-mentions-bootstrap.hook";
 import { useLayoutWindowBranding } from "./layout-window-branding.hook";
 import { useLayoutWorkspaceIamCapabilities } from "./layout-workspace-iam-capabilities.hook";
-import { useLayoutWorkspaceMessengerBootstrap } from "./layout-workspace-messenger-bootstrap.hook";
-import { useLayoutWorkspaceNotifications } from "./layout-workspace-notifications.hook";
-import { useLayoutWorkspaceRealtime } from "./layout-workspace-realtime.hook";
+import {
+  useLayoutWorkspaceNotifications,
+  type WorkspaceNotificationOwner,
+} from "./layout-workspace-notifications.hook";
 import { useZulipRateLimitCountdownSeconds } from "./layout-zulip-rate-limit-banner.hook";
 
 const EMPTY_LEGACY_STREAMS: StreamWithLast[] = [];
@@ -59,8 +60,17 @@ const EMPTY_LEGACY_DMS: SidebarChat[] = [];
 const EMPTY_LEGACY_STREAMS_MAP = new Map<number, StreamEntryInternal>();
 const EMPTY_LEGACY_MUTED_STREAM_IDS = new Set<number>();
 const EMPTY_USERS_MAP_FOR_RIGHT_DRAWER = new Map<number, { full_name?: string; email?: string }>();
+const noBootstrapRetry = () => undefined;
+const EMPTY_NOTIFICATION_OWNERS: readonly WorkspaceNotificationOwner[] = [];
 
-export const Layout: React.FC = () => {
+// The app runtime owns retries. The shell only forwards the user's action.
+export const Layout: React.FC<{
+  retryWorkspaceBootstrap?: () => void;
+  notificationOwners?: readonly WorkspaceNotificationOwner[];
+}> = ({
+  retryWorkspaceBootstrap = noBootstrapRetry,
+  notificationOwners = EMPTY_NOTIFICATION_OWNERS,
+}) => {
   const location = useLocation();
   const navigate = useNavigate();
   const {
@@ -75,8 +85,8 @@ export const Layout: React.FC = () => {
   const activeStreamSlug = streamSlug ?? undefined;
   const activeTopic = topicName ?? null;
 
-  const workspaceActivityCounts = useMessengerStore(selectMessengerSidebarActivityCounts);
-  const bootstrapError = useMessengerStore((state) => state.error);
+  const workspaceActivityCounts = useChatsCatalog(selectMessengerSidebarActivityCounts);
+  const bootstrapError = useChatsCatalog((state) => state.error);
   const openCallsInSeparateWindow = useSettingsStore((state) => state.openCallsInSeparateWindow);
   const currentUserId = null;
   const streamsFromStore = EMPTY_LEGACY_STREAMS;
@@ -90,7 +100,6 @@ export const Layout: React.FC = () => {
   const unreadMentionsCount = useActivityStore((state) => state.unreadMentionsCount);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const sidebarSearchRef = useRef<SidebarSearchHandle>(null);
-  const [bootstrapRetryNonce, setBootstrapRetryNonce] = useState(0);
   const rightDrawerOpen = useRightDrawerStore((s) => s.open);
   const setRightDrawerOpen = useRightDrawerStore((s) => s.setOpen);
   const closeCurrentRightDrawer = useRightDrawerStore((s) => s.closeCurrent);
@@ -110,6 +119,7 @@ export const Layout: React.FC = () => {
   const rightDrawerWorkspaceUserUuidOverride = useRightDrawerStore(
     (s) => s.workspaceUserUuidOverride,
   );
+  const rightDrawerWorkspaceUserOwnerKey = useRightDrawerStore((s) => s.workspaceUserOwnerKey);
   const openRightDrawerInfo = useRightDrawerStore((s) => s.openInfo);
   const openRightDrawerUserProfile = useRightDrawerStore((s) => s.openUserProfile);
   const openWorkspaceUserProfile = useRightDrawerStore((s) => s.openWorkspaceUserProfile);
@@ -153,15 +163,6 @@ export const Layout: React.FC = () => {
 
   useLayoutUnreadMentionsBootstrap(currentWorkspaceRuntimeContext);
   useLayoutWorkspaceIamCapabilities(currentWorkspaceRuntimeContext);
-  const bootstrapBoundary = useLayoutWorkspaceMessengerBootstrap({
-    enabled: true,
-    retryNonce: bootstrapRetryNonce,
-  });
-  useLayoutWorkspaceRealtime({
-    enabled: workspaceMessengerActive,
-    pathname: location.pathname,
-    bootstrapBoundary,
-  });
 
   useLayoutWindowBranding({
     unreadCount: unreadCountForCurrentInstance,
@@ -198,6 +199,7 @@ export const Layout: React.FC = () => {
 
   useLayoutWorkspaceNotifications({
     enabled: workspaceRouteReady,
+    owners: notificationOwners,
     navigate,
     pathname: location.pathname,
   });
@@ -255,6 +257,7 @@ export const Layout: React.FC = () => {
     rightDrawerMode,
     rightDrawerUserIdOverride,
     rightDrawerWorkspaceUserUuidOverride,
+    rightDrawerWorkspaceUserOwnerKey,
     mutedStreamIds,
     usersMapForRightDrawer,
     workspaceRoute: workspaceMessengerRoute,
@@ -306,9 +309,6 @@ export const Layout: React.FC = () => {
     [rightDrawerChatScope, openRightDrawerChatScreen],
   );
 
-  const handleRetryBootstrap = useCallback(() => {
-    setBootstrapRetryNonce((value) => value + 1);
-  }, []);
   const topBannerKind = useMemo(
     () => resolveLayoutTopBannerKind(connectionBannerMessage, notificationPermission.visible),
     [connectionBannerMessage, notificationPermission.visible],
@@ -325,7 +325,7 @@ export const Layout: React.FC = () => {
       ) : null}
       <LayoutBootstrapErrorBanner
         error={shouldShowChatShell ? bootstrapError : null}
-        onRetry={handleRetryBootstrap}
+        onRetry={retryWorkspaceBootstrap}
       />
       {topBannerKind === "notification-permission" ? (
         <LayoutNotificationPermissionBanner

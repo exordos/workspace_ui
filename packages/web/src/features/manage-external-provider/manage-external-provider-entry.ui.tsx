@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type ReactElement } from "react";
-import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import { t } from "~/i18n/i18n";
+import type { WorkspaceRuntimeContext } from "~/platform/sessions/workspace-runtime.types";
 import { Icon } from "~/shared/ui/icon";
 import { ManageExternalProviderDialog } from "./manage-external-provider-dialog.ui";
 import { useManageExternalProvider } from "./manage-external-provider.hook";

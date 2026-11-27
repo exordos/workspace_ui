@@ -23,6 +23,7 @@ interface AttachmentCardFrameProps {
   preview: React.ReactNode;
   details: React.ReactNode;
   action: React.ReactNode;
+  onOpen?: () => void;
   tone?: "default" | "error";
   appearance?: "default" | "embedded";
   className?: string;
@@ -34,11 +35,25 @@ function AttachmentCardFrame({
   preview,
   details,
   action,
+  onOpen,
   tone = "default",
   appearance = "default",
   className = "",
   role = "listitem",
 }: Readonly<AttachmentCardFrameProps>) {
+  const content = (
+    <>
+      {preview}
+      <span className="w-[134px] min-w-0 flex-1">
+        <span className="block truncate text-[12px] font-medium leading-[14px]" title={fileName}>
+          {fileName}
+        </span>
+        <span className="mt-0.5 block truncate text-xs leading-[15px] text-text-muted">
+          {details}
+        </span>
+      </span>
+    </>
+  );
   return (
     <span
       className={`${ATTACHMENT_CARD_CLASS_NAME} ${
@@ -50,15 +65,18 @@ function AttachmentCardFrame({
       } ${className}`.trim()}
       role={role}
     >
-      {preview}
-      <span className="w-[134px] min-w-0 flex-1">
-        <span className="block truncate text-[12px] font-medium leading-[14px]" title={fileName}>
-          {fileName}
-        </span>
-        <span className="mt-0.5 block truncate text-xs leading-[15px] text-text-muted">
-          {details}
-        </span>
-      </span>
+      {onOpen == null ? (
+        content
+      ) : (
+        <button
+          type="button"
+          className="flex min-w-0 flex-1 items-center gap-3 rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft"
+          aria-label={`${t("common.open")} ${fileName}`}
+          onClick={onOpen}
+        >
+          {content}
+        </button>
+      )}
       {action == null ? null : (
         <span className="flex h-6 min-w-6 shrink-0 items-center justify-center">{action}</span>
       )}
@@ -189,6 +207,7 @@ export const AttachmentReadyCard = React.memo<AttachmentReadyCardProps>(
     sizeBytes,
     previewUrl,
     onRemove,
+    onOpen,
     appearance,
     role,
     className,
@@ -212,6 +231,7 @@ export const AttachmentReadyCard = React.memo<AttachmentReadyCardProps>(
     return (
       <AttachmentCardFrame
         fileName={fileName}
+        onOpen={onOpen}
         preview={
           showDownloadPreview ? <AttachmentDownloadPreview download={download} /> : filePreview
         }
@@ -284,11 +304,12 @@ function AttachmentProgressPreview({
 }
 
 export const AttachmentUploadingCard = React.memo<AttachmentUploadingCardProps>(
-  ({ fileName, progress, detailText, onCancel, className }) => {
+  ({ fileName, progress, detailText, onCancel, onOpen, className }) => {
     const safeProgress = clampProgress(progress);
     return (
       <AttachmentCardFrame
         fileName={fileName}
+        onOpen={onOpen}
         preview={<AttachmentProgressPreview fileName={fileName} progress={safeProgress} />}
         details={detailText ?? t("attachmentCard.uploading", { percent: safeProgress })}
         action={
@@ -308,9 +329,10 @@ export const AttachmentUploadingCard = React.memo<AttachmentUploadingCardProps>(
 AttachmentUploadingCard.displayName = "AttachmentUploadingCard";
 
 export const AttachmentPendingCard = React.memo<AttachmentPendingCardProps>(
-  ({ fileName, detailText, onRemove, className }) => (
+  ({ fileName, detailText, onRemove, onOpen, className }) => (
     <AttachmentCardFrame
       fileName={fileName}
+      onOpen={onOpen}
       preview={<AttachmentFilePreview iconName="files" />}
       details={detailText}
       action={
@@ -329,9 +351,17 @@ export const AttachmentPendingCard = React.memo<AttachmentPendingCardProps>(
 AttachmentPendingCard.displayName = "AttachmentPendingCard";
 
 export const AttachmentErrorCard = React.memo<AttachmentErrorCardProps>(
-  ({ fileName, errorMessage = t("attachmentCard.uploadError"), onRetry, onRemove, className }) => (
+  ({
+    fileName,
+    errorMessage = t("attachmentCard.uploadError"),
+    onRetry,
+    onRemove,
+    onOpen,
+    className,
+  }) => (
     <AttachmentCardFrame
       fileName={fileName}
+      onOpen={onOpen}
       preview={
         <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-bg">
           <AttachmentUploadErrorIcon className="h-[18px] w-[18px]" aria-hidden />

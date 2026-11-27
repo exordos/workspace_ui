@@ -3,16 +3,20 @@ import ReactDOM from "react-dom/client";
 import { installAiContext } from "~/app/ai-context";
 import { installDevTools } from "~/app/devtools";
 import { createWorkspacePluginDataProvider } from "~/app/workspace-plugin-data-provider.lib";
-import { useMessengerStore } from "~/entities/messenger/messenger.model";
+import { installWorkspaceSessionCleanup } from "~/app/workspace-session/workspace-session-cleanup.lib";
+import { prepareWorkspaceColdStart } from "~/app/workspace-session/workspace-session-reset.lib";
+import { clearSelectedChatCatalogForLegacyLogout } from "~/applications/messenger/model/chats/chats";
+import { showDesktopNotification } from "~/platform/notifications/notifications";
 import { initAnalytics } from "~/shared/lib/analytics/setup";
 import { setStoreWiper } from "~/shared/lib/auth-guard";
 import { brand } from "~/shared/lib/brand";
 import { initConnectionHealth } from "~/shared/lib/connection-health";
+import { setApplicationColdStartPreparation } from "~/shared/lib/local-reset";
 import { createLogger } from "~/shared/lib/logger";
 import { initNetworkTracking } from "~/shared/lib/network";
 import { attachNotificationAudioUnlock } from "~/shared/lib/notification-sound";
 import { perf } from "~/shared/lib/perf";
-import { setPluginDataProvider } from "~/shared/lib/plugins/api";
+import { setPluginDataProvider, setPluginNotificationHandler } from "~/shared/lib/plugins/api";
 import { initPlugins } from "~/shared/lib/plugins/setup";
 import { initPowerTracking } from "~/shared/lib/power";
 import { initPresenceTracker } from "~/shared/lib/presence";
@@ -26,11 +30,12 @@ import { AppRoot } from "./app/app-root";
 import "./app/app.styles.css";
 import "./app/focus-outline.styles.css";
 
-setStoreWiper(() => {
-  useMessengerStore.getState().clear();
-});
+setStoreWiper(clearSelectedChatCatalogForLegacyLogout);
+setApplicationColdStartPreparation(prepareWorkspaceColdStart);
+installWorkspaceSessionCleanup();
 
 setPluginDataProvider(createWorkspacePluginDataProvider());
+setPluginNotificationHandler(showDesktopNotification);
 
 /** Application bootstrap after vendored Jitsi external_api is loaded (see `main.tsx`). */
 export function mountApplication(): void {

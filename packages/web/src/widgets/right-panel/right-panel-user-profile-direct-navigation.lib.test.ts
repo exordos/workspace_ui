@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import type { MessengerStream, MessengerTopic } from "~/entities/messenger/messenger.types";
+import type {
+  MessengerStream,
+  MessengerTopic,
+} from "~/applications/messenger/model/messenger.types";
 import type { WorkspaceMessengerRouteMatch } from "~/shared/lib/workspace-messenger-route.lib";
 import { resolveDirectProfileChatNavigation } from "./right-panel-user-profile-direct-navigation.lib";
 

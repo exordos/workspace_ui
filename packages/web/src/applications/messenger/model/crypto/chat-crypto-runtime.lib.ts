@@ -1,0 +1,1584 @@
+import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
+import {
+  captureWorkspaceRuntimeRequestContext,
+  isWorkspaceRuntimeRequestInvalidated,
+  workspaceRuntimeOwnerKey,
+} from "~/platform/sessions/workspace-runtime.lib";
+import type { WorkspaceRuntimeContextGetter } from "~/platform/sessions/workspace-runtime.lib";
+import type { WorkspaceRuntimeContext } from "~/platform/sessions/workspace-runtime.types";
+import { useMessengerStore } from "../chats/messenger.model";
+import { useWorkspaceMessageStore } from "../messages/message.model";
+import {
+  editMessengerMessage,
+  sendMessengerE2eePayload,
+} from "../messages/messenger-message-actions.lib";
+import {
+  ensureChatDeviceIdentity,
+  notifyRealChatKeyChanges,
+  realChatCryptoProvider,
+  realChatKeyStorage,
+  subscribeRealChatKeyChanges,
+} from "./chat-crypto-resources.lib";
+import { ChatE2eeController } from "./chat-e2ee-controller.lib";
+import { decodeMessengerE2eePayload } from "./chat-e2ee-payload-adapters.lib";
+import { correlateChatKeyResponse } from "./chat-e2ee.lib";
+import {
+  clearPreparedPlaintextWindows,
+  invalidatePreparedPlaintextWindows,
+  readPreparedPlaintext,
+  removePreparedPlaintextWindow,
+  replacePreparedPlaintextWindow,
+} from "./chat-plaintext-window-cache.lib";
+import type { ChatCryptoEnvelope } from "./chat-crypto-provider.types";
+import type {
+  ChatE2eeControllerRights,
+  ChatE2eeControllerState,
+  ChatE2eeControllerScope,
+} from "./chat-e2ee-controller.types";
+import type {
+  ChatE2eeMessage,
+  ChatE2eePayload,
+  ChatEncryptedPayload,
+  ChatKeyRequestPayload,
+  ChatKeyResponsePayload,
+} from "./chat-e2ee.types";
+import type { ChatKeyStorageAddress, StoredChatKey } from "./chat-key-storage.types";
+import type { PreparedPlaintextRecord } from "./chat-plaintext-window-cache.lib";
+import type { MessengerStoreState } from "../chats/messenger.model";
+import type { MessengerMessage } from "../messenger.types";
+
+function domainMessage(message: MessengerMessage): ChatE2eeMessage | null {
+  const payload = message.payload;
+  if (payload.kind === "markdown" || payload.kind === "poll") return null;
+  const decoded = decodeMessengerE2eePayload(payload);
+  return decoded.ok
+    ? {
+        uuid: message.uuid,
+        streamUuid: message.streamUuid,
+        topicUuid: message.topicUuid,
+        authorUuid: message.authorUuid,
+        payload: decoded.value,
+      }
+    : null;
+}
+
+function keyMaterialChanged(before: StoredChatKey | null, after: StoredChatKey | null): boolean {
+  const previous = before?.groupKey?.bytes;
+  const next = after?.groupKey?.bytes;
+  return (
+    !!next && (previous?.length !== next.length || previous.some((byte, i) => byte !== next[i]))
+  );
+}
+
+export interface RealChatSecretFragmentsInput {
+  readonly secretFragments: readonly {
+    readonly text: string;
+    readonly preparedPayload?: ChatEncryptedPayload;
+  }[];
+  readonly buildMarkdown: (payloads: readonly ChatEncryptedPayload[]) => string;
+  readonly onEncryptedFragment?: (index: number, payload: ChatEncryptedPayload) => void;
+}
+
+export interface OpenRealChatSessionOptions {
+  readonly runtimeContext: WorkspaceRuntimeContext;
+  readonly streamUuid: string;
+  readonly getRuntimeContext?: WorkspaceRuntimeContextGetter;
+  readonly signal?: AbortSignal;
+  readonly messengerStore?: Pick<typeof useMessengerStore, "getState" | "subscribe">;
+  readonly messageStore?: Pick<typeof useWorkspaceMessageStore, "getState">;
+}
+
+/** One live owner/device/chat session. Secrets remain in dedicated storage and controller memory. */
+export async function openRealChatSession({
+  runtimeContext,
+  streamUuid,
+  getRuntimeContext = () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
+  signal,
+  messengerStore = useMessengerStore,
+  messageStore = useWorkspaceMessageStore,
+}: OpenRealChatSessionOptions) {
+  const capture = captureWorkspaceRuntimeRequestContext(() => runtimeContext);
+  if (capture == null) throw new Error("unavailable");
+  const owner = workspaceRuntimeOwnerKey(runtimeContext);
+  let disposed = false;
+  const runtimeCurrent = () =>
+    !disposed && !isWorkspaceRuntimeRequestInvalidated(capture, getRuntimeContext, signal);
+  const ownedStream = (catalog = messengerStore.getState()) => {
+    if (!runtimeCurrent() || catalog.ownerKey !== owner) return undefined;
+    const stream = catalog.streamsById[streamUuid];
+    return stream?.uuid === streamUuid &&
+      stream.projectId === runtimeContext.projectId &&
+      stream.userUuid === runtimeContext.userUuid &&
+      (stream.encryption === true || stream.sourceName === "native")
+      ? stream
+      : undefined;
+  };
+  const current = () => ownedStream() !== undefined;
+  const assertCurrent = () => {
+    if (!current()) throw new Error("stale");
+  };
+  const permissionSnapshot = (catalog = messengerStore.getState()): string => {
+    if (catalog.ownerKey !== owner) return "unowned";
+    const stream = catalog.streamsById[streamUuid];
+    const bindings = (catalog.streamBindingIdsByStreamId[streamUuid] ?? [])
+      .flatMap((uuid) => {
+        const binding = catalog.streamBindingsById[uuid];
+        return binding?.streamUuid === streamUuid && binding.projectId === runtimeContext.projectId
+          ? [[binding.uuid, binding.userUuid, binding.role]]
+          : [];
+      })
+      .sort((left, right) => String(left[0]).localeCompare(String(right[0])));
+    return JSON.stringify([
+      stream?.ownerUuid,
+      stream?.userUuid,
+      stream?.role,
+      stream?.allowKeySharingByHolders,
+      catalog.streamBindingsLoadedByStreamId[streamUuid] === true,
+      bindings,
+    ]);
+  };
+  // Catalog bootstrap and route loaders own public stream and participant hydration.
+  assertCurrent();
+  const device = await ensureChatDeviceIdentity(runtimeContext, current);
+  assertCurrent();
+  const baseScope = {
+    owner: { ...runtimeContext },
+    deviceId: device.deviceId,
+    streamUuid,
+    runtimeGeneration: runtimeContext.runtimeGeneration,
+  };
+  const scopeFor = (keyUuid: string): ChatE2eeControllerScope => ({
+    ...baseScope,
+    owner: { ...baseScope.owner },
+    keyUuid,
+  });
+  const currentKeyUuid = (): string | null => ownedStream()?.currentEncryptionKey?.keyUuid ?? null;
+  const isChannelEncrypted = () => ownedStream()?.encryption === true;
+  const currentScope = (): ChatE2eeControllerScope => {
+    assertCurrent();
+    const keyUuid = isChannelEncrypted() ? currentKeyUuid() : sendingKeyUuid;
+    if (!keyUuid) throw new Error("missing-key");
+    return scopeFor(keyUuid);
+  };
+  const generationCurrent = (scope: ChatE2eeControllerScope) =>
+    current() && (!isChannelEncrypted() || currentKeyUuid() === scope.keyUuid);
+  const managerAllowed = (author: string): boolean => {
+    const catalog = messengerStore.getState();
+    const stream = ownedStream(catalog);
+    if (!stream) return false;
+    if (stream.ownerUuid === author) return true;
+    const bindings = (catalog.streamBindingIdsByStreamId[streamUuid] ?? []).flatMap((uuid) => {
+      const binding = catalog.streamBindingsById[uuid];
+      return binding?.streamUuid === streamUuid &&
+        binding.projectId === runtimeContext.projectId &&
+        binding.userUuid === author
+        ? [binding]
+        : [];
+    });
+    if (bindings.length > 0)
+      return bindings.some(
+        (binding) => binding.role === "owner" || binding.role === "administrator",
+      );
+    return (
+      catalog.streamBindingsLoadedByStreamId[streamUuid] !== true &&
+      author === runtimeContext.userUuid &&
+      (stream.role === "owner" || stream.role === "administrator")
+    );
+  };
+  const participantAllowed = (author: string): boolean => {
+    const catalog = messengerStore.getState();
+    const stream = ownedStream(catalog);
+    if (!stream) return false;
+    if (stream.ownerUuid === author) return true;
+    const known = (catalog.streamBindingIdsByStreamId[streamUuid] ?? []).some((uuid) => {
+      const binding = catalog.streamBindingsById[uuid];
+      return (
+        binding?.streamUuid === streamUuid &&
+        binding.projectId === runtimeContext.projectId &&
+        binding.userUuid === author
+      );
+    });
+    return (
+      known ||
+      (catalog.streamBindingsLoadedByStreamId[streamUuid] !== true &&
+        author === runtimeContext.userUuid)
+    );
+  };
+  const issuerAllowed = (author: string): boolean =>
+    isChannelEncrypted()
+      ? managerAllowed(author)
+      : participantAllowed(runtimeContext.userUuid) && participantAllowed(author);
+  const grantIssuerAllowed = (author: string): boolean => {
+    const stream = ownedStream();
+    if (stream?.encryption !== true || stream.allowKeySharingByHolders === undefined)
+      return issuerAllowed(author);
+    return stream.allowKeySharingByHolders
+      ? participantAllowed(runtimeContext.userUuid) && participantAllowed(author)
+      : stream.ownerUuid === author;
+  };
+  const responseIssuerAllowed = (author: string, kind: ChatKeyResponsePayload["kind"]): boolean =>
+    kind === "key_grant" ? grantIssuerAllowed(author) : issuerAllowed(author);
+  const requesterAllowed = (author: string): boolean =>
+    isChannelEncrypted() || participantAllowed(author);
+  const grantRequesterAllowed = (author: string): boolean => {
+    const stream = ownedStream();
+    return stream?.encryption === true && stream.allowKeySharingByHolders === true
+      ? participantAllowed(author)
+      : requesterAllowed(author);
+  };
+  const rights = (): ChatE2eeControllerRights => {
+    const stream = ownedStream();
+    const member =
+      stream !== undefined && (isChannelEncrypted() || participantAllowed(runtimeContext.userUuid));
+    const canManage = member && managerAllowed(runtimeContext.userUuid);
+    return {
+      canRequest: member,
+      canSend: member,
+      canGrant:
+        member && isChannelEncrypted() ? grantIssuerAllowed(runtimeContext.userUuid) : canManage,
+      canReject: canManage,
+      canRotate: member && isChannelEncrypted() && stream.ownerUuid === runtimeContext.userUuid,
+    };
+  };
+  const listeners = new Set<() => void>();
+  let sessionPending = 0;
+  let reconciliationError: ChatE2eeControllerState["error"] = null;
+  let reconciledKeyUuid: string | null = null;
+  let rotatingKeyUuid: string | null = null;
+  let recoveredRotationKeyUuid: string | null = null;
+  let reconciledPermissions: string | null = null;
+  let committingCatalog = false;
+  let operationDispatchKey: { keyUuid: string | null } | null = null;
+  let sendingKeyUuid: string | null = null;
+  const requests = new Map<string, ChatE2eeMessage<ChatKeyRequestPayload>>();
+  const responses = new Map<string, ChatE2eeMessage<ChatKeyResponsePayload>>();
+  interface KeyRequestOutcome {
+    request: ChatE2eeMessage<ChatKeyRequestPayload>;
+    status: "pending" | "granted" | "rejected";
+  }
+  let requestOutcomes: Map<string, KeyRequestOutcome> | null = null;
+  const observedHolderGrants = new Map<string, ChatE2eeMessage<ChatKeyResponsePayload>>();
+  const completedLocalGrants = new Map<string, { responseUuid: string; keyUuid: string }>();
+  const recordKeyMessage = (message: ChatE2eeMessage) => {
+    if (message.payload.kind === "key_request")
+      requests.set(message.uuid, { ...message, payload: message.payload });
+    if (message.payload.kind === "key_grant" || message.payload.kind === "key_reject")
+      responses.set(message.uuid, { ...message, payload: message.payload });
+    requestOutcomes = null;
+  };
+  let bootstrapPending = true;
+  let publishingUpdate = false;
+  const publishKeyUpdate = (keyUuid: string) => {
+    publishingUpdate = true;
+    try {
+      notifyRealChatKeyChanges({
+        kind: "updated",
+        ownerKey: owner,
+        deviceId: device.deviceId,
+        streamUuid,
+        keyUuid,
+      });
+    } finally {
+      publishingUpdate = false;
+    }
+  };
+  const keyRevisions = new Map<string, number>();
+  const defaultTopicUuid = () =>
+    Object.values(messengerStore.getState().topicsById).find(
+      (topic) =>
+        topic.streamUuid === streamUuid &&
+        topic.projectId === runtimeContext.projectId &&
+        topic.isDefault,
+    )?.uuid;
+  const dispatchPayload = async (
+    payload: ChatE2eePayload,
+    guard: () => boolean,
+    options: {
+      topicUuid?: string;
+      canonicalMessageUuid?: string;
+      includeStreamConversation?: boolean;
+      markdownContent?: string;
+    } = {},
+  ) => {
+    assertCurrent();
+    const dispatchKey = operationDispatchKey ?? { keyUuid: currentKeyUuid() };
+    const topicUuid = options.topicUuid ?? defaultTopicUuid();
+    if (!topicUuid) throw new Error("missing-topic");
+    const result = await sendMessengerE2eePayload({
+      runtimeContext,
+      getRuntimeContext,
+      signal,
+      messengerStore,
+      store: messageStore,
+      streamUuid,
+      topicUuid,
+      payload,
+      expectedCurrentKey: dispatchKey,
+      allowHistoricalKey: payload.kind === "e2ee" && payload.keyUuid === sendingKeyUuid,
+      isCurrent: () => current() && guard() && currentKeyUuid() === dispatchKey.keyUuid,
+      canonicalMessageUuid: options.canonicalMessageUuid,
+      includeStreamConversation:
+        options.includeStreamConversation ?? topicUuid === defaultTopicUuid(),
+      markdownContent: options.markdownContent,
+    });
+    assertCurrent();
+    if (result.status !== "applied" || !result.message) throw new Error("send-failed");
+    return { ...result, message: result.message };
+  };
+  const createController = (generationScope: ChatE2eeControllerScope) => {
+    const revision = keyRevisions.get(generationScope.keyUuid) ?? 0;
+    return new ChatE2eeController({
+      scope: generationScope,
+      device,
+      provider: realChatCryptoProvider,
+      storage: realChatKeyStorage,
+      getCurrentScope: () =>
+        current() && (keyRevisions.get(generationScope.keyUuid) ?? 0) === revision
+          ? generationScope
+          : null,
+      getRights: () => generationRights(generationScope.keyUuid),
+      isIssuerAllowed: responseIssuerAllowed,
+      isAnnouncerAllowed: managerAllowed,
+      isRequesterAllowed: (author, action) =>
+        action === "grant" ? grantRequesterAllowed(author) : requesterAllowed(author),
+      sendPayload: async (payload, guard, canonicalMessageUuid, topicUuid) => {
+        const result = await dispatchPayload(payload, guard, { canonicalMessageUuid, topicUuid });
+        const mapped = domainMessage(result.message);
+        if (!mapped) throw new Error("invalid-message");
+        return mapped;
+      },
+    });
+  };
+  const generationControllers = new Map<string, ChatE2eeController>();
+  const generationRights = (keyUuid: string): ChatE2eeControllerRights => {
+    const policy = rights();
+    const holder =
+      !isChannelEncrypted() &&
+      policy.canSend &&
+      generationControllers.get(keyUuid)?.getState().access === "ready";
+    return {
+      ...policy,
+      canGrant: policy.canGrant || holder,
+      canReject: policy.canReject || holder,
+    };
+  };
+  const generationController = async (keyUuid: string, initializeMetadata = true) => {
+    assertCurrent();
+    const existing = generationControllers.get(keyUuid);
+    if (existing && (!initializeMetadata || existing.getState().access !== "missing"))
+      return existing;
+    const scope = scopeFor(keyUuid);
+    const revision = keyRevisions.get(keyUuid) ?? 0;
+    const unchanged = () => current() && (keyRevisions.get(keyUuid) ?? 0) === revision;
+    if (initializeMetadata) {
+      const persisted = await realChatKeyStorage.writeChatKey(
+        scope,
+        { groupKey: null },
+        { isCurrent: unchanged },
+      );
+      assertCurrent();
+      if (!persisted) throw new Error("storage-failed");
+    }
+    const controller = existing ?? createController(scope);
+    const loaded = await controller.loadKey();
+    assertCurrent();
+    if (!loaded.ok) throw new Error(loaded.reason);
+    if (!unchanged()) {
+      controller.invalidate();
+      throw new Error("stale");
+    }
+    generationControllers.set(keyUuid, controller);
+    return controller;
+  };
+  const ingestKeyMessage = async (message: ChatE2eeMessage) => {
+    // Keep other devices' responses in history without applying them to this device's controller.
+    if (
+      (message.payload.kind === "key_grant" || message.payload.kind === "key_reject") &&
+      message.payload.recipientDeviceId !== device.deviceId
+    )
+      return;
+    // Incoming generation UUIDs are untrusted; only explicit local actions create metadata.
+    const controller = await generationController(message.payload.keyUuid, false);
+    const address = scopeFor(message.payload.keyUuid);
+    const before = await realChatKeyStorage.readChatKey(address);
+    assertCurrent();
+    const result = await controller.ingestKeyMessage(message);
+    assertCurrent();
+    const after = await realChatKeyStorage.readChatKey(address);
+    assertCurrent();
+    if (keyMaterialChanged(before, after)) publishKeyUpdate(message.payload.keyUuid);
+    if (!result.ok && result.reason !== "forbidden" && result.reason !== "invalid-message")
+      throw new Error(result.reason);
+    const stream = ownedStream();
+    if (
+      result.ok &&
+      message.payload.kind === "key_grant" &&
+      stream?.encryption === true &&
+      stream.allowKeySharingByHolders === false &&
+      stream.ownerUuid !== message.authorUuid &&
+      completedLocalGrants.get(message.payload.requestMessageUuid)?.responseUuid !== message.uuid
+    ) {
+      // Only this device's verified receipt can establish a historical grant after reload.
+      const completion = await realChatKeyStorage.readRequestCompletionByMessageUuid(
+        address,
+        message.payload.requestMessageUuid,
+      );
+      assertCurrent();
+      if (completion?.outcome === "granted" && completion.responseMessageUuid === message.uuid) {
+        completedLocalGrants.set(completion.requestMessageUuid, {
+          responseUuid: completion.responseMessageUuid,
+          keyUuid: message.payload.keyUuid,
+        });
+        requestOutcomes = null;
+      }
+    }
+  };
+  const selectSendingKey = async (scope = currentScope()): Promise<boolean> => {
+    if (!isChannelEncrypted()) {
+      const previous = await realChatKeyStorage.readLastAvailableChatKey(baseScope);
+      assertCurrent();
+      sendingKeyUuid = previous?.keyUuid ?? null;
+      if (previous) await generationController(previous.keyUuid, false);
+      return true;
+    }
+    const key = await realChatKeyStorage.readChatKey(scope);
+    assertCurrent();
+    if (!generationCurrent(scope)) return false;
+    const controller = await generationController(scope.keyUuid, false);
+    if (!generationCurrent(scope)) return false;
+    if (key?.groupKey) {
+      if (controller.getState().access !== "ready") {
+        const loaded = await controller.loadKey();
+        assertCurrent();
+        if (!loaded.ok) throw new Error(loaded.reason);
+        if (!generationCurrent(scope)) return false;
+      }
+      if (sendingKeyUuid !== scope.keyUuid) {
+        const saved = await realChatKeyStorage.writeChatKey(scope, key, {
+          isCurrent: () => generationCurrent(scope),
+          forSending: true,
+          onlyIfPresent: true,
+        });
+        assertCurrent();
+        if (!generationCurrent(scope)) return false;
+        if (!saved) throw new Error("storage-failed");
+      }
+      sendingKeyUuid = scope.keyUuid;
+      return true;
+    }
+    const previous = await realChatKeyStorage.readLastAvailableChatKey(scope);
+    assertCurrent();
+    if (!generationCurrent(scope)) return false;
+    if (previous) {
+      await generationController(previous.keyUuid);
+      assertCurrent();
+      if (!generationCurrent(scope)) return false;
+      if (sendingKeyUuid !== previous.keyUuid) {
+        const saved = await realChatKeyStorage.writeChatKey(
+          scopeFor(previous.keyUuid),
+          { groupKey: previous.groupKey },
+          { isCurrent: () => generationCurrent(scope), forSending: true, onlyIfPresent: true },
+        );
+        assertCurrent();
+        if (!generationCurrent(scope)) return false;
+        if (!saved) throw new Error("storage-failed");
+      }
+    }
+    sendingKeyUuid = previous?.keyUuid ?? null;
+    return true;
+  };
+  const reconcileLocal = async (): Promise<void> => {
+    for (;;) {
+      if (!isChannelEncrypted()) {
+        const permissions = permissionSnapshot();
+        if (permissions !== reconciledPermissions) {
+          for (const message of [...requests.values(), ...responses.values()])
+            await ingestKeyMessage(message);
+          if (permissionSnapshot() !== permissions) continue;
+          reconciledPermissions = permissions;
+        }
+        await selectSendingKey(scopeFor(sendingKeyUuid ?? ""));
+        reconciledKeyUuid = sendingKeyUuid;
+        reconciliationError = null;
+        bootstrapPending = false;
+        return;
+      }
+      if (!currentKeyUuid()) {
+        sendingKeyUuid = null;
+        reconciledKeyUuid = null;
+        reconciliationError = null;
+        bootstrapPending = false;
+        return;
+      }
+      const scope = currentScope();
+      if (
+        reconciledKeyUuid !== scope.keyUuid ||
+        (rights().canRotate && permissionSnapshot() !== reconciledPermissions)
+      ) {
+        const preparationPermissions = permissionSnapshot();
+        const stages = await realChatKeyStorage.listStagedCreations({
+          owner: runtimeContext,
+          deviceId: device.deviceId,
+        });
+        assertCurrent();
+        if (!generationCurrent(scope)) continue;
+        const stage = stages.find(
+          (item) =>
+            item.keyUuid === scope.keyUuid &&
+            (!item.rotation || item.rotation.streamUuid === streamUuid),
+        );
+        if (stage && rights().canRotate) {
+          const committed = await realChatKeyStorage.finalizeCreation(
+            { owner: runtimeContext, deviceId: device.deviceId },
+            stage.creationId,
+            streamUuid,
+            { isCurrent: () => generationCurrent(scope) && rights().canRotate },
+          );
+          assertCurrent();
+          if (!generationCurrent(scope)) continue;
+          if (!committed) throw new Error("storage-failed");
+          if (stage.rotation && rotatingKeyUuid === scope.keyUuid)
+            recoveredRotationKeyUuid = scope.keyUuid;
+          bootstrapPending = false;
+          publishKeyUpdate(scope.keyUuid);
+        }
+        const controller = await generationController(scope.keyUuid, reconciledKeyUuid === null);
+        assertCurrent();
+        if (!generationCurrent(scope)) continue;
+        const loaded = await controller.loadKey();
+        assertCurrent();
+        if (!generationCurrent(scope)) continue;
+        if (!loaded.ok) throw new Error(loaded.reason);
+        // Regained ownership must retry recovery skipped before controller preparation awaited.
+        if (permissionSnapshot() !== preparationPermissions) continue;
+        reconciledKeyUuid = scope.keyUuid;
+        if (rotatingKeyUuid === scope.keyUuid) rotatingKeyUuid = null;
+      }
+      const permissions = permissionSnapshot();
+      if (permissions !== reconciledPermissions) {
+        // A grant rejected before issuer roles arrived remains retryable without reloading history.
+        for (const message of [...requests.values(), ...responses.values()])
+          await ingestKeyMessage(message);
+        if (permissionSnapshot() !== permissions || !generationCurrent(scope)) continue;
+        reconciledPermissions = permissions;
+      }
+      if (!(await selectSendingKey(scope))) continue;
+      reconciliationError = null;
+      if (bootstrapPending) {
+        bootstrapPending = false;
+        if (sendingKeyUuid) publishKeyUpdate(sendingKeyUuid);
+      }
+      return;
+    }
+  };
+  const emit = () => {
+    for (const listener of listeners) listener();
+  };
+  // Both user actions and subscription reconciliation share this queue and cannot rebind each other.
+  let operationQueue: Promise<unknown> = Promise.resolve();
+  const run = <T>(operation: () => Promise<T>): Promise<T> => {
+    const next = operationQueue.then(async () => {
+      assertCurrent();
+      sessionPending++;
+      emit();
+      try {
+        await reconcileLocal();
+        operationDispatchKey = { keyUuid: currentKeyUuid() };
+        return await operation();
+      } finally {
+        operationDispatchKey = null;
+        sessionPending--;
+        emit();
+      }
+    });
+    operationQueue = next.catch(() => undefined);
+    return next;
+  };
+  const withEncryptedFragments = async <T>(
+    controller: ChatE2eeController,
+    input: RealChatSecretFragmentsInput,
+    dispatch: (markdown: string, guard: () => boolean, payload: ChatEncryptedPayload) => Promise<T>,
+  ): Promise<T> => {
+    if (!input.secretFragments.length) throw new Error("invalid-message");
+    const payloads: ChatEncryptedPayload[] = [];
+    const guards: (() => boolean)[] = [];
+    const prepare = async (index: number): Promise<T> => {
+      const fragment = input.secretFragments[index];
+      if (!fragment) throw new Error("invalid-message");
+      const plaintext = new TextEncoder().encode(fragment.text);
+      try {
+        const result = await controller.encryptMessage(
+          plaintext,
+          async (payload, guard) => {
+            guards.push(guard);
+            payloads.push(payload);
+            input.onEncryptedFragment?.(index, payload);
+            return index + 1 < input.secretFragments.length
+              ? prepare(index + 1)
+              : dispatch(
+                  input.buildMarkdown(payloads),
+                  () => guards.every((check) => check()),
+                  payload,
+                );
+          },
+          fragment.preparedPayload,
+          true,
+        );
+        if (!result.ok) throw new Error(result.reason);
+        return result.value;
+      } finally {
+        plaintext.fill(0);
+      }
+    };
+    return prepare(0);
+  };
+  const indexedRequestOutcomes = () => {
+    if (requestOutcomes) return requestOutcomes;
+    requestOutcomes = new Map(
+      [...requests.values()].map((request) => [request.uuid, { request, status: "pending" }]),
+    );
+    const stream = ownedStream();
+    const sharing = stream?.encryption === true ? stream.allowKeySharingByHolders : undefined;
+    if (sharing === false) {
+      for (const [requestUuid, completion] of completedLocalGrants) {
+        const outcome = requestOutcomes.get(requestUuid);
+        const response = responses.get(completion.responseUuid);
+        if (
+          outcome?.request.authorUuid === runtimeContext.userUuid &&
+          response?.payload.kind === "key_grant" &&
+          response.payload.recipientDeviceId === device.deviceId &&
+          response.payload.keyUuid === completion.keyUuid &&
+          correlateChatKeyResponse({ request: outcome.request, response, issuerCanGrantKey: true })
+            .status === "matched"
+        )
+          outcome.status = "granted";
+      }
+    }
+    for (const response of responses.values()) {
+      const outcome = requestOutcomes.get(response.payload.requestMessageUuid);
+      if (outcome?.status !== "pending") continue;
+      const previous = observedHolderGrants.get(response.uuid);
+      const wasObserved =
+        sharing === false &&
+        response.payload.kind === "key_grant" &&
+        previous?.authorUuid === response.authorUuid &&
+        previous.payload.requestMessageUuid === response.payload.requestMessageUuid &&
+        previous.payload.keyUuid === response.payload.keyUuid &&
+        previous.payload.recipientDeviceId === response.payload.recipientDeviceId &&
+        participantAllowed(response.authorUuid);
+      if (
+        correlateChatKeyResponse({
+          request: outcome.request,
+          response,
+          issuerCanGrantKey:
+            wasObserved || responseIssuerAllowed(response.authorUuid, response.payload.kind),
+        }).status === "matched"
+      ) {
+        outcome.status = response.payload.kind === "key_grant" ? "granted" : "rejected";
+        // Closing sharing affects new grants, but should not re-open a completed request in this session.
+        if (sharing === true && response.payload.kind === "key_grant")
+          observedHolderGrants.set(response.uuid, response);
+      }
+    }
+    return requestOutcomes;
+  };
+  const getKeyRequestOutcomes = () => [...indexedRequestOutcomes().values()];
+  const pendingRequest = (uuid: string) => {
+    const outcome = indexedRequestOutcomes().get(uuid);
+    return outcome?.status === "pending" ? outcome.request : undefined;
+  };
+  const canGrantKey = (uuid: string) => {
+    const request = pendingRequest(uuid);
+    return (
+      !!request &&
+      grantRequesterAllowed(request.authorUuid) &&
+      generationRights(request.payload.keyUuid).canGrant &&
+      generationControllers.get(request.payload.keyUuid)?.getState().access === "ready"
+    );
+  };
+  const grantRequest = async (uuid: string) => {
+    const request = pendingRequest(uuid);
+    if (!request) throw new Error("invalid-message");
+    const controller = await generationController(request.payload.keyUuid);
+    const result = await controller.grantKey(request);
+    if (!result.ok) throw new Error(result.reason);
+    recordKeyMessage(result.value);
+    indexedRequestOutcomes();
+    return result;
+  };
+  const requestGenerationKey = async (
+    keyUuid: string,
+    envelope?: ChatCryptoEnvelope,
+    allowUsableKey = false,
+    topicUuid?: string,
+  ) => {
+    const defaultUuid = defaultTopicUuid();
+    const requestTopicUuid = topicUuid ?? defaultUuid;
+    if (!requestTopicUuid) throw new Error("missing-topic");
+    const controller = await generationController(keyUuid);
+    const before = await realChatKeyStorage.readChatKey(scopeFor(keyUuid));
+    assertCurrent();
+    const result = await controller.requestKey(envelope, allowUsableKey, {
+      topicUuid: requestTopicUuid,
+      defaultTopicUuid: defaultUuid,
+    });
+    assertCurrent();
+    const after = await realChatKeyStorage.readChatKey(scopeFor(keyUuid));
+    assertCurrent();
+    if (keyMaterialChanged(before, after)) publishKeyUpdate(keyUuid);
+    if (!result.ok) throw new Error(result.reason);
+    return result;
+  };
+  let unsubscribeCatalog: (() => void) | undefined;
+  let unsubscribeRuntime: (() => void) | undefined;
+  let unsubscribeKeys: (() => void) | undefined;
+  const dispose = () => {
+    if (disposed) return;
+    disposed = true;
+    unsubscribeCatalog?.();
+    unsubscribeRuntime?.();
+    unsubscribeKeys?.();
+    signal?.removeEventListener("abort", dispose);
+    for (const controller of generationControllers.values()) controller.invalidate();
+    generationControllers.clear();
+    requests.clear();
+    responses.clear();
+    observedHolderGrants.clear();
+    completedLocalGrants.clear();
+    requestOutcomes = null;
+    emit();
+    listeners.clear();
+  };
+  const emptyState = (): ChatE2eeControllerState => ({
+    access: "missing",
+    pending: false,
+    requestStatus: "idle",
+    error: current() ? reconciliationError : "stale",
+  });
+  const prepareFragmentKey = async (createNew = false) => {
+    if (isChannelEncrypted() || !rights().canSend) throw new Error("forbidden");
+    if (!createNew && sendingKeyUuid) return sendingKeyUuid;
+    const generated = await realChatCryptoProvider.createGroupKey();
+    assertCurrent();
+    if (!generated.ok) throw new Error(generated.reason);
+    const keyUuid = crypto.randomUUID();
+    const stored = await realChatKeyStorage.writeChatKey(
+      scopeFor(keyUuid),
+      { groupKey: generated.value },
+      { isCurrent: current, forSending: true },
+    );
+    assertCurrent();
+    if (!stored) throw new Error("storage-failed");
+    sendingKeyUuid = keyUuid;
+    await generationController(keyUuid, false);
+    publishKeyUpdate(keyUuid);
+    return keyUuid;
+  };
+  const session = {
+    get scope() {
+      return currentScope();
+    },
+    device,
+    get storageScope() {
+      assertCurrent();
+      return { ...baseScope, owner: { ...baseScope.owner } };
+    },
+    getState: () => {
+      const stream = ownedStream();
+      const selectedKey =
+        stream?.encryption === true ? stream.currentEncryptionKey?.keyUuid : sendingKeyUuid;
+      const controller = selectedKey ? generationControllers.get(selectedKey) : undefined;
+      const state = controller?.getState() ?? emptyState();
+      return {
+        ...state,
+        error: current() ? (reconciliationError ?? state.error) : "stale",
+        sendKeyUuid: current() ? sendingKeyUuid : null,
+        pending: current() && (sessionPending > 0 || state.pending),
+      };
+    },
+    getRights: rights,
+    getKeyRequestOutcomes,
+    getKeyRequestOutcome: (uuid: string) => indexedRequestOutcomes().get(uuid) ?? null,
+    getKeyRequests: () =>
+      getKeyRequestOutcomes()
+        .filter((item) => item.status === "pending")
+        .map((item) => item.request),
+    canRespondToKeyRequest: (uuid: string) => {
+      const request = indexedRequestOutcomes().get(uuid)?.request;
+      if (!request) return false;
+      const policy = generationRights(request.payload.keyUuid);
+      return (
+        (policy.canReject && requesterAllowed(request.authorUuid)) ||
+        (policy.canGrant &&
+          grantRequesterAllowed(request.authorUuid) &&
+          generationControllers.get(request.payload.keyUuid)?.getState().access === "ready")
+      );
+    },
+    canGrantKey,
+    canRejectKey: (uuid: string) => {
+      const request = pendingRequest(uuid);
+      return (
+        !!request &&
+        requesterAllowed(request.authorUuid) &&
+        generationRights(request.payload.keyUuid).canReject
+      );
+    },
+    isIssuerAllowed: issuerAllowed,
+    getGenerationState: (keyUuid: string) => generationControllers.get(keyUuid)?.getState() ?? null,
+    subscribe(listener: () => void) {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+    listLocalKeys: async () => {
+      assertCurrent();
+      const keys = await realChatKeyStorage.listChatKeys(baseScope);
+      assertCurrent();
+      return keys;
+    },
+    removeLocalKey: (keyUuid: string) =>
+      run(async () => {
+        const removed = await realChatKeyStorage.removeChatKey(scopeFor(keyUuid), {
+          isCurrent: current,
+        });
+        assertCurrent();
+        if (!removed) throw new Error("storage-failed");
+        notifyRealChatKeyChanges({
+          kind: "removed",
+          ownerKey: owner,
+          deviceId: device.deviceId,
+          streamUuid,
+          keyUuid,
+        });
+        await reconcileLocal();
+      }),
+    load: () => run(() => Promise.resolve()),
+    ingest: (messages: readonly MessengerMessage[]) =>
+      run(async () => {
+        for (const message of messages) {
+          if (
+            message.projectId !== runtimeContext.projectId ||
+            message.streamUuid !== streamUuid ||
+            message.payload.kind === "markdown" ||
+            message.payload.kind === "poll" ||
+            message.payload.kind === "e2ee"
+          )
+            continue;
+          const mapped = domainMessage(message);
+          if (!mapped) continue;
+          recordKeyMessage(mapped);
+          await ingestKeyMessage(mapped);
+        }
+        indexedRequestOutcomes();
+        await reconcileLocal();
+      }),
+    requestKey: (
+      keyUuid?: string,
+      recoveryMessage?: MessengerMessage,
+      allowUsableKey = false,
+      topicUuid?: string,
+    ) =>
+      run(async () => {
+        const requestedKeyUuid = keyUuid ?? currentScope().keyUuid;
+        const mapped = recoveryMessage ? domainMessage(recoveryMessage) : null;
+        if (
+          recoveryMessage &&
+          (recoveryMessage.projectId !== runtimeContext.projectId ||
+            mapped?.streamUuid !== streamUuid ||
+            mapped.payload.kind !== "e2ee" ||
+            mapped.payload.keyUuid !== requestedKeyUuid)
+        )
+          throw new Error("invalid-message");
+        return requestGenerationKey(
+          requestedKeyUuid,
+          mapped?.payload.kind === "e2ee" ? mapped.payload.content : undefined,
+          allowUsableKey,
+          topicUuid ?? mapped?.topicUuid,
+        );
+      }),
+    requestEnvelopeKey: (
+      keyUuid: string,
+      envelope: ChatCryptoEnvelope,
+      allowUsableKey = false,
+      topicUuid?: string,
+    ) => run(() => requestGenerationKey(keyUuid, envelope, allowUsableKey, topicUuid)),
+    grantKey: (uuid: string) => run(() => grantRequest(uuid)),
+    rejectKey: (uuid: string) =>
+      run(async () => {
+        const request = pendingRequest(uuid);
+        if (!request) throw new Error("invalid-message");
+        const controller = await generationController(request.payload.keyUuid);
+        const result = await controller.rejectKey(request);
+        if (!result.ok) throw new Error(result.reason);
+        recordKeyMessage(result.value);
+        return result;
+      }),
+    grantAllKeys: () =>
+      run(async () => {
+        if (!rights().canGrant) throw new Error("forbidden");
+        const outcomes: {
+          requestMessageUuid: string;
+          status: "granted" | "failed";
+          reason?: string;
+        }[] = [];
+        const eligibleRequests = [...indexedRequestOutcomes().keys()].filter(canGrantKey);
+        for (const requestMessageUuid of eligibleRequests) {
+          try {
+            await grantRequest(requestMessageUuid);
+            outcomes.push({ requestMessageUuid, status: "granted" });
+          } catch (error) {
+            assertCurrent();
+            outcomes.push({
+              requestMessageUuid,
+              status: "failed",
+              reason: error instanceof Error ? error.message : "unavailable",
+            });
+          }
+        }
+        return outcomes;
+      }),
+    prepareFragmentKey: (createNew = false) => run(() => prepareFragmentKey(createNew)),
+    reissueKey: (topicUuid?: string) =>
+      run(async () => {
+        if (recoveredRotationKeyUuid !== null && recoveredRotationKeyUuid === currentKeyUuid()) {
+          recoveredRotationKeyUuid = null;
+          return { status: "applied" as const, ownerKey: owner, message: null };
+        }
+        if (!rights().canRotate) throw new Error("forbidden");
+        const previousKeyUuid = currentKeyUuid();
+        const allowed = () =>
+          current() &&
+          rights().canRotate &&
+          (currentKeyUuid() === previousKeyUuid || currentKeyUuid() === rotatingKeyUuid);
+        const stages = await realChatKeyStorage.listStagedCreations({
+          owner: runtimeContext,
+          deviceId: device.deviceId,
+        });
+        assertCurrent();
+        if (!allowed()) throw new Error("forbidden");
+        let stage = stages.find(
+          (item) =>
+            item.rotation?.streamUuid === streamUuid &&
+            item.rotation.previousKeyUuid === previousKeyUuid,
+        );
+        if (!stage) {
+          const groupKey = await realChatCryptoProvider.createGroupKey();
+          assertCurrent();
+          if (!allowed()) throw new Error("forbidden");
+          if (!groupKey.ok) throw new Error(groupKey.reason);
+          const rotationTopicUuid = topicUuid ?? defaultTopicUuid();
+          if (!rotationTopicUuid) throw new Error("missing-topic");
+          stage = {
+            creationId: crypto.randomUUID(),
+            keyUuid: crypto.randomUUID(),
+            groupKey: groupKey.value,
+            rotation: { streamUuid, previousKeyUuid, topicUuid: rotationTopicUuid },
+          };
+          const persisted = await realChatKeyStorage.writeStagedCreation(
+            { owner: runtimeContext, deviceId: device.deviceId },
+            stage,
+            { isCurrent: allowed },
+          );
+          assertCurrent();
+          if (!allowed()) throw new Error("forbidden");
+          if (!persisted) throw new Error("storage-failed");
+        }
+        if (!stage.rotation) throw new Error("invalid-key");
+        rotatingKeyUuid = stage.keyUuid;
+        const result = await sendMessengerE2eePayload({
+          runtimeContext,
+          getRuntimeContext,
+          signal,
+          messengerStore,
+          store: messageStore,
+          streamUuid,
+          topicUuid: stage.rotation.topicUuid,
+          includeStreamConversation: stage.rotation.topicUuid === defaultTopicUuid(),
+          expectedCurrentKey: { keyUuid: previousKeyUuid },
+          isCurrent: allowed,
+          rotateKey: true,
+          canonicalMessageUuid: stage.creationId,
+          payload: { kind: "key_announced", keyUuid: stage.keyUuid },
+        });
+        if (result.status !== "applied") throw new Error("send-failed");
+        assertCurrent();
+        const stream = ownedStream()!;
+        const liveKeyUuid = stream.currentEncryptionKey?.keyUuid ?? null;
+        if (liveKeyUuid !== previousKeyUuid && liveKeyUuid !== stage.keyUuid)
+          throw new Error("stale");
+        if (!rights().canRotate) throw new Error("forbidden");
+        // A verified announcement receipt confirms the new key even before its stream event arrives.
+        if (liveKeyUuid === previousKeyUuid) {
+          committingCatalog = true;
+          try {
+            messengerStore.getState().upsertStream(owner, {
+              ...stream,
+              currentEncryptionKey: { keyUuid: stage.keyUuid },
+            });
+          } finally {
+            committingCatalog = false;
+          }
+          lastCatalogSignature = catalogSignature(messengerStore.getState());
+          lastObservedStream = ownedStream();
+        }
+        await reconcileLocal();
+        recoveredRotationKeyUuid = null;
+        publishKeyUpdate(stage.keyUuid);
+        return result;
+      }),
+    send: (input: {
+      readonly text: string;
+      readonly topicUuid: string;
+      readonly includeStreamConversation?: boolean;
+      readonly canonicalMessageUuid?: string;
+      readonly expectedKeyUuid?: string;
+      readonly expectedDeviceId?: string;
+      readonly preparedPayload?: ChatEncryptedPayload;
+      readonly onEncryptedPayload?: (payload: ChatEncryptedPayload) => void;
+      readonly secretFragments?: readonly {
+        readonly text: string;
+        readonly preparedPayload?: ChatEncryptedPayload;
+      }[];
+      readonly buildMarkdown?: (payloads: readonly ChatEncryptedPayload[]) => string;
+      readonly onEncryptedFragment?: (index: number, payload: ChatEncryptedPayload) => void;
+    }) =>
+      run(async () => {
+        if (!sendingKeyUuid) throw new Error("missing-key");
+        if (
+          (input.expectedKeyUuid != null && input.expectedKeyUuid !== sendingKeyUuid) ||
+          (input.expectedDeviceId != null && input.expectedDeviceId !== device.deviceId)
+        )
+          throw new Error("invalid-key");
+        const controller = await generationController(sendingKeyUuid);
+        if (input.secretFragments) {
+          if (!input.buildMarkdown) throw new Error("invalid-message");
+          return withEncryptedFragments(
+            controller,
+            {
+              secretFragments: input.secretFragments,
+              buildMarkdown: input.buildMarkdown,
+              onEncryptedFragment: input.onEncryptedFragment,
+            },
+            (markdownContent, guard, payload) =>
+              dispatchPayload(payload, guard, { ...input, markdownContent }),
+          );
+        }
+        const plaintext = new TextEncoder().encode(input.text);
+        try {
+          const result = await controller.encryptMessage(
+            plaintext,
+            (payload, guard) => {
+              input.onEncryptedPayload?.(payload);
+              return dispatchPayload(payload, guard, input);
+            },
+            input.preparedPayload,
+          );
+          if (!result.ok) throw new Error(result.reason);
+          return result.value;
+        } finally {
+          plaintext.fill(0);
+        }
+      }),
+    decrypt: (message: MessengerMessage) =>
+      decryptRealChatMessage(runtimeContext, message, current),
+    editMarkdown: (
+      message: MessengerMessage,
+      input: RealChatSecretFragmentsInput,
+      signal?: AbortSignal,
+    ) =>
+      run(async () => {
+        if (
+          message.payload.kind !== "markdown" ||
+          message.streamUuid !== streamUuid ||
+          message.projectId !== runtimeContext.projectId ||
+          !message.isOwn ||
+          message.authorUuid !== runtimeContext.userUuid
+        )
+          throw new Error("invalid-message");
+        if (!sendingKeyUuid) throw new Error("missing-key");
+        const controller = await generationController(sendingKeyUuid);
+        return withEncryptedFragments(controller, input, (markdown, guard) =>
+          editMessengerMessage({
+            runtimeContext,
+            getRuntimeContext,
+            signal,
+            messageUuid: message.uuid,
+            markdown,
+            sourceMessage: message,
+            messengerStore,
+            store: messageStore,
+            isCurrent: guard,
+          }),
+        );
+      }),
+    edit: (message: MessengerMessage, text: string, signal?: AbortSignal) =>
+      run(async () => {
+        if (
+          message.payload.kind !== "e2ee" ||
+          message.streamUuid !== streamUuid ||
+          message.projectId !== runtimeContext.projectId ||
+          !message.isOwn ||
+          message.authorUuid !== runtimeContext.userUuid
+        )
+          throw new Error("invalid-message");
+        const controller = await generationController(message.payload.keyUuid, false);
+        const plaintext = new TextEncoder().encode(text);
+        try {
+          const result = await controller.encryptMessage(plaintext, (encryptedPayload, guard) =>
+            editMessengerMessage({
+              runtimeContext,
+              getRuntimeContext,
+              signal,
+              messageUuid: message.uuid,
+              encryptedPayload,
+              sourceMessage: message,
+              messengerStore,
+              store: messageStore,
+              isCurrent: guard,
+            }),
+          );
+          if (!result.ok) throw new Error(result.reason);
+          if (result.value.status !== "applied") throw new Error("stale");
+          return result.value;
+        } finally {
+          plaintext.fill(0);
+        }
+      }),
+    dispose,
+  };
+  const catalogSignature = (catalog: MessengerStoreState) => {
+    const stream = ownedStream(catalog);
+    return JSON.stringify([
+      catalog.ownerKey,
+      stream?.uuid,
+      stream?.encryption,
+      stream?.currentEncryptionKey?.keyUuid,
+      permissionSnapshot(catalog),
+    ]);
+  };
+  let lastCatalogSignature = catalogSignature(messengerStore.getState());
+  let lastObservedStream = ownedStream();
+  let reconciliationQueued = false;
+  let reconciliationVersion = 0;
+  const scheduleReconciliation = () => {
+    if (reconciliationQueued) return;
+    reconciliationQueued = true;
+    const version = reconciliationVersion;
+    void run(() => Promise.resolve())
+      .catch(() => {
+        if (current()) reconciliationError = "unavailable";
+      })
+      .finally(() => {
+        reconciliationQueued = false;
+        if (!current()) return;
+        emit();
+        if (reconciliationVersion !== version) scheduleReconciliation();
+      })
+      .catch(() => undefined);
+  };
+  const onCatalogChange = () => {
+    if (!current()) {
+      dispose();
+      return;
+    }
+    if (committingCatalog) return;
+    const stream = ownedStream();
+    const signature = catalogSignature(messengerStore.getState());
+    const retryFailed = reconciliationError !== null && stream !== lastObservedStream;
+    lastObservedStream = stream;
+    if (signature === lastCatalogSignature && !retryFailed) return;
+    lastCatalogSignature = signature;
+    requestOutcomes = null;
+    reconciliationVersion++;
+    emit();
+    scheduleReconciliation();
+  };
+  unsubscribeKeys = subscribeRealChatKeyChanges((change) => {
+    if (
+      !change ||
+      publishingUpdate ||
+      !current() ||
+      change.ownerKey !== owner ||
+      change.deviceId !== device.deviceId ||
+      change.streamUuid !== streamUuid
+    )
+      return;
+    keyRevisions.set(change.keyUuid, (keyRevisions.get(change.keyUuid) ?? 0) + 1);
+    generationControllers.get(change.keyUuid)?.invalidate();
+    generationControllers.delete(change.keyUuid);
+    if (change.keyUuid === reconciledKeyUuid) reconciledKeyUuid = null;
+    if (change.keyUuid === sendingKeyUuid) sendingKeyUuid = null;
+    reconciledPermissions = null;
+    reconciliationVersion++;
+    emit();
+    scheduleReconciliation();
+  });
+  unsubscribeCatalog = messengerStore.subscribe(onCatalogChange);
+  unsubscribeRuntime = useWorkspaceAuthStore.subscribe(() => {
+    if (!runtimeCurrent()) dispose();
+  });
+  signal?.addEventListener("abort", dispose, { once: true });
+  if (!current()) {
+    dispose();
+    throw new Error("stale");
+  }
+  return session;
+}
+export type RealChatSession = Awaited<ReturnType<typeof openRealChatSession>>;
+
+export type RealChatMessageDecryption =
+  | { readonly status: "ready"; readonly plaintext: string }
+  | { readonly status: "missing-key" }
+  | { readonly status: "error"; readonly canRequestKey?: boolean };
+
+/** Decoded content is returned only to presentation; ciphertext in message stores remains untouched. */
+export async function decryptRealChatMessage(
+  runtime: WorkspaceRuntimeContext,
+  message: MessengerMessage,
+  isCurrent: () => boolean,
+): Promise<string | null> {
+  const result = await decryptRealChatMessageResult(runtime, message, isCurrent);
+  return result.status === "ready" ? result.plaintext : null;
+}
+
+/** Missing material is a requestable state; invalid envelopes and storage failures are retryable errors. */
+export async function decryptRealChatMessageResult(
+  runtime: WorkspaceRuntimeContext,
+  message: MessengerMessage,
+  isCurrent: () => boolean,
+  batchId?: string,
+  window?: PlaintextWindowRequest,
+): Promise<RealChatMessageDecryption> {
+  if (!isCurrent() || message.projectId !== runtime.projectId || message.payload.kind !== "e2ee")
+    return { status: "missing-key" };
+  const mapped = domainMessage(message);
+  if (mapped?.payload.kind !== "e2ee") return { status: "error" };
+  return queueMessageDecryption(
+    runtime,
+    message,
+    mapped.payload.content,
+    isCurrent,
+    batchId,
+    window,
+  );
+}
+
+interface MessageDecryptionRequest {
+  readonly message: MessengerMessage;
+  readonly envelope: ChatCryptoEnvelope;
+  readonly isCurrent: () => boolean;
+  readonly resolve: (result: RealChatMessageDecryption) => void;
+  readonly window?: PlaintextWindowRequest;
+}
+
+interface KeySnapshot {
+  readonly key: StoredChatKey | null;
+  readonly deletionRevision: number;
+}
+export type { PreparedPlaintextRecord } from "./chat-plaintext-window-cache.lib";
+
+export interface PlaintextWindowRequest {
+  readonly id: string;
+  readonly onPrepared: (record: PreparedPlaintextRecord) => void;
+}
+
+/** Replace only a complete current window for the active runtime. */
+export function commitPreparedPlaintextWindow(
+  runtime: WorkspaceRuntimeContext,
+  id: string,
+  records: readonly PreparedPlaintextRecord[],
+) {
+  startPlaintextCacheListeners();
+  const scope = runtimeScope(runtime);
+  if (scope !== cacheScope || scope == null) return;
+  replacePreparedPlaintextWindow(scope, id, records);
+}
+const pendingDecryption = new Map<string, MessageDecryptionRequest[]>();
+let cacheScope: string | null = null;
+let cacheEpoch = 0;
+let cacheListenersStarted = false;
+
+function runtimeScope(runtime: WorkspaceRuntimeContext | null): string | null {
+  return runtime == null
+    ? null
+    : JSON.stringify([workspaceRuntimeOwnerKey(runtime), runtime.runtimeGeneration]);
+}
+
+function startPlaintextCacheListeners() {
+  if (cacheListenersStarted) return;
+  cacheListenersStarted = true;
+  cacheScope = runtimeScope(useWorkspaceAuthStore.getState().getCurrentRuntimeContext());
+  useWorkspaceAuthStore.subscribe((state) => {
+    const next = runtimeScope(state.getCurrentRuntimeContext());
+    if (cacheScope !== next) {
+      clearPreparedPlaintextWindows();
+      cacheEpoch++;
+      pendingDecryption.clear();
+      cacheScope = next;
+    }
+  });
+  subscribeRealChatKeyChanges((change) => {
+    if (!change) {
+      clearPreparedPlaintextWindows();
+      return;
+    }
+    invalidatePreparedPlaintextWindows(change);
+  });
+}
+
+function sameSnapshot(before: KeySnapshot | undefined, after: KeySnapshot | undefined): boolean {
+  const left = before?.key?.groupKey?.bytes;
+  const right = after?.key?.groupKey?.bytes;
+  return (
+    left != null &&
+    right != null &&
+    before?.deletionRevision === after?.deletionRevision &&
+    left.length === right.length &&
+    left.every((byte, index) => byte === right[index])
+  );
+}
+
+async function fingerprint(snapshot: KeySnapshot): Promise<string> {
+  const bytes = snapshot.key?.groupKey?.bytes;
+  if (!bytes) return "";
+  const copy = new Uint8Array(bytes);
+  try {
+    const digest = await crypto.subtle.digest("SHA-256", copy);
+    return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join(
+      "",
+    );
+  } finally {
+    copy.fill(0);
+  }
+}
+
+function queueMessageDecryption(
+  runtime: WorkspaceRuntimeContext,
+  message: MessengerMessage,
+  envelope: ChatCryptoEnvelope,
+  isCurrent: () => boolean,
+  batchId?: string,
+  window?: PlaintextWindowRequest,
+): Promise<RealChatMessageDecryption> {
+  startPlaintextCacheListeners();
+  const scope = runtimeScope(runtime)!;
+  const queueKey = JSON.stringify([scope, batchId ?? null]);
+  return new Promise((resolve) => {
+    const request = { message, envelope, isCurrent, resolve, window };
+    const pending = pendingDecryption.get(queueKey);
+    if (pending) {
+      pending.push(request);
+    } else {
+      const batch = [request];
+      const epoch = cacheEpoch;
+      pendingDecryption.set(queueKey, batch);
+      queueMicrotask(() => {
+        if (batchId === undefined && pendingDecryption.get(queueKey) === batch)
+          pendingDecryption.delete(queueKey);
+        void prepareDecryptionBatch(runtime, scope, queueKey, epoch, batch);
+      });
+    }
+  });
+}
+
+interface PreparedBatchResult {
+  readonly result: RealChatMessageDecryption;
+  readonly addressId?: string;
+  readonly snapshot?: KeySnapshot;
+  readonly fingerprint?: string;
+  readonly cacheKey?: string;
+}
+
+async function prepareDecryptionBatch(
+  runtime: WorkspaceRuntimeContext,
+  scope: string,
+  queueKey: string,
+  epoch: number,
+  batch: MessageDecryptionRequest[],
+): Promise<void> {
+  const snapshotsToClear: KeySnapshot[] = [];
+  try {
+    const device = await realChatKeyStorage.readDeviceIdentity(runtime);
+    if (!device) {
+      for (const request of batch) request.resolve({ status: "missing-key" });
+      return;
+    }
+    const groups = new Map<string, ChatKeyStorageAddress>();
+    const results: PreparedBatchResult[] = [];
+    let processed = 0;
+    while (true) {
+      const next = batch.slice(processed);
+      if (next.length) {
+        const waveGroups = new Map<string, ChatKeyStorageAddress>();
+        for (const { message } of next) {
+          if (message.payload.kind !== "e2ee") continue;
+          const id = JSON.stringify([message.streamUuid, message.payload.keyUuid]);
+          const address = {
+            owner: runtime,
+            deviceId: device.deviceId,
+            streamUuid: message.streamUuid,
+            keyUuid: message.payload.keyUuid,
+          };
+          groups.set(id, address);
+          waveGroups.set(id, address);
+        }
+        const ids = [...waveGroups.keys()];
+        const snapshots = await realChatKeyStorage.readChatKeySnapshots([...waveGroups.values()]);
+        snapshotsToClear.push(...snapshots);
+        const fingerprints = await Promise.all(snapshots.map(fingerprint));
+        const waveResults = await Promise.all(
+          next.map(async (request): Promise<PreparedBatchResult> => {
+            const { message, envelope, isCurrent } = request;
+            if (!isCurrent() || message.payload.kind !== "e2ee")
+              return { result: { status: "missing-key" } };
+            const addressId = JSON.stringify([message.streamUuid, message.payload.keyUuid]);
+            const index = ids.indexOf(addressId);
+            const snapshot = snapshots[index];
+            const groupKey = snapshot?.key?.groupKey;
+            if (!groupKey || !snapshot) return { result: { status: "missing-key" } };
+            const keyFingerprint = fingerprints[index];
+            const cacheKey = JSON.stringify([
+              scope,
+              device.deviceId,
+              message.projectId,
+              message.streamUuid,
+              message.uuid,
+              message.payload,
+            ]);
+            const cached = request.window
+              ? readPreparedPlaintext(scope, request.window.id, cacheKey)
+              : undefined;
+            const metadata = { addressId, snapshot, fingerprint: keyFingerprint, cacheKey };
+            if (cached && cached.fingerprint === keyFingerprint)
+              return { ...metadata, result: { status: "ready", plaintext: cached.plaintext } };
+            try {
+              const decrypted = await realChatCryptoProvider.decryptMessage({
+                groupKey,
+                envelope,
+                context: { streamUuid: message.streamUuid, keyUuid: message.payload.keyUuid },
+              });
+              if (!decrypted.ok)
+                return {
+                  ...metadata,
+                  result: {
+                    status: "error",
+                    canRequestKey: decrypted.reason === "invalid-ciphertext",
+                  },
+                };
+              try {
+                return {
+                  ...metadata,
+                  result: {
+                    status: "ready",
+                    plaintext: new TextDecoder("utf-8", { fatal: true }).decode(decrypted.value),
+                  },
+                };
+              } finally {
+                decrypted.value.fill(0);
+              }
+            } catch {
+              return { ...metadata, result: { status: "error" } };
+            }
+          }),
+        );
+        results.push(...waveResults);
+        processed += next.length;
+        continue;
+      }
+      const ids = [...groups.keys()];
+      const latest = await realChatKeyStorage.readChatKeySnapshots([...groups.values()]);
+      snapshotsToClear.push(...latest);
+      // Arrivals during validation belong to this same initial window.
+      if (processed !== batch.length) continue;
+      if (pendingDecryption.get(queueKey) === batch) pendingDecryption.delete(queueKey);
+      for (const [index, request] of batch.entries()) {
+        const prepared = results[index];
+        if (!request.isCurrent() || cacheEpoch !== epoch || !prepared) {
+          request.resolve({ status: "missing-key" });
+          continue;
+        }
+        const { result, snapshot, addressId, cacheKey, fingerprint: keyFingerprint } = prepared;
+        if (snapshot && addressId && !sameSnapshot(snapshot, latest[ids.indexOf(addressId)])) {
+          if (request.window) removePreparedPlaintextWindow(scope, request.window.id);
+          request.resolve({ status: "missing-key" });
+          continue;
+        }
+        if (
+          result.status === "ready" &&
+          cacheKey &&
+          keyFingerprint &&
+          addressId &&
+          scope === cacheScope
+        ) {
+          request.window?.onPrepared({
+            cacheKey,
+            fingerprint: keyFingerprint,
+            plaintext: result.plaintext,
+            ownerKey: workspaceRuntimeOwnerKey(runtime),
+            deviceId: device.deviceId,
+            streamUuid: request.message.streamUuid,
+            keyUuid: groups.get(addressId)!.keyUuid,
+          });
+        }
+        request.resolve(result);
+      }
+      return;
+    }
+  } catch {
+    for (const request of batch)
+      request.resolve({
+        status: request.isCurrent() && cacheEpoch === epoch ? "error" : "missing-key",
+      });
+  } finally {
+    if (pendingDecryption.get(queueKey) === batch) pendingDecryption.delete(queueKey);
+    for (const snapshot of snapshotsToClear) snapshot.key?.groupKey?.bytes.fill(0);
+  }
+}
+
+export async function decryptRealChatEnvelopeResult(
+  runtime: WorkspaceRuntimeContext,
+  content: {
+    readonly projectId: string;
+    readonly streamUuid: string;
+    readonly keyUuid: string;
+    readonly envelope: ChatCryptoEnvelope;
+  },
+  isCurrent: () => boolean,
+): Promise<RealChatMessageDecryption> {
+  if (!isCurrent() || content.projectId !== runtime.projectId) return { status: "missing-key" };
+  try {
+    const device = await realChatKeyStorage.readDeviceIdentity(runtime);
+    if (!isCurrent() || !device) return { status: "missing-key" };
+    const address = {
+      owner: runtime,
+      deviceId: device.deviceId,
+      streamUuid: content.streamUuid,
+      keyUuid: content.keyUuid,
+    };
+    const deletionRevision = await realChatKeyStorage.readChatKeyDeletionRevision(address);
+    if (!isCurrent()) return { status: "missing-key" };
+    const key = await realChatKeyStorage.readChatKey(address);
+    if (!isCurrent() || !key?.groupKey) return { status: "missing-key" };
+    const result = await realChatCryptoProvider.decryptMessage({
+      groupKey: key.groupKey,
+      envelope: content.envelope,
+      context: { streamUuid: content.streamUuid, keyUuid: content.keyUuid },
+    });
+    try {
+      if (!isCurrent()) return { status: "missing-key" };
+      const latestRevision = await realChatKeyStorage.readChatKeyDeletionRevision(address);
+      if (!isCurrent() || latestRevision !== deletionRevision) return { status: "missing-key" };
+      if (!result.ok)
+        return { status: "error", canRequestKey: result.reason === "invalid-ciphertext" };
+      return {
+        status: "ready",
+        plaintext: new TextDecoder("utf-8", { fatal: true }).decode(result.value),
+      };
+    } finally {
+      if (result.ok) result.value.fill(0);
+    }
+  } catch {
+    return { status: isCurrent() ? "error" : "missing-key" };
+  }
+}

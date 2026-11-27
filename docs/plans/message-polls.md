@@ -550,4 +550,4 @@ API, revision, очистка при soft delete и пагинация опре�
 - [Публичный Workspace API](https://github.com/exordos/workspace_backend/blob/14963ca0c78359104d16fc40b70608f13f2e81b1/docs/en/workspace_api.md).
 - [Realtime](https://github.com/exordos/workspace_backend/blob/14963ca0c78359104d16fc40b70608f13f2e81b1/docs/en/workspace_ui_realtime_integration.md).
 - [Интеграция клиента](../INTEGRATION_GUIDE.md), [архитектура](../fsd-architecture.md), [каталог компонентов](../COMPONENT_CATALOG.md), [безопасность async](../ORG_SCOPED_ASYNC_SAFETY.md).
-- [Типы API клиента](../../packages/web/src/shared/api/messenger.types.ts), [message store](../../packages/web/src/entities/message/message.model.ts), [пересылка](../../packages/web/src/features/workspace-forward-message/workspace-forward-message.lib.ts).
+- [Типы API клиента](../../packages/web/src/shared/api/messenger.types.ts), [message store](../../packages/web/src/applications/messenger/model/messages/message.model.ts), [пересылка](../../packages/web/src/applications/messenger/features/timeline/forward/workspace-forward-message.lib.ts).

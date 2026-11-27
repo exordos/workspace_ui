@@ -1,6 +1,6 @@
 import React, { useCallback } from "react";
-import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import { t } from "~/i18n/i18n";
+import type { WorkspaceRuntimeContext } from "~/platform/sessions/workspace-runtime.types";
 import { AppDialog, DialogCancelButton, DialogPrimaryButton } from "~/shared/ui/app-dialog";
 import { useDeleteExternalAccount } from "./delete-external-account.hook";
 

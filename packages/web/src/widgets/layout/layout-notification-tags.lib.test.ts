@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { MessengerBackgroundNotificationCandidate } from "~/entities/messenger/messenger-background-projection.model";
+import type { MessengerBackgroundNotificationCandidate } from "~/applications/messenger/runtime/sync/messenger-background-projection.model";
 import {
   closeAllActiveMessageNotifications,
   closeReadMessageNotifications,

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { notificationService } from "~/shared/lib/notifications";
-import type { NotificationPermissionStatus } from "~/shared/lib/notifications";
+import { notificationService } from "~/platform/notifications/notifications";
+import type { NotificationPermissionStatus } from "~/platform/notifications/notifications";
 import {
   readNotificationPromptDismissed,
   shouldShowNotificationPermissionBanner,

@@ -3,16 +3,19 @@ import { relative, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const SRC_ROOT = resolve(import.meta.dirname, "../../..");
-const WORKSPACE_MESSAGE_LIST_DIR = resolve(SRC_ROOT, "widgets/workspace-message-list");
+const WORKSPACE_MESSAGE_LIST_DIR = resolve(SRC_ROOT, "applications/messenger/features/timeline");
 const WORKSPACE_RENDER_CORE_DIR = import.meta.dirname;
 const WORKSPACE_COMPACT_SUMMARY_FILES = [
-  resolve(SRC_ROOT, "entities/messenger/messenger-topic-list.lib.ts"),
+  resolve(SRC_ROOT, "applications/messenger/features/sidebar/messenger-topic-list.lib.ts"),
   resolve(SRC_ROOT, "pages/feed/feed-page.ui.tsx"),
 ] as const;
 const WORKSPACE_RICH_RENDER_SURFACE_FILES = [
-  resolve(SRC_ROOT, "widgets/workspace-message-list/workspace-message-bubble-presentation.ui.tsx"),
-  resolve(SRC_ROOT, "widgets/workspace-message-list/workspace-message-quote.ui.tsx"),
-  resolve(SRC_ROOT, "widgets/message-composer/message-composer-preview.hook.ts"),
+  resolve(
+    SRC_ROOT,
+    "applications/messenger/features/timeline/workspace-message-bubble-presentation.ui.tsx",
+  ),
+  resolve(SRC_ROOT, "applications/messenger/features/timeline/workspace-message-quote.ui.tsx"),
+  resolve(SRC_ROOT, "applications/messenger/features/composer/message-composer-preview.hook.ts"),
 ] as const;
 const LEGACY_MESSAGE_LIST_PATH = ["widgets", "message-list"].join("/");
 const LEGACY_MESSAGE_LIST_IMPORT_PATTERN = new RegExp(
@@ -25,9 +28,15 @@ const LEGACY_PLAIN_TEXT_PREVIEW_HELPER_PATTERN = new RegExp(
 );
 const ACTIVE_WORKSPACE_RENDERER_FILES = [
   ...listSourceFiles(WORKSPACE_MESSAGE_LIST_DIR),
-  resolve(SRC_ROOT, "pages/chat/chat-page-workspace-message-list-section.types.ts"),
-  resolve(SRC_ROOT, "pages/chat/chat-page-workspace-message-list-section.ui.tsx"),
-  resolve(SRC_ROOT, "pages/chat/chat-page-workspace.ui.tsx"),
+  resolve(
+    SRC_ROOT,
+    "applications/messenger/features/timeline/chat-page-workspace-message-list-section.types.ts",
+  ),
+  resolve(
+    SRC_ROOT,
+    "applications/messenger/features/timeline/chat-page-workspace-message-list-section.ui.tsx",
+  ),
+  resolve(SRC_ROOT, "applications/messenger/pages/messenger/chat-page-workspace.ui.tsx"),
 ] as const;
 
 function listSourceFiles(dir: string): string[] {

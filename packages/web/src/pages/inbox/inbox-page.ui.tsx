@@ -1,28 +1,28 @@
 import React, { useCallback, useMemo } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { useWorkspaceMessageStore } from "~/entities/message/message.model";
-import { resolveWorkspaceActiveUnreadCount } from "~/entities/messenger/messenger-notification-mode.lib";
+import { ChatChannelHeader } from "~/applications/messenger/features/conversation-header/chat-header-channel.ui";
 import {
   selectMessengerSidebarStreams,
   type MessengerSidebarStreamsState,
-} from "~/entities/messenger/messenger-sidebar.lib";
-import { useMessengerStore } from "~/entities/messenger/messenger.model";
+} from "~/applications/messenger/features/sidebar/messenger-sidebar.lib";
+import { useChatsCatalog } from "~/applications/messenger/model/chats/chats";
+import { resolveWorkspaceActiveUnreadCount } from "~/applications/messenger/model/chats/messenger-notification-mode.lib";
+import { useMessageIndex } from "~/applications/messenger/model/messages/messages-consumers";
 import type {
   MessengerSidebarStreamItem,
   MessengerSidebarTopicItem,
-} from "~/entities/messenger/messenger.types";
-import { useUsersStore } from "~/entities/user/user.model";
+} from "~/applications/messenger/model/messenger.types";
 import {
   selectCurrentWorkspaceRuntimeContext,
   useWorkspaceAuthStore,
 } from "~/entities/workspace-auth/workspace-auth.model";
 import { t } from "~/i18n/i18n";
+import { useUsersById } from "~/modules/users/users";
 import { useOpenSearch } from "~/shared/contexts/open-search";
 import { formatCount, UNREAD_COUNT_DISPLAY_LIMIT } from "~/shared/lib/count-format.lib";
 import { formatMessageTimeShort } from "~/shared/lib/datetime.lib";
 import { parseWorkspaceMessengerRoute } from "~/shared/lib/workspace-messenger-route.lib";
 import { Icon } from "~/shared/ui/icon";
-import { ChatChannelHeader } from "~/widgets/chat-view/chat-header-channel.ui";
 
 const EMPTY_WORKSPACE_STREAMS: MessengerSidebarStreamItem[] = [];
 const INBOX_STATE_CARD_CLASS =
@@ -184,14 +184,14 @@ export const InboxPage: React.FC = () => {
     }
     return null;
   }, [workspaceRoute, workspaceRuntimeContext]);
-  const messagesById = useWorkspaceMessageStore((state) => state.messagesById);
-  const usersById = useUsersStore((state) => state.usersById);
-  const streamIds = useMessengerStore((state) => state.streamIds);
-  const streamsById = useMessengerStore((state) => state.streamsById);
-  const topicIds = useMessengerStore((state) => state.topicIds);
-  const topicsById = useMessengerStore((state) => state.topicsById);
-  const foldersById = useMessengerStore((state) => state.foldersById);
-  const conversationsById = useMessengerStore((state) => state.conversationsById);
+  const messagesById = useMessageIndex((state) => state.messagesById);
+  const usersById = useUsersById();
+  const streamIds = useChatsCatalog((state) => state.streamIds);
+  const streamsById = useChatsCatalog((state) => state.streamsById);
+  const topicIds = useChatsCatalog((state) => state.topicIds);
+  const topicsById = useChatsCatalog((state) => state.topicsById);
+  const foldersById = useChatsCatalog((state) => state.foldersById);
+  const conversationsById = useChatsCatalog((state) => state.conversationsById);
   const messengerSidebarState = useMemo<MessengerSidebarStreamsState>(
     () => ({
       streamIds,
@@ -203,9 +203,9 @@ export const InboxPage: React.FC = () => {
     }),
     [conversationsById, foldersById, streamIds, streamsById, topicIds, topicsById],
   );
-  const loadingRaw = useMessengerStore((state) => state.isLoading);
-  const error = useMessengerStore((state) => state.error);
-  const catalogLoaded = useMessengerStore(
+  const loadingRaw = useChatsCatalog((state) => state.isLoading);
+  const error = useChatsCatalog((state) => state.error);
+  const catalogLoaded = useChatsCatalog(
     (state) =>
       state.lastLoadedAt != null ||
       state.streamIds.length > 0 ||

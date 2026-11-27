@@ -1,23 +1,26 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation } from "react-router-dom";
-import { useMessengerStore } from "~/entities/messenger/messenger.model";
-import { useWorkspaceMessageStore } from "~/entities/message/message.model";
+import { useChatsCatalog } from "~/applications/messenger/model/chats/chats";
+import { useMessageIndex } from "~/applications/messenger/model/messages/messages-consumers";
 import { useThemeStore } from "~/entities/theme/theme.model";
-import { useUsersStore } from "~/entities/user/user.model";
-import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
+import {
+  selectCurrentWorkspaceRuntimeContext,
+  useWorkspaceAuthStore,
+} from "~/entities/workspace-auth/workspace-auth.model";
 import { getWorkspaceSessionStorageScopeFromAuthState } from "~/entities/workspace-auth/workspace-session-storage-scope.lib";
 import { authIdleTimeoutToMs } from "~/features/settings/auth-idle-timeout.lib";
 import { useSettingsStore } from "~/features/settings/settings.model";
 import { t } from "~/i18n/i18n";
+import { useUserCount } from "~/modules/users/users";
+import { writeText } from "~/platform/desktop/clipboard";
+import { workspaceRuntimeOwnerKey } from "~/platform/sessions/workspace-runtime.lib";
+import type { WorkspaceRuntimeContext } from "~/platform/sessions/workspace-runtime.types";
 import { SCROLL_AREA_CLASS } from "~/shared/config/constants";
 import { getSessionRemainingMs } from "~/shared/lib/auth-guard";
-import { writeText } from "~/shared/lib/clipboard";
 import {
   getConnectionHealthSnapshot,
   subscribeConnectionHealth,
 } from "~/shared/lib/connection-health";
-import type { DiagnosticIdbSnapshot } from "~/shared/lib/diagnostics-idb.lib";
-import { estimateDiagnosticsIdbFootprint } from "~/shared/lib/diagnostics-idb.lib";
 import type { DiagnosticsMemorySnapshot } from "~/shared/lib/diagnostics-memory.lib";
 import { getDiagnosticRealtimeStats } from "~/shared/lib/diagnostics-realtime.lib";
 import { getDiagnosticVitalsSnapshot } from "~/shared/lib/diagnostics-vitals.lib";
@@ -28,6 +31,10 @@ import {
   type LogEntry,
 } from "~/shared/lib/logger";
 import { probeApiTransportWithLatency } from "~/shared/lib/network-transport-probe.lib";
+import {
+  readWorkspaceMessengerCacheDiagnostics,
+  type WorkspaceMessengerCacheDiagnostics,
+} from "~/shared/lib/workspace-messenger-cache-db";
 import { getZulipRateLimitBlockedUntil } from "~/shared/lib/zulip-rate-limit-gate";
 import {
   buildConnectionReportSnapshot,
@@ -52,7 +59,10 @@ export const LogsPage: React.FC = () => {
   const [memorySnapshot, setMemorySnapshot] = useState<DiagnosticsMemorySnapshot | null>(null);
   const [memoryRefreshToken, setMemoryRefreshToken] = useState(0);
   const [connectionHealth, setConnectionHealth] = useState(getConnectionHealthSnapshot);
-  const [cacheSnapshot, setCacheSnapshot] = useState<DiagnosticIdbSnapshot | null>(null);
+  const [cacheResult, setCacheResult] = useState<{
+    runtime: WorkspaceRuntimeContext;
+    snapshot: WorkspaceMessengerCacheDiagnostics | null;
+  } | null>(null);
   const [pingState, setPingState] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [pingLatencyMs, setPingLatencyMs] = useState<number | null>(null);
   const [dashboardTick, setDashboardTick] = useState(0);
@@ -68,13 +78,13 @@ export const LogsPage: React.FC = () => {
   const workspaceOwnerKey = useWorkspaceAuthStore(
     (s) => getWorkspaceSessionStorageScopeFromAuthState(s).ownerKey,
   );
-  const streamsCount = useMessengerStore((s) => s.streamIds.length);
-  const conversationsCount = useMessengerStore((s) => s.conversationIds.length);
-  const foldersCount = useMessengerStore((s) => s.folderIds.length);
-  const usersCount = useUsersStore((s) => s.userIds.length);
-  const currentChatMessagesCount = useWorkspaceMessageStore(
-    (s) => Object.keys(s.messagesById).length,
-  );
+  const runtime = useWorkspaceAuthStore(selectCurrentWorkspaceRuntimeContext);
+  const cacheSnapshot = cacheResult?.runtime === runtime ? cacheResult.snapshot : null;
+  const streamsCount = useChatsCatalog((s) => s.streamIds.length);
+  const conversationsCount = useChatsCatalog((s) => s.conversationIds.length);
+  const foldersCount = useChatsCatalog((s) => s.folderIds.length);
+  const usersCount = useUserCount();
+  const currentChatMessagesCount = useMessageIndex((s) => Object.keys(s.messagesById).length);
   const themeMode = useThemeStore((s) => s.mode);
   const themePalette = useThemeStore((s) => s.paletteId);
   const settingsLanguage = useSettingsStore((s) => s.language);
@@ -104,14 +114,19 @@ export const LogsPage: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    if (runtime == null) return undefined;
     let cancelled = false;
-    void estimateDiagnosticsIdbFootprint(workspaceOwnerKey).then((snapshot) => {
-      if (!cancelled) setCacheSnapshot(snapshot);
-    });
+    void readWorkspaceMessengerCacheDiagnostics(workspaceRuntimeOwnerKey(runtime)).then(
+      (snapshot) => {
+        if (!cancelled && useWorkspaceAuthStore.getState().getCurrentRuntimeContext() === runtime) {
+          setCacheResult({ runtime, snapshot });
+        }
+      },
+    );
     return () => {
       cancelled = true;
     };
-  }, [workspaceOwnerKey, dashboardTick]);
+  }, [runtime, dashboardTick]);
 
   const clearLogs = useCallback(() => {
     clearLogHistory();

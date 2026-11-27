@@ -1,0 +1,31 @@
+import type {
+  MessengerMessage,
+  MessengerUuid,
+} from "~/applications/messenger/model/messenger.types";
+import type { UsersById } from "~/modules/users/users-types";
+import type { WorkspaceMessageMentionResolver } from "~/shared/lib/workspace-message-render/workspace-message-document.types";
+import type { WorkspaceMessageBubbleQuickActionsConfig } from "./workspace-message-bubble-quick-actions.ui";
+import type {
+  WorkspaceMessageListActions,
+  WorkspaceMessageListItem,
+} from "./workspace-message-list.types";
+import type { WorkspaceQuoteRenderMode } from "./workspace-message-quote.types";
+
+export interface WorkspaceMessageBubbleProps {
+  message: WorkspaceMessageListItem;
+  currentUserUuid: MessengerUuid;
+  isFirstInGroup: boolean;
+  isLastInGroup: boolean;
+  isSelected?: boolean;
+  readRequestPending?: boolean;
+  resolveAuthorLabel?: (authorUuid: MessengerUuid) => string | null | undefined;
+  usersById: UsersById;
+  topicLabel?: string | null;
+  resolveMention?: WorkspaceMessageMentionResolver;
+  quoteRenderMode?: WorkspaceQuoteRenderMode;
+  actions?: WorkspaceMessageListActions;
+  linkedKeyRequest?: MessengerMessage; // Request currently known for this key grant or rejection.
+  presentationMode?: "message" | "preview";
+  passiveLoadersEnabled?: boolean;
+  quickActions?: WorkspaceMessageBubbleQuickActionsConfig;
+}

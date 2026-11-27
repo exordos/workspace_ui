@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import type { MessengerMessage } from "~/entities/messenger/messenger.types";
+import type { MessengerMessage } from "~/applications/messenger/model/messenger.types";
 import {
   selectActivityLiveMentionMessages,
   useActivityStore,

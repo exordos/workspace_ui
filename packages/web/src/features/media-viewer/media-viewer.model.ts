@@ -46,8 +46,9 @@ export const useMediaViewerStore = create<MediaViewerState>((set, get) => ({
   isOpen: false,
   currentIndex: 0,
   items: EMPTY_ITEMS,
+  ownerToken: null,
 
-  open(items, startIndex = 0) {
+  open(items, startIndex = 0, ownerToken) {
     if (items.length === 0) {
       log.warn("Attempted to open media viewer with empty items");
       return;
@@ -55,7 +56,7 @@ export const useMediaViewerStore = create<MediaViewerState>((set, get) => ({
     const clamped = clamp(startIndex, 0, items.length - 1);
     logStoreAction("media-viewer", "open", { count: items.length, startIndex: clamped });
     releaseWorkspaceObjectUrls(get().items);
-    set({ isOpen: true, items, currentIndex: clamped });
+    set({ isOpen: true, items, currentIndex: clamped, ownerToken: ownerToken ?? null });
   },
 
   replaceItem(index, item) {
@@ -76,7 +77,7 @@ export const useMediaViewerStore = create<MediaViewerState>((set, get) => ({
   close() {
     logStoreAction("media-viewer", "close", {});
     releaseWorkspaceObjectUrls(get().items);
-    set({ isOpen: false, items: EMPTY_ITEMS, currentIndex: 0 });
+    set({ isOpen: false, items: EMPTY_ITEMS, currentIndex: 0, ownerToken: null });
   },
 
   next() {

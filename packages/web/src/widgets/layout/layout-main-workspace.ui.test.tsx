@@ -1,8 +1,10 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { useMessengerStore } from "~/entities/messenger/messenger.model";
-import type { MessengerStream } from "~/entities/messenger/messenger.types";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useMessengerStore } from "~/applications/messenger/model/chats/messenger.model";
+import type { MessengerStream } from "~/applications/messenger/model/messenger.types";
+import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { setLocale, useTranslation } from "~/i18n/i18n";
+import { workspaceRuntimeOwnerKey } from "~/platform/sessions/workspace-runtime.lib";
 import { LayoutMainWorkspace } from "./layout-main-workspace.ui";
 import {
   LAYOUT_SIDEBAR_WIDTH_STORAGE_KEY,
@@ -15,7 +17,7 @@ vi.mock("react-router-dom", () => ({
   Outlet: () => <div data-testid="layout-main-outlet" />,
 }));
 
-vi.mock("~/widgets/sidebar/sidebar-shell.ui", () => ({
+vi.mock("~/applications/messenger/features/sidebar/sidebar-shell.ui", () => ({
   SidebarShell: ({
     sidebarStyle,
     sidebarResizeControl,
@@ -98,13 +100,17 @@ function buildProps(overrides: Partial<LayoutMainWorkspaceProps> = {}): LayoutMa
 describe("LayoutMainWorkspace", () => {
   beforeEach(() => {
     setLocale("en");
-    useMessengerStore.setState({ streamsById: {} });
+    useMessengerStore.setState({ ownerKey: null, streamsById: {} });
     window.localStorage.clear();
     Object.defineProperty(window, "innerWidth", {
       configurable: true,
       writable: true,
       value: 1280,
     });
+  });
+
+  afterEach(() => {
+    useWorkspaceAuthStore.getState().clear();
   });
 
   it("updates controlled account drawer title and body translations after a locale switch", () => {
@@ -191,7 +197,26 @@ describe("LayoutMainWorkspace", () => {
       createdAt: "2026-10-05T00:00:00Z",
       updatedAt: "2026-10-05T00:00:00Z",
     };
-    useMessengerStore.setState({ streamsById: { [streamUuid]: stream } });
+    useWorkspaceAuthStore.getState().setSession({
+      accountId: "account",
+      instanceId: "instance",
+      organizationId: "organization",
+      organizationOrigin: "https://workspace.example.com",
+      projectId: stream.projectId,
+      userUuid: stream.userUuid,
+      accessToken: "token",
+      login: "member@example.com",
+      profile: {
+        uuid: stream.userUuid,
+        username: "member",
+        firstName: null,
+        lastName: null,
+        email: "member@example.com",
+      },
+    });
+    const runtime = useWorkspaceAuthStore.getState().getCurrentRuntimeContext()!;
+    const ownerKey = workspaceRuntimeOwnerKey(runtime);
+    useMessengerStore.setState({ ownerKey, streamsById: { [streamUuid]: stream } });
     const props = buildProps({
       rightDrawerOpen: true,
       workspaceRightPanelInfo: {
@@ -214,8 +239,8 @@ describe("LayoutMainWorkspace", () => {
       <LayoutMainWorkspace
         {...props}
         rightDrawerChatScreen={{
-          ownerKey: "owner",
-          runtimeGeneration: 1,
+          ownerKey,
+          runtimeGeneration: runtime.runtimeGeneration,
           streamUuid,
           screen: "key",
         }}

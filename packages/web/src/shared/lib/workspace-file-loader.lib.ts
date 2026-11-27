@@ -20,6 +20,7 @@ interface Consumer {
 
 interface PendingRequest {
   key: string;
+  invalidationVersion: number; // The owner/file version captured before downloading.
   controller: AbortController;
   consumers: Set<Consumer>;
   promise: Promise<MessengerBinaryResult>;
@@ -40,6 +41,7 @@ interface ResourceCacheEntry {
   promise: Promise<MessengerBinaryResult>;
   invalidationVersion: number;
   sizeBytes: number | null;
+  unsubscribe: () => void;
 }
 
 // Full video blobs are expensive, so retain only a small recent working set.
@@ -48,14 +50,19 @@ export const DEFAULT_WORKSPACE_FILE_CACHE_MAX_BYTES = 256 * 1024 * 1024;
 
 const pendingRequests = new Map<string, PendingRequest>();
 const invalidationsByFileKey = new Map<string, { version: number; refreshedVersion: number }>();
+const invalidationsByOwnerKey = new Map<string, number>();
 const invalidationListenersByFileKey = new Map<string, Set<() => void>>();
+let invalidationVersionSequence = 0;
 
 function fileCacheKey(ownerKey: string, fileUuid: string): string {
   return JSON.stringify([ownerKey, fileUuid]);
 }
 
 function currentInvalidationVersion(ownerKey: string, fileUuid: string): number {
-  return invalidationsByFileKey.get(fileCacheKey(ownerKey, fileUuid))?.version ?? 0;
+  return Math.max(
+    invalidationsByOwnerKey.get(ownerKey) ?? 0,
+    invalidationsByFileKey.get(fileCacheKey(ownerKey, fileUuid))?.version ?? 0,
+  );
 }
 
 export function getWorkspaceFileResourceInvalidationVersion(
@@ -74,10 +81,29 @@ export function invalidateWorkspaceFileResourceCache(
 ): void {
   const key = fileCacheKey(ownerKey, fileUuid);
   const invalidation = invalidationsByFileKey.get(key) ?? { version: 0, refreshedVersion: 0 };
-  invalidation.version += 1;
+  invalidation.version = ++invalidationVersionSequence;
   invalidationsByFileKey.set(key, invalidation);
   if (options.notify !== false) {
-    invalidationListenersByFileKey.get(key)?.forEach((listener) => listener());
+    [...(invalidationListenersByFileKey.get(key) ?? [])].forEach((listener) => listener());
+  }
+}
+
+// Drop protected bytes from the owner's resources and force fresh HTTP authorization.
+export function invalidateWorkspaceOwnerFileResources(ownerKey: string): void {
+  invalidationsByOwnerKey.set(ownerKey, ++invalidationVersionSequence);
+  const ownerPrefix = `[${JSON.stringify(ownerKey)},`;
+  for (const [key, request] of pendingRequests) {
+    if (key.startsWith(ownerPrefix)) {
+      pendingRequests.delete(key);
+      request.controller.abort();
+    }
+  }
+  // Capture the keys before notifying because listeners may subscribe again.
+  const ownerFileKeys = [...invalidationListenersByFileKey.keys()].filter((key) =>
+    key.startsWith(ownerPrefix),
+  );
+  for (const key of ownerFileKeys) {
+    [...(invalidationListenersByFileKey.get(key) ?? [])].forEach((listener) => listener());
   }
 }
 
@@ -123,10 +149,10 @@ function removeConsumer(request: PendingRequest, consumer: Consumer): void {
 function createPendingRequest(options: WorkspaceFileLoaderOptions): PendingRequest {
   const key = requestKey(options);
   const controller = new AbortController();
-  const invalidation = invalidationsByFileKey.get(fileCacheKey(options.ownerKey, options.fileUuid));
-  const invalidationVersion = invalidation?.version ?? 0;
-  const needsFreshBytes =
-    invalidation != null && invalidation.refreshedVersion < invalidationVersion;
+  const fileKey = fileCacheKey(options.ownerKey, options.fileUuid);
+  const invalidation = invalidationsByFileKey.get(fileKey);
+  const invalidationVersion = currentInvalidationVersion(options.ownerKey, options.fileUuid);
+  const needsFreshBytes = (invalidation?.refreshedVersion ?? 0) < invalidationVersion;
   const promise = downloadWorkspaceFile(
     {
       ...options.requestOptions,
@@ -138,6 +164,7 @@ function createPendingRequest(options: WorkspaceFileLoaderOptions): PendingReque
 
   const request: PendingRequest = {
     key,
+    invalidationVersion,
     controller,
     consumers: new Set(),
     promise,
@@ -147,8 +174,14 @@ function createPendingRequest(options: WorkspaceFileLoaderOptions): PendingReque
     () => {
       // A scoped retry must bypass HTTP-cached errors too. Resume browser cache
       // reuse only after a successful refresh of the latest file version.
-      if (!controller.signal.aborted && invalidation?.version === invalidationVersion) {
-        invalidation.refreshedVersion = invalidationVersion;
+      if (
+        needsFreshBytes &&
+        !controller.signal.aborted &&
+        currentInvalidationVersion(options.ownerKey, options.fileUuid) === invalidationVersion
+      ) {
+        const current = invalidationsByFileKey.get(fileKey) ?? { version: 0, refreshedVersion: 0 };
+        current.refreshedVersion = invalidationVersion;
+        invalidationsByFileKey.set(fileKey, current);
       }
       if (pendingRequests.get(key) === request) {
         pendingRequests.delete(key);
@@ -173,7 +206,11 @@ export function loadWorkspaceFile(
   }
 
   const key = requestKey(options);
-  const request = pendingRequests.get(key) ?? createPendingRequest(options);
+  const existing = pendingRequests.get(key);
+  const request =
+    existing?.invalidationVersion === currentInvalidationVersion(options.ownerKey, options.fileUuid)
+      ? existing
+      : createPendingRequest(options);
 
   return new Promise<MessengerBinaryResult>((resolve, reject) => {
     const consumer: Consumer = {
@@ -209,6 +246,14 @@ export function loadWorkspaceFile(
         consumer.settled = true;
         consumer.signal?.removeEventListener("abort", consumer.onAbort);
         request.consumers.delete(consumer);
+        if (
+          request.controller.signal.aborted ||
+          request.invalidationVersion !==
+            currentInvalidationVersion(options.ownerKey, options.fileUuid)
+        ) {
+          reject(abortReason(request.controller.signal));
+          return;
+        }
         resolve(result);
       },
       (error: unknown) => {
@@ -275,6 +320,7 @@ export function createWorkspaceFileResourceCache(
       return;
     }
     entries.delete(key);
+    entry.unsubscribe();
     if (entry.sizeBytes != null) {
       completedBytes -= entry.sizeBytes;
     }
@@ -326,6 +372,11 @@ export function createWorkspaceFileResourceCache(
           promise: requestPromise,
           invalidationVersion,
           sizeBytes: null,
+          unsubscribe: subscribeWorkspaceFileResourceInvalidation(
+            options.ownerKey,
+            options.fileUuid,
+            () => removeEntry(key, newEntry, true),
+          ),
         };
         newEntry.promise = requestPromise.then(
           (result) => {

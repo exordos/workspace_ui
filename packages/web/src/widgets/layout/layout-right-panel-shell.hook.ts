@@ -1,23 +1,29 @@
 import { useMemo } from "react";
-import { useWorkspaceMessageStore } from "~/entities/message/message.model";
 import {
   selectWorkspaceRightPanelInfoView,
   type WorkspaceRightPanelInfoView,
-} from "~/entities/messenger/messenger-right-panel.lib";
-import { useMessengerStore } from "~/entities/messenger/messenger.model";
-import type { MessengerMessage, MessengerUuid } from "~/entities/messenger/messenger.types";
-import { useUsersStore } from "~/entities/user/user.model";
+} from "~/applications/messenger/features/chat-details/messenger-right-panel.lib";
+import type {
+  SidebarChat,
+  StreamWithLast,
+} from "~/applications/messenger/features/sidebar/sidebar.types";
+import { useChatsCatalog } from "~/applications/messenger/model/chats/chats";
+import { useMessageIndex } from "~/applications/messenger/model/messages/messages-consumers";
+import type {
+  MessengerMessage,
+  MessengerUuid,
+} from "~/applications/messenger/model/messenger.types";
 import {
   selectCurrentWorkspaceRuntimeContext,
   useWorkspaceAuthStore,
 } from "~/entities/workspace-auth/workspace-auth.model";
-import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { useSettingsStore } from "~/features/settings/settings.model";
 import { t } from "~/i18n/i18n";
+import { useUsersById, useUsersOwnerKey } from "~/modules/users/users";
+import { workspaceRuntimeOwnerKey } from "~/platform/sessions/workspace-runtime.lib";
 import type { WorkspaceMessengerRouteMatch } from "~/shared/lib/workspace-messenger-route.lib";
 import type { StreamEntryInternal } from "~/shared/types/sidebar-chat";
 import type { RightDrawerMode } from "~/widgets/right-panel/right-drawer.model";
-import type { SidebarChat, StreamWithLast } from "~/widgets/sidebar/sidebar.types";
 import { useLayoutRightDrawerContext } from "./layout-right-drawer-context.hook";
 import { resolveLayoutRightPanelTitle } from "./layout-right-drawer-title.lib";
 
@@ -35,6 +41,7 @@ export interface UseLayoutRightPanelShellParams {
   rightDrawerMode: RightDrawerMode;
   rightDrawerUserIdOverride: number | null;
   rightDrawerWorkspaceUserUuidOverride: MessengerUuid | null;
+  rightDrawerWorkspaceUserOwnerKey?: string | null;
   mutedStreamIds: Set<number>;
   usersMapForRightDrawer: Map<number, { full_name?: string; email?: string }>;
   workspaceRoute: WorkspaceMessengerRouteMatch | null;
@@ -65,6 +72,7 @@ export function useLayoutRightPanelShell(
     rightDrawerMode,
     rightDrawerUserIdOverride,
     rightDrawerWorkspaceUserUuidOverride,
+    rightDrawerWorkspaceUserOwnerKey,
     usersMapForRightDrawer,
     workspaceRoute,
   } = params;
@@ -90,16 +98,16 @@ export function useLayoutRightPanelShell(
     rightDrawerOpen,
   });
 
-  const workspaceConversationsById = useMessengerStore((state) => state.conversationsById);
-  const workspaceStreamsById = useMessengerStore((state) => state.streamsById);
-  const workspaceTopicsById = useMessengerStore((state) => state.topicsById);
-  const workspaceTopicIds = useMessengerStore((state) => state.topicIds);
-  const workspaceStreamBindingsById = useMessengerStore((state) => state.streamBindingsById);
-  const workspaceStreamBindingIdsByStreamId = useMessengerStore(
+  const workspaceConversationsById = useChatsCatalog((state) => state.conversationsById);
+  const workspaceStreamsById = useChatsCatalog((state) => state.streamsById);
+  const workspaceTopicsById = useChatsCatalog((state) => state.topicsById);
+  const workspaceTopicIds = useChatsCatalog((state) => state.topicIds);
+  const workspaceStreamBindingsById = useChatsCatalog((state) => state.streamBindingsById);
+  const workspaceStreamBindingIdsByStreamId = useChatsCatalog(
     (state) => state.streamBindingIdsByStreamId,
   );
-  const workspaceUsersById = useUsersStore((state) => state.usersById);
-  const workspaceUsersOwnerKey = useUsersStore((state) => state.ownerKey);
+  const workspaceUsersById = useUsersById();
+  const workspaceUsersOwnerKey = useUsersOwnerKey();
   const workspaceSessions = useWorkspaceAuthStore((state) => state.sessions);
   const workspaceCurrentAccountId = useWorkspaceAuthStore((state) => state.currentAccountId);
   const workspaceRuntimeContext = useMemo(
@@ -117,12 +125,14 @@ export function useLayoutRightPanelShell(
     workspaceRuntimeContext != null &&
     workspaceRoute?.orgId === workspaceRuntimeContext.organizationId &&
     workspaceRoute.projectId === workspaceRuntimeContext.projectId &&
-    workspaceUsersOwnerKey === workspaceOwnerKey;
+    workspaceUsersOwnerKey === workspaceOwnerKey &&
+    (rightDrawerWorkspaceUserOwnerKey == null ||
+      rightDrawerWorkspaceUserOwnerKey === workspaceOwnerKey);
   const hasUnavailableProfileOverride =
     (rightDrawerWorkspaceUserUuidOverride?.trim().length ?? 0) > 0 && !canSelectWorkspaceProfile;
   const shouldSelectWorkspaceTopicMessages =
     workspaceMessengerActive && rightDrawerOpen && rightDrawerMode === "info";
-  const workspaceMessagesById = useWorkspaceMessageStore((state) =>
+  const workspaceMessagesById = useMessageIndex((state) =>
     shouldSelectWorkspaceTopicMessages &&
     workspaceOwnerKey != null &&
     state.ownerKey === workspaceOwnerKey

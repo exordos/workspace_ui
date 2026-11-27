@@ -2,22 +2,25 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { act } from "react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useActivityStore } from "~/entities/activity/activity.model";
-import type * as ComposerDraftActions from "~/entities/composer-draft/composer-draft-actions.lib";
+import { useMessengerStore } from "~/applications/messenger/model/chats/messenger.model";
+import type * as ComposerDraftActions from "~/applications/messenger/model/drafts/composer-draft-actions.lib";
 import {
   resetWorkspaceComposerDraftStoreForTests,
   useWorkspaceComposerDraftStore,
-} from "~/entities/composer-draft/composer-draft.model";
-import type { WorkspaceComposerDraft } from "~/entities/composer-draft/composer-draft.types";
-import { adaptMessengerMessage } from "~/entities/messenger/messenger-adapters.lib";
-import { useMessengerStore } from "~/entities/messenger/messenger.model";
-import type { MessengerStream, MessengerTopic } from "~/entities/messenger/messenger.types";
-import { useUsersStore } from "~/entities/user/user.model";
+} from "~/applications/messenger/model/drafts/composer-draft.model";
+import type { WorkspaceComposerDraft } from "~/applications/messenger/model/drafts/composer-draft.types";
+import { adaptMessengerMessage } from "~/applications/messenger/model/messages/messenger-message-adapter.lib";
+import type {
+  MessengerStream,
+  MessengerTopic,
+} from "~/applications/messenger/model/messenger.types";
+import { useActivityStore } from "~/entities/activity/activity.model";
 import {
   type WorkspaceAuthSession,
   useWorkspaceAuthStore,
 } from "~/entities/workspace-auth/workspace-auth.model";
-import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
+import { useUsersStore } from "~/modules/users/user.model";
+import { workspaceRuntimeOwnerKey } from "~/platform/sessions/workspace-runtime.lib";
 import type { WorkspaceMessengerMessageDto } from "~/shared/api/messenger.types";
 import { ActivityPage } from "./activity-page.ui";
 import type * as ReactRouterDom from "react-router-dom";
@@ -45,23 +48,29 @@ vi.mock("~/entities/activity/activity-mentions.api", () => ({
   fetchMyMentionsPage,
 }));
 
-vi.mock("~/entities/composer-draft/composer-draft-loader.lib", () => ({
+vi.mock("~/applications/messenger/model/drafts/composer-draft-loader.lib", () => ({
   loadWorkspaceComposerDrafts,
 }));
 
-vi.mock("~/entities/composer-draft/composer-draft-actions.lib", async (importOriginal) => {
-  const actual = await importOriginal<typeof ComposerDraftActions>();
-  return {
-    ...actual,
-    deleteWorkspaceComposerDraft,
-  };
-});
+vi.mock(
+  "~/applications/messenger/model/drafts/composer-draft-actions.lib",
+  async (importOriginal) => {
+    const actual = await importOriginal<typeof ComposerDraftActions>();
+    return {
+      ...actual,
+      deleteWorkspaceComposerDraft,
+    };
+  },
+);
 
-vi.mock("~/features/workspace-forward-message/workspace-forward-message.model", () => ({
-  useWorkspaceForwardMessageStore: (
-    selector: (state: { open: typeof openWorkspaceForward }) => unknown,
-  ) => selector({ open: openWorkspaceForward }),
-}));
+vi.mock(
+  "~/applications/messenger/features/timeline/forward/workspace-forward-message.model",
+  () => ({
+    useWorkspaceForwardMessageStore: (
+      selector: (state: { open: typeof openWorkspaceForward }) => unknown,
+    ) => selector({ open: openWorkspaceForward }),
+  }),
+);
 
 const scrollHeightDescriptor = Object.getOwnPropertyDescriptor(
   HTMLElement.prototype,
@@ -187,7 +196,7 @@ function seedWorkspaceMessengerContext(): void {
   };
 
   useMessengerStore.setState({
-    ownerKey: `${WORKSPACE_SESSION.organizationId}:${WORKSPACE_SESSION.projectId}:${WORKSPACE_SESSION.userUuid}`,
+    ownerKey: workspaceRuntimeOwnerKey(WORKSPACE_SESSION),
     streamsById: { [stream.uuid]: stream },
     streamIds: [stream.uuid],
     topicsById: { [topic.uuid]: topic },
